@@ -11,6 +11,7 @@ import io
 import logging
 import os
 from collections import OrderedDict
+from functools import partial
 from hashlib import md5 as hash_fn
 from typing import Mapping, Sequence
 
@@ -30,6 +31,7 @@ from . import _io, _utils
 from ._fallback import ORTModuleDeviceException, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._logger import LogColor, LogLevel, ORTModuleInitPhase, SuppressLogs, TimeTracker, TrackTimeForStaticFunction
 from ._onnx_models import _get_onnx_file_name, _save_model
+from ._runtime_inspector import FlagAndPrintDensity, RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from ._zero_stage3_compatibility import stage3_export_context
 from .options import DebugOptions, _RuntimeOptions
@@ -269,6 +271,7 @@ class GraphTransitionManager:
         debug_options: DebugOptions,
         runtime_options: _RuntimeOptions,
         time_tracker: TimeTracker,
+        runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ):
         self._device = _utils._get_device_from_module(flatten_module)
@@ -283,6 +286,8 @@ class GraphTransitionManager:
 
         # Tracker for ORTModule model export.
         self._time_tracker = time_tracker
+
+        self._runtime_inspector = runtime_inspector
 
         # A signal to indicate if the original model has changed and need a re-export.
         self._original_model_has_changed = False
@@ -416,10 +421,12 @@ class GraphTransitionManager:
                 ortmodule_cache_dir=self._runtime_options.ortmodule_cache_dir,
                 enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
                 enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
+                enable_embedding_sparse_optimizer=self._runtime_options.enable_embedding_sparse_optimizer,
                 onnx_opset_version=self._runtime_options.onnx_opset_version,
                 stage3_param_handle=self,
                 debug_options=self._debug_options,
                 time_tracker=self._time_tracker,
+                runtime_inspector=self._runtime_inspector,
                 logger=self._logger,
             )
 
@@ -717,16 +724,22 @@ class GraphTransitionManager:
         ortmodule_cache_dir: str,
         enable_custom_autograd_function: bool,
         enable_zero_stage3_support: bool,
+        enable_embedding_sparse_optimizer: bool,
         onnx_opset_version: int,
         stage3_param_handle: type,
         debug_options: DebugOptions,
         time_tracker: TimeTracker,
+        runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
 
         # Add hooks to check the sparsity of the embedding and label inputs during the export.
-        embedding_hook_handles = self._add_check_embedding_sparsity_hook()
-        label_hook_handles = self._add_check_label_sparsity_hook()
+        embedding_hook_handles = GraphTransitionManager._add_check_embedding_sparsity_hook(
+            enable_embedding_sparse_optimizer, device, logger, runtime_inspector, flattened_module
+        )
+        label_hook_handles = GraphTransitionManager._add_check_label_sparsity_hook(
+            enable_embedding_sparse_optimizer, logger, runtime_inspector
+        )
 
         # Record random states here and restore later in case any of them gets changed during the export,
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
@@ -917,7 +930,7 @@ class GraphTransitionManager:
                         " `export ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT=0`.\n"
                     )
 
-                self._logger.error(
+                logger.error(
                     f"{LogColor.RED}\n"
                     "******************************** IMPORTANT NOTE *******************************\n"
                     f"{notes}"
@@ -950,7 +963,14 @@ class GraphTransitionManager:
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
 
-    def _add_check_embedding_sparsity_hook(self):
+    @staticmethod
+    def _add_check_embedding_sparsity_hook(
+        enable_embedding_sparse_optimizer: bool,
+        device: torch.device,
+        logger: logging.Logger,
+        runtime_inspector: RuntimeInspector,
+        flattened_module: torch.nn.Module,
+    ) -> list:
         """
         Add hook to check embedding sparsity and enable padding elimination if applicable.
         1. Iterate through all modules to find Embedding modules with padding_idx >= 0.
@@ -961,13 +981,13 @@ class GraphTransitionManager:
         4. Return the hook handles for later removal.
 
         """
-        if not self._runtime_options.enable_embedding_sparse_optimizer or self._device.type != "cuda":
+        if not enable_embedding_sparse_optimizer or device.type != "cuda":
             return []
 
         def _embedding_hook(name, module, args):
             ebd_input = args[0]
             if ebd_input is None or not isinstance(ebd_input, torch.Tensor):
-                self._logger.warning("Embedding input is not a tensor.")
+                logger.warning("Embedding input is not a tensor.")
                 return None
 
             valid_token = torch.count_nonzero(ebd_input - module.padding_idx)
@@ -975,22 +995,28 @@ class GraphTransitionManager:
             embed_density = float(valid_token) / float(total_token) * 100
 
             if embed_density < 90:
-                self._logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
-                self._runtime_inspector._embedding_module_to_padding_density_map[name] = embed_density
+                logger.info("Embedding sparsity-based optimization is ON for density: %.0f%%", embed_density)
+                runtime_inspector._embedding_module_to_padding_density_map[name] = embed_density
                 return FlagAndPrintDensity.apply(args[0], module.padding_idx, "embedding")
             else:
-                self._logger.info("Embedding sparsity-based optimization is OFF for density: %.0f%%", embed_density)
+                logger.info("Embedding sparsity-based optimization is OFF for density: %.0f%%", embed_density)
                 return None
 
         embedding_hook_handles = []
-        for name, sub_module in self._flattened_module.named_modules():
+        for name, sub_module in flattened_module.named_modules():
             if isinstance(sub_module, torch.nn.modules.sparse.Embedding):
                 if sub_module.padding_idx is not None and sub_module.padding_idx >= 0:
                     embedding_hook_handles.append(sub_module.register_forward_pre_hook(partial(_embedding_hook, name)))
 
         return embedding_hook_handles
 
-    def _add_check_label_sparsity_hook(self):
+    @staticmethod
+    def _add_check_label_sparsity_hook(
+        enable_label_sparse_optimizer: bool,
+        logger: logging.Logger,
+        runtime_inspector: RuntimeInspector,
+        flattened_module: torch.nn.Module,
+    ) -> list:
         """
         Add hook to check label sparsity and enable sceloss compute optimization if applicable.
         1. Register forward pre hook to the sceloss module in the model and the hook will check sparsity of the label input.
@@ -999,13 +1025,13 @@ class GraphTransitionManager:
            sceloss compute optimization graph modification.
 
         """
-        if not self._runtime_options.enable_label_sparse_optimizer:
+        if not enable_label_sparse_optimizer:
             return None
 
         def _label_hook(name, module, args):
             label_input = args[1]
             if label_input is None or not isinstance(label_input, torch.Tensor):
-                self._logger.warning("Label input is not a tensor.")
+                logger.warning("Label input is not a tensor.")
                 return None
 
             valid_token = torch.count_nonzero(label_input - module.ignore_index)
@@ -1013,15 +1039,15 @@ class GraphTransitionManager:
             label_density = float(valid_token) / float(total_token) * 100
 
             if label_density < 90:
-                self._logger.info("Label sparsity-based optimization is ON for density: %.0f%%", label_density)
-                self._runtime_inspector._sceloss_module_to_ignore_density_map[name] = label_density
+                logger.info("Label sparsity-based optimization is ON for density: %.0f%%", label_density)
+                runtime_inspector._sceloss_module_to_ignore_density_map[name] = label_density
                 return (args[0], FlagAndPrintDensity.apply(args[1], module.ignore_index, "label"))
             else:
-                self._logger.info("Label sparsity-based optimization is OFF for density: %.0f%%", label_density)
+                logger.info("Label sparsity-based optimization is OFF for density: %.0f%%", label_density)
                 return None
 
         label_check_hook_handles = []
-        for name, sub_module in self._flattened_module.named_modules():
+        for name, sub_module in flattened_module.named_modules():
             if isinstance(sub_module, torch.nn.modules.loss.CrossEntropyLoss):
                 label_check_hook_handles.append(sub_module.register_forward_pre_hook(partial(_label_hook, name)))
 

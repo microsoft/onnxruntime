@@ -7,9 +7,7 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from functools import partial
-from hashlib import md5 as hash_fn
-from typing import Dict, List, Optional, OrderedDict, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
@@ -17,25 +15,16 @@ from torch.utils.cpp_extension import ROCM_HOME
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
+from onnxruntime.training.utils import PTable, onnx_dtype_to_pytorch_dtype
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils, export_context
-from ._fallback import (
-    ORTModuleDeviceException,
-    ORTModuleONNXModelException,
-    ORTModuleTorchModelException,
-    _FallbackManager,
-    _FallbackPolicy,
-    wrap_exception,
-)
+from . import _are_deterministic_algorithms_enabled, _logger, _onnx_models, _utils
+from ._fallback import ORTModuleTorchModelException, _FallbackManager, _FallbackPolicy, wrap_exception
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._graph_transition_manager import GraphTransitionManager, PostExportProcessedModelInfo
-from ._io import _FlattenedModule, _InputInfo
-from ._logger import LogColor
-from ._runtime_inspector import FlagAndPrintDensity, RuntimeInspector
-from ._utils import check_function_has_param, get_rank
+from ._io import _FlattenedModule
+from ._runtime_inspector import RuntimeInspector
+from ._utils import get_rank
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -103,16 +92,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = export_mode
 
-        # Forward function input parameters of the original module.
-        self._module_parameters: List[inspect.Parameter] = list(
-            inspect.signature(self._original_module.forward).parameters.values()
-        )
-
-        # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
-        for input_parameter in self._module_parameters:
-            if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                self._logger.info("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!")
-
         self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
 
         # WIP feature to enable caching in Gradient accumulation scenario.
@@ -163,6 +142,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             debug_options=self._debug_options,
             runtime_options=self._runtime_options,
             time_tracker=self.time_tracker,
+            runtime_inspector=self._runtime_inspector,
             logger=self._logger,
         )
 
@@ -382,15 +362,14 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._runtime_inspector.memory_ob.is_enabled()
             and not self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed
         ):
+            prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
+                inputs, kwargs, True, self._device
+            )
             self._runtime_inspector.memory_ob.collect_symbolic_dim_values(
                 self._graph_transition_manager._post_export_processed_model_info.onnx_graph_input_dynamic_axes_map,
                 prepared_input_map,
             )
             self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed = True
-
-        param_to_append_as_onnx_graph_inputs = []
-        if self._mem_efficient_grad_management_is_enabled:
-            from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
 
         if self._runtime_inspector._sceloss_module_to_ignore_density_map:
             self._runtime_options.label_sparsity_ratio = ",".join(
