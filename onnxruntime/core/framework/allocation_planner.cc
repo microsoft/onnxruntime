@@ -1181,8 +1181,8 @@ class PlannerImpl {
                                                           value_consumer_map[output_idx_global].end());
                 reused.insert(reusable_input);
                 continue;
-              }  // if
-            }  // if
+              }
+            }
           }
         }
 
@@ -1921,8 +1921,8 @@ class PlannerImpl {
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
-              }  // output->Exists
-            }  // for each output
+              }
+            }
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {

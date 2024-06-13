@@ -2050,12 +2050,12 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
 // - buffer B which has the same size requirement and is used after the first usage of A is complete
 //   - buffer B is used for the output from `squeeze2` and a number of other nodes in that part of the model.
 // - re-use of buffer A for an output of a node that has no consumers whilst buffer B is still in use
-//   - this is the `per_input_length` output of the ConcatTraining node 
+//   - this is the `per_input_length` output of the ConcatTraining node
 //
-// Because the logic to determine when a buffer can be freed is based on consumers, buffer A gets freed after the 
+// Because the logic to determine when a buffer can be freed is based on consumers, buffer A gets freed after the
 // Cast node. It is then re-used as buffer B because the memory pattern planner believes that block to be available.
 // When we re-use buffer A for the ConcatTraining output we are using the same address for two different node output
-// buffers, leading to corruption of the output. 
+// buffers, leading to corruption of the output.
 // This tests that the change in allocation planner to not re-use a buffer for outputs with no consumers prevents this.
 TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
   SessionOptions sess_opt;
@@ -2075,7 +2075,7 @@ TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
   ASSERT_STATUS_OK(ort_value_index_map.GetIdx("per_input_length", concat_training_unused_out_index));
   EXPECT_EQ(plan->allocation_plan[concat_training_unused_out_index].alloc_kind, AllocKind::kAllocate);
 }
-#endif // ENABLE_TRAINING_OPS
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
