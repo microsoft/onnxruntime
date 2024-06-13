@@ -545,6 +545,8 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
   }
 };
 
+// Bug(fajin): the same byte in output / zero_point must not be written by different threads, otherwise
+// the result is undefined. This is not handled in the current implementation.
 template <typename TOut>
 struct BlockedQuantizeLinear<float, TOut, 2> {
   static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
@@ -657,6 +659,8 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
   }
 };
 
+// Bug(fajin): the same byte in output / zero_point must not be written by different threads, otherwise
+// the result is undefined. This is not handled in the current implementation.
 template <typename TOut>
 struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
   static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
