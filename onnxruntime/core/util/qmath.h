@@ -10,6 +10,8 @@
 #include "core/framework/float8.h"
 #include "core/framework/int4.h"
 #include <cmath>
+#include <limits>
+#include <algorithm>
 
 namespace onnxruntime {
 
@@ -302,6 +304,614 @@ ParQuantizeLinearSat(const MLFloat16* Input,
     }
   });
 }
+
+#endif
+
+/**
+ * @brief  compute blocked quantization
+ *
+ * @tparam TIn
+ * @tparam TOut
+ * @tparam output_type_group        0: int other than int4.
+ *                                  1: float8
+ *                                  2: int4
+ * @method op0                      baseline implementation. Single thread. Scalar instructions.
+ * @method op1                      multi-threading implementation. Vector instructions.
+ */
+template <typename TIn, typename TOut, int output_type_group>
+struct BlockedQuantizeLinear {
+  /**
+   * @brief Compute blocked quantization using multi-threading and vector instructions.
+   *        Quantize axis is not the last axis. Block the last axis using thread_block_size.
+   *        N is usually large. Within a block, scale's index increments along with output's index.
+   *
+   * @param thread_pool           thread pool
+   * @param input                 input tensor
+   * @param scale                 scale tensor
+   * @param zero_point            zero point tensor
+   * @param output                output tensor
+   * @param M                     total size of dimensions before quantize axis
+   * @param K                     size of dimension on quantize axis
+   * @param N                     total size of dimensions after quantize axis
+   * @param quant_block_size      quantization block size
+   * @param thread_block_size     task block size
+   * @param saturate              used by float8
+   */
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate);
+
+  /**
+   * @brief Compute blocked quantization using multi-threading and vector instructions.
+   *        Quantize axis is the last axis. Block along quantize axis using quant_block_size
+   *        as thread_block_size. quant_block_size is usually 2's power between 16 and 256.
+   *        Within a block, scale index does not change.
+   *
+   * @param thread_pool           thread pool
+   * @param input                 input tensor
+   * @param scale                 scale tensor
+   * @param zero_point            zero point tensor
+   * @param output                output tensor
+   * @param M                     total size of dimensions before quantize axis
+   * @param K                     size of dimension on quantize axis
+   * @param quant_block_size      quantization block size
+   * @param saturate              used by float8
+   */
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate);
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 0> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(float) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(TOut)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              // TODO(fajin): perf difference
+              auto zp = zero_point ? static_cast<int32_t>(zero_point[quant_param_idx_t]) : 0;
+              auto sc = scale[quant_param_idx_t];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
+              output[output_idx] = static_cast<TOut>(v);
+            }
+
+            // A simpler approach is to calculate m, k, n in every block.
+            // This approach tries to reduce division and modulo in the block loop. Not benchmarked.
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    // quant block size is used as thread block size
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
+                                 static_cast<double>(quant_block_size * sizeof(TOut)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            // each thread block is also a quantization block
+            auto zp = zero_point ? zero_point[begin] : static_cast<TOut>(0);
+            auto sc = scale[begin];
+            size_t output_size = std::min(K - k, quant_block_size);
+            MlasQuantizeLinear(input + output_idx, output + output_idx, output_size, sc, zp);
+            output_idx += output_size;
+            k = output_idx % K;
+          }
+        });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(MLFloat16) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(TOut)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              // TODO(fajin): perf difference
+              auto zp = zero_point ? static_cast<int32_t>(zero_point[quant_param_idx_t]) : 0;
+              auto sc = scale[quant_param_idx_t].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
+                                  low, high);
+              output[output_idx] = static_cast<TOut>(v);
+            }
+
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(std::numeric_limits<TOut>::lowest());
+    constexpr auto high = static_cast<int32_t>(std::numeric_limits<TOut>::max());
+    // quant block size is used as thread block size
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
+                                 static_cast<double>(quant_block_size * sizeof(TOut)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            // each thread block is also a quantization block
+            auto zp = zero_point ? static_cast<int32_t>(zero_point[begin]) : 0;
+            auto sc = scale[begin].ToFloat();
+            auto output_idx_end = std::min(K - k, quant_block_size) + output_idx;
+            for (; output_idx < output_idx_end; ++output_idx) {
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
+                                  low, high);
+              output[output_idx] = static_cast<TOut>(v);
+            }
+            k = output_idx % K;
+          }
+        });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 2> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(float) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
+            // TODO(fajin): process 2 elements at a time
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              // TODO(fajin): perf difference
+              auto zp = zero_point
+                            ? static_cast<int32_t>(zero_point[quant_param_idx_t >> 1].GetElem(quant_param_idx_t & 1))
+                            : 0;
+              auto sc = scale[quant_param_idx_t];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    // quant block size is used as thread block size
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
+                                 static_cast<double>(quant_block_size * sizeof(typename TOut ::UnpackedType)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            auto zp = zero_point ? static_cast<int32_t>(zero_point[begin >> 1].GetElem(begin & 1)) : 0;
+            auto sc = scale[begin];
+            size_t output_idx_end = std::min(K - k, quant_block_size) + output_idx;
+            size_t out_start = output_idx, out_end = output_idx_end;
+
+            if (out_start & 1) {
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[out_start] / sc)) + zp, low, high);
+              output[out_start >> 1].SetElem(1, static_cast<typename TOut::UnpackedType>(v));
+              ++out_start;
+            }
+
+            if (out_end & 1) {
+              --out_end;
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[out_end] / sc)) + zp, low, high);
+              output[out_end >> 1].SetElem(0, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            if constexpr (std::is_same<TOut, Int4x2>::value) {
+              MlasQuantizeLinearS4(input + out_start, reinterpret_cast<uint8_t*>(&(output[out_start >> 1])),
+                                   out_end - out_start, sc, static_cast<int8_t>(zp));
+            } else {
+              MlasQuantizeLinearU4(input + out_start, reinterpret_cast<uint8_t*>(&(output[out_start >> 1])),
+                                   out_end - out_start, sc, static_cast<int8_t>(zp));
+            }
+
+            output_idx = output_idx_end;
+            k = output_idx % K;
+          }
+        });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(MLFloat16) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
+            // TODO(fajin): process 2 elements at a time
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              // TODO(fajin): perf difference
+              auto zp = zero_point
+                            ? static_cast<int32_t>(zero_point[quant_param_idx_t >> 1].GetElem(quant_param_idx_t & 1))
+                            : 0;
+              auto sc = scale[quant_param_idx_t].ToFloat();
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
+                                  low, high);
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    // quant block size is used as thread block size
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
+                                 static_cast<double>(quant_block_size * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            // each thread block is also a quantization block
+            auto zp = zero_point ? static_cast<int32_t>(zero_point[begin >> 1].GetElem(begin & 1)) : 0;
+            auto sc = scale[begin].ToFloat();
+            auto output_idx_end = std::min(K - k, quant_block_size) + output_idx;
+            for (; output_idx < output_idx_end; ++output_idx) {
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp,
+                                  low, high);
+              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            k = output_idx % K;
+          }
+        });
+  }
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 1> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(zero_point);
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(float) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(uint8_t)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              output[output_idx] = TOut(input[output_idx] / scale[quant_param_idx_t], saturate);
+            }
+
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(zero_point);
+    // quant block size is used as thread block size
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(float)),
+                                 static_cast<double>(quant_block_size * sizeof(uint8_t)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            auto sc = scale[begin];
+            auto output_idx_end = std::min(K - k, quant_block_size) + output_idx;
+            for (; output_idx < output_idx_end; ++output_idx) {
+              output[output_idx] = TOut(input[output_idx] / sc, saturate);
+            }
+            k = output_idx % K;
+          }
+        });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 1> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(zero_point);
+    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
+    const auto num_thread_block = M * K * num_thread_block_N;
+    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(MLFloat16) * 2),
+                                 static_cast<double>(thread_block_size * sizeof(uint8_t)),
+                                 static_cast<double>(thread_block_size) * 2.0};
+    auto KN = K * N;
+    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
+    const auto num_thread_block_KN = K * num_thread_block_N;
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
+          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
+          auto output_idx = m * KN + k * N + n;
+          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
+          auto quant_param_idx_t = quant_param_idx + n;
+
+          for (; begin < end; ++begin) {
+            auto n_end = std::min(N, n + thread_block_size);
+            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
+              output[output_idx] = TOut(input[output_idx].ToFloat() / scale[quant_param_idx_t].ToFloat(), saturate);
+            }
+
+            if (n == N) {
+              n = 0;
+              ++k;
+              if (k == K) {
+                k = 0;
+                quant_param_idx += N;
+              } else if (k % quant_block_size == 0) {
+                quant_param_idx += N;
+              }
+
+              quant_param_idx_t = quant_param_idx;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(zero_point);
+    const auto num_thread_block_K = (K + quant_block_size - 1) / quant_block_size;
+    const auto num_thread_block = num_thread_block_K * M;
+    const TensorOpCost unit_cost{static_cast<double>(quant_block_size * sizeof(MLFloat16)),
+                                 static_cast<double>(quant_block_size * sizeof(uint8_t)),
+                                 static_cast<double>(quant_block_size) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          auto m = begin / num_thread_block_K, k_blk = begin % num_thread_block_K, k = k_blk * quant_block_size;
+          auto output_idx = m * K + k;
+
+          for (; begin < end; ++begin) {
+            auto sc = scale[begin].ToFloat();
+            auto output_idx_end = std::min(K - k, quant_block_size) + output_idx;
+            for (; output_idx < output_idx_end; ++output_idx) {
+              output[output_idx] = TOut(input[output_idx].ToFloat() / sc, saturate);
+            }
+            k = output_idx % K;
+          }
+        });
+  }
+};
 
 #endif
 

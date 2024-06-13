@@ -115,11 +115,15 @@ class QnnBackendManager {
   void SetLogger(const logging::Logger* logger) {
     if (logger_ == nullptr) {
       logger_ = logger;
-      InitializeQnnLog();
+      (void)InitializeQnnLog();
     }
   }
 
-  void InitializeQnnLog();
+  Status InitializeQnnLog();
+
+  Status UpdateQnnLogLevel(logging::Severity ort_log_level);
+
+  Status ResetQnnLogLevel();
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {
@@ -145,6 +149,8 @@ class QnnBackendManager {
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
                                std::ofstream& outfile, bool backendSupportsExtendedEventData,
                                bool tracelogging_provider_ep_enabled);
+
+  Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
@@ -210,6 +216,7 @@ class QnnBackendManager {
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 #ifdef _WIN32
   void LogQnnProfileEventAsTraceLogging(
       uint64_t timestamp,

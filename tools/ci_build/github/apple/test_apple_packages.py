@@ -195,7 +195,7 @@ def _test_apple_packages(args):
                     cwd=target_proj_path,
                 )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
+            if not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",

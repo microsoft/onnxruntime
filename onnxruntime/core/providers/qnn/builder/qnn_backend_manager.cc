@@ -237,10 +237,10 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
-  // Always output Qnn log as Ort verbose log
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
+
   if (logger.OutputIsEnabled(severity, data_type)) {
     ::onnxruntime::logging::Capture(logger,
                                     severity,
@@ -251,31 +251,77 @@ void QnnLogging(const char* format,
   }
 }
 
-void QnnBackendManager::InitializeQnnLog() {
+Status QnnBackendManager::InitializeQnnLog() {
   // Set Qnn log level align with Ort log level
-  QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
   auto ort_log_level = logger_->GetSeverity();
-  switch (ort_log_level) {
-    case logging::Severity::kVERBOSE:
-      qnn_log_level = QNN_LOG_LEVEL_DEBUG;
-      break;
-    case logging::Severity::kINFO:
-      qnn_log_level = QNN_LOG_LEVEL_INFO;
-      break;
-    case logging::Severity::kWARNING:
-      qnn_log_level = QNN_LOG_LEVEL_WARN;
-      break;
-    case logging::Severity::kERROR:
-      qnn_log_level = QNN_LOG_LEVEL_ERROR;
-      break;
-    default:
-      break;
-  }
+  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
   LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
-  if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
-    LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
+  Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_);
+
+  if (result != QNN_SUCCESS) {
+    switch (result) {
+      case QNN_COMMON_ERROR_NOT_SUPPORTED:
+        LOGS(*logger_, ERROR) << "Logging not supported in the QNN backend.";
+        break;
+      case QNN_LOG_ERROR_INVALID_ARGUMENT:
+        LOGS(*logger_, ERROR) << "Invalid argument provided to QnnLog_create.";
+        break;
+      case QNN_LOG_ERROR_MEM_ALLOC:
+        LOGS(*logger_, ERROR) << "Memory allocation error during QNN logging initialization.";
+        break;
+      case QNN_LOG_ERROR_INITIALIZATION:
+        LOGS(*logger_, ERROR) << "Initialization of logging failed in the QNN backend.";
+        break;
+      default:
+        LOGS(*logger_, WARNING) << "Unknown error occurred while initializing logging in the QNN backend.";
+        break;
+    }
   }
+
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend");
+  return Status::OK();
+}
+
+QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
+  // Map ORT log severity to Qnn log level
+  switch (ort_log_level) {
+    case logging::Severity::kVERBOSE:
+      return QNN_LOG_LEVEL_DEBUG;
+    case logging::Severity::kINFO:
+      return QNN_LOG_LEVEL_INFO;
+    case logging::Severity::kWARNING:
+      return QNN_LOG_LEVEL_WARN;
+    case logging::Severity::kERROR:
+    case logging::Severity::kFATAL:
+    default:
+      return QNN_LOG_LEVEL_ERROR;
+  }
+}
+
+Status QnnBackendManager::ResetQnnLogLevel() {
+  auto ort_log_level = logger_->GetSeverity();
+  LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
+  return UpdateQnnLogLevel(ort_log_level);
+}
+
+Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
+  ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
+  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
+
+  LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
+
+  // Use the QnnLog_setLogLevel API to set the new log level
+  Qnn_ErrorHandle_t result = qnn_interface_.logSetLogLevel(log_handle_, qnn_log_level);
+  if (QNN_SUCCESS != result) {
+    if (result == QNN_LOG_ERROR_INVALID_ARGUMENT) {
+      LOGS(*logger_, ERROR) << "Invalid log level argument provided to QnnLog_setLogLevel.";
+    } else if (result == QNN_LOG_ERROR_INVALID_HANDLE) {
+      LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
+    }
+  }
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend");
+  return Status::OK();
 }
 
 Status QnnBackendManager::InitializeBackend() {
@@ -419,6 +465,23 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   }
   profile_backend_handle_ = nullptr;
 
+  return Status::OK();
+}
+
+Status QnnBackendManager::SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param) {
+  if (profiling_level_etw_ != profiling_level_etw_param) {
+    profiling_level_etw_ = profiling_level_etw_param;
+
+    auto result = ReleaseProfilehandle();
+    if (Status::OK() != result) {
+      ORT_THROW("Failed to ReleaseProfilehandle for previous QNN profiling");
+    }
+
+    result = InitializeProfiling();
+    if (Status::OK() != result) {
+      ORT_THROW("Failed to Re-InitializeProfiling for QNN ETW profiling");
+    }
+  }
   return Status::OK();
 }
 

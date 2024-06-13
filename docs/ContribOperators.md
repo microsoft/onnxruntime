@@ -5181,6 +5181,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>is_packed_batching</tt> : int</dt>
+<dd>ragged batch inputs or not. Default value is 0</dd>
 <dt><tt>num_heads</tt> : int</dt>
 <dd>Number of attention heads. Default value is 0. Must use with rotary_embedding_dim</dd>
 <dt><tt>rotary_embedding_dim</tt> : int</dt>
