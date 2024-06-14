@@ -1583,6 +1583,7 @@ GSL_SUPPRESS(es.84)  // ignoring return value from unordered_map::insert causes 
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
+    LOGS(logger_, VERBOSE) << "Doing BuildConnections recursively for subgraphs first";
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         std::unordered_set<std::string> node_args_consumed;
@@ -3286,6 +3287,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   std::unordered_set<std::string> outer_scope_node_args_consumed;
 
+  LOGS(logger_, VERBOSE) << "Doing recursive BuildConnections";
   // recursively build connections between nodes in this graph and all subgraphs
   ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
   LOGS(logger_, VERBOSE) << "Done BuildConnections";

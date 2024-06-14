@@ -266,7 +266,9 @@ std::unique_ptr<Model> CreateEPContexModel(
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
   LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
-  ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK(), "Resolving EP context graph failed");
+  // ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
+  auto res_status = ep_ctx_graph.Resolve();
+  ORT_ENFORCE(res_status.IsOK(), res_status.GetErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "EP context model graph resolved";
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
   LOGS_DEFAULT(VERBOSE) << "EP context graph viewer created with EP context node added";
