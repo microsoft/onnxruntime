@@ -323,11 +323,6 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish) {
 }
 
 // Tests accuracy of 16-bit QDQ HardSwish
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 5.
-// Output quant params: scale=0.00015259021893143654, zero_point=0.
-// Expected val: 10
-// QNN QDQ val: 9.999237060546875 (err 0.000762939453125)
-// CPU QDQ val: 9.999847412109375 (err 0.000152587890625)
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
   const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 4.3f, 7.1f, 10.0f};
   RunQDQOpTest<uint16_t>("HardSwish",
@@ -1211,16 +1206,33 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
                        ExpectedEPNodeAssignment::All);
 }
 
-// Test that QDQ HardSigmoid is *not* supported by QNN EP.
-TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_NotSupported) {
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QU8) {
+  RunQDQOpTest<uint8_t>("HardSigmoid",
+                        {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
+                        {utils::MakeAttribute("alpha", 0.1f),
+                         utils::MakeAttribute("beta", 0.4f)},
+                        21,
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QU16) {
+  RunQDQOpTest<uint16_t>("HardSigmoid",
+                         {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
+                         {},
+                         21,
+                         ExpectedEPNodeAssignment::All);
+}
+
+// Test that QDQ HardSigmoid is supported by QNN EP.
+TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_Supported) {
   RunQDQOpTest<uint8_t>("HardSigmoid",
                         {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)},
                         {},
                         19,
-                        ExpectedEPNodeAssignment::None);  // Not assigned to QNN EP
+                        ExpectedEPNodeAssignment::All);
 }
 
-// Check that QNN EP can support float32 HardSigmoid on HTP by decomposing to its constituent ops.
+// Check that QNN EP can support float32 HardSigmoid on HTP.
 // Enables running f32 ops using fp16 precision.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
@@ -1246,7 +1258,15 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
                    true);   // enable_htp_fp16_precision
 }
 
-// Check that QNN EP can support float16 HardSigmoid on HTP by decomposing to its constituent ops.
+// Check that QNN EP can support float16 HardSigmoid on HTP
+// It is using decompose way for FP16 since ElementWiseNeuron failed to finalize the graph with the error below:
+// \HTP\src\hexagon\prepare\tcm_migration.cc:1829:ERROR:no properties registered for q::QNN_HardSigmoid
+// \HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::QNN_HardSigmoid
+// \HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1238:ERROR:Op 0x101000000010 preparation failed with err:-1
+// Completed stage: Graph Transformations and Optimizations (16361 us)
+// QnnDsp <E> "node" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 

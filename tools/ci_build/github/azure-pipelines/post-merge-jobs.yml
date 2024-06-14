@@ -406,6 +406,7 @@ stages:
         script: |
           "$(Build.SourcesDirectory)/tools/android_custom_build/build_custom_android_package.py" \
             --docker_image_tag=$(dockerImageTag) \
+            --build_settings="$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json" \
             "$(Build.BinariesDirectory)/custom_android_package"
         workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -445,14 +446,14 @@ stages:
         python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
-          tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+          tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Mobile
+          --variant Full
       displayName: "Test pod with iOS framework"
 
 - stage: IosMinimalTrainingBuild

@@ -6,7 +6,7 @@ parameters:
 stages:
   - stage: NuGet_Publishing_GPU
     jobs:
-      - job:
+      - job: NuGet_Publishing_GPU
         workspace:
           clean: all
         variables:

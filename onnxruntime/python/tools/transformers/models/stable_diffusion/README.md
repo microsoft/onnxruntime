@@ -36,16 +36,18 @@ cd onnxruntime
 Install nvidia-docker using [these instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker).
 
 ```
-docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 /bin/bash
+docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.04-py3 /bin/bash
 ```
 
 #### Build onnxruntime from source
+The cuDNN in the container might not be compatible with official onnxruntime-gpu package, it is recommended to build from source instead.
+
 After launching the docker, you can build and install onnxruntime-gpu wheel like the following.
 ```
-export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
+export CUDACXX=/usr/local/cuda/bin/nvcc
 git config --global --add safe.directory '*'
-sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
-            --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
+sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.4 \
+            --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
             --use_tensorrt --tensorrt_home /usr/src/tensorrt \
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
