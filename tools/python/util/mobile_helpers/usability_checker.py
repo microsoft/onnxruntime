@@ -19,7 +19,8 @@ class _SupportedOpsChecker:
     """
     Class to process the md file with list of supported ops and caveats for an execution provider.
     e.g. /tools/ci_build/github/android/nnapi_supported_ops.md
-         /tools/ci_build/github/apple/coreml_supported_ops.md
+         /tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
+         /tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
     """
 
     def __init__(self, filename):
@@ -103,13 +104,13 @@ class PartitioningInfo:
         self.num_supported_nodes += other.num_supported_nodes
         self.num_partitions += other.num_partitions
         self.supported_groups.extend(other.supported_groups)
-        self.unsupported_ops.union(other.unsupported_ops)
+        self.unsupported_ops.update(other.unsupported_ops)
         self.nodes_unsupported_due_to_op += other.nodes_unsupported_due_to_op
         self.nodes_unsupported_due_to_dynamic_input += other.nodes_unsupported_due_to_dynamic_input
         self.num_unsupported_nodes_due_to_rank += other.num_unsupported_nodes_due_to_rank
-        self.ops_with_unsupported_rank.union(other.ops_with_unsupported_rank)
+        self.ops_with_unsupported_rank.update(other.ops_with_unsupported_rank)
 
-        # hard assumption that we merge into the the main graph partitionng info
+        # hard assumption that we merge into the main graph partitioning info
         self.num_subgraphs += 1
         self.num_nodes_in_subgraphs += other.num_nodes
 
@@ -117,7 +118,7 @@ class PartitioningInfo:
         # semi-arbitrary choices that err on the side of MAYBE.
         # having 1 partition is always preferred, but if that is small it may not be useful.
         # having 2 partitions may be okay if they cover most nodes
-        # more than 2 partitions and the device copy cost is almost guaranteed to outweight the benefit of using the NPU
+        # more than 2 partitions and the device copy cost is almost guaranteed to outweigh the benefit of using the NPU
         # NOTE: This assumes the EP is not CPU based and there is device copy overhead to consider
         pct_supported = self.num_supported_nodes / self.num_nodes * 100
         if self.num_partitions == 1:
@@ -245,6 +246,7 @@ def _check_partitioning_for_graph(
     def _is_fixed_shape_value(value):
         if value in value_info:
             return is_fixed_size_tensor(value_info[value])
+
         if value in initializers or value in outer_scope_initializers:
             return True
 
@@ -418,7 +420,7 @@ def check_partitioning(
     :return PartitioningInfo instance with details
     """
 
-    if require_fixed_input_sizes and len(main_graph.value_info) == 0:
+    if require_fixed_input_sizes and len(main_graph.value_info) == 0 and len(main_graph.node) > 1:
         raise ValueError("Run onnx.shape_inference.infer_shapes on the model to populate the shape information.")
 
     # create lookup map from ValueInfo for efficiency
@@ -435,7 +437,7 @@ def check_partitioning(
 
     def _check_graph(
         graph: onnx.GraphProto,
-        outer_scope_value_info: dict[str, onnx.ValueInfoProto],
+        outer_scope_value_info: dict[str, onnx.ValueInfoProto] | None,
         outer_scope_initializers: set[str] | None = None,
         partitioning_info: PartitioningInfo | None = None,
     ) -> PartitioningInfo:
@@ -444,7 +446,7 @@ def check_partitioning(
             value_info = outer_scope_value_info.copy()
             _update_value_info(graph, value_info)
         else:
-            value_info = None
+            value_info = {}
 
         if outer_scope_initializers is None:
             outer_scope_initializers = set()
@@ -529,7 +531,7 @@ def check_coreml_partitions(model: onnx.ModelProto, require_fixed_input_sizes: b
 def check_shapes(graph: onnx.GraphProto, logger: logging.Logger | None = None):
     """
     Check the shapes of graph inputs, values and graph outputs to determine if they have static or dynamic sizes.
-    NNAPI and CoreML do not support dynamically sized values.
+    NNAPI does not support dynamically sized values. CoreML does, but it will most likely cost performance.
     :param graph: Graph to check. If shape inferencing has been run the checks on values will be meaningful.
     :param logger: Optional logger for diagnostic information.
     :return: Tuple of List of inputs with dynamic shapes, Number of dynamic values found
@@ -641,6 +643,7 @@ def checker(model_path: pathlib.Path, logger: logging.Logger):
                 suitability = fixed_shape_suitability
 
         logger.info("================")
+        logger.info("")
 
         return suitability
 
@@ -702,9 +705,7 @@ def parse_args():
         os.path.basename(__file__), description="""Analyze an ONNX model for usage with the ORT mobile"""
     )
 
-    parser.add_argument(
-        "--log_level", choices=["debug", "info", "warning", "error"], default="info", help="Logging level"
-    )
+    parser.add_argument("--log_level", choices=["debug", "info"], default="info", help="Logging level")
     parser.add_argument(
         "--skip_optimize",
         action="store_true",
