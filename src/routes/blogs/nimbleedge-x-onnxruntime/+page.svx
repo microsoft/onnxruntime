@@ -92,7 +92,7 @@ Executing inference optimally is critical in on-device ML. On one hand, real-tim
 For inference execution, NimbleEdge utilizes a number of runtimes, prominently including ONNX Runtime. [ONNX Runtime](https://onnxruntime.ai/) is an open-source, high-performance engine to accelerate machine learning models on both cloud and edge environments. One of its key features, ONNX Runtime Mobile, is specifically optimized to deliver lighter and faster model inferences. It offers configurations for **quantization, hardware acceleration (e.g. using CPU/GPU/NPU), operator fusion, parallel processing,** and more. NimbleEdge leverages ONNX Runtime Mobile in a variety of impactful ways:
 
 - Applying static and dynamic quantization techniques to significantly reduce the memory footprint of models
-- Customizing the runtime build to match the specific operators required by the model(s)
+- Customizing the runtime build to match the specific operators and data types required by the model(s)
 - Utilizing low-level control mechanisms to meticulously manage and optimize resource (CPU, Battery) consumption
 
 Through the capabilities listed here, NimbleEdge's comprehensive on-device ML platform enables high performance real-time ML deployments in days vs. months.
