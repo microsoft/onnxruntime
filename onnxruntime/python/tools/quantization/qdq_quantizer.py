@@ -480,8 +480,9 @@ class QDQQuantizer(BaseQuantizer):
         if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
-            qtype = self.activation_qType
-            if self.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
+
+            qtype = self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType
+            if qtype == onnx.onnx_pb.TensorProto.UINT8:
                 qtype = onnx_proto.TensorProto.INT8
 
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
