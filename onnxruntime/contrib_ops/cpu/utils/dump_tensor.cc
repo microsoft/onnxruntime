@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace transformers {
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
 
@@ -258,6 +257,5 @@ void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const 
 
 #endif
 
-}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace transformers {
 
 class CpuTensorConsoleDumper : public IConsoleDumper {
  public:
@@ -36,6 +35,5 @@ class CpuTensorConsoleDumper : public IConsoleDumper {
   void Print(const char* name, const std::string& value, bool end_line) const override;
 };
 
-}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

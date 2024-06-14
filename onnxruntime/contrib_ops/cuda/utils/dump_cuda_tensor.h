@@ -10,9 +10,8 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace transformers {
 
-class CudaTensorConsoleDumper : public onnxruntime::contrib::transformers::IConsoleDumper {
+class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
  public:
   CudaTensorConsoleDumper() = default;
   virtual ~CudaTensorConsoleDumper() {}
@@ -49,7 +48,6 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::transformers::ICons
   void Print(const char* name, const std::string& value, bool end_line) const override;
 };
 
-}  // namespace transformers
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

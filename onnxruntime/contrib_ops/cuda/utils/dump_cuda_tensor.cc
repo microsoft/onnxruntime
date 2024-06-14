@@ -4,13 +4,12 @@
 #include <cuda_runtime_api.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/framework/print_tensor_utils.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace transformers {
 
 #if DUMP_TENSOR_LEVEL > 0
 
@@ -390,7 +389,6 @@ void CudaTensorConsoleDumper::Print(const char*, const std::string&, bool) const
 }
 #endif
 
-}  // namespace transformers
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-namespace transformers {
 
 class IConsoleDumper {
  public:
@@ -41,6 +40,5 @@ class IConsoleDumper {
   bool is_enabled_;
 };
 
-}  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

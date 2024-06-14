@@ -12,7 +12,7 @@
 
 // For CPU tensor dumping.
 #if DUMP_CPU_TENSOR_LEVEL > 0
-#define DUMP_CPU_TENSOR_INIT() onnxruntime::contrib::transformers::CpuTensorConsoleDumper cpu_dumper
+#define DUMP_CPU_TENSOR_INIT() onnxruntime::contrib::CpuTensorConsoleDumper cpu_dumper
 #define DUMP_CPU_TENSOR(...) cpu_dumper.Print(__VA_ARGS__)
 #else
 #define DUMP_CPU_TENSOR_INIT()
@@ -27,7 +27,7 @@
 
 // For GPU tensor dumping.
 #if DUMP_TENSOR_LEVEL > 0
-#define DUMP_TENSOR_INIT() onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dumper
+#define DUMP_TENSOR_INIT() onnxruntime::contrib::cuda::CudaTensorConsoleDumper dumper
 #define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
 #else
 #define DUMP_TENSOR_INIT()
