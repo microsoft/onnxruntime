@@ -132,7 +132,8 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
 
       if (conv_type == OnnxConvType::kConvTranspose) {
-        ORT_RETURN_IF_NOT(quant_axis == 1, "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
+        ORT_RETURN_IF_NOT(quant_axis == 1,
+                          "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
       } else {
         ORT_RETURN_IF_NOT(quant_axis == 0, "Conv's input[1] must be use axis == 0 for per-channel quantization");
       }
