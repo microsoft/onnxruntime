@@ -24,6 +24,11 @@ image: 'https://iili.io/d95Pwcx.png'
 imageSquare: 'https://iili.io/d95Pwcx.png'
 url: 'https://onnxruntime.ai/blogs/nimbleedge-x-onnxruntime'
 ---
+<style>
+  ol{
+    list-style-type: decimal;
+  }
+</style>
 
 [NimbleEdge](https://www.nimbleedge.com/) is an on-device Machine Learning (ML) platform that enables real-time personalization in mobile apps, executing data capture, processing and ML inference on end users' mobile devices vs. on cloud. Using mobile compute efficiently to deliver optimal performance with minimal device resource usage is a key priority for NimbleEdge. For this, NimbleEdge leverages various ML inference runtimes, including, prominently, **ONNX Runtime**.
 
