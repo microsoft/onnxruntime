@@ -59,7 +59,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   bool ep_ctx_enabled_ = false;
   bool ep_ctx_embed_mode_ = true;
   std::string ep_ctx_model_path_cfg_{""};
-  mutable PathString ep_ctx_model_file_loc_;
+  mutable PathString ep_ctx_model_file_loc_{};
   // FIXME: This might not be needed.
   mutable std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
   // It might need to be called before loading

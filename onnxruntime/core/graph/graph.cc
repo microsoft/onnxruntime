@@ -3035,6 +3035,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   try {
     const auto& temp_model_path = ModelPath();
     LOGS(logger_, VERBOSE) << "Done ModelPath() in VerifyNodeAndOpMatch";
+    if (temp_model_path.IsEmpty()) {
+      LOGS(logger_, VERBOSE) << "Empty model path in VerifyNodeAndOpMatch";
+    }
     const auto temp_parent_path = temp_model_path.ParentPath();
     LOGS(logger_, VERBOSE) << "Done ParentPath() in VerifyNodeAndOpMatch";
     const auto temp_parent_path_str = temp_parent_path.ToPathString();
@@ -3278,6 +3281,9 @@ Status Graph::Resolve(const ResolveOptions& options) {
   try {
     const auto& temp_model_path = ModelPath();
     LOGS(logger_, VERBOSE) << "Done ModelPath() in Resolve";
+    if (temp_model_path.IsEmpty()) {
+      LOGS(logger_, VERBOSE) << "Empty model path in Resolve";
+    }
     const auto temp_model_path_str = temp_model_path.ToPathString();
     LOGS(logger_, VERBOSE) << "Done ToPathString() in Resolve";
     const auto temp_model_path_u8str = PathToUTF8String(temp_model_path_str);
