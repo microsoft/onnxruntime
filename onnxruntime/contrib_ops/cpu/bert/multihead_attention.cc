@@ -41,6 +41,24 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+
+  {
+    char * env;
+    #ifdef _WIN32
+    _dupenv_s(&env, nullptr, "ORT_DISABLE_FLASH_ATTENTION");
+    #else
+    env = std::getenv("ORT_DISABLE_FLASH_ATTENTION");
+    #endif
+    if(env == nullptr || std::atoi(env) == 0){
+      disable_flash_ = false;
+    }
+    else{
+      disable_flash_ = true;
+    }
+    #ifdef _WIN32
+    free(env);
+    #endif
+  }
 }
 
 template <typename T>
@@ -140,26 +158,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
 
-  bool disableFlash;
-  {
-    char * env;
-    #ifdef _WIN32
-    _dupenv_s(&env, nullptr, "ORT_DISABLE_FLASH_ATTENTION");
-    #else
-    env = std::getenv("ORT_DISABLE_FLASH_ATTENTION");
-    #endif
-    if(env == nullptr || std::atoi(env) == 0){
-      disableFlash = false;
-    }
-    else{
-      disableFlash = true;
-    }
-    #ifdef _WIN32
-    free(env);
-    #endif
-  }
-
-  if(!disableFlash && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr){
+  if(!disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr){
     FlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
     args.num_heads = num_heads_;
