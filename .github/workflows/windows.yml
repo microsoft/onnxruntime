@@ -24,10 +24,9 @@ jobs:
         with:
           submodules: false
           
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v3
         with:
-          languages: 'java', 'javascript', 'python', 'c-cpp'
+          languages: java, javascript, python, c-cpp
           queries: security-extended,security-and-quality
           
       - uses: actions/setup-python@v5
