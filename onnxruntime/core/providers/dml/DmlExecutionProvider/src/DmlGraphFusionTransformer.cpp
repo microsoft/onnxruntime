@@ -244,6 +244,7 @@ namespace Dml
                     std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
                     std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
                     std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
+                    std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
                     GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
                         isInputsUploadedByDmlEP.data(),
                         isInputsUploadedByDmlEP.size(),
@@ -256,12 +257,14 @@ namespace Dml
                         subgraphOutputs,
                         serializedGraphInputIndexToSubgraphInputIndex,
                         serializedGraphLargeConstantNameToSubgraphInputIndex,
-                        smallConstantData);
+                        smallConstantData,
+                        inferredOutputShapes);
 
                     // Compile the operator
                     auto compiledPartition = DmlGraphFusionHelper::TryCreateCompiledOperator(
                         graphDesc,
-                        indexedSubGraph,
+                        gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size()),
+                        gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size()),
                         m_providerImpl,
                         &serializedGraphInputIndexToSubgraphInputIndex,
                         &serializedGraphLargeConstantNameToSubgraphInputIndex);

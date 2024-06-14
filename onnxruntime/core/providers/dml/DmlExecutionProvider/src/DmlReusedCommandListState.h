@@ -11,6 +11,7 @@ namespace Dml
     {
         const onnxruntime::NodeArg* inputArg;
         std::optional<uint32_t> globalInputIndex;
+        std::optional<uint32_t> globalOutputIndex;
         std::shared_ptr<onnxruntime::Tensor> ownedInputTensor;
     };
 

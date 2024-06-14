@@ -47,6 +47,7 @@ namespace Dml
             gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs,
             /*out*/ std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToSubgraphInputIndex,
             /*out*/ std::unordered_map<std::string_view, uint32_t>& serializedGraphLargeConstantNameToSubgraphInputIndex,
-            /*out*/ std::vector<std::unique_ptr<std::byte[]>>& smallConstantData);
+            /*out*/ std::vector<std::unique_ptr<std::byte[]>>& smallConstantData,
+            /*out*/ std::unordered_map<std::string, std::vector<uint32_t>>& inferredOutputShapes);
     }
 }

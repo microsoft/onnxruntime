@@ -519,14 +519,12 @@ namespace DmlGraphFusionHelper
 
     Microsoft::WRL::ComPtr<IDMLCompiledOperator> TryCreateCompiledOperator(
         const GraphDescBuilder::GraphDesc& graphDesc,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        uint32_t fusedNodeInputCount,
+        uint32_t fusedNodeOutputCount,
         const ExecutionProviderImpl* providerImpl,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex)
     {
-        const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
-        const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
-
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
@@ -629,7 +627,8 @@ namespace DmlGraphFusionHelper
 
           compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                           deserializedDmlGraphDesc,
-                          indexedSubGraph,
+                          gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size()),
+                          gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size()),
                           providerImpl,
                           serializedGraphInputIndexToSubgraphInputIndex,
                           serializedGraphLargeConstantNameToSubgraphInputIndex);
@@ -956,8 +955,9 @@ namespace DmlGraphFusionHelper
         {
             auto globalInputIndex = compiledOpInfo.graphInfo->inputs[inputIndex].globalInputIndex;
 
-            // We can't have a global input if we have an owned tensor
-            assert(!!globalInputIndex != !!compiledOpInfo.graphInfo->inputs[inputIndex].ownedInputTensor);
+            // The input of a graph can also be a global output when we have more than 1 graph. For example, the first graph can produce
+            // a global output which also feeds into the second graph.
+            auto globalOutputIndex = compiledOpInfo.graphInfo->inputs[inputIndex].globalOutputIndex;
 
             if (compiledOpInfo.graphInfo->inputs[inputIndex].ownedInputTensor)
             {
@@ -971,6 +971,29 @@ namespace DmlGraphFusionHelper
                 inputBindings[inputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                 inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
                 compiledOpInfo.inputBindingAllocIds[inputIndex] = allocId;
+            }
+            else if (globalOutputIndex)
+            {
+                assert(globalOutputIndex.has_value());
+
+                std::vector<int64_t> outputDims;
+                outputDims.reserve(outputShapes.GetShape(*globalOutputIndex).size());
+                for (uint32_t dimSize : outputShapes.GetShape(*globalOutputIndex))
+                {
+                    outputDims.push_back(dimSize);
+                }
+
+                onnxruntime::Tensor* tensor = kernelContext->Output(
+                    static_cast<int>(*globalOutputIndex),
+                    onnxruntime::TensorShape::FromExistingBuffer(outputDims));
+
+                uint64_t allocId;
+                DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[inputIndex].Buffer, &allocId);
+                inputBindingsChanged = inputBindingsChanged || (!allocId || compiledOpInfo.outputBindingAllocIds[inputIndex] != allocId);
+                inputBindings[inputIndex].Buffer->Release(); // Avoid holding an additional reference
+                inputBindings[inputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
+                compiledOpInfo.outputBindingAllocIds[inputIndex] = allocId;
             }
             else if (globalInputIndex && !isInputsUploadedByDmlEP[*globalInputIndex] && inputsUsed[*globalInputIndex])
             {
@@ -1011,13 +1034,13 @@ namespace DmlGraphFusionHelper
 
         for (uint32_t outputIndex = 0; outputIndex < outputBindings.size(); ++outputIndex)
         {
-            auto globalOutputIndex = compiledOpInfo.graphInfo->inputs[outputIndex].globalInputIndex;
+            auto globalOutputIndex = compiledOpInfo.graphInfo->outputs[outputIndex].globalOutputIndex;
 
             if (compiledOpInfo.graphInfo->outputs[outputIndex].ownedOutputTensor)
             {
                 assert(!globalOutputIndex.has_value());
 
-                auto tensor = compiledOpInfo.graphInfo->inputs[outputIndex].ownedInputTensor.get();
+                auto tensor = compiledOpInfo.graphInfo->outputs[outputIndex].ownedOutputTensor.get();
 
                 uint64_t allocId;
                 DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[outputIndex].Buffer, &allocId);

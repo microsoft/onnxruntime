@@ -75,7 +75,8 @@ namespace DmlGraphFusionHelper
 
     Microsoft::WRL::ComPtr<IDMLCompiledOperator> TryCreateCompiledOperator(
         const GraphDescBuilder::GraphDesc& graphDesc,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
+        uint32_t fusedNodeInputCount,
+        uint32_t fusedNodeOutputCount,
         const ExecutionProviderImpl* providerImpl,
         const std::unordered_map<uint32_t, uint32_t>* serializedGraphInputIndexToSubgraphInputIndex,
         const std::unordered_map<std::string_view, uint32_t>* serializedGraphLargeConstantNameToSubgraphInputIndex);

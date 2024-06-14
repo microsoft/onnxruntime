@@ -105,7 +105,10 @@ namespace Dml
             }
         }
 
-        std::tuple<GraphInfo, GraphInfo> SplitGraph(onnxruntime::OpKernelContext* kernelContext, const GraphInfo& parentGraph) const
+        std::tuple<GraphInfo, GraphInfo> SplitGraph(
+            onnxruntime::OpKernelContext* kernelContext,
+            const GraphInfo& parentGraph,
+            const std::unordered_map<std::string, std::vector<uint32_t>>& inferredOutputShapes) const
         {
             GraphInfo firstGraph{};
             firstGraph.nodes = std::vector<onnxruntime::Node*>(parentGraph.nodes.begin(), parentGraph.nodes.begin() + parentGraph.nodes.size() / 2);
@@ -113,69 +116,79 @@ namespace Dml
             GraphInfo secondGraph{};
             secondGraph.nodes = std::vector<onnxruntime::Node*>(parentGraph.nodes.begin() + parentGraph.nodes.size() / 2, parentGraph.nodes.end());
 
-            std::unordered_set<const onnxruntime::NodeArg*> firstGraphInputArgs;
-            std::unordered_set<const onnxruntime::NodeArg*> firstGraphOutputArgs;
+            std::unordered_set<std::string> firstGraphInputArgs;
+            std::unordered_map<std::string, const onnxruntime::NodeArg*> firstGraphOutputArgs;
             for (auto node : firstGraph.nodes)
             {
                 auto inputDefs = node->InputDefs();
                 for (auto& inputDef : inputDefs)
                 {
-                    firstGraphInputArgs.insert(inputDef);
+                    firstGraphInputArgs.insert(inputDef->Name());
                 }
 
                 auto outputDefs = node->OutputDefs();
                 for (auto& outputDef : outputDefs)
                 {
-                    firstGraphOutputArgs.insert(outputDef);
+                    firstGraphOutputArgs.emplace(outputDef->Name(), outputDef);
                 }
             }
 
-            std::unordered_set<const onnxruntime::NodeArg*> secondGraphInputArgs;
-            std::unordered_set<const onnxruntime::NodeArg*> secondGraphOutputArgs;
+            std::unordered_set<std::string> secondGraphInputArgs;
+            std::unordered_set<std::string> secondGraphOutputArgs;
             for (auto node : secondGraph.nodes)
             {
                 auto inputDefs = node->InputDefs();
                 for (auto& inputDef : inputDefs)
                 {
-                    secondGraphInputArgs.insert(inputDef);
+                    secondGraphInputArgs.insert(inputDef->Name());
                 }
 
                 auto outputDefs = node->OutputDefs();
                 for (auto& outputDef : outputDefs)
                 {
-                    secondGraphOutputArgs.insert(outputDef);
+                    secondGraphOutputArgs.insert(outputDef->Name());
                 }
             }
 
             // Set the inputs of the first and second graphs that are also inputs of the parent graph
             for (const auto& parentGraphInput : parentGraph.inputs)
             {
-                if (firstGraphInputArgs.find(parentGraphInput.inputArg) != firstGraphInputArgs.end())
+                if (firstGraphInputArgs.count(parentGraphInput.inputArg->Name()))
                 {
                     firstGraph.inputs.push_back(parentGraphInput);
                 }
 
-                if (secondGraphInputArgs.find(parentGraphInput.inputArg) != secondGraphInputArgs.end())
+                if (secondGraphInputArgs.count(parentGraphInput.inputArg->Name()))
                 {
                     secondGraph.inputs.push_back(parentGraphInput);
                 }
             }
 
             // Set the outputs of the first and second graphs that are also outputs of the parent graph
-            std::unordered_set<const onnxruntime::NodeArg*> parentGraphOutputs;
+            std::unordered_set<std::string> parentGraphOutputs;
             for (const auto& parentGraphOutput : parentGraph.outputs)
             {
-                if (firstGraphOutputArgs.find(parentGraphOutput.outputArg) != firstGraphOutputArgs.end())
+                if (firstGraphOutputArgs.count(parentGraphOutput.outputArg->Name()))
                 {
                     firstGraph.outputs.push_back(parentGraphOutput);
+
+                    // If an output of the first graph is both a global output and an input of the second graph,
+                    // we can assign it as an input of the second graph without allocating additional memory
+                    if (secondGraphInputArgs.count(parentGraphOutput.outputArg->Name()))
+                    {
+                        GraphInputInfo newSecondGraphInput{};
+                        newSecondGraphInput.inputArg = parentGraphOutput.outputArg;
+                        newSecondGraphInput.globalOutputIndex = parentGraphOutput.globalOutputIndex;
+                        secondGraph.inputs.push_back(std::move(newSecondGraphInput));
+                    }
                 }
 
-                if (secondGraphOutputArgs.find(parentGraphOutput.outputArg) != secondGraphOutputArgs.end())
+                if (secondGraphOutputArgs.count(parentGraphOutput.outputArg->Name()))
                 {
                     secondGraph.outputs.push_back(parentGraphOutput);
                 }
 
-                parentGraphOutputs.insert(parentGraphOutput.outputArg);
+                parentGraphOutputs.insert(parentGraphOutput.outputArg->Name());
             }
 
             // Finally, set the outputs of the first graph that are also inputs of the second graph and NOT outputs of the
@@ -183,20 +196,23 @@ namespace Dml
             // tensors that didn't exist before.
             for (auto firstGraphOutputArg : firstGraphOutputArgs)
             {
-                if (secondGraphInputArgs.count(firstGraphOutputArg) && !parentGraphOutputs.count(firstGraphOutputArg))
+                if (secondGraphInputArgs.count(firstGraphOutputArg.first) && !parentGraphOutputs.count(firstGraphOutputArg.first))
                 {
-                    auto dtype = onnxruntime::DataTypeImpl::TypeFromProto(*firstGraphOutputArg->TypeAsProto());
-                    auto shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*firstGraphOutputArg->Shape());
+                    auto mlDataType = onnxruntime::DataTypeImpl::TypeFromProto(*firstGraphOutputArg.second->TypeAsProto());
+                    const onnxruntime::TensorTypeBase* tensorTypeBase = mlDataType->AsTensorType();
+
+                    const auto& shape = inferredOutputShapes.at(firstGraphOutputArg.first);
+                    std::vector<int64_t> int64Shape(shape.begin(), shape.end());
 
                     onnxruntime::AllocatorPtr allocator;
                     ORT_THROW_IF_ERROR(kernelContext->GetTempSpaceAllocator(&allocator));
 
                     GraphOutputInfo newFirstGraphOutput{};
-                    newFirstGraphOutput.outputArg = firstGraphOutputArg;
-                    newFirstGraphOutput.ownedOutputTensor = std::make_shared<onnxruntime::Tensor>(dtype, shape, allocator);
+                    newFirstGraphOutput.outputArg = firstGraphOutputArg.second;
+                    newFirstGraphOutput.ownedOutputTensor = std::make_shared<onnxruntime::Tensor>(tensorTypeBase->GetElementType(), onnxruntime::TensorShape(int64Shape), allocator);
 
                     GraphInputInfo newSecondGraphInput{};
-                    newSecondGraphInput.inputArg = firstGraphOutputArg;
+                    newSecondGraphInput.inputArg = firstGraphOutputArg.second;
                     newSecondGraphInput.ownedInputTensor = newFirstGraphOutput.ownedOutputTensor;
 
                     firstGraph.outputs.push_back(std::move(newFirstGraphOutput));
@@ -311,6 +327,10 @@ namespace Dml
                 std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
 
                 uint32_t graphInfoIndex = 0;
+
+                std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
+                m_inputsUsed.clear();
+
                 while (graphInfoIndex < m_graphsInfo.size())
                 {
                     std::vector<const onnxruntime::NodeArg*> inputArgs;
@@ -343,17 +363,23 @@ namespace Dml
                         outputArgs,
                         serializedGraphInputIndexToSubgraphInputIndex,
                         serializedGraphLargeConstantNameToSubgraphInputIndex,
-                        smallConstantData);
+                        smallConstantData,
+                        inferredOutputShapes);
 
                     m_outputShapes = graphDesc.outputShapes;
 
-                    // Walk through each graph edge and mark used inputs
-                    m_inputsUsed = std::vector<bool>(fusedNodeInputCount);
-                    for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++) {
-                        m_inputsUsed[it->second] = true;
-                    }
-                    for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++) {
-                        m_inputsUsed[it->second] = true;
+                    // Walk through each graph edge and mark used inputs, but only for the first graph (it will be reused even if the graph is split)
+                    if (m_inputsUsed.empty())
+                    {
+                        m_inputsUsed.resize(fusedNodeInputCount);
+                        for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++)
+                        {
+                            m_inputsUsed[it->second] = true;
+                        }
+                        for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++)
+                        {
+                            m_inputsUsed[it->second] = true;
+                        }
                     }
 
                     m_isInputsUploadedByDmlEP.resize(fusedNodeInputCount, 0);
@@ -363,7 +389,8 @@ namespace Dml
                     // Compile the operator
                     m_graphsInfo[graphInfoIndex].compiledOp = DmlGraphFusionHelper::TryCreateCompiledOperator(
                         graphDesc,
-                        *m_indexedSubGraph,
+                        gsl::narrow_cast<uint32_t>(inputArgs.size()),
+                        gsl::narrow_cast<uint32_t>(outputArgs.size()),
                         providerImpl,
                         &serializedGraphInputIndexToSubgraphInputIndex,
                         &serializedGraphLargeConstantNameToSubgraphInputIndex);
@@ -371,7 +398,7 @@ namespace Dml
                     if (!m_graphsInfo[graphInfoIndex].compiledOp)
                     {
                         // Split the graph in half, replace the current graph with the split graph and insert the second graph right after
-                        auto [firstGraph, secondGraph] = SplitGraph(kernelContext, m_graphsInfo[graphInfoIndex]);
+                        auto [firstGraph, secondGraph] = SplitGraph(kernelContext, m_graphsInfo[graphInfoIndex], inferredOutputShapes);
                         m_graphsInfo[graphInfoIndex] = std::move(firstGraph);
                         m_graphsInfo.insert(m_graphsInfo.begin() + graphInfoIndex + 1, std::move(secondGraph));
                     }
