@@ -766,13 +766,13 @@ if __name__ == "__main__":
 
     model = onnx.load(input_model_path)
     if args.quant_method == "hqq":
-        quant_config = HQQWeightOnlyQuantConfig(
-            block_size=args.block_size, bits=args.bits, quant_format=quant_format
-        )
+        quant_config = HQQWeightOnlyQuantConfig(block_size=args.block_size, bits=args.bits, quant_format=quant_format)
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
-            block_size=args.block_size, is_symmetric=args.symmetric, accuracy_level=args.accuracy_level,
-            quant_format=quant_format
+            block_size=args.block_size,
+            is_symmetric=args.symmetric,
+            accuracy_level=args.accuracy_level,
+            quant_format=quant_format,
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(quant_format=quant_format)

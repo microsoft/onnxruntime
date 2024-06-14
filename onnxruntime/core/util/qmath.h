@@ -605,7 +605,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
               auto sc1 = scale[zp_idx_t + 1];
               auto v0 = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc0)) + zp0, low, high);
               auto v1 = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx + 1] / sc1)) + zp1, low, high);
-              output_t = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
+              output_t[output_idx >> 1] = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
             }
 
             // tailing unaligned output
@@ -750,10 +750,10 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
               auto sc0 = scale[zp_idx_t].ToFloat();
               auto sc1 = scale[zp_idx_t + 1].ToFloat();
               auto v0 = std::clamp(
-                static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc0)) + zp0, low, high);
+                  static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc0)) + zp0, low, high);
               auto v1 = std::clamp(
-                static_cast<int32_t>(std::nearbyint(input[output_idx + 1].ToFloat() / sc1)) + zp1, low, high);
-              output_t = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
+                  static_cast<int32_t>(std::nearbyint(input[output_idx + 1].ToFloat() / sc1)) + zp1, low, high);
+              output_t[output_idx >> 1] = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
             }
 
             // tailing unaligned output
@@ -763,7 +763,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
                             : 0;
               auto sc = scale[zp_idx_t].ToFloat();
               auto v = std::clamp(
-                static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp, low, high);
+                  static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp, low, high);
               output[output_idx >> 1].SetElem(0, static_cast<typename TOut::UnpackedType>(v));
 
               ++output_idx;
@@ -783,7 +783,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
   static void opLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
                          const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
                          const std::ptrdiff_t quant_block_size, bool saturate) {
-                              ORT_UNUSED_PARAMETER(saturate);
+    ORT_UNUSED_PARAMETER(saturate);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
     // to avoid a byte being writen from mutiple threads, use 2 * K as thread block
@@ -814,7 +814,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
 
               if (out_start & 1) {
                 auto v = std::clamp(
-                  static_cast<int32_t>(std::nearbyint(input[out_start].ToFloat() / sc)) + zp, low, high);
+                    static_cast<int32_t>(std::nearbyint(input[out_start].ToFloat() / sc)) + zp, low, high);
                 output[out_start >> 1].SetElem(1, static_cast<typename TOut::UnpackedType>(v));
                 ++out_start;
               }
@@ -822,16 +822,16 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
               if (out_end & 1) {
                 --out_end;
                 auto v = std::clamp(
-                  static_cast<int32_t>(std::nearbyint(input[out_end].ToFloat() / sc)) + zp, low, high);
+                    static_cast<int32_t>(std::nearbyint(input[out_end].ToFloat() / sc)) + zp, low, high);
                 output[out_end >> 1].SetElem(0, static_cast<typename TOut::UnpackedType>(v));
               }
 
               auto output_t = reinterpret_cast<typename TOut::UnpackedType*>(output);
               for (out_start; out_start < out_end; out_start += 2) {
                 auto v0 = std::clamp(
-                  static_cast<int32_t>(std::nearbyint(input[out_start].ToFloat() / sc)) + zp, low, high);
+                    static_cast<int32_t>(std::nearbyint(input[out_start].ToFloat() / sc)) + zp, low, high);
                 auto v1 = std::clamp(
-                  static_cast<int32_t>(std::nearbyint(input[out_start + 1].ToFloat() / sc)) + zp, low, high);
+                    static_cast<int32_t>(std::nearbyint(input[out_start + 1].ToFloat() / sc)) + zp, low, high);
                 output_t[out_start >> 1] = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
               }
             }
