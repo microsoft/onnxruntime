@@ -92,7 +92,9 @@ set(contrib_ops_excluded_files
   "bert/group_query_attention.cc"
   "bert/group_query_attention_impl.h"
   "bert/group_query_attention_impl.cu"
+  "collective/custom_*"
   "collective/distributed_*"
+  "collective/ipc_*"
   "collective/shard*"
 )
 
