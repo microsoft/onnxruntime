@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - rel-*
+      - snnn/github_actions
   pull_request:
 
 concurrency:
