@@ -184,7 +184,7 @@ class PartitioningInfo:
             # TODO: CoreML has a flag. NNAPI doesn't. Either should be able to support a subgraph when treated as a
             # separate graph (only extra detail would be making sure implicit inputs are handled).
             # Merging the subgraph into the parent graph would be more complex.
-            #   e.g. for CoreML we could potentially convert Loop to while_loop and If to cond if the subraphs in the
+            #   e.g. for CoreML we could potentially convert Loop to while_loop and If to cond if the subgraphs in the
             #        control flow node are fully supported.
             #        NNAPI also has While and If.
 
