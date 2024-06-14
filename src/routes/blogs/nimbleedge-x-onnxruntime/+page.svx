@@ -20,8 +20,8 @@ authorsLink:
     'https://www.linkedin.com/in/qiong-ning-21b554236/'
 
    ]
-image: ''
-imageSquare: ''
+image: 'https://iili.io/d95Pwcx.png'
+imageSquare: 'https://iili.io/d95Pwcx.png'
 url: 'https://onnxruntime.ai/blogs/nimbleedge-x-onnxruntime'
 ---
 
@@ -37,9 +37,9 @@ Traditionally, recommendation systems utilized only historical customer behavior
 
 ### **Challenges in real-time ML on cloud**
 
-## IMAGE HERE
-
 However, building real-time ML system on cloud involves several major challenges:
+
+<img class="m-auto w50" src="./cloud_challenges.png" alt="Summary of the challenges of real-time ML on the cloud">
 
 - **High Compute Costs:** Prohibitively large cloud costs for storing and processing in-session user interaction data in real-time
 - **Time to market and complexity:** Setting up real-time cloud pipelines for ML is complex, and requires significant time and developer bandwidth
@@ -68,6 +68,7 @@ All of these are highly complex and time taking endeavors, due to which performa
 ### **NimbleEdge with ONNX Runtime: End-to-end on-device ML platform**
 
 NimbleEdge helps circumvent the complexity mentioned above with an end-to-end managed on-device real-time ML platform. The platform accelerates and streamlines processes across the on-device ML lifecycle - be it experimentation, deployment or maintenance:
+<img class="m-auto w50" src="./ml_pipeline_architecture.png" alt="NimbleEdge's cloud ML pipeline architecture and its interlinks with ONNX Runtime">
 
 #### **Ready-to-use on-device ML infrastructure**
 

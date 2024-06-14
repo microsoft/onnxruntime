@@ -50,9 +50,9 @@
 			blurb:
 				"Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, achieving a 15x speedup over cloud methods.",
 			link: 'blogs/nimbleedge-x-onnxruntime',
-			image: 'https://imgly-blog-prod.storage.googleapis.com/2024/06/onnx-runtime-imgly.jpg',
+			image: 'https://iili.io/d95Pwcx.png',
 			imgalt:
-				'Image of a skateboarder with a sky background, with half of the background being alternating grey and white squares indicating it has been removed.'
+				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
 		},
 		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
