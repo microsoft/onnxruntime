@@ -61,5 +61,5 @@ stages:
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
+    WebCpuPoolName: 'onnxruntime-Win2022-CPU-beta-web'
     WithCache: false

@@ -63,7 +63,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10-beta'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -74,7 +74,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win2022-GPU-A10'
+    AgentPool : 'onnxruntime-Win2022-GPU-A10-beta'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'

@@ -42,7 +42,7 @@ stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10-beta'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CUDA
@@ -60,7 +60,7 @@ stages:
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10-beta'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: TensorRT
@@ -87,7 +87,7 @@ stages:
     - job: Windows_Packaging_combined_GPU
       workspace:
         clean: all
-      pool: 'onnxruntime-Win2022-GPU-A10'
+      pool: 'onnxruntime-Win2022-GPU-A10-beta'
       variables:
         CUDA_MODULE_LOADINGL: 'LAZY'
         GRADLE_OPTS: '-Dorg.gradle.daemon=false'

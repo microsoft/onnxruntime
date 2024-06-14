@@ -18,7 +18,7 @@ stages:
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Agent.TempDirectory)\binfiles'
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win2022-CPU-beta'
 
     steps:
     # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables

@@ -48,7 +48,7 @@ parameters:
 
 - name: ort_build_pool_name
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win2022-CPU-beta'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
@@ -101,7 +101,7 @@ stages:
     workspace:
       clean: all
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
+      pool: onnxruntime-Win2022-CPU-beta
     ${{ else }}:
       pool: ${{ parameters.ort_build_pool_name }}
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:

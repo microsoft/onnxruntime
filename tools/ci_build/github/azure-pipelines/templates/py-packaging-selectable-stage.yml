@@ -387,7 +387,7 @@ stages:
     - job: Windows_py_GPU_Wheels
       workspace:
         clean: all
-      pool: 'onnxruntime-Win2022-GPU-A10'
+      pool: 'onnxruntime-Win2022-GPU-A10-beta'
       timeoutInMinutes:  300
       variables:
         CUDA_VERSION: '11.8'

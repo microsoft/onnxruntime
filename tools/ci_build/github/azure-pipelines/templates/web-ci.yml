@@ -10,7 +10,7 @@ parameters:
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win2022-CPU-beta'
 - name: PackageName
   displayName: 'Package name'
   type: string
@@ -42,7 +42,7 @@ parameters:
   default: 'onnxruntime-Win2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022-web'
+  default: 'onnxruntime-Win2022-CPU-beta-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'

@@ -29,7 +29,7 @@ pr:
 
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-Win2022-GPU-A10'
+  pool: 'onnxruntime-Win2022-GPU-A10-beta'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_trt.bat
@@ -46,7 +46,7 @@ jobs:
       DownloadTRT: true
       BuildArch: 'x64'
       BuildConfig: RelWithDebInfo
-      MachinePool: 'onnxruntime-Win2022-GPU-A10'
+      MachinePool: 'onnxruntime-Win2022-GPU-A10-beta'
       WithCache: true
       Today: $(Today)
 

@@ -54,7 +54,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-A10
+        MachinePool: onnxruntime-Win2022-GPU-A10-beta
 
 - stage: training
   dependsOn: []
@@ -74,7 +74,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-A10
+        MachinePool: onnxruntime-Win2022-GPU-A10-beta
         isTraining: true
 
 - stage: dml
@@ -115,4 +115,4 @@ stages:
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-A10
+        MachinePool: onnxruntime-Win2022-GPU-A10-beta

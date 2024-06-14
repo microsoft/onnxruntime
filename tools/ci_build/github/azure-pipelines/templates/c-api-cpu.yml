@@ -185,7 +185,7 @@ stages:
   - job: Jar_Packaging
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win2022-CPU-beta'
 
     steps:
     - checkout: self
@@ -275,7 +275,7 @@ stages:
   - job: NuGet_Packaging_CPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win2022-CPU-beta'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -500,7 +500,7 @@ stages:
   - job: Nodejs_Packaging
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win2022-CPU-beta'
     variables:
       ${{ if eq(parameters.IsReleaseBuild, true) }}:
         NpmPackagingMode: 'release'
@@ -765,7 +765,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win2022-CPU-beta'
     Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
@@ -787,7 +787,7 @@ stages:
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win2022-CPU-beta'
     StageSuffix : 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
@@ -804,7 +804,7 @@ stages:
     OS: Windows
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Win-CPU-2022'
+    PoolName: 'onnxruntime-Win2022-CPU-beta'
 
 - template: final-jar-testing.yml
   parameters:
