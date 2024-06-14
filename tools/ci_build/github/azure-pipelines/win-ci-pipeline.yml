@@ -116,7 +116,7 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         # Intel EPs require Intel CPUs
-        MachinePool: 'onnxruntime-Win2022-Intel-CPU'
+        MachinePool: 'onnxruntime-Win2022-CPU-beta'
 
 # Tests doesn't work on AMD CPUs
 - stage: x64_release_xnnpack
