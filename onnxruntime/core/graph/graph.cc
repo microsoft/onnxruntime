@@ -9,6 +9,7 @@
 #include <numeric>
 #include <stack>
 #include <queue>
+#include <exception>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -3266,6 +3267,15 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 
 Status Graph::Resolve(const ResolveOptions& options) {
   LOGS(logger_, VERBOSE) << "Resolving model at " << PathToUTF8String(ModelPath().ParentPath().ToPathString());
+  try {
+    const auto& temp_model_path = ModelPath();
+    const auto temp_parent_path = temp_model_path.ParentPath();
+    const auto temp_parent_path_str = temp_parent_path.ToPathString();
+    const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
+    LOGS(logger_, VERBOSE) << "Resolving model at " << temp_parent_path_u8str;
+  } catch (const std::exception& ex) {
+    LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
+  }
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
