@@ -192,7 +192,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-beta'
 
 - stage: training_x64_release
   dependsOn: []
@@ -210,7 +210,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-beta'
 
 - stage: ort_training_apis_x64_release
   dependsOn: []
@@ -229,7 +229,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
+        MachinePool: 'onnxruntime-Win2022-CPU-beta'
 
 - stage: x64_release_azure
   dependsOn: []
