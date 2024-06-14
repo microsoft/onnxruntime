@@ -196,6 +196,11 @@ std::unique_ptr<Model> CreateEPContexModel(
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
   auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
+#if 0
+  auto res_status = ep_ctx_graph.Resolve();
+  ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
+  LOGS_DEFAULT(VERBOSE) << "Done early resloving model graph";
+#endif
 
   std::vector<NodeArg*> input_node_arg_ptrs;
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
@@ -266,7 +271,6 @@ std::unique_ptr<Model> CreateEPContexModel(
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
   LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
-  // ORT_ENFORCE(ep_ctx_graph.Resolve().IsOK());
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "EP context model graph resolved";

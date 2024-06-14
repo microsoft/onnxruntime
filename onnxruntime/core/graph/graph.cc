@@ -3275,6 +3275,7 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
+#if 0
   try {
     const auto& temp_model_path = ModelPath();
     LOGS(logger_, VERBOSE) << "Done ModelPath() in Resolve";
@@ -3287,6 +3288,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
     LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
     throw;
   }
+#endif
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
