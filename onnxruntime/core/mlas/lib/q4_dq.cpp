@@ -708,6 +708,14 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
         MLAS_THREADPOOL* thread_pool
     )
     {
+        MLAS_UNREFERENCED_PARAMETER(src);
+        MLAS_UNREFERENCED_PARAMETER(scales);
+        MLAS_UNREFERENCED_PARAMETER(zero_points);
+        MLAS_UNREFERENCED_PARAMETER(dst);
+        MLAS_UNREFERENCED_PARAMETER(rows);
+        MLAS_UNREFERENCED_PARAMETER(columns);
+        MLAS_UNREFERENCED_PARAMETER(quant_block_size);
+        MLAS_UNREFERENCED_PARAMETER(thread_pool);
         ORT_THROW("BlockwiseQDQQuantizer::BlockwiseQDQQuantizer is not implemented");
     }
 
@@ -827,28 +835,29 @@ private:
         MlasTryBatchParallel(
             thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
             [&](ptrdiff_t thread_blk_idx) {
-                // buffering the whole thread block
-                float reciprocal_scale_t[thread_blk_size];
-                float zp_f_t[thread_blk_size];
-                float vmin_t[thread_blk_size];
-                float vmax_t[thread_blk_size];
+                // !!warning!!: buffering the whole thread block
+                const int32_t buffer_size = 64;
+                ORT_ENFORCE(buffer_size == thread_blk_size, "buffer size must be equal to thread block size.");
+                float reciprocal_scale_t[buffer_size];
+                float zp_f_t[buffer_size];
+                float vmin_t[buffer_size];
+                float vmax_t[buffer_size];
 
                 const int32_t row_thread_blk_idx = static_cast<int32_t>(thread_blk_idx / num_col_thread_blk);
                 const int32_t col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx % num_col_thread_blk);
                 const int32_t row_idx = row_thread_blk_idx * quant_block_size;
-                const int32_t col_idx = col_thread_blk_idx * thread_blk_size;
+                const int32_t col_idx = col_thread_blk_idx * buffer_size;
                 const int32_t row_size = std::min(quant_block_size, rows - row_idx);
-                const int32_t col_size = std::min(thread_blk_size, columns - col_idx);
-                // input_idx, input_col_end_idx, scale_idx, col_size are aligned to 2
+                const int32_t col_size = std::min(buffer_size, columns - col_idx);
+                // input_idx, scale_idx, col_size are aligned to 2
                 auto input_idx = row_idx * columns + col_idx;
                 auto scale_idx = row_thread_blk_idx * columns + col_idx;
-                auto input_col_end_idx = input_idx + col_size;
 
                 Tin scale0_tt, scale1_tt;
                 uint8_t v0_tt, v1_tt;
 
-                std::fill_n(vmin_t, thread_blk_size, maxf);
-                std::fill_n(vmax_t, thread_blk_size, minf);
+                std::fill_n(vmin_t, buffer_size, maxf);
+                std::fill_n(vmax_t, buffer_size, minf);
 
                 // calculate min/max
                 for (int32_t j = 0, input_idx_t = input_idx; j < row_size; ++j, input_idx_t += columns) {
@@ -865,15 +874,15 @@ private:
 
                 // calculate scale and zero point, and store
                 for (int32_t i = 0; i < col_size; i += 2) {
-                    v0_tt = v1_tt = BitsTraits<qbits>::kMid;
+                    v0_tt = v1_tt = BitsTraits<4>::kMid;
 
                     if (zero_points) {
-                        range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
-                        range2scalezp<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
+                        range2scalezp<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                        range2scalezp<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
                         zero_points[(scale_idx + i) >> 1] = Pack(v0_tt, v1_tt);
                     } else {
-                        range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt);
-                        range2scale<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
+                        range2scale<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt);
+                        range2scale<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
                     }
 
                     scales[scale_idx + i] = scale0_tt;
@@ -897,7 +906,7 @@ private:
                             std::clamp(
                                 std::roundf(v0 * reciprocal_scale_t[i]) + zp_f_t[i],
                                 0.0f,
-                                BitsTraits<qbits>::kMaxFp
+                                BitsTraits<4>::kMaxFp
                             )
                         );
 
@@ -906,7 +915,7 @@ private:
                             std::clamp(
                                 std::roundf(v1 * reciprocal_scale_t[i + 1]) + zp_f_t[i + 1],
                                 0.0f,
-                                BitsTraits<qbits>::kMaxFp
+                                BitsTraits<4>::kMaxFp
                             )
                         );
 
@@ -929,22 +938,23 @@ private:
     )
     {
         // Thread block is [quant_block_size * 2, columns], so the packed bytes do not cross threads.
-        const int32_t buffer_size = 128;
-        const auto row_thread_blk_size = quant_block_size * 2;
-        const auto num_row_thread_blk = (rows + row_thread_blk_size - 1) / (row_thread_blk_size);
-        const auto minf = std::numeric_limits<float>::lowest();
-        const auto maxf = std::numeric_limits<float>::max();
+        constexpr auto minf = std::numeric_limits<float>::lowest();
+        constexpr auto maxf = std::numeric_limits<float>::max();
+        auto row_thread_blk_size = quant_block_size * 2;
+        auto num_row_thread_blk = (rows + row_thread_blk_size - 1) / (row_thread_blk_size);
 
         MlasTryBatchParallel(
             thread_pool, static_cast<ptrdiff_t>(num_row_thread_blk),
-            [&](ptrdiff_t row_thread_blk_idx) {
+            [&](ptrdiff_t thread_blk_idx) {
+                const int32_t buffer_size = 128;
                 float reciprocal_scale_t[buffer_size];
                 float zp_f_t[buffer_size];
                 float vmin_t[buffer_size];
                 float vmax_t[buffer_size];
 
-                const int32_t row_idx = row_thread_blk_idx * row_thread_blk_size;
-                const int32_t row_idx_end = std::min(row_thread_blk_size + row_idx, rows);
+                auto row_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
+                int32_t row_idx = row_thread_blk_idx * row_thread_blk_size;
+                int32_t row_idx_end = std::min(row_thread_blk_size + row_idx, rows);
                 auto input_idx = row_idx * columns;
                 auto scale_idx = row_thread_blk_idx * 2 * columns;
                 Tin scale0_tt, scale1_tt;
@@ -977,14 +987,14 @@ private:
                         int32_t i = 0;
                         // leading unailgned zero points
                         if (scale_buffer_idx & 1) {
-                            v0_tt = BitsTraits<qbits>::kMid;
+                            v0_tt = BitsTraits<4>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, qbits>(vmin_t[0], vmax_t[0], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4>(vmin_t[0], vmax_t[0], scale0_tt, v0_tt);
                                 zero_points[scale_buffer_idx >> 1] = SetElem(
                                     v0_tt, 1, zero_points[scale_buffer_idx >> 1]
                                 );
                             } else {
-                                range2scale<Tin, qbits>(vmin_t[0], vmax_t[0], scale0_tt);
+                                range2scale<Tin, 4>(vmin_t[0], vmax_t[0], scale0_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -998,14 +1008,14 @@ private:
                         }
                         // aligned zero points
                         for (; scale_buffer_idx < scale_buffer_idx_end - 1; i += 2, scale_buffer_idx += 2) {
-                            v0_tt = v1_tt = BitsTraits<qbits>::kMid;
+                            v0_tt = v1_tt = BitsTraits<4>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
-                                range2scalezp<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
+                                range2scalezp<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
                                 zero_points[scale_buffer_idx >> 1] = Pack(v0_tt, v1_tt);
                             } else {
-                                range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt);
-                                range2scale<Tin, qbits>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
+                                range2scale<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt);
+                                range2scale<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -1021,14 +1031,14 @@ private:
                         }
                         // tailing unaligned elements
                         if (scale_buffer_idx < scale_buffer_idx_end) {
-                            v0_tt = BitsTraits<qbits>::kMid;
+                            v0_tt = BitsTraits<4>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
                                 zero_points[scale_buffer_idx >> 1] = SetElem(
                                     v0_tt, 0, zero_points[scale_buffer_idx >> 1]
                                 );
                             } else {
-                                range2scale<Tin, qbits>(vmin_t[i], vmax_t[i], scale0_tt);
+                                range2scale<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -1053,7 +1063,7 @@ private:
                                     std::clamp(
                                         std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
                                         0.0f,
-                                        BitsTraits<qbits>::kMaxFp
+                                        BitsTraits<4>::kMaxFp
                                     )
                                 );
 
@@ -1068,17 +1078,17 @@ private:
                                 auto v0 = static_cast<float>(src[input_idx_t_start]);
                                 v0_tt = static_cast<uint8_t>(
                                     std::clamp(
-                                        std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
+                                        std::roundf(v0 * reciprocal_scale_t[i]) + zp_f_t[i],
                                         0.0f,
-                                        BitsTraits<qbits>::kMaxFp
+                                        BitsTraits<4>::kMaxFp
                                     )
                                 );
                                 auto v1 = static_cast<float>(src[input_idx_t_start + 1]);
                                 v1_tt = static_cast<uint8_t>(
                                     std::clamp(
-                                        std::roundf(v * reciprocal_scale_t[i + 1]) + zp_f_t[i + 1],
+                                        std::roundf(v1 * reciprocal_scale_t[i + 1]) + zp_f_t[i + 1],
                                         0.0f,
-                                        BitsTraits<qbits>::kMaxFp
+                                        BitsTraits<4>::kMaxFp
                                     )
                                 );
 
@@ -1091,7 +1101,7 @@ private:
                                     std::clamp(
                                         std::roundf(v * reciprocal_scale_t[i]) + zp_f_t[i],
                                         0.0f,
-                                        BitsTraits<qbits>::kMaxFp
+                                        BitsTraits<4>::kMaxFp
                                     )
                                 );
 
@@ -1145,7 +1155,6 @@ private:
                 auto dstT_row_idx = row_thread_blk_idx * dst_bytes_per_quant_blk;
                 auto dstT_col_idx = col_thread_blk_idx * 2;
                 auto dst_idx = dstT_col_idx * dstT_num_row + dstT_row_idx;
-                auto dst_end_idx = dst_idx + dst_bytes_per_quant_blk;
 
                 auto src_row_idx = row_thread_blk_idx * quant_block_size;
                 auto src_row_end_idx = std::min(src_row_idx + quant_block_size, rows);
@@ -1164,6 +1173,7 @@ private:
 
                 if (src_idx < src_end_idx) {
                     src0_t = src_weights[src_idx];
+                    src1_t = 0;
                     Transpose(src0_t, src1_t, dst0_t, dst1_t);
                     dst_weights[dst_idx] = dst0_t;
                     dst_weights[dst_idx + dstT_num_row] = dst1_t;
@@ -1197,7 +1207,6 @@ private:
                 auto src_idx = col_thread_blk_idx;
                 auto src_end_idx = row_quant_blk_num * packed_col_size + col_thread_blk_idx;
                 auto dst_idx = col_thread_blk_idx * 2 * dst_zp_row_num;
-                auto dst_end_idx = dst_idx + dst_zp_row_num;
 
                 for (; src_idx < src_end_idx - packed_col_size; ++dst_idx) {
                     src0_t = src_zero_points[src_idx];
@@ -1210,6 +1219,7 @@ private:
 
                 if (src_idx < src_end_idx) {
                     src0_t = src_zero_points[src_idx];
+                    src1_t = 0;
                     Transpose(src0_t, src1_t, dst0_t, dst1_t);
                     dst_zero_points[dst_idx] = dst0_t;
                     dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
@@ -1242,14 +1252,12 @@ private:
             thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
             [&](ptrdiff_t thread_blk_idx) {
                 uint8_t src0_t, src1_t;
-                uint8_t dst0_t, dst1_t;
 
                 auto row_thread_blk_idx = static_cast<int32_t>(thread_blk_idx / columns);
                 auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx % columns);
 
                 auto dstT_row_idx = row_thread_blk_idx * dst_bytes_per_quant_blk;
                 auto dst_idx = col_thread_blk_idx * dstT_num_row + dstT_row_idx;
-                auto dst_end_idx = dst_idx + dst_bytes_per_quant_blk;
 
                 auto src_row_idx = row_thread_blk_idx * quant_block_size;
                 auto src_row_end_idx = std::min(src_row_idx + quant_block_size, rows);
@@ -1290,13 +1298,11 @@ private:
             thread_pool, static_cast<ptrdiff_t>(columns),
             [&](ptrdiff_t thread_blk_idx) {
                 uint8_t src0_t, src1_t;
-                uint8_t dst0_t, dst1_t;
 
                 auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
                 auto src_idx = col_thread_blk_idx;
                 auto src_end_idx = row_quant_blk_num * columns + col_thread_blk_idx;
                 auto dst_idx = col_thread_blk_idx * dst_zp_row_num;
-                auto dst_end_idx = dst_idx + dst_zp_row_num;
 
                 for (; src_idx < src_end_idx - columns; ++dst_idx) {
                     src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
@@ -1781,8 +1787,7 @@ MlasQDQQuantizeBlockwise(
     }
 }
 
-template <>
-void
+template void
 MlasQDQQuantizeBlockwise<float, 4>(
     const float* src,
     float* scales,
@@ -1795,8 +1800,7 @@ MlasQDQQuantizeBlockwise<float, 4>(
     MLAS_THREADPOOL* thread_pool
 );
 
-template <>
-void
+template void
 MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     const MLAS_FP16* src,
     MLAS_FP16* scales,
@@ -1835,8 +1839,7 @@ MlasQDQTransposeBlockwiseQuantized(
     }
 }
 
-template <>
-void
+template void
 MlasQDQTransposeBlockwiseQuantized<float, 4>(
     const uint8_t* src_weights,
     const float* src_scales,
@@ -1851,8 +1854,7 @@ MlasQDQTransposeBlockwiseQuantized<float, 4>(
     MLAS_THREADPOOL* thread_pool
 );
 
-template <>
-void
+template void
 MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4>(
     const uint8_t* src_weights,
     const MLAS_FP16* src_scales,

@@ -29,10 +29,25 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   MatrixGuardBuffer<uint8_t> OutputElements;
   MatrixGuardBuffer<float> OutputScales;
   MatrixGuardBuffer<uint8_t> OutputOffsets;
+  MatrixGuardBuffer<uint8_t> QDQOutputElements;
+  MatrixGuardBuffer<float> QDQOutputScales;
+  MatrixGuardBuffer<uint8_t> QDQOutputOffsets;
+  MatrixGuardBuffer<uint8_t> QDQTransposedOutputElements;
+  MatrixGuardBuffer<float> QDQTransposedOutputScales;
+  MatrixGuardBuffer<uint8_t> QDQTransposedOutputOffsets;
 
   void Test(int rows, int columns, int block_size, bool columnwise, bool symmetric) {
     float* dequant_buf = FpBuf.GetBuffer(rows * columns, true);
     float* transposed = FpBuf2.GetBuffer(rows * columns, true);
+    size_t weight_size = (rows * columns + 1) / 2;
+    size_t scale_size = (rows + block_size - 1) / block_size * columns;
+    size_t zp_size = (scale_size + 1) / 2;
+    uint8_t* qdq_weights = QDQOutputElements.GetBuffer(weight_size, true);
+    float* qdq_scales = QDQOutputScales.GetBuffer(scale_size);
+    uint8_t* qdq_zp = symmetric ? nullptr : QDQOutputOffsets.GetBuffer(zp_size, true);
+    uint8_t* qdq_weights_T = QDQTransposedOutputElements.GetBuffer(weight_size, true);
+    float* qdq_scales_T = QDQTransposedOutputScales.GetBuffer(scale_size);
+    uint8_t* qdq_zp_T = symmetric ? nullptr : QDQTransposedOutputOffsets.GetBuffer(zp_size, true);
 
     MLAS_THREADPOOL* threadpool_ptr = GetMlasThreadPool();
 
@@ -112,16 +127,37 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     MlasQuantizeBlockwise<float, 4>(o_elements, o_scales, o_zp, transposed, block_size,
                                     columnwise, rows, columns, columns, threadpool_ptr);
 
+    if (columnwise) {
+      MlasQDQQuantizeBlockwise<float, 4>(
+          transposed, qdq_scales, qdq_zp, qdq_weights,
+          true, rows, columns, block_size, threadpool_ptr);
+
+      MlasQDQTransposeBlockwiseQuantized<float, 4>(
+          qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+          true, rows, columns, block_size, threadpool_ptr);
+    }
+
     for (int c = 0; c < columns; c++) {
       for (int r = 0; r < rows; r += 2) {
         int idx = c * q_rows + r / 2;
         ASSERT_EQ(o_elements[idx] & 0xf, elements[idx] & 0xf)
             << ", index=[" << r << "x" << c << "], shape=[" << rows << "x" << columns
             << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        if (columnwise) {
+          ASSERT_EQ(qdq_weights_T[idx] & 0xf, elements[idx] & 0xf)
+              << ", index=[" << r << "x" << c << "], shape=[" << rows << "x" << columns
+              << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        }
+
         if (r + 1 < rows) {
           ASSERT_EQ(o_elements[idx] >> 4, elements[idx] >> 4)
               << ", index=[" << r + 1 << "x" << c << "], shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+          if (columnwise) {
+            ASSERT_EQ(qdq_weights_T[idx] >> 4, elements[idx] >> 4)
+                << ", index=[" << r + 1 << "x" << c << "], shape=[" << rows << "x" << columns
+                << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+          }
         }
       }
     }
@@ -132,6 +168,12 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
         ASSERT_EQ(o_scales[idx], scales[idx])
             << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
             << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+
+        if (columnwise) {
+          ASSERT_EQ(qdq_scales_T[idx], scales[idx])
+              << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
+              << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        }
       }
     }
 
@@ -142,10 +184,20 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
         ASSERT_EQ(o_zp[idx] & 0xf, zp[idx] & 0xf)
             << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
             << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        if (columnwise) {
+          ASSERT_EQ(qdq_zp_T[idx] & 0xf, zp[idx] & 0xf)
+              << ", index=" << r << "x" << c << ", shape=[" << rows << "x" << columns
+              << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+        }
         if (r + 1 < meta_rows) {
           ASSERT_EQ(o_zp[idx] >> 4, zp[idx] >> 4)
               << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
               << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+          if (columnwise) {
+            ASSERT_EQ(qdq_zp_T[idx] >> 4, zp[idx] >> 4)
+                << ", index=" << r + 1 << "x" << c << ", shape=[" << rows << "x" << columns
+                << "] block: " << block_size << ", symmetric: " << symmetric << ", columnwise: " << columnwise;
+          }
         }
       }
     }
