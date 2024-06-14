@@ -603,7 +603,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     dims = {1, 3, 2};
   }
 
-  CreateBaseModel(model_name, cache_type + ORT_TSTR("cachingtest"), dims);
+  CreateBaseModel(model_name, cache_type + "cachingtest", dims);
 
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProvider" + cache_type_mbs + "cacheTest";
