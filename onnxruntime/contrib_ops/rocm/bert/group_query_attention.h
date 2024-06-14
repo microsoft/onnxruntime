@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {
@@ -27,6 +28,9 @@ class GroupQueryAttention final : public RocmKernel {
   bool do_rotary_;
   bool rotary_interleaved_;
   float scale_;
+
+ private:
+  static std::once_flag arch_checking_;
 };
 
 }  // namespace rocm

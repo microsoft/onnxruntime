@@ -140,6 +140,12 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 }
 
+template <>
+std::once_flag GroupQueryAttention<MLFloat16>::arch_checking_{};
+
+template <>
+std::once_flag GroupQueryAttention<BFloat16>::arch_checking_{};
+
 template <typename T>
 Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto hip_stream = static_cast<hipStream_t>(ctx->GetComputeStream()->GetHandle());
@@ -154,6 +160,21 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* sin_cache = ctx->Input<Tensor>(8);
 
   auto& device_prop = GetDeviceProp();
+  std::call_once(
+      arch_checking_,
+      [](const hipDeviceProp_t& device_prop) {
+        if (std::string_view(device_prop.gcnArchName).find("gfx90a") == std::string_view::npos &&
+            std::string_view(device_prop.gcnArchName).find("gfx942") == std::string_view::npos) {
+          LOGS_DEFAULT(WARNING)
+              << "GroupQueryAttention currently only supports ck_tile fmha backend which only supports "
+              << "CDNA2 and CDNA3 archs.";
+          LOGS_DEFAULT(WARNING)
+              << "GroupQueryAttention running on an unsuppoted GPU may result in "
+              << "hipErrorNoBinaryForGpu or hipErrorSharedObjectInitFailedshared error.";
+        }
+      },
+      device_prop);
+
   GroupQueryAttentionParameters parameters;
   using HipT = typename ToHipType<T>::MappedType;
 
