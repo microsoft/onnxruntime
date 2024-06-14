@@ -39,15 +39,8 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
   void Test(int rows, int columns, int block_size, bool columnwise, bool symmetric) {
     float* dequant_buf = FpBuf.GetBuffer(rows * columns, true);
     float* transposed = FpBuf2.GetBuffer(rows * columns, true);
-    size_t weight_size = (rows * columns + 1) / 2;
     size_t scale_size = (rows + block_size - 1) / block_size * columns;
     size_t zp_size = (scale_size + 1) / 2;
-    uint8_t* qdq_weights = QDQOutputElements.GetBuffer(weight_size, true);
-    float* qdq_scales = QDQOutputScales.GetBuffer(scale_size);
-    uint8_t* qdq_zp = symmetric ? nullptr : QDQOutputOffsets.GetBuffer(zp_size, true);
-    uint8_t* qdq_weights_T = QDQTransposedOutputElements.GetBuffer(weight_size, true);
-    float* qdq_scales_T = QDQTransposedOutputScales.GetBuffer(scale_size);
-    uint8_t* qdq_zp_T = symmetric ? nullptr : QDQTransposedOutputOffsets.GetBuffer(zp_size, true);
 
     MLAS_THREADPOOL* threadpool_ptr = GetMlasThreadPool();
 
@@ -64,6 +57,8 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
                                       q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true);
+    uint8_t* qdq_weights = QDQOutputElements.GetBuffer((rows * columns + 1) / 2, true);
+    uint8_t* qdq_weights_T = QDQTransposedOutputElements.GetBuffer(q_data_size_in_bytes, true);
 
     int v = 7;
     for (int c = 0; c < columns; c++) {
@@ -90,7 +85,11 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     }
 
     float* scales = InputScales.GetBuffer(q_scale_size);
+    float* qdq_scales = QDQOutputScales.GetBuffer(scale_size);
+    float* qdq_scales_T = QDQTransposedOutputScales.GetBuffer(q_scale_size);
     uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(q_zp_size_in_bytes, true);
+    uint8_t* qdq_zp = symmetric ? nullptr : QDQOutputOffsets.GetBuffer(zp_size, true);
+    uint8_t* qdq_zp_T = symmetric ? nullptr : QDQTransposedOutputOffsets.GetBuffer(q_zp_size_in_bytes, true);
     if (zp) {
       for (int c = 0; c < meta_cols; c++) {
         for (int r = 0; r < meta_rows; r += 2) {

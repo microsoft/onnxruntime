@@ -1194,38 +1194,40 @@ private:
             }
         );
 
-        // Transpose zero points. Thread block is [ceil(row_quant_blk_num / 2), 2]
-        // on dst_Transpose. Map to src it is [row_quant_blk_num, 1]. Both in uint8_t.
-        auto dst_zp_row_num = (row_quant_blk_num + 1) / 2;
-        MlasTryBatchParallel(
-            thread_pool, static_cast<ptrdiff_t>(packed_col_size),
-            [&](ptrdiff_t thread_blk_idx) {
-                uint8_t src0_t, src1_t;
-                uint8_t dst0_t, dst1_t;
+        if (src_zero_points) {
+            // Transpose zero points. Thread block is [ceil(row_quant_blk_num / 2), 2]
+            // on dst_Transpose. Map to src it is [row_quant_blk_num, 1]. Both in uint8_t.
+            auto dst_zp_row_num = (row_quant_blk_num + 1) / 2;
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(packed_col_size),
+                [&](ptrdiff_t thread_blk_idx) {
+                    uint8_t src0_t, src1_t;
+                    uint8_t dst0_t, dst1_t;
 
-                auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
-                auto src_idx = col_thread_blk_idx;
-                auto src_end_idx = row_quant_blk_num * packed_col_size + col_thread_blk_idx;
-                auto dst_idx = col_thread_blk_idx * 2 * dst_zp_row_num;
+                    auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
+                    auto src_idx = col_thread_blk_idx;
+                    auto src_end_idx = row_quant_blk_num * packed_col_size + col_thread_blk_idx;
+                    auto dst_idx = col_thread_blk_idx * 2 * dst_zp_row_num;
 
-                for (; src_idx < src_end_idx - packed_col_size; ++dst_idx) {
-                    src0_t = src_zero_points[src_idx];
-                    src1_t = src_zero_points[src_idx + packed_col_size];
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
-                    dst_zero_points[dst_idx] = dst0_t;
-                    dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
-                    src_idx += packed_col_size + packed_col_size;
+                    for (; src_idx < src_end_idx - packed_col_size; ++dst_idx) {
+                        src0_t = src_zero_points[src_idx];
+                        src1_t = src_zero_points[src_idx + packed_col_size];
+                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        dst_zero_points[dst_idx] = dst0_t;
+                        dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
+                        src_idx += packed_col_size + packed_col_size;
+                    }
+
+                    if (src_idx < src_end_idx) {
+                        src0_t = src_zero_points[src_idx];
+                        src1_t = 0;
+                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        dst_zero_points[dst_idx] = dst0_t;
+                        dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
+                    }
                 }
-
-                if (src_idx < src_end_idx) {
-                    src0_t = src_zero_points[src_idx];
-                    src1_t = 0;
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
-                    dst_zero_points[dst_idx] = dst0_t;
-                    dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
-                }
-            }
-        );
+            );
+        }
     }
 
     static void TransposeColumnWiseQuantizedPackUnaligned(
@@ -1291,32 +1293,34 @@ private:
             }
         );
 
-        // Transpose zero points. Thread block is [ceil(row_quant_blk_num / 2), 1] on dst_Transpose in uint8_t.
-        // Map to src it is [row_quant_blk_num, 1] in int4.
-        auto dst_zp_row_num = (row_quant_blk_num + 1) / 2;
-        MlasTryBatchParallel(
-            thread_pool, static_cast<ptrdiff_t>(columns),
-            [&](ptrdiff_t thread_blk_idx) {
-                uint8_t src0_t, src1_t;
+        if (src_zero_points) {
+            // Transpose zero points. Thread block is [ceil(row_quant_blk_num / 2), 1] on dst_Transpose in uint8_t.
+            // Map to src it is [row_quant_blk_num, 1] in int4.
+            auto dst_zp_row_num = (row_quant_blk_num + 1) / 2;
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(columns),
+                [&](ptrdiff_t thread_blk_idx) {
+                    uint8_t src0_t, src1_t;
 
-                auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
-                auto src_idx = col_thread_blk_idx;
-                auto src_end_idx = row_quant_blk_num * columns + col_thread_blk_idx;
-                auto dst_idx = col_thread_blk_idx * dst_zp_row_num;
+                    auto col_thread_blk_idx = static_cast<int32_t>(thread_blk_idx);
+                    auto src_idx = col_thread_blk_idx;
+                    auto src_end_idx = row_quant_blk_num * columns + col_thread_blk_idx;
+                    auto dst_idx = col_thread_blk_idx * dst_zp_row_num;
 
-                for (; src_idx < src_end_idx - columns; ++dst_idx) {
-                    src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
-                    src1_t = GetElem(src_zero_points[(src_idx + columns) >> 1], (src_idx + columns) & 1);
-                    dst_zero_points[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
-                    src_idx += columns + columns;
+                    for (; src_idx < src_end_idx - columns; ++dst_idx) {
+                        src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
+                        src1_t = GetElem(src_zero_points[(src_idx + columns) >> 1], (src_idx + columns) & 1);
+                        dst_zero_points[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
+                        src_idx += columns + columns;
+                    }
+
+                    if (src_idx < src_end_idx) {
+                        src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
+                        dst_zero_points[dst_idx] = src0_t & 0xf;
+                    }
                 }
-
-                if (src_idx < src_end_idx) {
-                    src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
-                    dst_zero_points[dst_idx] = src0_t & 0xf;
-                }
-            }
-        );
+            );
+        }
     }
 };
 
