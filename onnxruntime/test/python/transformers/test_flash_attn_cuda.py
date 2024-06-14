@@ -1155,7 +1155,9 @@ def parity_check_mha(
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
+    numpy.testing.assert_allclose(
+        out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config} packed={packed}"
+    )
 
 
 def parity_check_gqa_prompt(
@@ -1324,15 +1326,19 @@ def parity_check_gqa_prompt(
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
-        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
     numpy.testing.assert_allclose(
-        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1478,15 +1484,19 @@ def parity_check_gqa_prompt_no_buff(
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
-        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
     numpy.testing.assert_allclose(
-        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past(
@@ -1652,15 +1662,19 @@ def parity_check_gqa_past(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
     # Make sure past-present buffer updating correctly
     numpy.testing.assert_allclose(
-        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
     numpy.testing.assert_allclose(
-        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}"
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past_no_buff(
@@ -1832,7 +1846,11 @@ def parity_check_gqa_past_no_buff(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config}")
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def packed_mha_test_cases():
