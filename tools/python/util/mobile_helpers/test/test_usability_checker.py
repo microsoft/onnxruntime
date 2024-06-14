@@ -56,8 +56,7 @@ class TestAnalyzer(unittest.TestCase):
 
     def test_scan_model(self):
         """
-        Test a Speech model where all the top level nodes are Scan. All the real operators are in subgraphs, so we
-        don't use NNAPI/CoreML currently. We want to make sure nodes in subgraphs are counted.
+        Test a Speech model where all the top level nodes are Scan. We want to make sure nodes in subgraphs are counted.
         """
         with LogCapture() as log_capture:
             logger = _create_logger()
