@@ -63,7 +63,7 @@ However, developing and maintaining on-device real-time ML systems is also highl
 3. feature syncing from cloud
 4. ML inference execution suitably balancing latency and resource utilization across diverse mobile devices.
 
-All of these are highly complex and time taking endeavors, due to which performant on-device real-time ML is highly challenging.
+All of these are highly complex and time consuming endeavors, due to which performant on-device real-time ML is highly challenging.
 
 ### **NimbleEdge with ONNX Runtime: End-to-end on-device ML platform**
 
