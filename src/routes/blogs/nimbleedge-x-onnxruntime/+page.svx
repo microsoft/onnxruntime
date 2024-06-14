@@ -45,7 +45,7 @@ However, building real-time ML system on cloud involves several major challenges
 - **Time to market and complexity:** Setting up real-time cloud pipelines for ML is complex, and requires significant time and developer bandwidth
 - **Privacy Risk and Compliance:** Users' in-session clickstream data must be sent to cloud servers for processing, raising privacy concerns
 - **Scaling Challenges:** Handling traffic surges requires either massive reserve cloud capacity, or rapid scaling which is difficult to achieve on cloud
-- **High Latency:** High latency due to time required to make cloud API calls from/ to user mobile devices
+- **High Latency:** High latency due to time required to make cloud API calls from/to user mobile devices
 
 ### **On-device ML as an alternative**
 
