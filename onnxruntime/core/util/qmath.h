@@ -545,8 +545,6 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 0> {
   }
 };
 
-// Bug(fajin): the same byte in output / zero_point must not be written by different threads, otherwise
-// the result is undefined. This is not handled in the current implementation.
 template <typename TOut>
 struct BlockedQuantizeLinear<float, TOut, 2> {
   static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
@@ -554,53 +552,80 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t thread_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
+    // to avoid a byte being writen from mutiple threads, use 2 * N as thread block
+    ORT_UNUSED_PARAMETER(thread_block_size);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
-    const auto num_thread_block_N = (N + thread_block_size - 1) / thread_block_size;
-    const auto num_thread_block = M * K * num_thread_block_N;
-    const TensorOpCost unit_cost{static_cast<double>(thread_block_size * sizeof(float) * 2),
-                                 static_cast<double>(thread_block_size * sizeof(typename TOut::UnpackedType)),
-                                 static_cast<double>(thread_block_size) * 2.0};
-    auto KN = K * N;
-    auto num_quant_block_KN = (K + quant_block_size - 1) / quant_block_size * N;
-    const auto num_thread_block_KN = K * num_thread_block_N;
+    auto size_thread_block = 2 * N;
+    auto num_thread_block = (M * K - 1) / 2;
+    auto num_quant_block_K = (K + quant_block_size - 1) / quant_block_size;
+    auto num_quant_block_KN = num_quant_block_K * N;
+    auto MK = M * K;
+    const TensorOpCost unit_cost{static_cast<double>(size_thread_block * sizeof(float) * 2),
+                                 static_cast<double>(size_thread_block * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(size_thread_block) * 2.0};
 
     concurrency::ThreadPool::TryParallelFor(
         thread_pool,
         num_thread_block,
         unit_cost,
         [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-          auto m = begin / num_thread_block_KN, k = begin % num_thread_block_KN / num_thread_block_N;
-          auto n_blk = begin % num_thread_block_N, n = n_blk * thread_block_size;
-          auto output_idx = m * KN + k * N + n;
-          auto quant_param_idx = m * num_quant_block_KN + k / quant_block_size * N;
-          auto quant_param_idx_t = quant_param_idx + n;
+          begin <<= 1, end = std::min(end << 1, MK);
+          auto output_idx = begin * N;
+          auto m = begin / K, k = begin % K;
+          auto zp_idx = m * num_quant_block_KN + k / quant_block_size * N;
 
           for (; begin < end; ++begin) {
-            auto n_end = std::min(N, n + thread_block_size);
-            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
-            // TODO(fajin): process 2 elements at a time
-            for (; n < n_end; ++n, ++output_idx, ++quant_param_idx_t) {
-              // TODO(fajin): perf difference
+            auto zp_idx_t = zp_idx;
+            auto output_idx_end = output_idx + N;
+
+            // leading unaligned output
+            if (output_idx & 1) {
               auto zp = zero_point
-                            ? static_cast<int32_t>(zero_point[quant_param_idx_t >> 1].GetElem(quant_param_idx_t & 1))
+                            ? static_cast<int32_t>(zero_point[zp_idx_t >> 1].GetElem(zp_idx_t & 1))
                             : 0;
-              auto sc = scale[quant_param_idx_t];
+              auto sc = scale[zp_idx_t];
               auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
-              output[output_idx >> 1].SetElem(output_idx & 1, static_cast<typename TOut::UnpackedType>(v));
+              output[output_idx >> 1].SetElem(1, static_cast<typename TOut::UnpackedType>(v));
+              ++output_idx;
+              ++zp_idx_t;
             }
 
-            if (n == N) {
-              n = 0;
-              ++k;
-              if (k == K) {
-                k = 0;
-                quant_param_idx += N;
-              } else if (k % quant_block_size == 0) {
-                quant_param_idx += N;
-              }
+            // TODO(fajin): 1> use SIMD, 2> set block to quant_block_size * thread_block_size
+            // aligned output
+            auto output_t = reinterpret_cast<typename TOut::UnpackedType*>(output);
+            for (; output_idx < output_idx_end - 1; output_idx += 2, zp_idx_t += 2) {
+              auto zp0 = zero_point
+                             ? static_cast<int32_t>(zero_point[zp_idx_t >> 1].GetElem(zp_idx_t & 1))
+                             : 0;
+              auto zp1 = zero_point
+                             ? static_cast<int32_t>(zero_point[(zp_idx_t + 1) >> 1].GetElem((zp_idx_t + 1) & 1))
+                             : 0;
+              auto sc0 = scale[zp_idx_t];
+              auto sc1 = scale[zp_idx_t + 1];
+              auto v0 = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc0)) + zp0, low, high);
+              auto v1 = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx + 1] / sc1)) + zp1, low, high);
+              output_t = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
+            }
 
-              quant_param_idx_t = quant_param_idx;
+            // tailing unaligned output
+            if (output_idx < output_idx_end) {
+              auto zp = zero_point
+                            ? static_cast<int32_t>(zero_point[zp_idx_t >> 1].GetElem(zp_idx_t & 1))
+                            : 0;
+              auto sc = scale[zp_idx_t];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
+              output[output_idx >> 1].SetElem(0, static_cast<typename TOut::UnpackedType>(v));
+
+              ++output_idx;
+            }
+
+            ++k;
+            if (k == K) {
+              k = 0;
+              zp_idx += N;
+            } else if (k % quant_block_size == 0) {
+              zp_idx += N;
             }
           }
         });
