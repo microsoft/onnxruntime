@@ -3032,11 +3032,20 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   LOGS(logger_, VERBOSE) << "Done CheckerContext set_schema_registry in VerifyNodeAndOpMatch";
   // Set the parent directory of model path to load external tensors if exist
   // ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
-  const auto& temp_model_path = ModelPath();
-  const auto temp_parent_path = temp_model_path.ParentPath();
-  const auto temp_parent_path_str = temp_parent_path.ToPathString();
-  const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
-  ctx.set_model_dir(temp_parent_path_u8str);
+  try {
+    const auto& temp_model_path = ModelPath();
+    LOGS(logger_, VERBOSE) << "Done ModelPath() in VerifyNodeAndOpMatch";
+    const auto temp_parent_path = temp_model_path.ParentPath();
+    LOGS(logger_, VERBOSE) << "Done ParentPath() in VerifyNodeAndOpMatch";
+    const auto temp_parent_path_str = temp_parent_path.ToPathString();
+    LOGS(logger_, VERBOSE) << "Done ToPathString() in VerifyNodeAndOpMatch";
+    const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
+    LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in VerifyNodeAndOpMatch";
+    ctx.set_model_dir(temp_parent_path_u8str);
+  } catch (const std::exception& ex) {
+    LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
+    throw;
+  }
   LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
 
   LexicalScopeContext parent;
@@ -3268,12 +3277,15 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 Status Graph::Resolve(const ResolveOptions& options) {
   try {
     const auto& temp_model_path = ModelPath();
-    const auto temp_parent_path = temp_model_path.ParentPath();
-    const auto temp_parent_path_str = temp_parent_path.ToPathString();
-    const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
-    LOGS(logger_, VERBOSE) << "Resolving model at " << temp_parent_path_u8str;
+    LOGS(logger_, VERBOSE) << "Done ModelPath() in Resolve";
+    const auto temp_model_path_str = temp_model_path.ToPathString();
+    LOGS(logger_, VERBOSE) << "Done ToPathString() in Resolve";
+    const auto temp_model_path_u8str = PathToUTF8String(temp_model_path_str);
+    LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in Resolve";
+    LOGS(logger_, VERBOSE) << "Resolving model at " << temp_model_path_u8str;
   } catch (const std::exception& ex) {
     LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
+    throw;
   }
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
