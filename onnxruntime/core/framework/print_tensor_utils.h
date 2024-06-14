@@ -5,11 +5,8 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include "core/framework/float16.h"
 
 namespace onnxruntime {
-class Tensor;
-
 namespace utils {
 constexpr int64_t kDefaultSnippetEdgeItems = 3;
 constexpr int64_t kDefaultSnippetThreshold = 200;
@@ -222,7 +219,7 @@ DEF_PRINT_CPU_TENSOR_FULL_3D_INT4(Int4x2)
 DEF_PRINT_CPU_TENSOR_FULL_3D_INT4(UInt4x2)
 
 template <typename T>
-void PrintCpuTensor(const Tensor& tensor,
+void PrintCpuTensor(const onnxruntime::Tensor& tensor,
                     int threshold = kDefaultSnippetThreshold,
                     int edge_items = kDefaultSnippetEdgeItems) {
   const auto& shape = tensor.Shape();
