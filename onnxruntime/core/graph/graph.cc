@@ -3266,7 +3266,6 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
-  LOGS(logger_, VERBOSE) << "Resolving model at " << PathToUTF8String(ModelPath().ParentPath().ToPathString());
   try {
     const auto& temp_model_path = ModelPath();
     const auto temp_parent_path = temp_model_path.ParentPath();
