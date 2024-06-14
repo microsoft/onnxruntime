@@ -196,11 +196,9 @@ std::unique_ptr<Model> CreateEPContexModel(
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
   auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
-#if 0
-  auto res_status = ep_ctx_graph.Resolve();
-  ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
+  auto early_res_status = ep_ctx_graph.Resolve();
+  ORT_ENFORCE(early_res_status.IsOK(), early_res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "Done early resloving model graph";
-#endif
 
   std::vector<NodeArg*> input_node_arg_ptrs;
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.

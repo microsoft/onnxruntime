@@ -3043,7 +3043,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in VerifyNodeAndOpMatch";
     ctx.set_model_dir(temp_parent_path_u8str);
   } catch (const std::exception& ex) {
-    LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
+    LOGS(logger_, VERBOSE) << "Getting model path failed in VerifyNodeAndOpMatch: " << ex.what();
     throw;
   }
   LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
@@ -3275,7 +3275,6 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
-#if 0
   try {
     const auto& temp_model_path = ModelPath();
     LOGS(logger_, VERBOSE) << "Done ModelPath() in Resolve";
@@ -3285,10 +3284,10 @@ Status Graph::Resolve(const ResolveOptions& options) {
     LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in Resolve";
     LOGS(logger_, VERBOSE) << "Resolving model at " << temp_model_path_u8str;
   } catch (const std::exception& ex) {
-    LOGS(logger_, VERBOSE) << "Getting model path failed: " << ex.what();
+    LOGS(logger_, VERBOSE) << "Getting model path failed in Resolve: " << ex.what();
     throw;
   }
-#endif
+
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
