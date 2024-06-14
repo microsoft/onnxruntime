@@ -19,6 +19,7 @@ class MultiHeadAttention final : public OpKernel, public AttentionCPUBase {
   int num_heads_;  // number of attention heads
   float mask_filter_value_;
   bool is_unidirectional_;
+  bool disable_flash_;
 };
 
 }  // namespace contrib
