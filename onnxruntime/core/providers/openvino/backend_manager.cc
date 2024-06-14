@@ -105,6 +105,9 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      ORT_THROW(ex.what());
+#else
       if (device_type.find("NPU") != std::string::npos) {
         LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
@@ -122,6 +125,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       } else {
         ORT_THROW(ex.what());
       }
+#endif
     }
   }
 }
@@ -419,6 +423,9 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
       } catch (const OnnxRuntimeException& ex) {
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      ORT_THROW(ex.what());
+#else
         if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
           LOGS_DEFAULT(WARNING) << ex.what();
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
@@ -434,7 +441,10 @@ void BackendManager::Compute(OrtKernelContext* context) {
           } catch (std::string const& msg) {
             ORT_THROW(msg);
           }
+        } else {
+          ORT_THROW(ex.what());
         }
+#endif
       }
       backend_map_.insert({key, dynamic_backend});
     } else {
