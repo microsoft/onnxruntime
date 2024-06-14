@@ -10,6 +10,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_flashattn.h"
@@ -42,23 +43,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
-  {
-    char * env;
-    #ifdef _WIN32
-    _dupenv_s(&env, nullptr, "ORT_DISABLE_FLASH_ATTENTION");
-    #else
-    env = std::getenv("ORT_DISABLE_FLASH_ATTENTION");
-    #endif
-    if(env == nullptr || std::atoi(env) == 0){
-      disable_flash_ = false;
-    }
-    else{
-      disable_flash_ = true;
-    }
-    #ifdef _WIN32
-    free(env);
-    #endif
-  }
+  disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 }
 
 template <typename T>
