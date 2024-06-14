@@ -153,7 +153,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
 
         class Model(torch.nn.Module):
             def __init__(self):
-                super(Model, self).__init__()
+                super().__init__()
 
             def forward(self, input):
                 test_op = torch.softmax
