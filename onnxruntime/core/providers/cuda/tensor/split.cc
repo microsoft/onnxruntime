@@ -76,7 +76,7 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
-  if (split_sizes.size() == 3 && (axis == 2)) {
+  if (split_sizes.size() == 3 && (block_size_inside_axis_dim == 1)) {
     output_dimensions[axis] = split_sizes[0];
     Tensor *output0 = ctx->Output(0, TensorShape{output_dimensions});
     output_dimensions[axis] = split_sizes[1];
