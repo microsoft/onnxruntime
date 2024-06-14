@@ -370,8 +370,9 @@ class PlannerTest : public ::testing::Test {
     EXPECT_EQ(plan_->execution_plan.size(), 1U);
     int list_size = static_cast<int>(plan_->node_release_list.size());
     EXPECT_GT(list_size, step_number);
-    for (auto freed : plan_->node_release_list[step_number]) {
-      plan_result.insert(static_cast<int>(freed));
+    for (auto action_idx : plan_->node_release_list[step_number]) {
+      const size_t ortvalue_id = plan_->release_actions[action_idx].value_index;
+      plan_result.insert(static_cast<int>(ortvalue_id));
     }
     EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
   }
@@ -433,7 +434,7 @@ TEST_F(PlannerTest, ChainTest) {
   CreatePlan();
 
   // Expected plan:
-  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); X is returned output
+  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); Z is returned output
   CheckAllocKind(W, AllocKind::kAllocateStatically);
   CheckAllocKind(X, AllocKind::kAllocate);
   CheckAllocKind(B, AllocKind::kAllocate);
@@ -442,8 +443,8 @@ TEST_F(PlannerTest, ChainTest) {
 
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {"X"});
-  CheckFreed(3, {"W"});
+  CheckFreed(2, {B});
+  CheckFreed(3, {X});
 }
 
 /* InputOutputTest: Test that:
@@ -510,7 +511,7 @@ TEST_F(PlannerTest, InPlaceTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X1});
+  CheckFreed(2, {X2});
 }
 
 TEST_F(PlannerTest, ExternalOutputsTest) {
@@ -536,10 +537,42 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  // X2 will not be reused but will be freed (to release the current reference). X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {});
-  CheckFreed(2, {X1});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+}
+
+TEST_F(PlannerTest, ExternalOutputsNoReuseTest) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4"), X5("X5");
+
+  // graph structure:
+  AddExternalOutputsNode(X1, X2);  // external-outputs operator; X1: input; X2: temporary
+  AddInplaceNode(X2, X3);          // may-in-place operator; X3: temporary
+  AddNormalNode(X3, X4);           // normal operator; X4: temporary
+  AddNormalNode(X4, X5);           // normal operator; X5: output
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}, {X5, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocatedExternally);
+  CheckAllocKind(X3, AllocKind::kAllocate);  // Should not be Reused.
+  CheckAllocKind(X4, AllocKind::kAllocate);
+  CheckAllocKind(X5, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+  CheckFreed(3, {X4});
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
@@ -564,9 +597,9 @@ TEST_F(PlannerTest, MayStridedTest1) {
   CheckAllocKind(X3, AllocKind::kAllocateOutput);
 
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  // X2 will not be reused because X3 is a graph output. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {X1});
+  CheckFreed(1, {X2});
 }
 
 TEST_F(PlannerTest, MayStridedTest2) {
@@ -574,9 +607,9 @@ TEST_F(PlannerTest, MayStridedTest2) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddMayStridedOutputNode(X1, X2);
-  AddMayStridedInputNode(X2, X3);
-  AddMayStridedInputNode(X2, X4);
+  AddMayStridedOutputNode(X1, X2);  // X2 can reuse X1, and is a strided output.
+  AddMayStridedInputNode(X2, X3);   // X3 is a graph output, cannot reuse.
+  AddMayStridedInputNode(X2, X4);   // X4 is a graph output, cannot reuse.
 
   // simulate shape-inference results:
   Shape shape1{"M", "N"};
@@ -603,8 +636,9 @@ TEST_F(PlannerTest, MayStridedTest3) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddMayStridedOutputNode(X1, X2);
-  AddMayStridedInputNode(X2, X3);
+  AddMayStridedOutputNode(X1, X2);  // X2 cannot strided reuse X1 because,
+  // one of X2's consumers is a node not supporting strided input. So X2 is a allocate.
+  AddMayStridedInputNode(X2, X3);  // X3 is a graph output, cannot reuse.
   AddNormalNode(X2, X4);
 
   // simulate shape-inference results:
@@ -620,11 +654,27 @@ TEST_F(PlannerTest, MayStridedTest3) {
   CheckAllocKind(X3, AllocKind::kAllocateOutput);
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 
+  // Be noted: the last two nodes added can run in two different orders, we need figure out the exact order
+  // we planned then we know how to check the free order.
+  const GraphViewer& graph_viewer = GetState().GetGraphViewer();
+  // Normal node index is 2.
+  bool does_normal_node_run_at_last = graph_viewer.GetNodesInTopologicalOrder()[2] == 2;
+
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+
   CheckFreed(0, {});
-  CheckFreed(1, {X1});
-  CheckFreed(2, {});
+
+  if (does_normal_node_run_at_last) {
+    // Normal node has node index to be 2, but it is possible that the normal node is executed after the strided node.
+    // Then X2 will released once the normal node is executed.
+    CheckFreed(1, {});
+    CheckFreed(2, {X2});
+  } else {
+    // Normal node has node index to be 2, and is executed before the strided node.
+    // So X2 will be released after the strided node (node index to be 1) is executed.
+    CheckFreed(2, {});
+    CheckFreed(1, {X2});
+  }
 }
 #endif
 
@@ -637,7 +687,7 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   // graph structure:
   AddNormalNode(X1, X2);   // no in-place operator; X1: input; X2: temporary
   AddInplaceNode(X2, X3);  // may-in-place operator; X3: temporary
-  AddNormalNode(X3, X4);   // no in-place operator; X4: temporary
+  AddNormalNode(X3, X4);   // no in-place operator; X4: temporary (reuse X2)
   AddInplaceNode(X4, X5);  // may-in-place operator; X5 output
 
   // simulate shape-inference results:
@@ -659,8 +709,8 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X2});
-  CheckFreed(3, {X1});
+  CheckFreed(2, {X3});
+  CheckFreed(3, {X2});
 }
 
 // Test operator<< to output details of an allocation & execution plan.
