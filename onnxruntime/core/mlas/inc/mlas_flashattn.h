@@ -41,11 +41,11 @@ struct FlashAttentionThreadedArgs {
     int row_size_q;
     int row_size_kv;
     float* buffer;
-    size_t bufferSizePerThread;
+    size_t buffer_size_per_thread;
     int thread_count;
-    const float* QData;
-    const float* KData;
-    const float* VData;
+    const float* query;
+    const float* key;
+    const float* value;
     float* output;
 };
 

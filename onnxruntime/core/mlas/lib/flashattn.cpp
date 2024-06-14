@@ -46,11 +46,11 @@ void FlashAttentionThreaded(
     int qk_head_size = args->qk_head_size;
     int v_head_size = args->v_head_size;
     float* buffer = args->buffer;
-    size_t bufferSizePerThread = args->bufferSizePerThread;
+    size_t buffer_size_per_thread = args->buffer_size_per_thread;
     int thread_count = args->thread_count;
-    const float* QData = args->QData;
-    const float* KData = args->KData;
-    const float* VData = args->VData;
+    const float* query = args->query;
+    const float* key = args->key;
+    const float* value = args->value;
     float* output = args->output;
     const float alpha = 1.0f / sqrt(static_cast<float>(qk_head_size));
 
@@ -79,7 +79,7 @@ void FlashAttentionThreaded(
         int ih = ib % num_heads;
         ib /= num_heads;
 
-        float* buffer_current_thread = reinterpret_cast<float*>(reinterpret_cast<char*>(buffer) + thread_id * bufferSizePerThread);
+        float* buffer_current_thread = reinterpret_cast<float*>(reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread);
 
         float* l = buffer_current_thread;
         memset(l, 0, row_size_q * sizeof(float));
@@ -102,9 +102,9 @@ void FlashAttentionThreaded(
                 O = diag(exp(diff)) * O + S * V[ib, ih, ir:ir+row_size_kv, :]
             */
             // TODO: Need to concat if past_k is present
-            const float* inputQ = QData + ((ib * num_heads + ih) * q_sequence_length + il) * qk_head_size;
-            const float* inputK = KData + ((ib * num_heads + ih) * kv_sequence_length + ir) * qk_head_size;
-            const float* inputV = VData + ((ib * num_heads + ih) * kv_sequence_length + ir) * v_head_size;
+            const float* inputQ = query + ((ib * num_heads + ih) * q_sequence_length + il) * qk_head_size;
+            const float* inputK = key + ((ib * num_heads + ih) * kv_sequence_length + ir) * qk_head_size;
+            const float* inputV = value + ((ib * num_heads + ih) * kv_sequence_length + ir) * v_head_size;
 
             auto row_size_q_capped = std::min(row_size_q, q_sequence_length - il);
             auto row_size_kv_capped = std::min(row_size_kv, kv_sequence_length - ir);
