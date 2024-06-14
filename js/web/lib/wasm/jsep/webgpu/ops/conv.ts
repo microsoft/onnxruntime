@@ -52,6 +52,10 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
     throw new Error('Conv requires 2 or 3 inputs');
   }
 
+  if (inputs[0].dims.length > 5) {
+    throw new Error('greater than 5D is not supported');
+  }
+
   if (inputs[0].dims.length !== inputs[1].dims.length) {
     throw new Error('filter does not have same dimension as input');
   }
