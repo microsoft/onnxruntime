@@ -312,6 +312,7 @@ class TestInferenceSession(unittest.TestCase):
             option["trt_engine_cache_path"] = engine_cache_path
             force_sequential_engine_build = "true"
             option["trt_force_sequential_engine_build"] = force_sequential_engine_build
+            option["user_compute_stream"] = "1"
             sess.set_providers(["TensorrtExecutionProvider"], [option])
 
             options = sess.get_provider_options()
@@ -326,6 +327,8 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_engine_cache_enable"], "1")
             self.assertEqual(option["trt_engine_cache_path"], str(engine_cache_path))
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
+            self.assertEqual(option["user_compute_stream"], "1")
+            self.assertEqual(option["has_user_compute_stream"], "1")
 
             from onnxruntime.capi import _pybind_state as C
 
@@ -353,6 +356,19 @@ class TestInferenceSession(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 sess.set_providers(['TensorrtExecutionProvider'], [option])
             """
+
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    s = torch.cuda.Stream()
+                    option["user_compute_stream"] = str(s.cuda_stream)
+                    sess.set_providers(["TensorrtExecutionProvider"], [option])
+                    options = sess.get_provider_options()
+                    self.assertEqual(options["TensorrtExecutionProvider"]["user_compute_stream"], str(s.cuda_stream))
+                    self.assertEqual(options["TensorrtExecutionProvider"]["has_user_compute_stream"], "1")
+            except ImportError:
+                print("torch is not installed, skip testing setting user_compute_stream from torch cuda stream")
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_success = 0

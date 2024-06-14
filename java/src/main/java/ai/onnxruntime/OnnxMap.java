@@ -39,6 +39,7 @@ public class OnnxMap implements OnnxValue {
     FLOAT(3),
     /** A 64-bit floating point value. */
     DOUBLE(4);
+
     /** The native enum value. */
     final int value;
 

@@ -37,8 +37,11 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         super().__init__(backend, parent_module=__name__)
 
     @classmethod
-    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
-        """Asserts ref_outputs and outputs match to within the given tolerances."""
+    def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol, model_dir=None):
+        """
+        Asserts ref_outputs and outputs match to within the given tolerances.
+        The `model_dir` parameter is currently unused (added to base Runner class in onnx 1.16.0).
+        """
 
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
@@ -86,14 +89,16 @@ def apply_filters(filters, category):
 
 def load_jsonc(basename: str):
     """Returns a deserialized object from the JSONC file in testdata/<basename>."""
-    filename = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)),
-        "testdata",
-        basename,
-    )
-    if not os.path.exists(filename):
-        raise FileNotFoundError(f"File not found {filename!r}.")
+    filenames = [
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "testdata", basename),
+        os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "test", "testdata", basename)),
+    ]
 
+    filtered = [f for f in filenames if os.path.exists(f)]
+    if not filtered:
+        raise FileNotFoundError(f"No file found in {filenames!r}.")
+
+    filename = filtered[0]
     with open(filename, encoding="utf-8") as f:  # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
@@ -131,17 +136,15 @@ def create_backend_test(test_name=None):
         if backend.supports_device("NNAPI"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_NNAPI")
 
-        if backend.supports_device("OPENVINO_GPU_FP32") or backend.supports_device("OPENVINO_GPU_FP16"):
+        if backend.supports_device("OPENVINO_GPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_GPU")
 
-        if backend.supports_device("OPENVINO_CPU_FP32"):
+        if backend.supports_device("OPENVINO_CPU"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP32")
-
-        if backend.supports_device("OPENVINO_CPU_FP16"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
 
-        if backend.supports_device("OPENVINO_NPU_FP16"):
-            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU_FP16")
+        if backend.supports_device("OPENVINO_NPU"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU")
 
         if backend.supports_device("OPENVINO"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")

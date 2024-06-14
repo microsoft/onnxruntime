@@ -124,7 +124,7 @@ class LSTM_Helper:  # noqa: N801
             output = np.empty((0, 2, batch_size, hidden_size), np.float32)
             # Y_h = np.empty((0, 2, batch_size, hidden_size), np.float32)
             # Y_c = np.empty((0, 2, hidden_size, hidden_size), np.float32)
-            for x in range(0, seq_length):
+            for x in range(seq_length):
                 output = np.append(output, f_output[x])
                 output = np.append(output, r_output_orig_input_order[x])
 

@@ -198,6 +198,7 @@ try:
                     "libcudart.so.11.0",
                     "libcudart.so.12",
                     "libcudnn.so.8",
+                    "libcudnn.so.9",
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
@@ -230,7 +231,9 @@ try:
                     "libmigraphx_tf.so.2",
                 ]
 
-                tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
+                tensorrt_dependencies = ["libnvinfer.so.10", "libnvinfer_plugin.so.10", "libnvonnxparser.so.10"]
+
+                cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
@@ -255,9 +258,9 @@ try:
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies:
+                for i in cuda_dependencies + rocm_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
-                logger.info("Running {}".format(" ".join([shlex.quote(arg) for arg in auditwheel_cmd])))
+                logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
                     subprocess.run(auditwheel_cmd, check=True, stdout=subprocess.PIPE)
                 finally:
@@ -330,6 +333,20 @@ else:
     libs.extend(["onnxruntime_providers_vitisai.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
+    # QNN V68/V73 dependencies
+    qnn_deps = [
+        "QnnCpu.dll",
+        "QnnHtp.dll",
+        "QnnSaver.dll",
+        "QnnSystem.dll",
+        "QnnHtpPrepare.dll",
+        "QnnHtpV73Stub.dll",
+        "libQnnHtpV73Skel.so",
+        "libqnnhtpv73.cat",
+        "QnnHtpV68Stub.dll",
+        "libQnnHtpV68Skel.so",
+    ]
+    libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
 
@@ -374,8 +391,8 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md", "Qualcomm AI Hub Proprietary License.pdf"]
 
 # Description
 readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
@@ -484,6 +501,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
                 "onnxruntime.training.ortmodule.graph_optimizers",
+                "onnxruntime.training.ortmodule.experimental.pipe",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils",
@@ -614,9 +632,7 @@ if nightly_build:
             # TODO: this is the last time we have to do this!!!
             # We shall bump up release number right after release cut.
             if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
-                version_number = "{major}.{minor}.{macro}".format(
-                    major=ort_version.major, minor=ort_version.minor + 1, macro=ort_version.micro
-                )
+                version_number = f"{ort_version.major}.{ort_version.minor + 1}.{ort_version.micro}"
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -667,9 +683,11 @@ if enable_training:
                 else:
                     print(
                         "Error getting cudart version. ",
-                        "did not find any cudart library"
-                        if not cudart_versions or len(cudart_versions) == 0
-                        else "found multiple cudart libraries",
+                        (
+                            "did not find any cudart library"
+                            if not cudart_versions or len(cudart_versions) == 0
+                            else "found multiple cudart libraries"
+                        ),
                     )
             elif rocm_version:
                 f.write(f"rocm_version = '{rocm_version}'\n")

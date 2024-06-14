@@ -100,6 +100,8 @@ class Stream {
     return nullptr;
   }
 
+  virtual WaitNotificationFn GetWaitNotificationFn() const { return nullptr; }
+
  private:
   StreamHandle handle_;
   const OrtDevice& device_;

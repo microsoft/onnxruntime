@@ -4,7 +4,6 @@
     ],
     "android_min_sdk_version": 21,
     "android_target_sdk_version": 24,
-    "build_variant": "Full",
     "build_params": [
         "--android",
         "--parallel",

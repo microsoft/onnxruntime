@@ -345,18 +345,13 @@ class FusionEmbedLayerNoMask(Fusion):
                 and input_ids_shape[1] == position_ids_shape[1]
             ):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {} vs {}".format(
-                        input_ids_shape, position_ids_shape
-                    )
+                    f"Cannot fuse EmbedLayerNormalization: input_ids and position_ids not matched in 2nd dimension: {input_ids_shape} vs {position_ids_shape}"
                 )
                 return False
 
             if segment_ids and not self.shape_infer.compare_shape(input_ids, segment_ids):
                 logger.info(
-                    "Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {} != {}".format(
-                        input_ids_shape,
-                        self.shape_infer.get_edge_shape(segment_ids),
-                    )
+                    f"Cannot fuse EmbedLayerNormalization: input_ids and segment_ids does not have same shape: {input_ids_shape} != {self.shape_infer.get_edge_shape(segment_ids)}"
                 )
                 return False
 

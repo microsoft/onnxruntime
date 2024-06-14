@@ -50,9 +50,11 @@ def _build_for_apple_sysroot(
     # Build binary for each arch, one by one
     for current_arch in archs:
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
+        # Use MacOS SDK for Catalyst builds
+        apple_sysroot = "macosx" if sysroot == "macabi" else sysroot
         build_command = [
             *base_build_command,
-            "--apple_sysroot=" + sysroot,
+            "--apple_sysroot=" + apple_sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -65,9 +67,11 @@ def _build_for_apple_sysroot(
             build_dir_current_arch,
             build_config,
             build_config + "-" + sysroot,
-            "onnxruntime.framework"
-            if build_dynamic_framework
-            else os.path.join("static_framework", "onnxruntime.framework"),
+            (
+                "onnxruntime.framework"
+                if build_dynamic_framework
+                else os.path.join("static_framework", "onnxruntime.framework")
+            ),
         )
         ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
 
@@ -183,7 +187,7 @@ def parse_args():
         os.path.basename(__file__),
         description="""Create iOS framework and podspec for one or more osx_archs (xcframework)
         and building properties specified in the given build config file, see
-        tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json for details.
+        tools/ci_build/github/apple/default_full_apple_framework_build_settings.json for details.
         The output of the final xcframework and podspec can be found under [build_dir]/framework_out.
         Please note, this building script will only work on macOS.
         """,

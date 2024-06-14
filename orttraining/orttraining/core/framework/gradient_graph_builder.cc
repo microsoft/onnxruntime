@@ -210,6 +210,11 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
         continue;
       }
       const NodeArg* node_arg = n->InputDefs()[edge_it->GetDstArgIndex()];
+      if (!node_arg) {
+        LOGS(logger_, VERBOSE) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                               << " of node: " << n->Name() << " because it is not found in the graph.";
+        continue;
+      }
       const auto [is_tensor_type, is_allowed_type_for_grad, type] = IsAllowedForGradient(graph_, node_arg);
       if (is_tensor_type) {
         if (!is_allowed_type_for_grad) {

@@ -27,14 +27,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 120
@@ -55,7 +47,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.aten_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: 'onnxruntimecpubuildaten'

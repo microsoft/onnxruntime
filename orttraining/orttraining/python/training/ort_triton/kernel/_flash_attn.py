@@ -694,7 +694,7 @@ def _bwd_kernel(
     LSE += off_hb * seqlen_q_rounded
     if not SEQUENCE_PARALLEL:
         num_block_n = tl.cdiv(seqlen_k, BLOCK_N)
-        for start_n in range(0, num_block_n):
+        for start_n in range(num_block_n):
             _bwd_kernel_one_col_block(
                 start_n,
                 Q,

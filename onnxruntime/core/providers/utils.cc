@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
-#include "utils.h"
+#include "core/providers/utils.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -23,6 +23,5 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
   return Status::OK();
 }
 #endif
-
 }  // namespace utils
 }  // namespace onnxruntime

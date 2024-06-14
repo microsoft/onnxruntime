@@ -28,6 +28,7 @@ namespace webnn {
 enum class WebnnDeviceType {
   CPU,
   GPU,
+  NPU,
 };
 
 typedef struct {
@@ -156,8 +157,8 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
 static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Abs", {"abs", true}},
     {"Add", {"add", true}},
-    {"ArgMax", {"argMax", false}},
-    {"ArgMin", {"argMin", false}},
+    {"ArgMax", {"argMax", true}},
+    {"ArgMin", {"argMin", true}},
     {"AveragePool", {"averagePool2d", true}},
     {"BatchNormalization", {"batchNormalization", false}},
     {"Cast", {"cast", false}},
@@ -166,7 +167,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Concat", {"concat", true}},
     {"Conv", {"conv2d", true}},
     {"ConvInteger", {"conv2dInteger", false}},
-    {"ConvTranspose", {"convTranspose2d", true}},
+    {"ConvTranspose", {"convTranspose2d", false}},
     {"Cos", {"cos", false}},
     {"Div", {"div", true}},
     {"DequantizeLinear", {"dequantizeLinear", false}},
@@ -179,6 +180,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Flatten", {"reshape", true}},
     {"Floor", {"floor", true}},
     {"Gather", {"gather", false}},
+    {"Gelu", {"gelu", false}},
     {"Gemm", {"gemm", true}},
     {"GlobalAveragePool", {"averagePool2d", true}},
     {"GlobalMaxPool", {"maxPool2d", true}},
@@ -234,6 +236,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Tan", {"tan", false}},
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
+    {"Trilu", {"triangular", false}},
     {"Unsqueeze", {"reshape", true}},
     {"Where", {"where", false}},
 };
@@ -259,11 +262,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   return true;
 }
 
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 1> supported_cpu_data_types = {
-    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-};
-
-constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data_types = {
+static const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> webnn_supported_data_types = {
     ONNX_NAMESPACE::TensorProto_DataType_BOOL,
     ONNX_NAMESPACE::TensorProto_DataType_INT8,
     ONNX_NAMESPACE::TensorProto_DataType_UINT8,
@@ -275,7 +274,8 @@ constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 9> supported_gpu_data
     ONNX_NAMESPACE::TensorProto_DataType_UINT64,
 };
 
-bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type);
+bool IsSupportedDataType(const int32_t data_type,
+                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types);
 
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,

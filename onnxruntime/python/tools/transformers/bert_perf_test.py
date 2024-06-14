@@ -232,9 +232,9 @@ def onnxruntime_inference(session, all_inputs, output_names):
 def to_string(model_path, session, test_setting):
     sess_options = session.get_session_options()
     option = f"model={os.path.basename(model_path)},"
-    option += "graph_optimization_level={},intra_op_num_threads={},".format(
-        sess_options.graph_optimization_level, sess_options.intra_op_num_threads
-    ).replace("GraphOptimizationLevel.ORT_", "")
+    option += f"graph_optimization_level={sess_options.graph_optimization_level},intra_op_num_threads={sess_options.intra_op_num_threads},".replace(
+        "GraphOptimizationLevel.ORT_", ""
+    )
 
     option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},"
     option += f"test_cases={test_setting.test_cases},test_times={test_setting.test_times},"

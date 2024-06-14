@@ -158,6 +158,11 @@ table Tensor {
 
   // string_data is least used
   string_data:[string];
+
+  // offset into external data file to allow data >2GB to be handled. not used for string data.
+  // an external file writer/reader needs to be provided when serializing.
+  // int64 (vs uint64) so we can explicitly set to -1 when not used.
+  external_data_offset:int64 = -1;
 }
 
 table SparseTensor {

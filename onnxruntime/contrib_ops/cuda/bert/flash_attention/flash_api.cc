@@ -371,6 +371,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_q,
                        int seqlen_k,
                        int seqlen_k_new,
+                       int rotary_dim,
                        const float softmax_scale,
                        bool is_causal,
                        bool is_bf16,
@@ -448,7 +449,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.rotary_cos_ptr = rotary_cos;
     params.rotary_sin_ptr = rotary_sin;
     params.is_rotary_interleaved = is_rotary_interleaved;
-    params.rotary_dim = (head_size / 16) * 16;
+    params.rotary_dim = rotary_dim;
   }
 
   params.num_splits = num_splits;

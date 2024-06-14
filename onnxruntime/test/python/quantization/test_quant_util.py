@@ -13,7 +13,13 @@ import numpy
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
-from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model_with_shape_infer, model_has_infer_metadata
+from onnxruntime.quantization.quant_utils import (
+    compute_scale_zp,
+    load_model_with_shape_infer,
+    model_has_infer_metadata,
+    pack_bytes_to_4bit,
+    quantize_data,
+)
 
 
 class TestQuantUtil(unittest.TestCase):
@@ -100,6 +106,67 @@ class TestQuantUtil(unittest.TestCase):
             onnx.save(model, model_file_path, save_as_external_data=True)
             model_reloaded = load_model_with_shape_infer(Path(model_file_path))
             self.assertTrue(model_has_infer_metadata(model_reloaded))
+
+    def test_pack_bytes_to_4bit(self):
+        """
+        Tests the pack_bytes_to_4bit() utility.
+        """
+        subtest_configs = [
+            (-8, 6, True),  # Odd num elems, signed
+            (-8, 7, True),  # Even num elems, signed
+            (0, 14, False),  # Odd num elems, unsigned
+            (0, 15, False),  # Even num elems, unsigned
+        ]
+        for min_val, max_val, signed in subtest_configs:
+            with self.subTest(min_val=min_val, max_val=max_val, signed=signed):
+                src_float = numpy.arange(min_val, max_val + 1).astype(numpy.float32)
+                src_int = src_float.astype(numpy.int8 if signed else numpy.uint8)
+
+                actual_packed_vals = bytes(pack_bytes_to_4bit(src_int.tobytes()))
+                expected_packed_vals = onnx.helper.pack_float32_to_4bit(src_float, signed).tobytes()
+                self.assertEqual(actual_packed_vals, expected_packed_vals)
+
+    def test_quantize_data_4bit(self):
+        """
+        Test that calling quantize_data for int4 quantization returns data of the correct type and range.
+        """
+        data_float = numpy.arange(-20, 17).astype(numpy.float32)
+
+        subtest_configs = [
+            (onnx.TensorProto.INT4, True),  # int4, symmetric quant
+            (onnx.TensorProto.INT4, False),  # int4, symmetric quant
+            (onnx.TensorProto.UINT4, True),  # uint4, symmetric quant
+            (onnx.TensorProto.UINT4, False),  # uint4, symmetric quant
+        ]
+
+        for onnx_type, symmetric in subtest_configs:
+            with self.subTest(onnx_type=onnx_type, symmetric=symmetric):
+                _, _, zero_point, scale, data_quant = quantize_data(data_float, onnx_type, symmetric)
+                is_signed = onnx_type == onnx.TensorProto.INT4
+                np_int_type = numpy.int8 if is_signed else numpy.uint8
+                qmin = numpy.array(-8 if is_signed else 0, dtype=np_int_type)
+                qmax = numpy.array(7 if is_signed else 15, dtype=np_int_type)
+
+                self.assertEqual(zero_point.dtype, np_int_type)
+                self.assertEqual(scale.dtype, data_float.dtype)
+
+                expected_zp, expected_scale = compute_scale_zp(
+                    data_float.min(), data_float.max(), qmin, qmax, symmetric=symmetric
+                )
+                self.assertEqual(zero_point, expected_zp)
+                self.assertEqual(scale, expected_scale)
+
+                # Even int4 quantization generates 8-bit numpy values.
+                self.assertEqual(data_quant.dtype, np_int_type)
+                for index, actual_quant_val in enumerate(data_quant.flatten()):
+                    self.assertTrue(actual_quant_val >= qmin and actual_quant_val <= qmax)
+
+                    expected_quant_val = numpy.asarray((data_float[index] / scale).round() + zero_point).astype(
+                        np_int_type
+                    )
+                    numpy.clip(expected_quant_val, qmin, qmax, out=expected_quant_val)
+
+                    self.assertEqual(numpy.array(actual_quant_val), expected_quant_val)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
@@ -19,6 +21,90 @@
 
 namespace onnxruntime {
 namespace test {
+
+static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMESPACE::TensorProto_DataType type) {
+  switch (type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      int8_t val = static_cast<int8_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+      uint8_t val = static_cast<uint8_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      int16_t val = static_cast<int16_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      uint16_t val = static_cast<uint16_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      int32_t val = static_cast<int32_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    default:
+      ORT_THROW("Unhandled zero-point type ", type, ".");
+  }
+}
+
+NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
+                                           ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                                           gsl::span<const std::byte> raw_data) {
+  std::string name = graph_.GenerateNodeArgName("constant");
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name(name);
+  tensor_proto.set_data_type(elem_type);
+  tensor_proto.set_raw_data(raw_data.data(), raw_data.size());
+
+  for (auto& dim : shape) {
+    tensor_proto.add_dims(dim);
+  }
+
+  graph_.AddInitializedTensor(tensor_proto);
+
+  return &graph_.GetOrCreateNodeArg(name, nullptr);
+}
+
+Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
+                                              float input_scale,
+                                              int64_t input_zero_point,
+                                              ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                                              NodeArg* output_arg,
+                                              bool use_ms_domain) {
+  std::vector<NodeArg*> input_args;
+  input_args.push_back(input_arg);
+  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
+
+  std::string domain = use_ms_domain ? kMSDomain : "";
+  return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
+}
+
+Node& ModelTestBuilder::AddDequantizeLinearNode(NodeArg* input_arg,
+                                                float input_scale,
+                                                int64_t input_zero_point,
+                                                ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                                                NodeArg* output_arg,
+                                                bool use_ms_domain) {
+  std::vector<NodeArg*> input_args;
+  input_args.push_back(input_arg);
+  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
+
+  std::string domain = use_ms_domain ? kMSDomain : "";
+  return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
+}
 
 void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,

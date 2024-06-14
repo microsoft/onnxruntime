@@ -11,14 +11,14 @@
  *   well with CUTLASS headers.
  */
 
+#include "blkq4_fp16_gemm_sm80.h"
+
+#include "gtest/gtest.h"
+#include <thrust/host_vector.h>
 #include <random>
 
 #include "core/framework/float16.h"
 #include "core/mlas/inc/mlas_q4.h"
-
-#include "blkq4_fp16_gemm_sm80.h"
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {
@@ -43,10 +43,10 @@ void testPrepack(int rows, int columns) {
   const auto meta_shape = Base::get_quant_meta_shape(rows, columns);
   const auto zp_shape = make_Position((meta_shape[0] + 1) / 2, meta_shape[1]);
 
-  std::vector<ElementW> q_weights;
-  std::vector<ElementT> q_scales;
-  std::vector<ElementQOffset> q_zp;
-  std::vector<ElementT> dequants;
+  thrust::host_vector<ElementW> q_weights;
+  thrust::host_vector<ElementT> q_scales;
+  thrust::host_vector<ElementQOffset> q_zp;
+  thrust::host_vector<ElementT> dequants;
   onnxruntime::cuda::test::blkq4_weights_gen<ElementT, block_size, col_blocking, has_offset>(
       rows, columns, dequants, q_weights, q_scales, q_zp);
 
@@ -324,6 +324,19 @@ TEST(BlkQ4_GEMM, Sm80SmallMTest) {
 
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, false>(16, 1024, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, true>(16, 1024, 576);
+}
+
+TEST(BlkQ4_GEMM, Sm80SmallTileKernelTest) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+
+  onnxruntime::cuda::test::run_blkq4_small_gemm<16, true, false>(5, 16, 2048 - 16);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<32, true, true>(3, 48, 1536 + 32);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<64, false, false>(67, 64, 2048 - 16);
+  onnxruntime::cuda::test::run_blkq4_small_gemm<128, false, true>(54, 128, 1536 + 16);
 }
 
 }  // namespace test

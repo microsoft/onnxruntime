@@ -1956,12 +1956,9 @@ TEST_F(PlannerTest, TestCpuIf) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
-  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Load();
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(sess.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(sess.Load());
+  ASSERT_STATUS_OK(sess.Initialize());
 
   auto& sess_state = const_cast<onnxruntime::SessionState&>(sess.GetSessionState());
   const auto& exe_plan = sess_state.GetExecutionPlan()->execution_plan;
@@ -1971,7 +1968,7 @@ TEST_F(PlannerTest, TestCpuIf) {
       exe_plan[1]->steps_[7]->GetNodeIndex() == 7) {
     // there must be a wait before cpu If node
     static const std::string WaitOnEPStep = "WaitOnEPStep";
-    ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
+    ASSERT_EQ(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()), WaitOnEPStep);
   }
 }
 
@@ -2043,5 +2040,42 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   ASSERT_EQ(gather_count, 4) << "4 gather ops are all placed in CPU stream";
 }
 #endif
+
+#ifdef ENABLE_TRAINING_OPS
+// use a carefully constructed model to re-produce a customer reported issue where a model produced invalid output.
+// this issue required:
+// - buffer A that is re-used later in the model
+//   - output of the first Shape node
+//   - first usage completes after the following Cast node
+// - buffer B which has the same size requirement and is used after the first usage of A is complete
+//   - buffer B is used for the output from `squeeze2` and a number of other nodes in that part of the model.
+// - re-use of buffer A for an output of a node that has no consumers whilst buffer B is still in use
+//   - this is the `per_input_length` output of the ConcatTraining node
+//
+// Because the logic to determine when a buffer can be freed is based on consumers, buffer A gets freed after the
+// Cast node. It is then re-used as buffer B because the memory pattern planner believes that block to be available.
+// When we re-use buffer A for the ConcatTraining output we are using the same address for two different node output
+// buffers, leading to corruption of the output.
+// This tests that the change in allocation planner to not re-use a buffer for outputs with no consumers prevents this.
+TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/avoid_reuse_of_buffer_for_node_output_with_no_consumers.onnx"));
+  auto status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& session_state = sess.GetSessionState();
+  const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
+
+  OrtValueIndex concat_training_unused_out_index;
+  // Here per_input_length output of the ConcatTraining node has no consumers, so it should not reuse the buffer.
+  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("per_input_length", concat_training_unused_out_index));
+  EXPECT_EQ(plan->allocation_plan[concat_training_unused_out_index].alloc_kind, AllocKind::kAllocate);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

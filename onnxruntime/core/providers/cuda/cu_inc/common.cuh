@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <vector>
 #include <mutex>
+#include <limits>
 #include <assert.h>
+#include <math.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
@@ -229,6 +231,9 @@ __device__ __inline__ double _Erf(double a) { return erf(a); }
 template <>
 __device__ __inline__ half _Erf(half a) { return half(erff((float)a)); }
 
+template <>
+__device__ __inline__ BFloat16 _Erf(BFloat16 a) { return BFloat16(erff((float)a)); }
+
 template <typename T>
 __device__ __host__ __inline__ T _Round(T a);
 
@@ -345,8 +350,28 @@ __device__ __inline__ half _Pow(half a, half b) { return half(powf((float)a, (fl
 template <typename T>
 __device__ __inline__ T _Min(T a, T b) { return a < b ? a : b; }
 
+template <>
+__device__ __inline__ float _Min(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a < b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Min(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a < b ? a : b );
+}
+
 template <typename T>
 __device__ __inline__ T _Max(T a, T b) { return a > b ? a : b; }
+
+template <>
+__device__ __inline__ float _Max(float a, float b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<float>::quiet_NaN() : ( a > b ? a : b );
+}
+
+template <>
+__device__ __inline__ double _Max(double a, double b) {
+  return (isnan(a) || isnan(b)) ? std::numeric_limits<double>::quiet_NaN() : ( a > b ? a : b );
+}
 
 template <typename T>
 __device__ __inline__ T _Abs(T a) { return a > (T)0 ? a : -a; }
@@ -543,7 +568,7 @@ struct _IsNan {
 template <>
 struct _IsNan<half> {
   __device__ __inline__ bool operator()(half a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask) 
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~MLFloat16::kSignMask)
            > MLFloat16::kPositiveInfinityBits;
   }
 };
@@ -551,7 +576,7 @@ struct _IsNan<half> {
 template <>
 struct _IsNan<BFloat16> {
   __device__ __inline__ bool operator()(BFloat16 a) const {
-    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask) 
+    return static_cast<uint16_t>(*reinterpret_cast<const uint16_t*>(&a) & ~BFloat16::kSignMask)
            > BFloat16::kPositiveInfinityBits;
   }
 };

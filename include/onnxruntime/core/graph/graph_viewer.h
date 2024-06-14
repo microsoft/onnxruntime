@@ -207,6 +207,11 @@ class GraphViewer {
   std::vector<NodeIndex> nodes_in_topological_order_with_priority_;
 #endif
 
+#ifdef ENABLE_TRAINING
+  // The NodeIndex values of the graph nodes sorted in memory efficient topological order.
+  std::vector<NodeIndex> nodes_in_mem_efficient_topological_order_;
+#endif
+
   // Graph root nodes.
   std::vector<NodeIndex> root_nodes_;
 

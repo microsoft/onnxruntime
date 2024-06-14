@@ -51,6 +51,7 @@ class TrainingAgent {
 
   std::string GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
                                                std::string_view recompute_probe_level,
+                                               const bool return_opportunity_table,
                                                std::map<std::string, std::pair<std::string, int>>&
                                                    cluster_id_combinations_to_saved_symbolic_byte_map) const;
 

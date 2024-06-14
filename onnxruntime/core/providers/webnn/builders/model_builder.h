@@ -44,12 +44,6 @@ class ModelBuilder {
   Status AddOperandFromPersistMemoryBuffer(
       const std::string& name, const void* buffer,
       const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
-  // Find if an output has a fuseable activation (e.g., Relu).
-  emscripten::val FindActivation(const Node& node, const NodeArg& output,
-                                 const InlinedHashSet<std::string> supported_nodes = {});
-
-  const InlinedHashSet<std::string>&
-  GetFusedActivations() const { return fused_activations_; }
 
   DataLayout GetPreferredLayout() const { return preferred_layout_; }
 
@@ -59,7 +53,7 @@ class ModelBuilder {
   void AddInitializerToSkip(const std::string& tensor_name);
 
   // There are some input which will not be used, add it to a list which will not
-  // be added to CoreML model, since CoreML does not like input unused.
+  // be added to WebNN model, since WebNN does not like input unused.
   void AddInputToSkip(const std::string& input_name);
 
   std::string GetUniqueName(const std::string& base_name);
@@ -83,20 +77,13 @@ class ModelBuilder {
   InlinedHashSet<std::string> skipped_initializers_;
   InlinedHashSet<std::string> skipped_inputs_;
 
-  InlinedHashSet<std::string> fused_activations_;
-
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;
-
-  // All activation nodes (e.g., Relu) as a map <NodeIndex, FusionOperator>.
-  InlinedHashMap<NodeIndex, emscripten::val> activation_nodes_;
 
   // Convert the onnx model to WebNN operands
   Status Initialize() ORT_MUST_USE_RESULT;
 
   void PreprocessInitializers();
-  // Preprocess all the activation nodes (e.g., Relu) for easy query later.
-  void PreprocessActivations();
 
   // Copy and process all the initializers to WebNN constants.
   Status RegisterInitializers() ORT_MUST_USE_RESULT;

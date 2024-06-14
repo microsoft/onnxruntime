@@ -267,9 +267,11 @@ class SuppressLogs:
                 on_exit=partial(
                     _log_with_filter,
                     graph_execution_manager._logger,
-                    graph_execution_manager._debug_options.onnxruntime_log_filter
-                    if self.is_ort_filter
-                    else graph_execution_manager._debug_options.torch_exporter_filter,
+                    (
+                        graph_execution_manager._debug_options.onnxruntime_log_filter
+                        if self.is_ort_filter
+                        else graph_execution_manager._debug_options.torch_exporter_filter
+                    ),
                     self.phase.to_string(),
                 ),
             ):

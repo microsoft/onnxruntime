@@ -153,7 +153,7 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
   const inputDims = inputs[0].dims;
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] =
-      [{type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: attributes.pads}];
+      [{type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: attributes.pads}];
   if (attributes.mode === 0) {
     programUniforms.push({type: inputs[0].dataType, data: attributes.value});
   }

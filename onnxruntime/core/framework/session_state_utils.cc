@@ -37,20 +37,10 @@ namespace session_state_utils {
 // It can handle arena-based allocators and non-arena based allocators.
 static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const TensorShape& tensor_shape, const DataTypeImpl* type,
                                                                          const AllocatorPtr& alloc, /*out*/ void*& p_data) {
-  int64_t shape_size = tensor_shape.Size();
-  if (shape_size < 0)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "shape.Size() must >=0");
+  size_t mem_size = 0;
+  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(type, tensor_shape, /*alignment*/ 0, mem_size));
 
-  p_data = nullptr;
-  if (shape_size > 0) {
-    SafeInt<size_t> mem_size = 0;
-
-    if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
-    }
-
-    p_data = alloc->Reserve(mem_size);
-  }
+  p_data = alloc->Reserve(mem_size);
 
   return Status::OK();
 }
@@ -367,6 +357,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
 
   for (auto& node : graph.Nodes()) {
     const KernelCreateInfo& kci = session_state.GetNodeKernelCreateInfo(node.Index());
+    int stream_index = static_cast<int>(exec_plan->node_stream_map_[node.Index()]);
 
     ORT_RETURN_IF_ERROR(
         onnxruntime::Node::ForEachWithIndex(
@@ -379,8 +370,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
               int arg_index;
               ORT_RETURN_IF_ERROR(name_to_id.GetIdx(arg.Name(), arg_index));
               const auto& device = exec_plan->GetLocation(arg_index);
-
-              SessionState::NodeInfo node_info(index, &node, &kci, device);
+              SessionState::NodeInfo node_info(index, &node, &kci, device, stream_index);
 
               if (IsArgNameInInputsOutputs(arg.Name(), graph_inputs)) {
                 ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(arg.Name(), node_info));
@@ -419,7 +409,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
         int arg_index;
         ORT_RETURN_IF_ERROR(name_to_id.GetIdx(input_def->Name(), arg_index));
         auto& device = exec_plan->GetLocation(arg_index);
-        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device);
+        SessionState::NodeInfo node_info(std::numeric_limits<size_t>::max(), &node, &kci, device, stream_index);
         ORT_RETURN_IF_ERROR(session_state.AddInputNameToNodeInfoMapping(input_def->Name(), node_info));
       }
     }

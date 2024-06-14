@@ -4,7 +4,7 @@
 #include "../../../OperatorAuthorHelper/OperatorHelper.h"
 
 #include "../External/D3DX12/d3dx12.h"
-#include <d3d12.h>
+#include "directx/d3d12.h"
 
 // NOTE: When this operator's implementation is moved into DML, the associated FP16 fallback
 //       should be removed from IsCustomOpShader(...) in
@@ -208,7 +208,7 @@ public:
         PrepareBluesteinZChirp(dataType);
     }
 
-    GpuDFTOperator(IMLOperatorKernelCreationContext* context)
+    GpuDFTOperator(IMLOperatorKernelCreationContext* context, int32_t version)
     {
         ComPtr<IUnknown> executionObject;
         context->GetExecutionInterface(executionObject.GetAddressOf());
@@ -217,8 +217,6 @@ public:
         executionObject.As(&commandList);
 
         ORT_THROW_IF_FAILED(commandList->GetDevice(IID_ID3D12Device, &m_device));
-
-        ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
 
         int64_t isInverseInt;
         ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
@@ -231,6 +229,15 @@ public:
         MLOperatorEdgeDescription edgeDesc;
         ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
         assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+        if (version == 17)
+        {
+            ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
+        }
+        else
+        {
+            m_axis = -2; //-2 is the default axis value for DFT-20 if the optional axis input is not provided
+        }
 
         PrepareStockhamFFT(edgeDesc.tensorDataType);
         PrepareBluesteinZChirp(edgeDesc.tensorDataType);
@@ -398,7 +405,15 @@ public:
 
             // Get the input and output shape sizes
             auto inputDims = GetTensorDimensions(inputTensor.Get());
-            ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
+            auto rank = static_cast<int32_t>(inputDims.size());
+            ComPtr<IMLOperatorTensor> axisTensor;
+            if (SUCCEEDED(context->GetInputTensor(2, &axisTensor)) && axisTensor != nullptr)
+            {
+                MLOperatorTensor tensor(axisTensor.Get());
+                m_axis = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
+            }
+            m_axis = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(m_axis), rank);
+            ML_CHECK_VALID_ARGUMENT(m_axis >= 0 && m_axis < rank);
             auto outputDims = GetTensorDimensions(outputTensor.Get());
             ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
@@ -977,8 +992,6 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
     {
         try
         {
-            int64_t axis;
-            ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axis)));
             int64_t isInverseInt;
             ORT_THROW_IF_FAILED(context->GetAttribute("inverse", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isInverseInt)));
             int64_t isOnesidedInt;
@@ -999,7 +1012,25 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 throw;
             }
 
-            auto axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(axis), rank);
+            int64_t axisValue = -2; //Set default axis value to -2 for DFT-20 (last signal axis)
+            bool isDft17 = !context->IsInputValid(2); //Check if axis is provided as an input - if yes then it is DFT-20
+
+            if (isDft17)
+            {
+                axisValue = 1; //Default axis value for DFT-17 should be 1 if axis attribute is not provided
+                ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&axisValue)));
+            }
+            else
+            {
+                ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
+                ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
+                ComPtr<IMLOperatorTensor> axisTensor;
+                ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(2, &axisTensor));
+                MLOperatorTensor tensor(axisTensor.Get());
+                axisValue = OperatorHelper::ReadScalarTensorCastToInt64(tensor);
+            }
+
+            auto axisIdx = OperatorHelper::HandleNegativeAxis(static_cast<int32_t>(axisValue), rank);
 
             // In general the output shape will match the input shape exactly
             // So initialize the output shape with the input shape
@@ -1010,6 +1041,8 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             // It corresponds to the real and imaginary parts of the DFT output.
             outputDims.back() = 2;
 
+            auto dftLength = inputDims[axisIdx];
+
             if (context->IsInputValid(1))
             {
                 // If dft_length is specified, then we should honor the shape.
@@ -1019,9 +1052,10 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 ComPtr<IMLOperatorTensor> dftLengthTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(1, &dftLengthTensor));
                 MLOperatorTensor tensor(dftLengthTensor.Get());
-                auto dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
-                outputDims[axisIdx] = dftLength;
+                dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
             }
+
+            outputDims[axisIdx] = dftLength;
 
             // When DFT is onesided, the output shape is half the size of the input shape
             // along the specified axis.
@@ -1056,7 +1090,14 @@ public:
     {
         try
         {
-            auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context);
+            //If the axis value is provided as an input use DFT-20, otherwise use DFT-17
+            int32_t version = 17;
+            if (context->IsInputValid(2))
+            {
+                version = 20;
+            }
+
+            auto dftOperator = wil::MakeOrThrow<GpuDFTOperator>(context, version);
             dftOperator.CopyTo(kernel);
             return S_OK;
         }
@@ -1066,12 +1107,12 @@ public:
         }
     }
 
-    static void RegisterDFTKernel(IMLOperatorRegistry* registry)
+    static void RegisterDFTKernel(IMLOperatorRegistry* registry, int32_t version)
     {
         MLOperatorKernelDescription kernelDescription = {};
         kernelDescription.domain = "";
         kernelDescription.name = "DFT";
-        kernelDescription.minimumOperatorSetVersion = 17;
+        kernelDescription.minimumOperatorSetVersion = version;
         kernelDescription.executionType = MLOperatorExecutionType::D3D12;
 
         // T1: tensor(float16), tensor(float), tensor(double), tensor(bfloat16)
@@ -1081,7 +1122,7 @@ public:
         {
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
-            //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
         };
         t1Constraint.allowedTypes = t1AllowedEdges.data();
         t1Constraint.allowedTypeCount = static_cast<uint32_t>(t1AllowedEdges.size());
@@ -1091,7 +1132,7 @@ public:
         t2Constraint.typeLabel = "T2";
         std::vector<MLOperatorEdgeDescription> t2AllowedEdges
         {
-          //  MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int64 },
         };
         t2Constraint.allowedTypes = t2AllowedEdges.data();
@@ -1100,13 +1141,6 @@ public:
         std::vector<MLOperatorEdgeTypeConstrant> typeConstraints{ t1Constraint, t2Constraint };
         kernelDescription.typeConstraints = typeConstraints.data();
         kernelDescription.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
-
-        MLOperatorAttributeNameValue axisAttributeValue;
-        axisAttributeValue.name = "axis";
-        axisAttributeValue.type = MLOperatorAttributeType::Int;
-        axisAttributeValue.valueCount = 1;
-        static const int64_t axis[] = { 1 };
-        axisAttributeValue.ints = axis;
 
         MLOperatorAttributeNameValue inverseAttributeValue;
         inverseAttributeValue.name = "inverse";
@@ -1123,10 +1157,20 @@ public:
         onesidedAttributeValue.ints = onesided;
 
         std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-            axisAttributeValue,
             inverseAttributeValue,
             onesidedAttributeValue
         };
+
+        if (version == 17)
+        {
+            MLOperatorAttributeNameValue axisAttributeValue;
+            axisAttributeValue.name = "axis";
+            axisAttributeValue.type = MLOperatorAttributeType::Int;
+            axisAttributeValue.valueCount = 1;
+            static const int64_t axis[] = { 1 };
+            axisAttributeValue.ints = axis;
+            attributeDefaultValues.push_back(axisAttributeValue);
+        }
 
         kernelDescription.defaultAttributes = attributeDefaultValues.data();
         kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
@@ -1136,7 +1180,7 @@ public:
         auto shareInferrer = wil::MakeOrThrow<DFTShapeInferrer>();
         auto factory = wil::MakeOrThrow<GpuDFTOperatorFactory>();
 
-        std::array<uint32_t, 1> requiredConstantCpuInputs = { 1 };
+        std::array<uint32_t, 2> requiredConstantCpuInputs = { 1, 2 };
 
         ComPtr<IMLOperatorRegistryPrivate> registryPrivate;
         ORT_THROW_IF_FAILED(registry->QueryInterface(IID_PPV_ARGS(&registryPrivate)));
@@ -1147,7 +1191,6 @@ public:
             shareInferrer.Get(),
             nullptr,
             false, // isInternalOperator
-            false, // alias
             false, // supportsGraph
             nullptr,
             requiredConstantCpuInputs.data(),

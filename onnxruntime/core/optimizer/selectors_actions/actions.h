@@ -92,18 +92,36 @@ struct RemoveNodes : public Action {
   bool preserve_target_node_;
 };
 
-// Merge one input and/or one output node into the target node.
-//   - inputs from the input node, if present, will become the inputs of the target node
-//   - outputs from the output node, if present, will become the outputs of the target node
-// The input and/or output node will be removed after the merge. The target node will not.
+// Merge input and/or output node(s) into the target node.
+// The input and/or output node(s) will be removed after the merge. The target node will not.
 struct MergeIntoTarget : public Action {
-  MergeIntoTarget(std::vector<NodeAndMoveInfo>&& value_moves) : value_moves_{std::move(value_moves)} {}
+  MergeIntoTarget() = default;
 
- private:
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
-  std::vector<NodeAndMoveInfo> value_moves_;
+ protected:
+  // contains runtime state that may be used when overriding virtual methods below
+  struct RuntimeState {
+    const Graph& graph;
+    const NodesToOptimize& selected_nodes;
+  };
+
+ private:
+  // specifies how the inputs and outputs from the nodes to be merged are moved to the target node
+  virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
+
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
+};
+
+// merge into target with value moves specified at construction time
+struct MergeIntoTargetFixed : public MergeIntoTarget {
+  MergeIntoTargetFixed(std::vector<NodeAndMoveInfo>&& value_moves) : value_moves_{std::move(value_moves)} {}
+
+ protected:
+  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override { return value_moves_; }
+
+ private:
+  std::vector<NodeAndMoveInfo> value_moves_;
 };
 
 // replace the selected_nodes with a new node. all nodes in selected_nodes will be removed.

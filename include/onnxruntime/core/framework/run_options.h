@@ -45,5 +45,5 @@ struct OrtRunOptions {
 };
 
 namespace onnxruntime {
-using RunOptions = OrtRunOptions;
+using RunOptions = ::OrtRunOptions;
 }  // namespace onnxruntime

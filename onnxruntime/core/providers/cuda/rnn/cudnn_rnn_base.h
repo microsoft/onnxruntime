@@ -5,8 +5,6 @@
 
 #include "core/common/gsl.h"
 
-#include <cudnn.h>
-
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 
@@ -40,9 +38,16 @@ class CudnnRNN {
 
   Status Set(int64_t input_size, int64_t hidden_size, int64_t proj_size, int num_layers,
              cudnnDropoutDescriptor_t cudnn_dropout_desc, cudnnDirectionMode_t cudnn_direction_model,
-             cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType) {
+             cudnnRNNMode_t rnn_mode, bool has_bias, cudnnDataType_t dataType, bool use_tf32) {
     if (!cudnn_rnn_desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreateRNNDescriptor(&cudnn_rnn_desc_));
+
+    cudnnMathType_t mathType = CUDNN_DEFAULT_MATH;
+    if (dataType == CUDNN_DATA_HALF) {
+      mathType = CUDNN_TENSOR_OP_MATH;
+    } else if (dataType == CUDNN_DATA_FLOAT && !use_tf32) {
+      mathType = CUDNN_FMA_MATH;  // omit TF32 tensor cores
+    }
 
     CUDNN_RETURN_IF_ERROR(cudnnSetRNNDescriptor_v8(cudnn_rnn_desc_,
                                                    CUDNN_RNN_ALGO_STANDARD,  // CUDNN_RNN_ALGO_PERSIST_STATIC, CUDNN_RNN_ALGO_PERSIST_DYNAMIC
@@ -52,7 +57,7 @@ class CudnnRNN {
                                                    CUDNN_LINEAR_INPUT,
                                                    dataType,
                                                    dataType,
-                                                   dataType == CUDNN_DATA_HALF ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH,
+                                                   mathType,
                                                    gsl::narrow_cast<int>(input_size),
                                                    gsl::narrow_cast<int>(hidden_size),
                                                    gsl::narrow_cast<int>(proj_size),  // projected size

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test_fp16.h"
+#include <iomanip>
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 

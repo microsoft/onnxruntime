@@ -99,8 +99,8 @@ def main():
 
         subprocess.run(cmds).check_returncode()  # noqa: PLW1510
         if c.expected_perf > 0.0:
-            json_filename = "onnxruntime_perf_metrics_{}.onnx_bert_{}_{}_Lamb.json".format(
-                model, precision_prefix, c.max_seq_length
+            json_filename = (
+                f"onnxruntime_perf_metrics_{model}.onnx_bert_{precision_prefix}_{c.max_seq_length}_Lamb.json"
             )
             with open(os.path.join(SCRIPT_DIR, "results", json_filename)) as json_file:
                 results = json.load(json_file)

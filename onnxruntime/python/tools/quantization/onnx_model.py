@@ -79,11 +79,7 @@ def _clean_initializers_helper(graph, model):
                 graph.input.remove(name_to_input[initializer.name])
             except StopIteration:
                 if model.ir_version < 4:
-                    print(
-                        "Warning: invalid weight name {} found in the graph (not a graph input)".format(
-                            initializer.name
-                        )
-                    )
+                    print(f"Warning: invalid weight name {initializer.name} found in the graph (not a graph input)")
 
     requesting_tensor_names.difference_update(input.name for input in graph.input)
 
@@ -445,6 +441,11 @@ class ONNXModel:
         for node in self.model.graph.node:
             ONNXModel.replace_node_input(node, old_input_name, new_input_name)
 
+    def replace_input_of_nodes(self, old_input_name, new_input_name, node_names_set):
+        for node in self.model.graph.node:
+            if node.name in node_names_set:
+                ONNXModel.replace_node_input(node, old_input_name, new_input_name)
+
     @staticmethod
     def replace_node_output(node, old_output_name, new_output_name):
         assert isinstance(old_output_name, str) and isinstance(new_output_name, str)
@@ -455,6 +456,11 @@ class ONNXModel:
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
         for node in self.model.graph.node:
             ONNXModel.replace_node_output(node, old_output_name, new_output_name)
+
+    def replace_output_of_nodes(self, old_output_name, new_output_name, node_names_set):
+        for node in self.model.graph.node:
+            if node.name in node_names_set:
+                ONNXModel.replace_node_output(node, old_output_name, new_output_name)
 
     def remove_unused_constant(self):
         input_name_to_nodes = self.input_name_to_nodes()

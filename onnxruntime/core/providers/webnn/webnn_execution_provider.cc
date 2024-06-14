@@ -37,7 +37,13 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
     }
   } else {
     preferred_layout_ = DataLayout::NCHW;
-    wnn_device_type_ = webnn::WebnnDeviceType::GPU;
+    if (webnn_device_flags.compare("gpu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::GPU;
+    } else if (webnn_device_flags.compare("npu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::NPU;
+    } else {
+      ORT_THROW("Unknown WebNN deviceType.");
+    }
   }
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
@@ -312,25 +318,11 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
-          void* output_buffer;
-          switch (output_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-            case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-            case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-            case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-            case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-              output_buffer = output_tensor.GetTensorMutableRawData();
-              break;
-            default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
-              break;
+          if (!webnn::IsSupportedDataType(output_type, webnn::webnn_supported_data_types)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Unsupported type: ", output_type, " for output: ", output_name);
           }
-
+          void* output_buffer = output_tensor.GetTensorMutableRawData();
           outputs.emplace(output_name,
                           webnn::OnnxTensorData{
                               webnn::OnnxTensorInfo{output_type, output_shape},
