@@ -3030,7 +3030,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_schema_registry(schema_registry_.get());
   LOGS(logger_, VERBOSE) << "Done CheckerContext set_schema_registry in VerifyNodeAndOpMatch";
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  // ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  const auto& temp_model_path = ModelPath();
+  const auto temp_parent_path = temp_model_path.ParentPath();
+  const auto temp_parent_path_str = temp_parent_path.ToPathString();
+  const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
+  ctx.set_model_dir(temp_parent_path_u8str);
   LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
 
   LexicalScopeContext parent;
@@ -3260,6 +3265,7 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
+  LOGS(logger_, VERBOSE) << "Resolving model at " << PathToUTF8String(ModelPath().ParentPath().ToPathString());
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
