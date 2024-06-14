@@ -23,7 +23,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
                               const logging::Logger& logger) const override;
@@ -64,13 +64,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
                                                            emscripten::val::array(GetVecUint32FromVecInt64(b_shape)));
     }
-    // The inputs of MatMul must be at least 3D for WebNN CPU backend. Use GEMM for 2D case.
-    // TODO: Remove this workaround when it is fixed in Chromium.
-    if (model_builder.GetWebnnDeviceType() == WebnnDeviceType::CPU && a_shape.size() == 2) {
-      output = model_builder.GetBuilder().call<emscripten::val>("gemm", a, b);
-    } else {
-      output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
-    }
+
+    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+
     // If the inputs are both 1D， reduce the output to a scalar.
     if (extended_a_shape && extended_b_shape) {
       output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array());
@@ -132,11 +128,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related.
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                       const Node& node,
-                                      const WebnnDeviceType device_type,
+                                      const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
-  (void)initializers;
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -188,30 +183,6 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                 << " b_shape: [" << b_shape[0] << ", " << b_shape[1] << "]"
                                 << " c_size: " << c_size;
 
-          return false;
-        }
-      }
-    }
-  }
-
-  if (op_type == "MatMul") {
-    // If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
-    // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
-    if (a_shape.size() == 1) a_shape.insert(a_shape.begin(), 1);
-    if (b_shape.size() == 1) b_shape.push_back(1);
-
-    // WebNN CPU backend has two more constraints.
-    // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/modules/ml/webnn/ml_graph_xnnpack.cc;l=1177
-    // TODO: Remove this workaround when Chromium enables broadcast for MatMul on WebNN CPU backend.
-    if (device_type == WebnnDeviceType::CPU) {
-      if (a_shape.size() != b_shape.size()) {
-        LOGS(logger, VERBOSE) << "The rank of two inputs for WebNN CPU backend MatMul must be the same.";
-        return false;
-      }
-
-      for (size_t i = 0; i < a_shape.size() - 2; i++) {
-        if (a_shape[i] != b_shape[i]) {
-          LOGS(logger, VERBOSE) << "WebNN CPU backend can't support broadcasting for MatMul.";
           return false;
         }
       }
