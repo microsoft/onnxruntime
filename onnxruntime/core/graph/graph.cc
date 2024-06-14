@@ -1719,8 +1719,10 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
       RemoveNode(node.Index());
     }
   }
+  LOGS(logger_, VERBOSE) << "Done BuildConnections for current (sub)graph";
 
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
+  LOGS(logger_, VERBOSE) << "Done PopulateNodeArgToProducerConsumerLookupsFromNodes for current (sub)graph";
 
   return Status::OK();
 }
@@ -3023,7 +3025,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
+  LOGS(logger_, VERBOSE) << "Done CheckerContext set_opset_imports in VerifyNodeAndOpMatch";
   ctx.set_schema_registry(schema_registry_.get());
+  LOGS(logger_, VERBOSE) << "Done CheckerContext set_schema_registry in VerifyNodeAndOpMatch";
   // Set the parent directory of model path to load external tensors if exist
   ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
   LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
@@ -3044,7 +3048,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     parent.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
   }
   LOGS(logger_, VERBOSE) << "Done LexicalScopeContext 1 init in VerifyNodeAndOpMatch";
-
   LexicalScopeContext lsc{parent};
   lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
 
@@ -3229,7 +3232,7 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
   ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
-  LOGS(logger_, VERBOSE) << "Done VerifyNodeAndOpMatchin PerformTypeAndShapeInferencing";
+  LOGS(logger_, VERBOSE) << "Done VerifyNodeAndOpMatch in PerformTypeAndShapeInferencing";
 
   return Status::OK();
 }
