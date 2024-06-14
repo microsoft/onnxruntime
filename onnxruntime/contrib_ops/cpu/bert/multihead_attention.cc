@@ -160,13 +160,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     auto* tp = context->GetOperatorThreadPool();
     args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
 
-    args.bufferSizePerThread = args.row_size_q * 2 + args.row_size_q * args.row_size_kv + args.row_size_q * args.v_head_size;
-    args.buffer = static_cast<float*>(allocator->AllocArray(args.bufferSizePerThread * args.thread_count, sizeof(T)));
-    args.bufferSizePerThread *= sizeof(T);
+    args.buffer_size_per_thread = args.row_size_q * 2 + args.row_size_q * args.row_size_kv + args.row_size_q * args.v_head_size;
+    args.buffer = static_cast<float*>(allocator->AllocArray(args.buffer_size_per_thread * args.thread_count, sizeof(T)));
+    args.buffer_size_per_thread *= sizeof(T);
 
-    args.QData = Q.Get<Tensor>().Data<T>();
-    args.KData = K.Get<Tensor>().Data<T>();
-    args.VData = V.Get<Tensor>().Data<T>();
+    args.query = Q.Get<Tensor>().Data<T>();
+    args.key = K.Get<Tensor>().Data<T>();
+    args.value = V.Get<Tensor>().Data<T>();
     args.output = output->MutableData<T>();
 
     concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id){
