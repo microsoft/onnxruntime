@@ -821,20 +821,31 @@ TEST(SplitOperatorTest, Split3Inner) {
 
   // input shape and data
   ShapeAndFloatData input = {{2, 6},  // shape
-                             {1.f, 2.f, 3.f, 4.f, 5.f, 6.f,
-                              7.f, 8.f, 9.f, 10.f, 11.f, 12.f,
-                              }};
+                             {
+                                 1.f,
+                                 2.f,
+                                 3.f,
+                                 4.f,
+                                 5.f,
+                                 6.f,
+                                 7.f,
+                                 8.f,
+                                 9.f,
+                                 10.f,
+                                 11.f,
+                                 12.f,
+                             }};
 
   outputs.push_back({{2, 3},
                      {1.f, 2.f, 3.f,
                       7.f, 8.f, 9.f}});
   outputs.push_back({{2, 2},
-                    {4.f, 5.f,
-                     10.f, 11.f}});
+                     {4.f, 5.f,
+                      10.f, 11.f}});
   outputs.push_back({{2, 1},
-                    {6.f, 12.f}});
+                     {6.f, 12.f}});
 
-  int64_t num_outputs = 3;
+  int64_t num_outputs = -1;  // when provides split_sizes, then num_outputs should not be provided
   RunTest<float>(axis, {3, 2, 1}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs);
   RunTest<float>(axis, {3, 2, 1}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }

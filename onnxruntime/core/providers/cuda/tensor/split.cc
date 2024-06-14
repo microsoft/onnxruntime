@@ -76,13 +76,16 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dims = input_shape.GetDims();
   auto output_dimensions{input_shape.AsShapeVector()};
 
-  if (split_sizes.size() == 3 && (axis == 2)) {
+  if (split_sizes.size() == 3 && (block_size_inside_axis_dim == 1)) {
+    // we use block_size_inside_axis_dim == 1 to check if we are splitting on inner most axis.
+    // only when split on inner axis and output size is 3, we can use Split3Inner.
+    // this kernel is not using pin_memory, so it is ok for using cuda graph.
     output_dimensions[axis] = split_sizes[0];
-    Tensor *output0 = ctx->Output(0, TensorShape{output_dimensions});
+    Tensor* output0 = ctx->Output(0, TensorShape{output_dimensions});
     output_dimensions[axis] = split_sizes[1];
-    Tensor *output1 = ctx->Output(1, TensorShape{output_dimensions});
+    Tensor* output1 = ctx->Output(1, TensorShape{output_dimensions});
     output_dimensions[axis] = split_sizes[2];
-    Tensor *output2 = ctx->Output(2, TensorShape{output_dimensions});
+    Tensor* output2 = ctx->Output(2, TensorShape{output_dimensions});
 
     return Split3Inner(Stream(ctx),
                        input_tensor->DataType()->Size(),
