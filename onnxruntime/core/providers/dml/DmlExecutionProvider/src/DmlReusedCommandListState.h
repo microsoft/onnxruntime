@@ -7,21 +7,51 @@
 
 namespace Dml
 {
+    struct GraphInputInfo
+    {
+        const onnxruntime::NodeArg* inputArg;
+        std::optional<uint32_t> globalInputIndex;
+        std::shared_ptr<onnxruntime::Tensor> ownedInputTensor;
+    };
+
+    struct GraphOutputInfo
+    {
+        const onnxruntime::NodeArg* outputArg;
+        std::optional<uint32_t> globalOutputIndex;
+        std::shared_ptr<onnxruntime::Tensor> ownedOutputTensor;
+    };
+
+    struct GraphInfo
+    {
+        std::vector<GraphInputInfo> inputs;
+        std::vector<GraphOutputInfo> outputs;
+        std::vector<onnxruntime::Node*> nodes;
+        Microsoft::WRL::ComPtr<IDMLCompiledOperator> compiledOp;
+        std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
+        Microsoft::WRL::ComPtr<ID3D12Resource> persistentResource;
+        Microsoft::WRL::ComPtr<IUnknown> persistentResourceAllocatorUnknown;
+    };
+
+    struct DmlReusedCompiledOpInfo
+    {
+        const GraphInfo* graphInfo;
+        Microsoft::WRL::ComPtr<ID3D12Resource> temporaryResource;
+        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> heap;
+        Microsoft::WRL::ComPtr<IDMLBindingTable> bindingTable;
+        uint64_t tempBindingAllocId = 0;
+        uint64_t temporaryResourceSize;
+
+        // Bindings from previous executions of a re-used command list
+        std::vector<uint64_t> inputBindingAllocIds;
+        std::vector<uint64_t> outputBindingAllocIds;
+    };
+
     struct DmlReusedCommandListState
     {
         // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
         Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> graphicsCommandList;
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
-        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> heap;
-        Microsoft::WRL::ComPtr<IDMLBindingTable> bindingTable;
-        Microsoft::WRL::ComPtr<ID3D12Resource> persistentResource;
-        Microsoft::WRL::ComPtr<ID3D12Resource> temporaryResource;
-        Microsoft::WRL::ComPtr<IUnknown> persistentResourceAllocatorUnknown;
-
-        // Bindings from previous executions of a re-used command list
-        mutable std::vector<uint64_t> inputBindingAllocIds;
-        mutable std::vector<uint64_t> outputBindingAllocIds;
-        mutable uint64_t tempBindingAllocId = 0;
+        mutable std::vector<DmlReusedCompiledOpInfo> compiledOpsInfo;
 
         // Fence tracking the status of the command list's last execution, and whether its descriptor heap
         // can safely be updated.

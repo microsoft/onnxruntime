@@ -581,6 +581,11 @@ namespace DmlGraphFusionHelper
             return nullptr;
         }
 
+        if (compiledExecutionPlanOperator->GetBindingProperties().TemporaryResourceSize > UINT32_MAX)
+        {
+            return nullptr;
+        }
+
         return compiledExecutionPlanOperator;
     }
 
@@ -861,37 +866,16 @@ namespace DmlGraphFusionHelper
         graph.FinalizeFuseSubGraph(*indexedSubGraph, fusedNode);
     }
 
-    std::unique_ptr<DmlReusedCommandListState> BuildReusableCommandList(
-        IExecutionProvider* provider,
-        IDMLCompiledOperator* compiledExecutionPlanOperator,
-        ID3D12Resource* persistentResource,
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding)
+    std::unique_ptr<DmlReusedCommandListState> BuildReusableCommandList(IExecutionProvider* provider, gsl::span<const GraphInfo> graphsInfo)
     {
         auto commandListState = std::make_unique<DmlReusedCommandListState>();
+        commandListState->compiledOpsInfo.resize(graphsInfo.size());
 
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(provider->GetDmlDevice(device.GetAddressOf()));
 
-        DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
-
-        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        desc.NumDescriptors = execBindingProps.RequiredDescriptorCount;
-        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-
         ComPtr<ID3D12Device> d3dDevice;
         ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
-
-        ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(commandListState->heap.ReleaseAndGetAddressOf())));
-
-        // Create a binding table for execution.
-        DML_BINDING_TABLE_DESC bindingTableDesc = {};
-        bindingTableDesc.Dispatchable = compiledExecutionPlanOperator;
-        bindingTableDesc.CPUDescriptorHandle = commandListState->heap->GetCPUDescriptorHandleForHeapStart();
-        bindingTableDesc.GPUDescriptorHandle = commandListState->heap->GetGPUDescriptorHandleForHeapStart();
-        bindingTableDesc.SizeInDescriptors = execBindingProps.RequiredDescriptorCount;
-
-        ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&commandListState->bindingTable)));
 
         ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
             provider->GetCommandListTypeForQueue(),
@@ -904,129 +888,183 @@ namespace DmlGraphFusionHelper
             nullptr,
             IID_GRAPHICS_PPV_ARGS(commandListState->graphicsCommandList.ReleaseAndGetAddressOf())));
 
-        if (persistentResource)
-        {
-            DML_BINDING_DESC persistentResourceBindingDesc =
-                { DML_BINDING_TYPE_BUFFER, persistentResourceBinding ? &*persistentResourceBinding : nullptr };
-            commandListState->bindingTable->BindPersistentResource(&persistentResourceBindingDesc);
-        }
-
-        ID3D12DescriptorHeap* descriptorHeaps[] = { commandListState->heap.Get() };
-        commandListState->graphicsCommandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
-
         ComPtr<IDMLCommandRecorder> recorder;
         ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
 
-        recorder->RecordDispatch(commandListState->graphicsCommandList.Get(), compiledExecutionPlanOperator, commandListState->bindingTable.Get());
+        for (int i = 0; i < graphsInfo.size(); ++i)
+        {
+            auto& compiledOpInfo = commandListState->compiledOpsInfo[i];
+
+            DML_BINDING_PROPERTIES execBindingProps = graphsInfo[i].compiledOp->GetBindingProperties();
+            commandListState->compiledOpsInfo[i].temporaryResourceSize = execBindingProps.TemporaryResourceSize;
+            commandListState->compiledOpsInfo[i].graphInfo = &graphsInfo[i];
+
+            D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+            desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+            desc.NumDescriptors = execBindingProps.RequiredDescriptorCount;
+            desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+
+            ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(compiledOpInfo.heap.ReleaseAndGetAddressOf())));
+
+            // Create a binding table for execution.
+            DML_BINDING_TABLE_DESC bindingTableDesc = {};
+            bindingTableDesc.Dispatchable = graphsInfo[i].compiledOp.Get();
+            bindingTableDesc.CPUDescriptorHandle = compiledOpInfo.heap->GetCPUDescriptorHandleForHeapStart();
+            bindingTableDesc.GPUDescriptorHandle = compiledOpInfo.heap->GetGPUDescriptorHandleForHeapStart();
+            bindingTableDesc.SizeInDescriptors = execBindingProps.RequiredDescriptorCount;
+
+            ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&compiledOpInfo.bindingTable)));
+
+            if (graphsInfo[i].persistentResource)
+            {
+                DML_BINDING_DESC persistentResourceBindingDesc =
+                    { DML_BINDING_TYPE_BUFFER, graphsInfo[i].persistentResourceBinding ? &*graphsInfo[i].persistentResourceBinding : nullptr };
+                compiledOpInfo.bindingTable->BindPersistentResource(&persistentResourceBindingDesc);
+            }
+
+            ID3D12DescriptorHeap* descriptorHeaps[] = { compiledOpInfo.heap.Get() };
+            commandListState->graphicsCommandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
+
+            recorder->RecordDispatch(commandListState->graphicsCommandList.Get(), graphsInfo[i].compiledOp.Get(), compiledOpInfo.bindingTable.Get());
+        }
 
         ORT_THROW_IF_FAILED(commandListState->graphicsCommandList->Close());
 
         return commandListState;
     }
 
-    void ExecuteReusableCommandList(
+    void ExecuteReusableOperator(
         onnxruntime::OpKernelContext* kernelContext,
-        DmlReusedCommandListState& commandListState,
-        IDMLCompiledOperator* compiledExecutionPlanOperator,
-        const onnxruntime::OpKernelInfo& kernelInfo,
+        DmlReusedCompiledOpInfo& compiledOpInfo,
+        const OpKernelContextWrapper& contextWrapper,
         gsl::span<const uint8_t> isInputsUploadedByDmlEP,
         const std::vector<bool>& inputsUsed,
         gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
-        IExecutionProvider* provider,
-        IUnknown* persistentResourceAllocatorUnknown,
         bool keepTemporaryResourceAlive)
     {
-        DML_BINDING_PROPERTIES execBindingProps = compiledExecutionPlanOperator->GetBindingProperties();
-
-        std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
-        std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
-
-        OpKernelContextWrapper contextWrapper(
-            kernelContext,
-            kernelInfo.GetExecutionProvider(),
-            true,
-            nullptr);
+        std::vector<DML_BUFFER_BINDING> inputBindings(compiledOpInfo.graphInfo->inputs.size());
+        std::vector<DML_BINDING_DESC> inputBindingDescs(compiledOpInfo.graphInfo->inputs.size());
 
         // Populate input bindings, excluding those which were specified as owned by DML and provided
         // at initialization instead.
-        commandListState.inputBindingAllocIds.resize(inputBindings.size());
+        compiledOpInfo.inputBindingAllocIds.resize(inputBindings.size());
         bool inputBindingsChanged = false;
 
-        for (uint32_t i = 0; i < inputBindings.size(); ++i)
+        for (uint32_t inputIndex = 0; inputIndex < inputBindings.size(); ++inputIndex)
         {
-            if (!isInputsUploadedByDmlEP[i] && inputsUsed[i])
+            auto globalInputIndex = compiledOpInfo.graphInfo->inputs[inputIndex].globalInputIndex;
+
+            // We can't have a global input if we have an owned tensor
+            assert(!!globalInputIndex != !!compiledOpInfo.graphInfo->inputs[inputIndex].ownedInputTensor);
+
+            if (compiledOpInfo.graphInfo->inputs[inputIndex].ownedInputTensor)
             {
-                if (nonOwnedGraphInputsFromInitializers[i])
+                auto tensor = compiledOpInfo.graphInfo->inputs[inputIndex].ownedInputTensor.get();
+
+                // If we have an owned tensor, we unwrap it directly
+                uint64_t allocId;
+                DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[inputIndex].Buffer, &allocId);
+                inputBindingsChanged = inputBindingsChanged || (!allocId || compiledOpInfo.inputBindingAllocIds[inputIndex] != allocId);
+                inputBindings[inputIndex].Buffer->Release(); // Avoid holding an additional reference
+                inputBindings[inputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
+                compiledOpInfo.inputBindingAllocIds[inputIndex] = allocId;
+            }
+            else if (globalInputIndex && !isInputsUploadedByDmlEP[*globalInputIndex] && inputsUsed[*globalInputIndex])
+            {
+                // Otherwise, we fetch the corresponding input from the global inputs and unwrap it
+                if (nonOwnedGraphInputsFromInitializers[*globalInputIndex])
                 {
-                    inputBindings[i].Buffer = nonOwnedGraphInputsFromInitializers[i].Get();
-                    inputBindings[i].SizeInBytes = nonOwnedGraphInputsFromInitializers[i]->GetDesc().Width;
-                    inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
+                    inputBindings[inputIndex].Buffer = nonOwnedGraphInputsFromInitializers[*globalInputIndex].Get();
+                    inputBindings[inputIndex].SizeInBytes = nonOwnedGraphInputsFromInitializers[*globalInputIndex]->GetDesc().Width;
+                    inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
                 }
                 else
                 {
-                    assert(kernelContext->InputType(gsl::narrow_cast<int>(i))->IsTensorType());
-                    const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(i));
+                    assert(kernelContext->InputType(gsl::narrow_cast<int>(*globalInputIndex))->IsTensorType());
+                    const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(*globalInputIndex));
 
                     uint64_t allocId;
-                    DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[i].Buffer, &allocId);
-                    inputBindingsChanged = inputBindingsChanged || (!allocId || commandListState.inputBindingAllocIds[i] != allocId);
-                    inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                    inputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
-                    inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
-                    commandListState.inputBindingAllocIds[i] = allocId;
+                    DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &inputBindings[inputIndex].Buffer, &allocId);
+                    inputBindingsChanged = inputBindingsChanged || (!allocId || compiledOpInfo.inputBindingAllocIds[inputIndex] != allocId);
+                    inputBindings[inputIndex].Buffer->Release(); // Avoid holding an additional reference
+                    inputBindings[inputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                    inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
+                    compiledOpInfo.inputBindingAllocIds[inputIndex] = allocId;
                 }
             }
         }
 
         if (inputBindingsChanged)
         {
-            commandListState.bindingTable->BindInputs(gsl::narrow_cast<uint32_t>(inputBindingDescs.size()), inputBindingDescs.data());
+            compiledOpInfo.bindingTable->BindInputs(gsl::narrow_cast<uint32_t>(inputBindingDescs.size()), inputBindingDescs.data());
         }
 
         // Populate Output bindings
-        std::vector<DML_BUFFER_BINDING> outputBindings(kernelContext->OutputCount());
-        std::vector<DML_BINDING_DESC> outputBindingDescs(kernelContext->OutputCount());
+        std::vector<DML_BUFFER_BINDING> outputBindings(compiledOpInfo.graphInfo->outputs.size());
+        std::vector<DML_BINDING_DESC> outputBindingDescs(compiledOpInfo.graphInfo->outputs.size());
 
-        commandListState.outputBindingAllocIds.resize(outputBindings.size());
+        compiledOpInfo.outputBindingAllocIds.resize(outputBindings.size());
         bool outputBindingsChanged = false;
 
-        for (uint32_t i = 0; i < outputBindings.size(); ++i)
+        for (uint32_t outputIndex = 0; outputIndex < outputBindings.size(); ++outputIndex)
         {
-            std::vector<int64_t> outputDims;
-            outputDims.reserve(outputShapes.GetShape(i).size());
-            for (uint32_t dimSize : outputShapes.GetShape(i))
+            auto globalOutputIndex = compiledOpInfo.graphInfo->inputs[outputIndex].globalInputIndex;
+
+            if (compiledOpInfo.graphInfo->outputs[outputIndex].ownedOutputTensor)
             {
-                outputDims.push_back(dimSize);
+                assert(!globalOutputIndex.has_value());
+
+                auto tensor = compiledOpInfo.graphInfo->inputs[outputIndex].ownedInputTensor.get();
+
+                uint64_t allocId;
+                DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[outputIndex].Buffer, &allocId);
+                outputBindingsChanged = outputBindingsChanged || (!allocId || compiledOpInfo.outputBindingAllocIds[outputIndex] != allocId);
+                outputBindings[outputIndex].Buffer->Release(); // Avoid holding an additional reference
+                outputBindings[outputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                outputBindingDescs[outputIndex] = {DML_BINDING_TYPE_BUFFER, &outputBindings[outputIndex]};
+                compiledOpInfo.outputBindingAllocIds[outputIndex] = allocId;
             }
+            else
+            {
+                assert(globalOutputIndex.has_value());
 
-            onnxruntime::Tensor* tensor = kernelContext->Output(
-                static_cast<int>(i),
-                onnxruntime::TensorShape::FromExistingBuffer(outputDims)
-                );
+                std::vector<int64_t> outputDims;
+                outputDims.reserve(outputShapes.GetShape(*globalOutputIndex).size());
+                for (uint32_t dimSize : outputShapes.GetShape(*globalOutputIndex))
+                {
+                    outputDims.push_back(dimSize);
+                }
 
-            uint64_t allocId;
-            DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[i].Buffer, &allocId);
-            outputBindingsChanged = outputBindingsChanged || (!allocId || commandListState.outputBindingAllocIds[i] != allocId);
-            outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-            outputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
-            outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
-            commandListState.outputBindingAllocIds[i] = allocId;
+                onnxruntime::Tensor* tensor = kernelContext->Output(
+                    static_cast<int>(*globalOutputIndex),
+                    onnxruntime::TensorShape::FromExistingBuffer(outputDims)
+                    );
+
+                uint64_t allocId;
+                DmlGraphFusionHelper::UnwrapTensor(winmlProvider, tensor, &outputBindings[outputIndex].Buffer, &allocId);
+                outputBindingsChanged = outputBindingsChanged || (!allocId || compiledOpInfo.outputBindingAllocIds[outputIndex] != allocId);
+                outputBindings[outputIndex].Buffer->Release(); // Avoid holding an additional reference
+                outputBindings[outputIndex].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                outputBindingDescs[outputIndex] = {DML_BINDING_TYPE_BUFFER, &outputBindings[outputIndex]};
+                compiledOpInfo.outputBindingAllocIds[outputIndex] = allocId;
+            }
         }
 
         if (outputBindingsChanged)
         {
-            commandListState.bindingTable->BindOutputs(gsl::narrow_cast<uint32_t>(outputBindingDescs.size()), outputBindingDescs.data());
+            compiledOpInfo.bindingTable->BindOutputs(gsl::narrow_cast<uint32_t>(outputBindingDescs.size()), outputBindingDescs.data());
         }
 
-        if (execBindingProps.TemporaryResourceSize > 0)
+        if (compiledOpInfo.temporaryResourceSize > 0)
         {
             // Allocate temporary data which will automatically be freed when the GPU work
             // which is scheduled up to the point that this method returns has completed.
             ComPtr<IUnknown> tempAlloc;
             uint64_t tempAllocId = 0;
-            ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
+            ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(compiledOpInfo.temporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
             ComPtr<IUnknown> tempResourceUnknown;
             winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
@@ -1034,20 +1072,57 @@ namespace DmlGraphFusionHelper
             // Bind the temporary resource.
             ComPtr<ID3D12Resource> tempResource;
             ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
-            DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
+            DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, compiledOpInfo.temporaryResourceSize};
             DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
 
-            if (!tempAllocId || commandListState.tempBindingAllocId != tempAllocId)
+            if (!tempAllocId || compiledOpInfo.tempBindingAllocId != tempAllocId)
             {
-                commandListState.bindingTable->BindTemporaryResource(&tempBindingDesc);
+                compiledOpInfo.bindingTable->BindTemporaryResource(&tempBindingDesc);
             }
 
-            commandListState.tempBindingAllocId = tempAllocId;
+            compiledOpInfo.tempBindingAllocId = tempAllocId;
 
             if (keepTemporaryResourceAlive)
             {
-                commandListState.temporaryResource = std::move(tempResource);
+                compiledOpInfo.temporaryResource = std::move(tempResource);
             }
+        }
+
+        winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(compiledOpInfo.heap).Get());
+        winmlProvider->QueueReference(compiledOpInfo.bindingTable.Get());
+        winmlProvider->QueueReference(compiledOpInfo.graphInfo->persistentResourceAllocatorUnknown.Get());
+    }
+
+    void ExecuteReusableCommandList(
+        onnxruntime::OpKernelContext* kernelContext,
+        DmlReusedCommandListState& commandListState,
+        const onnxruntime::OpKernelInfo& kernelInfo,
+        gsl::span<const uint8_t> isInputsUploadedByDmlEP,
+        const std::vector<bool>& inputsUsed,
+        gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
+        const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
+        IWinmlExecutionProvider* winmlProvider,
+        IExecutionProvider* provider,
+        bool keepTemporaryResourceAlive)
+    {
+        OpKernelContextWrapper contextWrapper(
+            kernelContext,
+            kernelInfo.GetExecutionProvider(),
+            true,
+            nullptr);
+
+        for (int operatorIndex = 0; operatorIndex < commandListState.compiledOpsInfo.size(); ++operatorIndex)
+        {
+            ExecuteReusableOperator(
+                kernelContext,
+                commandListState.compiledOpsInfo[operatorIndex],
+                contextWrapper,
+                isInputsUploadedByDmlEP,
+                inputsUsed,
+                nonOwnedGraphInputsFromInitializers,
+                outputShapes,
+                winmlProvider,
+                keepTemporaryResourceAlive);
         }
 
         // Execute the command list and if it succeeds, update the fence value at which this command may be
@@ -1069,9 +1144,6 @@ namespace DmlGraphFusionHelper
 
         // Queue references to objects which must be kept alive until resulting GPU work completes
         winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.graphicsCommandList).Get());
-        winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(commandListState.heap).Get());
-        winmlProvider->QueueReference(commandListState.bindingTable.Get());
-        winmlProvider->QueueReference(persistentResourceAllocatorUnknown);
     }
 }
 }

@@ -27,12 +27,23 @@ namespace Dml
             std::vector<uint8_t>&& isInputsUploadedByDmlEP,
             std::vector<bool>&& inputsUsed) :
         OpKernel(kernelInfo),
-        m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
         m_inputsUsed(std::move(inputsUsed)),
         m_outputShapes(outputShapes),
         m_isInputsUploadedByDmlEP(std::move(isInputsUploadedByDmlEP)),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {
+            m_graphInfo.compiledOp = std::move(compiledExecutionPlanOperator);
+
+            for (uint32_t i = 0; i < m_nonOwnedGraphInputsFromInitializers.size(); ++i)
+            {
+                m_graphInfo.inputs.emplace_back(GraphInputInfo{nullptr, i});
+            }
+
+            for (uint32_t i = 0; i < outputShapes.EdgeCount(); ++i)
+            {
+                m_graphInfo.outputs.emplace_back(GraphOutputInfo{nullptr, i});
+            }
+
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
             if (m_executionHandle)
@@ -60,26 +71,26 @@ namespace Dml
         )
         {
             // Allocate a persistent resource and initialize the operator
-            UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
+            UINT64 persistentResourceSize = m_graphInfo.compiledOp->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnknown.GetAddressOf()));
+                    m_graphInfo.persistentResource.GetAddressOf(),
+                    m_graphInfo.persistentResourceAllocatorUnknown.GetAddressOf()));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                m_graphInfo.persistentResourceBinding = DML_BUFFER_BINDING { m_graphInfo.persistentResource.Get(), 0, persistentResourceSize };
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                m_compiledExecutionPlanOperator.Get(),
-                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                m_graphInfo.compiledOp.Get(),
+                m_graphInfo.persistentResourceBinding ? &*m_graphInfo.persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnknown.Get());
+            m_winmlProvider->QueueReference(m_graphInfo.compiledOp.Get());
+            m_winmlProvider->QueueReference(m_graphInfo.persistentResourceAllocatorUnknown.Get());
 
             std::for_each(
                 initializeResourceRefs.begin(),
@@ -89,11 +100,7 @@ namespace Dml
 
             if (reuseCommandList)
             {
-                auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
-                    m_provider.Get(),
-                    m_compiledExecutionPlanOperator.Get(),
-                    m_persistentResource.Get(),
-                    m_persistentResourceBinding);
+                auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(m_provider.Get(), gsl::make_span(&m_graphInfo, 1));
 
                 m_reusedCommandLists.push_back(std::move(reusableCommandList));
             }
@@ -139,28 +146,23 @@ namespace Dml
 
                 auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
                 ExecuteOperator(
-                    m_compiledExecutionPlanOperator.Get(),
-                    m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                    m_graphInfo.compiledOp.Get(),
+                    m_graphInfo.persistentResourceBinding ? &*m_graphInfo.persistentResourceBinding : nullptr,
                     inputPtrs,
                     aux);
 
                 ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
-                m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-                m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnknown.Get());
+                m_winmlProvider->QueueReference(m_graphInfo.compiledOp.Get());
+                m_winmlProvider->QueueReference(m_graphInfo.persistentResourceAllocatorUnknown.Get());
             }
             else
             {
                 if (m_reusedCommandLists.front()->fence &&
                     m_reusedCommandLists.front()->fence->GetCompletedValue() < m_reusedCommandLists.front()->completionValue)
                 {
-                    auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
-                        m_provider.Get(),
-                        m_compiledExecutionPlanOperator.Get(),
-                        m_persistentResource.Get(),
-                        m_persistentResourceBinding);
-
+                    auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(m_provider.Get(), gsl::make_span(&m_graphInfo, 1));
                     m_reusedCommandLists.push_front(std::move(reusableCommandList));
                 }
 
@@ -171,7 +173,6 @@ namespace Dml
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *m_reusedCommandLists.front(),
-                    m_compiledExecutionPlanOperator.Get(),
                     Info(),
                     m_isInputsUploadedByDmlEP,
                     m_inputsUsed,
@@ -179,7 +180,6 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get(),
                     keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
@@ -253,18 +253,14 @@ namespace Dml
         }
 
     private:
-        ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
         Windows::AI::MachineLearning::Adapter::EdgeShapes& m_outputShapes;
+        GraphInfo m_graphInfo;
 
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;
-
-        std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
-        ComPtr<ID3D12Resource> m_persistentResource;
-        ComPtr<IUnknown> m_persistentResourceAllocatorUnknown; // Controls when the persistent resource is returned to the allocator
 
         std::vector<uint8_t> m_isInputsUploadedByDmlEP;
         std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;

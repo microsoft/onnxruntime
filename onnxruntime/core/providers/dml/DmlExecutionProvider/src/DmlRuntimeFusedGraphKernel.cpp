@@ -37,6 +37,25 @@ namespace Dml
           m_partitionNodePropsMap(std::move(partitionNodePropsMap)),
           m_ownedInitializers(std::move(ownedInitializers))
         {
+            GraphInfo graphInfo;
+
+            for (uint32_t i = 0; i < m_subgraphInputs.size(); ++i)
+            {
+                graphInfo.inputs.emplace_back(GraphInputInfo{m_subgraphInputs[i], std::optional<uint32_t>(i)});
+            }
+
+            for (uint32_t i = 0; i < m_subgraphOutputs.size(); ++i)
+            {
+                graphInfo.outputs.emplace_back(GraphOutputInfo{m_subgraphOutputs[i], std::optional<uint32_t>(i)});
+            }
+
+            for (const auto& node : m_subgraphNodes)
+            {
+                graphInfo.nodes.push_back(node.get());
+            }
+
+            m_graphsInfo.push_back(std::move(graphInfo));
+
             for (const auto& initializer : m_ownedInitializers)
             {
                 m_isInitializerTransferable[initializer.name()] = std::make_pair(&initializer, false);
@@ -64,23 +83,128 @@ namespace Dml
 
         void TranslateAndCompileGraph(const onnxruntime::OpKernelInfo& kernelInfo, std::vector<DML_BUFFER_BINDING> initInputBindings) const
         {
-            // Allocate a persistent resource and initialize the operator
-            UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
-            if (persistentResourceSize > 0)
+            for (auto& graphInfo : m_graphsInfo)
             {
-                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.ReleaseAndGetAddressOf(),
-                    m_persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
+                // Allocate a persistent resource and initialize the operator
+                UINT64 persistentResourceSize = graphInfo.compiledOp->GetBindingProperties().PersistentResourceSize;
+                if (persistentResourceSize > 0)
+                {
+                    ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                        static_cast<size_t>(persistentResourceSize),
+                        AllocatorRoundingMode::Disabled,
+                        graphInfo.persistentResource.ReleaseAndGetAddressOf(),
+                        graphInfo.persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                    graphInfo.persistentResourceBinding = DML_BUFFER_BINDING { graphInfo.persistentResource.Get(), 0, persistentResourceSize };
+                }
+
+                ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                    graphInfo.compiledOp.Get(),
+                    graphInfo.persistentResourceBinding ? &*graphInfo.persistentResourceBinding : nullptr,
+                    gsl::make_span(initInputBindings)));
+            }
+        }
+
+        std::tuple<GraphInfo, GraphInfo> SplitGraph(onnxruntime::OpKernelContext* kernelContext, const GraphInfo& parentGraph) const
+        {
+            GraphInfo firstGraph{};
+            firstGraph.nodes = std::vector<onnxruntime::Node*>(parentGraph.nodes.begin(), parentGraph.nodes.begin() + parentGraph.nodes.size() / 2);
+
+            GraphInfo secondGraph{};
+            secondGraph.nodes = std::vector<onnxruntime::Node*>(parentGraph.nodes.begin() + parentGraph.nodes.size() / 2, parentGraph.nodes.end());
+
+            std::unordered_set<const onnxruntime::NodeArg*> firstGraphInputArgs;
+            std::unordered_set<const onnxruntime::NodeArg*> firstGraphOutputArgs;
+            for (auto node : firstGraph.nodes)
+            {
+                auto inputDefs = node->InputDefs();
+                for (auto& inputDef : inputDefs)
+                {
+                    firstGraphInputArgs.insert(inputDef);
+                }
+
+                auto outputDefs = node->OutputDefs();
+                for (auto& outputDef : outputDefs)
+                {
+                    firstGraphOutputArgs.insert(outputDef);
+                }
             }
 
-            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                m_compiledExecutionPlanOperator.Get(),
-                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-                gsl::make_span(initInputBindings)));
+            std::unordered_set<const onnxruntime::NodeArg*> secondGraphInputArgs;
+            std::unordered_set<const onnxruntime::NodeArg*> secondGraphOutputArgs;
+            for (auto node : secondGraph.nodes)
+            {
+                auto inputDefs = node->InputDefs();
+                for (auto& inputDef : inputDefs)
+                {
+                    secondGraphInputArgs.insert(inputDef);
+                }
+
+                auto outputDefs = node->OutputDefs();
+                for (auto& outputDef : outputDefs)
+                {
+                    secondGraphOutputArgs.insert(outputDef);
+                }
+            }
+
+            // Set the inputs of the first and second graphs that are also inputs of the parent graph
+            for (const auto& parentGraphInput : parentGraph.inputs)
+            {
+                if (firstGraphInputArgs.find(parentGraphInput.inputArg) != firstGraphInputArgs.end())
+                {
+                    firstGraph.inputs.push_back(parentGraphInput);
+                }
+
+                if (secondGraphInputArgs.find(parentGraphInput.inputArg) != secondGraphInputArgs.end())
+                {
+                    secondGraph.inputs.push_back(parentGraphInput);
+                }
+            }
+
+            // Set the outputs of the first and second graphs that are also outputs of the parent graph
+            std::unordered_set<const onnxruntime::NodeArg*> parentGraphOutputs;
+            for (const auto& parentGraphOutput : parentGraph.outputs)
+            {
+                if (firstGraphOutputArgs.find(parentGraphOutput.outputArg) != firstGraphOutputArgs.end())
+                {
+                    firstGraph.outputs.push_back(parentGraphOutput);
+                }
+
+                if (secondGraphOutputArgs.find(parentGraphOutput.outputArg) != secondGraphOutputArgs.end())
+                {
+                    secondGraph.outputs.push_back(parentGraphOutput);
+                }
+
+                parentGraphOutputs.insert(parentGraphOutput.outputArg);
+            }
+
+            // Finally, set the outputs of the first graph that are also inputs of the second graph and NOT outputs of the
+            // parent graph. We also need to allocate tensors for these intermediate outputs since they are brand new inter-graph
+            // tensors that didn't exist before.
+            for (auto firstGraphOutputArg : firstGraphOutputArgs)
+            {
+                if (secondGraphInputArgs.count(firstGraphOutputArg) && !parentGraphOutputs.count(firstGraphOutputArg))
+                {
+                    auto dtype = onnxruntime::DataTypeImpl::TypeFromProto(*firstGraphOutputArg->TypeAsProto());
+                    auto shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*firstGraphOutputArg->Shape());
+
+                    onnxruntime::AllocatorPtr allocator;
+                    ORT_THROW_IF_ERROR(kernelContext->GetTempSpaceAllocator(&allocator));
+
+                    GraphOutputInfo newFirstGraphOutput{};
+                    newFirstGraphOutput.outputArg = firstGraphOutputArg;
+                    newFirstGraphOutput.ownedOutputTensor = std::make_shared<onnxruntime::Tensor>(dtype, shape, allocator);
+
+                    GraphInputInfo newSecondGraphInput{};
+                    newSecondGraphInput.inputArg = firstGraphOutputArg;
+                    newSecondGraphInput.ownedInputTensor = newFirstGraphOutput.ownedOutputTensor;
+
+                    firstGraph.outputs.push_back(std::move(newFirstGraphOutput));
+                    secondGraph.inputs.push_back(std::move(newSecondGraphInput));
+                }
+            }
+
+            return std::make_tuple(std::move(firstGraph), std::move(secondGraph));
         }
 
         onnxruntime::Status Compute(onnxruntime::OpKernelContext* kernelContext) const override
@@ -91,7 +215,7 @@ namespace Dml
 
             ORT_THROW_HR_IF(E_UNEXPECTED, static_cast<ptrdiff_t>(m_subgraphInputs.size()) != kernelContext->InputCount());
 
-            bool recompileNeeded = m_compiledExecutionPlanOperator == nullptr;
+            bool recompileNeeded = m_graphsInfo.front().compiledOp == nullptr;
 
             for (int inputIndex = 0; inputIndex < kernelContext->InputCount(); ++inputIndex)
             {
@@ -184,48 +308,78 @@ namespace Dml
                 //           corresponding constant tensor = initializerNameToInitializerMap[indexedSubGraph.GetMetaDef()->inputs[indexedSubGraphInputArgIdx]]
                 // We are using intermediate edge index as a key because same constant tensor can be used by
                 // multiple nodes.
-                std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
-                std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
                 std::vector<std::unique_ptr<std::byte[]>> smallConstantData;
-                GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-                    isInputsUploadedByDmlEP.data(),
-                    isInputsUploadedByDmlEP.size(),
-                    m_isInitializerTransferable,
-                    m_partitionNodePropsMap,
-                    providerImpl,
-                    m_modelPath,
-                    m_subgraphNodePointers,
-                    m_subgraphInputs,
-                    m_subgraphOutputs,
-                    serializedGraphInputIndexToSubgraphInputIndex,
-                    serializedGraphLargeConstantNameToSubgraphInputIndex,
-                    smallConstantData);
 
-                m_outputShapes = graphDesc.outputShapes;
+                uint32_t graphInfoIndex = 0;
+                while (graphInfoIndex < m_graphsInfo.size())
+                {
+                    std::vector<const onnxruntime::NodeArg*> inputArgs;
+                    inputArgs.reserve(m_graphsInfo[graphInfoIndex].inputs.size());
 
-                // Walk through each graph edge and mark used inputs
-                m_inputsUsed = std::vector<bool>(fusedNodeInputCount);
-                for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++) {
-                    m_inputsUsed[it->second] = true;
+                    std::vector<const onnxruntime::NodeArg*> outputArgs;
+                    outputArgs.reserve(m_graphsInfo[graphInfoIndex].outputs.size());
+
+                    for (auto graphInput : m_graphsInfo[graphInfoIndex].inputs)
+                    {
+                        inputArgs.push_back(graphInput.inputArg);
+                    }
+
+                    for (auto graphOutput : m_graphsInfo[graphInfoIndex].outputs)
+                    {
+                        outputArgs.push_back(graphOutput.outputArg);
+                    }
+
+                    std::unordered_map<uint32_t, uint32_t> serializedGraphInputIndexToSubgraphInputIndex;
+                    std::unordered_map<std::string_view, uint32_t> serializedGraphLargeConstantNameToSubgraphInputIndex;
+                    GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
+                        isInputsUploadedByDmlEP.data(),
+                        isInputsUploadedByDmlEP.size(),
+                        m_isInitializerTransferable,
+                        m_partitionNodePropsMap,
+                        providerImpl,
+                        m_modelPath,
+                        m_graphsInfo[graphInfoIndex].nodes,
+                        inputArgs,
+                        outputArgs,
+                        serializedGraphInputIndexToSubgraphInputIndex,
+                        serializedGraphLargeConstantNameToSubgraphInputIndex,
+                        smallConstantData);
+
+                    m_outputShapes = graphDesc.outputShapes;
+
+                    // Walk through each graph edge and mark used inputs
+                    m_inputsUsed = std::vector<bool>(fusedNodeInputCount);
+                    for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++) {
+                        m_inputsUsed[it->second] = true;
+                    }
+                    for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++) {
+                        m_inputsUsed[it->second] = true;
+                    }
+
+                    m_isInputsUploadedByDmlEP.resize(fusedNodeInputCount, 0);
+                    m_nonOwnedGraphInputsFromInitializers.resize(fusedNodeInputCount);
+                    graphDesc.reuseCommandList = true;
+
+                    // Compile the operator
+                    m_graphsInfo[graphInfoIndex].compiledOp = DmlGraphFusionHelper::TryCreateCompiledOperator(
+                        graphDesc,
+                        *m_indexedSubGraph,
+                        providerImpl,
+                        &serializedGraphInputIndexToSubgraphInputIndex,
+                        &serializedGraphLargeConstantNameToSubgraphInputIndex);
+
+                    if (!m_graphsInfo[graphInfoIndex].compiledOp)
+                    {
+                        // Split the graph in half, replace the current graph with the split graph and insert the second graph right after
+                        auto [firstGraph, secondGraph] = SplitGraph(kernelContext, m_graphsInfo[graphInfoIndex]);
+                        m_graphsInfo[graphInfoIndex] = std::move(firstGraph);
+                        m_graphsInfo.insert(m_graphsInfo.begin() + graphInfoIndex + 1, std::move(secondGraph));
+                    }
+                    else
+                    {
+                        ++graphInfoIndex;
+                    }
                 }
-                for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++) {
-                    m_inputsUsed[it->second] = true;
-                }
-
-                m_isInputsUploadedByDmlEP.resize(fusedNodeInputCount, 0);
-                m_nonOwnedGraphInputsFromInitializers.resize(fusedNodeInputCount);
-                graphDesc.reuseCommandList = true;
-
-                // Compile the operator
-                m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
-                    graphDesc,
-                    *m_indexedSubGraph,
-                    providerImpl,
-                    &serializedGraphInputIndexToSubgraphInputIndex,
-                    &serializedGraphLargeConstantNameToSubgraphInputIndex);
-
-                // Queue references to objects which must be kept alive until resulting GPU work completes
-                m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
 
                 TranslateAndCompileGraph(Info(), initInputBindings);
 
@@ -239,14 +393,7 @@ namespace Dml
             // have the same bindings for their entire lifetime.
             if (providerImpl->GraphCaptureEnabled() && providerImpl->GetCurrentGraphAnnotationId() != -1 && !providerImpl->GraphCaptured(providerImpl->GetCurrentGraphAnnotationId()))
             {
-                auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
-                    m_provider.Get(),
-                    m_compiledExecutionPlanOperator.Get(),
-                    m_persistentResource.Get(),
-                    m_persistentResourceBinding);
-
-                reusableCommandList->persistentResource = m_persistentResource;
-                reusableCommandList->persistentResourceAllocatorUnknown = m_persistentResourceAllocatorUnknown;
+                auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(m_provider.Get(), m_graphsInfo);
 
                 // Keep the temporary resource alive since we won't call ExecuteReusableCommandList again, but will merely replay
                 // the graph in the future. Therefore, all executions of the graph will use the same temporary resource that was
@@ -256,7 +403,6 @@ namespace Dml
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *reusableCommandList,
-                    m_compiledExecutionPlanOperator.Get(),
                     Info(),
                     m_isInputsUploadedByDmlEP,
                     m_inputsUsed,
@@ -264,7 +410,6 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get(),
                     keepTemporaryResourceAlive);
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
@@ -274,13 +419,7 @@ namespace Dml
                 if (m_reusedCommandLists.empty() ||
                     m_reusedCommandLists.front()->fence && m_reusedCommandLists.front()->fence->GetCompletedValue() < m_reusedCommandLists.front()->completionValue)
                 {
-                    auto reusableCommandList = DmlGraphFusionHelper::BuildReusableCommandList(
-                        m_provider.Get(),
-                        m_compiledExecutionPlanOperator.Get(),
-                        m_persistentResource.Get(),
-                        m_persistentResourceBinding);
-
-                    m_reusedCommandLists.push_front(std::move(reusableCommandList));
+                    m_reusedCommandLists.push_front(DmlGraphFusionHelper::BuildReusableCommandList(m_provider.Get(), m_graphsInfo));
                 }
 
                 // We don't need to keep a reference on the temporary resource once we have recorded into the command list, so the
@@ -290,7 +429,6 @@ namespace Dml
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *m_reusedCommandLists.front(),
-                    m_compiledExecutionPlanOperator.Get(),
                     Info(),
                     m_isInputsUploadedByDmlEP,
                     m_inputsUsed,
@@ -298,7 +436,6 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get(),
                     keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
@@ -312,13 +449,13 @@ namespace Dml
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
 
-        mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
         const onnxruntime::Path& m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
         std::vector<const onnxruntime::NodeArg*> m_subgraphOutputs;
+        mutable std::vector<GraphInfo> m_graphsInfo;
         mutable std::vector<std::shared_ptr<onnxruntime::NodeArg>> m_intermediateNodeArgs;
         std::unordered_map<std::string, GraphNodeProperties> m_partitionNodePropsMap;
         std::vector<ONNX_NAMESPACE::TensorProto> m_ownedInitializers;
@@ -327,10 +464,7 @@ namespace Dml
 
         // Bindings from previous executions of a re-used command list
         mutable std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> m_ownedCpuInputs;
-        mutable ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
         mutable std::vector<bool> m_inputsUsed;
-        mutable ComPtr<ID3D12Resource> m_persistentResource;
-        mutable ComPtr<IUnknown> m_persistentResourceAllocatorUnknown; // Controls when the persistent resource is returned to the allocator
         mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
         mutable std::unordered_map<std::string, onnxruntime::TensorShape> m_inferredInputShapes;
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;
