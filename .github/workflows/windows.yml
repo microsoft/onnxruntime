@@ -1,5 +1,6 @@
 name: Windows_CI
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
