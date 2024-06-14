@@ -463,12 +463,12 @@ std::vector<MLFloat16> QK_Transpose(MLFloat16* q_matrix, MLFloat16* k_transpose_
 
 // Softmax_QK_Transpose
 template <typename T>
-std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix,
-                                    int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size);
+std::vector<T> Softmax_QK_Transpose(T* qk_transpose_matrix, int batch_size, int num_heads,
+                                    int sequence_length, int total_sequence_length, int head_size);
 
 template <>
-std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
-                                        int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix, int batch_size, int num_heads,
+                                        int sequence_length, int total_sequence_length, int /*head_size*/) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -506,8 +506,8 @@ std::vector<float> Softmax_QK_Transpose(float* qk_transpose_matrix,
 }
 
 template <>
-std::vector<MLFloat16> Softmax_QK_Transpose(MLFloat16* qk_transpose_matrix,
-                                            int batch_size, int num_heads, int sequence_length, int total_sequence_length, int head_size) {
+std::vector<MLFloat16> Softmax_QK_Transpose(MLFloat16* qk_transpose_matrix, int batch_size, int num_heads,
+                                            int sequence_length, int total_sequence_length, int /*head_size*/) {
   if (sequence_length != 1) {
     throw std::runtime_error("Not supported");
   }
@@ -754,8 +754,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
 
     // Output(s)
     tester.AddOutput<float>("output", input_dims, output);
-
     tester.AddOutput<float>("present", past_dims, present);
+
+    tester.SetOutputTolerance(0.001f, 0.001f);
 
     // Run - Regular kernel execution path
     {
@@ -897,8 +898,9 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
 
     // Output(s)
     tester.AddOutput<MLFloat16>("output", input_dims, output);
-
     tester.AddOutput<MLFloat16>("present", past_dims, present);
+
+    tester.SetOutputTolerance(0.005f);
 
     // Run - Regular kernel execution path
     {

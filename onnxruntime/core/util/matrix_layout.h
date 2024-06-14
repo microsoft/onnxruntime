@@ -17,7 +17,6 @@
 #include <cstdint>
 #include "core/common/gsl.h"
 
-// TODO!! Already have this in cuda, what about cpu code though?
 #if defined(_MSC_VER)
 #define ORT_FORCEINLINE __forceinline
 #else
@@ -379,7 +378,7 @@ class MatrixRef {
   MatrixRef(
       NonConstMatrixRef const& ref,  ///< MatrixRef to non-const data
       /// SFINAE trick to avoid creating a copy-constructor when Element_ is already non-const
-      _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
+      [[maybe_unused]] _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
       ) : data_(ref.data()), shape_(ref.shape()), layout_(Layout::packed(ref.shape())) {}
 
   ORT_FORCEINLINE

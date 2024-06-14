@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
 public class ScoreMNIST {
 
   private static final Logger logger = Logger.getLogger(ScoreMNIST.class.getName());
+
   /** Pattern for splitting libsvm format files. */
   private static final Pattern splitPattern = Pattern.compile("\\s+");
 

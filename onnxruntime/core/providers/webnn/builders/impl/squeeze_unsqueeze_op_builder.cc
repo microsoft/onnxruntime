@@ -58,7 +58,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   std::vector<int32_t> axes_data;
   auto rank = input_rank;
 
-  if (node.SinceVersion() >= 13 && input_defs.size() > 1) {
+  if (node.SinceVersion() >= 13 && !GetTensorName(input_defs, 1).empty()) {
     // Input axes is provided, use axes initializer data.
     const auto& initializers = model_builder.GetInitializerTensors();
     const auto& axes_tensor = *initializers.at(input_defs[1]->Name());

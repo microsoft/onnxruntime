@@ -67,99 +67,25 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       AddOperationInput(*conv_op, "bias", input_defs[2]->Name());
     }
 
-    // ONNX attributes. Add as inputs if specified/required
-    auto strides = helper.GetInt64s("strides");
-    auto dilations = helper.GetInt64s("dilations");
-    auto groups = helper.GetInt64("group");
-
     // we know this input has a valid shape due to the check in IsOpSupportedImpl. ignore N and C dims.
     const auto num_spatial_dims = input_defs[1]->Shape()->dim_size() - 2;
     const auto& op_type = conv_op->type();
 
-    if (strides) {
-      AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", *strides));
-    } else {
-      // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
-      static const auto default_value = std::vector<int64_t>(num_spatial_dims, 1);
-      AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", default_value));
-    }
+    // Spec says strides and dilations are optional, but reality is they're required for at least the iOS15 target
+    // (CoreML5).
+    const auto strides = helper.Get("strides", std::vector<int64_t>(num_spatial_dims, 1));
+    auto dilations = helper.Get("dilations", std::vector<int64_t>(num_spatial_dims, 1));
+    auto groups = helper.GetInt64("group");
 
-    if (dilations) {
-      AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", *dilations));
-    } else {
-      // spec says optional. testing suggests otherwise for at least the iOS15 target (CoreML5)
-      static const auto default_value = std::vector<int64_t>(num_spatial_dims, 1);
-      AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", default_value));
-    }
+    AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", strides));
+    AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", dilations));
 
     if (groups) {
       AddOperationInput(*conv_op, "groups", model_builder.AddScalarConstant(op_type, "groups", *groups));
     }
 
-    AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+    AddPadTypeAndPads(*conv_op, model_builder, op_type, helper, num_spatial_dims);
 
-    // pad type (string)
-    //   valid - no pads  (ONNX auto_pad VALID)
-    //   custom - pads input  (ONNX NOTSET)
-    //   same - inferred to be `d_out[i] = ceil(d_in[i] / strides[i])`  (assuming == ONNX SAME_UPPER)
-    //   same_lower - as per same but any extra rows/cols are added at top/left if padding is odd (ONNX SAME_LOWER)
-    //
-    // TODO: See if we want to update HandleAutoPad to support 1D (and 3D) so we can infer if an autopad value
-    //       can be used. TBD if that provides any performance benefit with ML Program though as CoreML could
-    //       potentially do that for us.
-    switch (auto_pad_type) {
-      case AutoPadType::NOTSET: {
-        // use `pads` attribute.
-        auto onnx_pads = helper.GetInt64s("pads");  // 'pads' must be provided if auto_pad is NOTSET
-        if (onnx_pads) {
-          AddOperationInput(*conv_op, "pad_type",
-                            model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
-
-          // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
-          // x1_start, x1_end, x2_start, x2_end,...
-          size_t num_pads = onnx_pads->size();
-          size_t num_dims = num_pads / 2;
-          std::vector<int64_t> reordered_pads(num_pads, 0);
-          for (size_t i = 0; i < num_pads; ++i) {
-            auto cur_dim = i % num_dims;
-            if (i < num_dims) {  // start values
-              reordered_pads[cur_dim * 2] = (*onnx_pads)[i];
-            } else {  // end values
-              reordered_pads[cur_dim * 2 + 1] = (*onnx_pads)[i];
-            }
-          }
-
-          AddOperationInput(*conv_op, "pad", model_builder.AddConstant(op_type, "pad", reordered_pads));
-
-          break;
-        }
-
-        // in theory the pads may not be provided and in that case the default is no padding.
-        // as that is the same as 'valid', fall through
-        [[fallthrough]];
-      }
-      case AutoPadType::VALID:
-        AddOperationInput(*conv_op, "pad_type",
-                          model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
-
-        break;
-      case AutoPadType::SAME_UPPER:
-      case AutoPadType::SAME_LOWER: {
-        const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
-        AddOperationInput(*conv_op, "pad_type",
-                          model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
-
-        // despite what the spec says, a 'pad' input seems to be required.
-        // https://github.com/apple/coremltools/issues/2127
-        // provide the default value. passing in an empty vector also works. TBD what's better.
-        std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
-        AddOperationInput(*conv_op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
-
-        break;
-      }
-    }
-
-    // set output
     AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(conv_op));
@@ -297,7 +223,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   const auto& input_defs = node.InputDefs();
 
   const auto& weight_name = input_defs[1]->Name();
-  const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name, true);
+  const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name);
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
@@ -324,7 +250,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     return false;
   }
 
-  if (input_defs.size() > 2 && !input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name(), true)) {
+  if (input_defs.size() > 2 && !input_params.graph_viewer.GetConstantInitializer(input_defs[2]->Name())) {
     LOGS(logger, VERBOSE) << "The bias of Conv [" << name << "] must be a constant initializer";
     return false;
   }

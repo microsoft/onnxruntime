@@ -253,8 +253,6 @@ def fetch_onnx_inputs_outputs_name(
         for i in range(num_of_past_key):
             onnx_out_names += (f"present.{i}.key",)
             onnx_out_names += (f"present.{i}.value",)
-            onnx_dynamic_axes[onnx_out_names[-1]] = kv_cache_axis
-            onnx_dynamic_axes[onnx_out_names[-2]] = kv_cache_axis
 
     for idx, name in enumerate(torch_input_names):
         if input_with_past:

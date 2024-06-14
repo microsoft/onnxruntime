@@ -190,9 +190,11 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
 
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target))
-        if target_type is None
-        else _to_numpy(copy.deepcopy(target).type(target_type)),
+        onnx_model.graph.input[1].name: (
+            _to_numpy(copy.deepcopy(target))
+            if target_type is None
+            else _to_numpy(copy.deepcopy(target).type(target_type))
+        ),
     }
     if target_type is not None:
         ort_inputs[onnx_model.graph.input[1].name]
@@ -1070,3 +1072,30 @@ def test_save_nominal_checkpoint():
             os.stat(os.path.join(temp_dir, "checkpoint")).st_size
             > os.stat(os.path.join(temp_dir, "nominal_checkpoint")).st_size
         )
+
+
+def test_custom_optimizer_block():
+    device = "cpu"
+    batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
+    _, base_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    weight_decay = 123
+    optimizer = onnxblock.optim.AdamW(weight_decay=weight_decay)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            base_model,
+            requires_grad=["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"],
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=optimizer,
+            artifact_directory=temp_dir,
+        )
+
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
+
+        optimizer_model = onnx.load(os.path.join(temp_dir, "optimizer_model.onnx"))
+        for node in optimizer_model.graph.node:
+            if node.op_type == "AdamW":
+                for attr in node.attribute:
+                    if attr.name == "weight_decay":
+                        assert attr.f == weight_decay

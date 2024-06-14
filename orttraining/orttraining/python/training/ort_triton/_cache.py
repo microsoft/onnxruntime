@@ -9,6 +9,7 @@ import functools
 import getpass
 import hashlib
 import os
+import sys
 import tempfile
 from types import ModuleType
 from typing import Tuple
@@ -61,6 +62,7 @@ class PyCodeCache:
                 mod.__file__ = path
                 mod.key = key
                 exec(code, mod.__dict__, mod.__dict__)
+                sys.modules[mod.__name__] = mod
                 # another thread might set this first
                 cls.cache.setdefault(key, mod)
         return cls.cache[key]

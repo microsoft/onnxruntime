@@ -10,12 +10,16 @@ class Checkpoint(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsCheckpoint(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = Checkpoint()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsCheckpoint(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def CheckpointBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -78,10 +82,44 @@ class Checkpoint(object):
             return obj
         return None
 
-def CheckpointStart(builder): builder.StartObject(4)
-def CheckpointAddVersion(builder, version): builder.PrependInt32Slot(0, version, 0)
-def CheckpointAddModuleState(builder, moduleState): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(moduleState), 0)
-def CheckpointAddOptimizerGroups(builder, optimizerGroups): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerGroups), 0)
-def CheckpointStartOptimizerGroupsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def CheckpointAddPropertyBag(builder, propertyBag): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(propertyBag), 0)
-def CheckpointEnd(builder): return builder.EndObject()
+def CheckpointStart(builder):
+    builder.StartObject(4)
+
+def Start(builder):
+    CheckpointStart(builder)
+
+def CheckpointAddVersion(builder, version):
+    builder.PrependInt32Slot(0, version, 0)
+
+def AddVersion(builder, version):
+    CheckpointAddVersion(builder, version)
+
+def CheckpointAddModuleState(builder, moduleState):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(moduleState), 0)
+
+def AddModuleState(builder, moduleState):
+    CheckpointAddModuleState(builder, moduleState)
+
+def CheckpointAddOptimizerGroups(builder, optimizerGroups):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerGroups), 0)
+
+def AddOptimizerGroups(builder, optimizerGroups):
+    CheckpointAddOptimizerGroups(builder, optimizerGroups)
+
+def CheckpointStartOptimizerGroupsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartOptimizerGroupsVector(builder, numElems: int) -> int:
+    return CheckpointStartOptimizerGroupsVector(builder, numElems)
+
+def CheckpointAddPropertyBag(builder, propertyBag):
+    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(propertyBag), 0)
+
+def AddPropertyBag(builder, propertyBag):
+    CheckpointAddPropertyBag(builder, propertyBag)
+
+def CheckpointEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return CheckpointEnd(builder)

@@ -79,11 +79,7 @@ def _clean_initializers_helper(graph, model):
                 graph.input.remove(name_to_input[initializer.name])
             except StopIteration:
                 if model.ir_version < 4:
-                    print(
-                        "Warning: invalid weight name {} found in the graph (not a graph input)".format(
-                            initializer.name
-                        )
-                    )
+                    print(f"Warning: invalid weight name {initializer.name} found in the graph (not a graph input)")
 
     requesting_tensor_names.difference_update(input.name for input in graph.input)
 
@@ -283,6 +279,23 @@ class ONNXModel:
         node = find_by_name(node_name, graph_nodes_list)
         return node
 
+    def get_largest_node_name_suffix(self, node_name_prefix):
+        """
+        Gets the largest node name (int) suffix for all node names that begin with `node_name_prefix`.
+        Example: for nodes my_prefix_0 and my_prefix_3, this method returns 3.
+        """
+        suffix = -1
+
+        for node in self.model.graph.node:
+            if node.name and node.name.startswith(node_name_prefix):
+                try:
+                    index = int(node.name[len(node_name_prefix) :])
+                    suffix = max(index, suffix)
+                except ValueError:
+                    continue
+
+        return suffix
+
     def find_nodes_by_initializer(self, graph, initializer):
         """
         Find all nodes with given initializer as an input.
@@ -428,6 +441,11 @@ class ONNXModel:
         for node in self.model.graph.node:
             ONNXModel.replace_node_input(node, old_input_name, new_input_name)
 
+    def replace_input_of_nodes(self, old_input_name, new_input_name, node_names_set):
+        for node in self.model.graph.node:
+            if node.name in node_names_set:
+                ONNXModel.replace_node_input(node, old_input_name, new_input_name)
+
     @staticmethod
     def replace_node_output(node, old_output_name, new_output_name):
         assert isinstance(old_output_name, str) and isinstance(new_output_name, str)
@@ -438,6 +456,11 @@ class ONNXModel:
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
         for node in self.model.graph.node:
             ONNXModel.replace_node_output(node, old_output_name, new_output_name)
+
+    def replace_output_of_nodes(self, old_output_name, new_output_name, node_names_set):
+        for node in self.model.graph.node:
+            if node.name in node_names_set:
+                ONNXModel.replace_node_output(node, old_output_name, new_output_name)
 
     def remove_unused_constant(self):
         input_name_to_nodes = self.input_name_to_nodes()

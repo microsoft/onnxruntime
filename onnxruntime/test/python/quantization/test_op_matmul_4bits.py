@@ -125,7 +125,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
         from onnxruntime.quantization import matmul_4bits_quantizer
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
-        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric)
+        quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
+            block_size=block_size, is_symmetric=is_symmetric
+        )
+        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, algo_config=quant_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
@@ -165,6 +168,9 @@ class TestOpMatMul4Bits(unittest.TestCase):
         elif algorithm == "GPTQ":
             # test GPTQ algorithm
             algo_config = matmul_4bits_quantizer.GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
+        elif algorithm == "HQQ":
+            # test HQQ algorithm
+            algo_config = matmul_4bits_quantizer.HQQWeightOnlyQuantConfig(block_size=block_size)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
@@ -226,6 +232,17 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test_with_algo("GPTQ", model_fp32_path, data_reader, 32, False)
+
+    @unittest.skipIf(
+        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
+    )
+    def test_quantize_matmul_int4_using_hqq_algo(self):
+        if not find_spec("torch"):
+            self.skipTest("skip test_hqq_quant since torch is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": [100, 52]})
+        self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
 
 
 if __name__ == "__main__":

@@ -1956,12 +1956,9 @@ TEST_F(PlannerTest, TestCpuIf) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
-  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Load();
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(sess.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(sess.Load());
+  ASSERT_STATUS_OK(sess.Initialize());
 
   auto& sess_state = const_cast<onnxruntime::SessionState&>(sess.GetSessionState());
   const auto& exe_plan = sess_state.GetExecutionPlan()->execution_plan;
@@ -1971,7 +1968,7 @@ TEST_F(PlannerTest, TestCpuIf) {
       exe_plan[1]->steps_[7]->GetNodeIndex() == 7) {
     // there must be a wait before cpu If node
     static const std::string WaitOnEPStep = "WaitOnEPStep";
-    ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
+    ASSERT_EQ(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()), WaitOnEPStep);
   }
 }
 

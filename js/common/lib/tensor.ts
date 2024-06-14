@@ -160,7 +160,7 @@ export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<T
 /**
  * type TensorConstructor defines the constructors of 'Tensor' to create CPU tensor instances.
  */
-export interface TensorConstructor {
+export interface TensorConstructor extends TensorFactory {
   // #region CPU tensor - specify element type
   /**
    * Construct a new string tensor object from the given type, data and dims.
@@ -326,4 +326,4 @@ export interface TensorConstructor {
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export const Tensor = TensorImpl as (TensorConstructor & TensorFactory);
+export const Tensor = TensorImpl as TensorConstructor;

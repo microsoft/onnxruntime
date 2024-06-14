@@ -425,7 +425,6 @@ inline std::vector<OperatorField> GetFields(const DML_AVERAGE_POOLING_OPERATOR_D
         OperatorField(&DML_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<UINT>(desc.IncludePadding))),
     };
 }
-
 inline std::vector<OperatorField> GetFields(const DML_AVERAGE_POOLING1_OPERATOR_DESC& desc)
 {
     return {
@@ -500,24 +499,6 @@ inline std::vector<OperatorField> GetFields(const DML_ROI_POOLING_OPERATOR_DESC&
         OperatorField(&DML_ROI_POOLING_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
         OperatorField(&DML_ROI_POOLING_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<FLOAT>(desc.SpatialScale))),
         OperatorField(&DML_ROI_POOLING_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<DML_SIZE_2D>(desc.PooledSize))),
-    };
-}
-inline std::vector<OperatorField> GetFields(const DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC& desc)
-{
-    return {
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputScaleTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputZeroPointTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputScaleTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputZeroPointTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const UINT*>(desc.Strides), desc.DimensionCount)),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const UINT*>(desc.WindowSize), desc.DimensionCount)),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const UINT*>(desc.StartPadding), desc.DimensionCount)),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[10], ToOperatorFieldType(static_cast<const UINT*>(desc.EndPadding), desc.DimensionCount)),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[11], ToOperatorFieldType(static_cast<const UINT*>(desc.Dilations), desc.DimensionCount)),
-        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[12], ToOperatorFieldType(static_cast<UINT>(desc.IncludePadding))),
     };
 }
 inline std::vector<OperatorField> GetFields(const DML_SLICE_OPERATOR_DESC& desc)
@@ -1488,6 +1469,97 @@ inline std::vector<OperatorField> GetFields(const DML_MULTIHEAD_ATTENTION_OPERAT
         OperatorField(&DML_MULTIHEAD_ATTENTION_OPERATOR_SCHEMA.Fields[17], ToOperatorFieldType(static_cast<UINT>(desc.MaskType))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputScaleTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputZeroPointTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputScaleTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputZeroPointTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const UINT*>(desc.Strides), desc.DimensionCount)),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const UINT*>(desc.WindowSize), desc.DimensionCount)),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const UINT*>(desc.StartPadding), desc.DimensionCount)),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[10], ToOperatorFieldType(static_cast<const UINT*>(desc.EndPadding), desc.DimensionCount)),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[11], ToOperatorFieldType(static_cast<const UINT*>(desc.Dilations), desc.DimensionCount)),
+        OperatorField(&DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA.Fields[12], ToOperatorFieldType(static_cast<UINT>(desc.IncludePadding))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ATensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.AScaleTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.AZeroPointTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BScaleTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BZeroPointTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
+        OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ScaleTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<UINT>(desc.UseMean))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<UINT>(desc.UseVariance))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<FLOAT>(desc.Epsilon))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const DML_OPERATOR_DESC*>(desc.FusedActivation))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QueryTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.KeyTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ValueTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.StackedQueryKeyTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.StackedKeyValueTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.StackedQueryKeyValueTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.MaskTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.RelativePositionBiasTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.PastKeyTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[10], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.PastValueTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[11], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.PastSequenceLengthsTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[12], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[13], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputPresentKeyTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[14], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputPresentValueTensor))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[15], ToOperatorFieldType(static_cast<FLOAT>(desc.Scale))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[16], ToOperatorFieldType(static_cast<FLOAT>(desc.MaskFilterValue))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[17], ToOperatorFieldType(static_cast<UINT>(desc.QueryHeadCount))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[18], ToOperatorFieldType(static_cast<UINT>(desc.KeyValueHeadCount))),
+        OperatorField(&DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA.Fields[19], ToOperatorFieldType(static_cast<UINT>(desc.MaskType))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_QUANTIZE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationType))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationTensorCount))),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationTensors), desc.QuantizationTensorCount)),
+        OperatorField(&DML_QUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_DEQUANTIZE_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationType))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.QuantizationTensorCount))),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QuantizationTensors), desc.QuantizationTensorCount)),
+        OperatorField(&DML_DEQUANTIZE_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_ELU_OPERATOR_DESC& desc)
 {
     return {
@@ -1680,6 +1752,23 @@ inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_GELU_OPERATOR_D
         OperatorField(&DML_ACTIVATION_GELU_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_SWISH_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ACTIVATION_SWISH_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ACTIVATION_SWISH_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ACTIVATION_SWISH_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<FLOAT>(desc.SigmoidInputScale))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<FLOAT>(desc.Alpha))),
+        OperatorField(&DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<FLOAT>(desc.Beta))),
+    };
+}
 inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
 {
     switch (operatorType)
@@ -1826,6 +1915,12 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_RESAMPLE_GRAD1: return DML_RESAMPLE_GRAD1_OPERATOR_SCHEMA;
     case DML_OPERATOR_DIAGONAL_MATRIX1: return DML_DIAGONAL_MATRIX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return DML_MULTIHEAD_ATTENTION_OPERATOR_SCHEMA;
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING: return DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA;
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA;
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA;
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1: return DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA;
+    case DML_OPERATOR_QUANTIZE: return DML_QUANTIZE_OPERATOR_SCHEMA;
+    case DML_OPERATOR_DEQUANTIZE: return DML_DEQUANTIZE_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_ELU: return DML_ACTIVATION_ELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_CELU: return DML_ACTIVATION_CELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARDMAX: return DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA;
@@ -1850,15 +1945,196 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SHRINK: return DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_GELU: return DML_ACTIVATION_GELU_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ACTIVATION_SWISH: return DML_ACTIVATION_SWISH_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ACTIVATION_HARD_SWISH: return DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA;
 
-    default:
-        ORT_THROW_HR(E_INVALIDARG);
-        return DML_ACTIVATION_RELU_OPERATOR_SCHEMA;
+    default: THROW_HR(E_INVALIDARG);
     }
 }
 
-#pragma warning(push)
-#pragma warning(disable:4702)
+inline const bool IsValidOperator(DML_OPERATOR_TYPE operatorType)
+{
+    switch (operatorType)
+    {
+    case DML_OPERATOR_ELEMENT_WISE_IDENTITY:
+    case DML_OPERATOR_ELEMENT_WISE_ABS:
+    case DML_OPERATOR_ELEMENT_WISE_ACOS:
+    case DML_OPERATOR_ELEMENT_WISE_ADD:
+    case DML_OPERATOR_ELEMENT_WISE_ASIN:
+    case DML_OPERATOR_ELEMENT_WISE_ATAN:
+    case DML_OPERATOR_ELEMENT_WISE_CEIL:
+    case DML_OPERATOR_ELEMENT_WISE_CLIP:
+    case DML_OPERATOR_ELEMENT_WISE_CLIP1:
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD:
+    case DML_OPERATOR_ELEMENT_WISE_CLIP_GRAD1:
+    case DML_OPERATOR_ELEMENT_WISE_COS:
+    case DML_OPERATOR_ELEMENT_WISE_DIVIDE:
+    case DML_OPERATOR_ELEMENT_WISE_EXP:
+    case DML_OPERATOR_ELEMENT_WISE_FLOOR:
+    case DML_OPERATOR_ELEMENT_WISE_LOG:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_AND:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_EQUALS:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_NOT:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_OR:
+    case DML_OPERATOR_ELEMENT_WISE_LOGICAL_XOR:
+    case DML_OPERATOR_ELEMENT_WISE_MAX:
+    case DML_OPERATOR_ELEMENT_WISE_MEAN:
+    case DML_OPERATOR_ELEMENT_WISE_MIN:
+    case DML_OPERATOR_ELEMENT_WISE_MULTIPLY:
+    case DML_OPERATOR_ELEMENT_WISE_POW:
+    case DML_OPERATOR_ELEMENT_WISE_CONSTANT_POW:
+    case DML_OPERATOR_ELEMENT_WISE_RECIP:
+    case DML_OPERATOR_ELEMENT_WISE_SIN:
+    case DML_OPERATOR_ELEMENT_WISE_SQRT:
+    case DML_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE:
+    case DML_OPERATOR_ELEMENT_WISE_ATAN_YX:
+    case DML_OPERATOR_ELEMENT_WISE_SUBTRACT:
+    case DML_OPERATOR_ELEMENT_WISE_TAN:
+    case DML_OPERATOR_ELEMENT_WISE_THRESHOLD:
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR:
+    case DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR:
+    case DML_OPERATOR_CONVOLUTION:
+    case DML_OPERATOR_GEMM:
+    case DML_OPERATOR_REDUCE:
+    case DML_OPERATOR_ARGMIN:
+    case DML_OPERATOR_ARGMAX:
+    case DML_OPERATOR_AVERAGE_POOLING:
+    case DML_OPERATOR_AVERAGE_POOLING1:
+    case DML_OPERATOR_LP_POOLING:
+    case DML_OPERATOR_LP_POOLING1:
+    case DML_OPERATOR_MAX_POOLING:
+    case DML_OPERATOR_MAX_POOLING1:
+    case DML_OPERATOR_ROI_POOLING:
+    case DML_OPERATOR_SLICE:
+    case DML_OPERATOR_CAST:
+    case DML_OPERATOR_SPLIT:
+    case DML_OPERATOR_JOIN:
+    case DML_OPERATOR_PADDING:
+    case DML_OPERATOR_PADDING1:
+    case DML_OPERATOR_VALUE_SCALE_2D:
+    case DML_OPERATOR_UPSAMPLE_2D:
+    case DML_OPERATOR_GATHER:
+    case DML_OPERATOR_SPACE_TO_DEPTH:
+    case DML_OPERATOR_DEPTH_TO_SPACE:
+    case DML_OPERATOR_TILE:
+    case DML_OPERATOR_TOP_K:
+    case DML_OPERATOR_BATCH_NORMALIZATION:
+    case DML_OPERATOR_BATCH_NORMALIZATION_GRAD:
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD:
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION:
+    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION:
+    case DML_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD:
+    case DML_OPERATOR_LP_NORMALIZATION:
+    case DML_OPERATOR_RNN:
+    case DML_OPERATOR_LSTM:
+    case DML_OPERATOR_GRU:
+    case DML_OPERATOR_ELEMENT_WISE_SIGN:
+    case DML_OPERATOR_ELEMENT_WISE_IS_NAN:
+    case DML_OPERATOR_ELEMENT_WISE_NEGATE:
+    case DML_OPERATOR_ELEMENT_WISE_ERF:
+    case DML_OPERATOR_ELEMENT_WISE_SINH:
+    case DML_OPERATOR_ELEMENT_WISE_COSH:
+    case DML_OPERATOR_ELEMENT_WISE_TANH:
+    case DML_OPERATOR_ELEMENT_WISE_ASINH:
+    case DML_OPERATOR_ELEMENT_WISE_ACOSH:
+    case DML_OPERATOR_ELEMENT_WISE_ATANH:
+    case DML_OPERATOR_ELEMENT_WISE_IF:
+    case DML_OPERATOR_ELEMENT_WISE_ADD1:
+    case DML_OPERATOR_MAX_UNPOOLING:
+    case DML_OPERATOR_DIAGONAL_MATRIX:
+    case DML_OPERATOR_SCATTER:
+    case DML_OPERATOR_ONE_HOT:
+    case DML_OPERATOR_RESAMPLE:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT:
+    case DML_OPERATOR_ELEMENT_WISE_ROUND:
+    case DML_OPERATOR_ELEMENT_WISE_IS_INFINITY:
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE:
+    case DML_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR:
+    case DML_OPERATOR_FILL_VALUE_CONSTANT:
+    case DML_OPERATOR_FILL_VALUE_SEQUENCE:
+    case DML_OPERATOR_CUMULATIVE_SUMMATION:
+    case DML_OPERATOR_CUMULATIVE_PRODUCT:
+    case DML_OPERATOR_REVERSE_SUBSEQUENCES:
+    case DML_OPERATOR_GATHER_ELEMENTS:
+    case DML_OPERATOR_GATHER_ND:
+    case DML_OPERATOR_SCATTER_ND:
+    case DML_OPERATOR_MAX_POOLING2:
+    case DML_OPERATOR_SLICE1:
+    case DML_OPERATOR_TOP_K1:
+    case DML_OPERATOR_DEPTH_TO_SPACE1:
+    case DML_OPERATOR_SPACE_TO_DEPTH1:
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1:
+    case DML_OPERATOR_RESAMPLE1:
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER:
+    case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY:
+    case DML_OPERATOR_CONVOLUTION_INTEGER:
+    case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_AND:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_OR:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_XOR:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_NOT:
+    case DML_OPERATOR_ELEMENT_WISE_BIT_COUNT:
+    case DML_OPERATOR_ACTIVATION_RELU_GRAD:
+    case DML_OPERATOR_AVERAGE_POOLING_GRAD:
+    case DML_OPERATOR_MAX_POOLING_GRAD:
+    case DML_OPERATOR_RANDOM_GENERATOR:
+    case DML_OPERATOR_NONZERO_COORDINATES:
+    case DML_OPERATOR_RESAMPLE_GRAD:
+    case DML_OPERATOR_SLICE_GRAD:
+    case DML_OPERATOR_ADAM_OPTIMIZER:
+    case DML_OPERATOR_ROI_ALIGN:
+    case DML_OPERATOR_ROI_ALIGN1:
+    case DML_OPERATOR_GATHER_ND1:
+    case DML_OPERATOR_DYNAMIC_QUANTIZE_LINEAR:
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD:
+    case DML_OPERATOR_ROI_ALIGN_GRAD:
+    case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING:
+    case DML_OPERATOR_RESAMPLE2:
+    case DML_OPERATOR_RESAMPLE_GRAD1:
+    case DML_OPERATOR_DIAGONAL_MATRIX1:
+    case DML_OPERATOR_MULTIHEAD_ATTENTION:
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1:
+    case DML_OPERATOR_QUANTIZE:
+    case DML_OPERATOR_DEQUANTIZE:
+    case DML_OPERATOR_ACTIVATION_ELU:
+    case DML_OPERATOR_ACTIVATION_CELU:
+    case DML_OPERATOR_ACTIVATION_HARDMAX:
+    case DML_OPERATOR_ACTIVATION_HARDMAX1:
+    case DML_OPERATOR_ACTIVATION_HARD_SIGMOID:
+    case DML_OPERATOR_ACTIVATION_IDENTITY:
+    case DML_OPERATOR_ACTIVATION_LEAKY_RELU:
+    case DML_OPERATOR_ACTIVATION_LINEAR:
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1:
+    case DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU:
+    case DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS:
+    case DML_OPERATOR_ACTIVATION_RELU:
+    case DML_OPERATOR_ACTIVATION_SCALED_ELU:
+    case DML_OPERATOR_ACTIVATION_SCALED_TANH:
+    case DML_OPERATOR_ACTIVATION_SIGMOID:
+    case DML_OPERATOR_ACTIVATION_SOFTMAX:
+    case DML_OPERATOR_ACTIVATION_SOFTMAX1:
+    case DML_OPERATOR_ACTIVATION_SOFTPLUS:
+    case DML_OPERATOR_ACTIVATION_SOFTSIGN:
+    case DML_OPERATOR_ACTIVATION_TANH:
+    case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU:
+    case DML_OPERATOR_ACTIVATION_SHRINK:
+    case DML_OPERATOR_ACTIVATION_GELU:
+    case DML_OPERATOR_ACTIVATION_SWISH:
+    case DML_OPERATOR_ACTIVATION_HARD_SWISH:
+        return true;
+    default: return false;
+    }
+}
+
 inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
 {
     switch (static_cast<uint32_t>(opDesc.Type))
@@ -2431,6 +2707,30 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MULTIHEAD_ATTENTION_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MULTIHEAD_ATTENTION_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
+        return AbstractOperatorDesc(
+            &DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+        return AbstractOperatorDesc(
+            &DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
+        return AbstractOperatorDesc(
+            &DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_MULTIHEAD_ATTENTION1:
+        return AbstractOperatorDesc(
+            &DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_QUANTIZE:
+        return AbstractOperatorDesc(
+            &DML_QUANTIZE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_QUANTIZE_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_DEQUANTIZE:
+        return AbstractOperatorDesc(
+            &DML_DEQUANTIZE_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_DEQUANTIZE_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_ELU:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_ELU_OPERATOR_SCHEMA,
@@ -2527,21 +2827,23 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_GELU_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_GELU_OPERATOR_DESC*>(opDesc.Desc)));
-#pragma warning(push)
-#pragma warning(disable: 4063)
-    case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
+    case DML_OPERATOR_ACTIVATION_SWISH:
         return AbstractOperatorDesc(
-            &DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA,
-            GetFields(*static_cast<const DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC*>(opDesc.Desc)));
-#pragma warning(pop)
-
-    default:
-        ORT_THROW_HR(E_INVALIDARG);
+            &DML_ACTIVATION_SWISH_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ACTIVATION_SWISH_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ACTIVATION_HARD_SWISH:
         return AbstractOperatorDesc(
-            &DML_ACTIVATION_RELU_OPERATOR_SCHEMA,
-            GetFields(*static_cast<const DML_ACTIVATION_RELU_OPERATOR_DESC*>(opDesc.Desc)));
+            &DML_ACTIVATION_HARD_SWISH_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC*>(opDesc.Desc)));
+    default: THROW_HR(E_INVALIDARG);
     }
 
-#pragma warning(pop)
+}
+
+template<typename T>
+inline AbstractOperatorDesc ConvertTypedOperatorDesc(const T& opDesc)
+{
+    DML_OPERATOR_DESC desc = { (DML_OPERATOR_TYPE) ApiTraits::OperatorDescTraits<T>::Type, (void*) &opDesc };
+    return ConvertOperatorDesc(desc);
 }
 }

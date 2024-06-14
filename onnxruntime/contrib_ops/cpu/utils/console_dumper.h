@@ -5,29 +5,11 @@
 #include <string>
 #include "core/framework/ort_value.h"
 
+// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
-
-// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
-#ifdef DEBUG_GENERATION
-#define DUMP_TENSOR_LEVEL 2
-#else
-#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
-#endif
-
-#if DUMP_TENSOR_LEVEL > 0
-#define DUMP_TENSOR_INIT() transformers::CudaTensorConsoleDumper dumper
-#define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
-#else
-#define DUMP_TENSOR_INIT()
-#define DUMP_TENSOR(...)
-#endif
-#if DUMP_TENSOR_LEVEL > 1
-#define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
-#else
-#define DUMP_TENSOR_D(...)
-#endif
 
 class IConsoleDumper {
  public:

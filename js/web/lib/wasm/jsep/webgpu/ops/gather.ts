@@ -55,7 +55,7 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
           if (idx${x} < 0) {
             idx${x} = idx${x} + uniforms.axisDimLimit;
           }
-          var dataIndices${x} = ${data.type.indices}(0);
+          var dataIndices${x} : ${data.type.indices};
         `;
       for (let i = 0, j = 0; i < inputRank; i++) {
         if (i === axis) {

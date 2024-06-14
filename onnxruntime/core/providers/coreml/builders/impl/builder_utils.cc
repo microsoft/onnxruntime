@@ -7,6 +7,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
 
@@ -132,6 +133,7 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   CreateCoreMLWeightConvertingDataToFloats(weight, data);
 }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // ML Program Utils
 //
@@ -309,5 +311,71 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
                     output.Shape());
 }
 
+void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
+                       const NodeAttrHelper& helper, int num_spatial_dims) {
+  AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+
+  // pad type (string)
+  //   valid - no pads  (ONNX auto_pad VALID)
+  //   custom - pads input  (ONNX NOTSET)
+  //   same - inferred to be `d_out[i] = ceil(d_in[i] / strides[i])`  (assuming == ONNX SAME_UPPER)
+  //   same_lower - as per same but any extra rows/cols are added at top/left if padding is odd (ONNX SAME_LOWER)
+  //
+  // TODO: See if we want to update HandleAutoPad to support 1D (and 3D) so we can infer if an autopad value
+  //       can be used. TBD if that provides any performance benefit with ML Program though as CoreML could
+  //       potentially do that same optimization internally.
+  switch (auto_pad_type) {
+    case AutoPadType::NOTSET: {
+      // use `pads` attribute.
+      auto onnx_pads = helper.GetInt64s("pads");  // 'pads' are used if auto_pad is NOTSET
+      if (onnx_pads) {
+        AddOperationInput(op, "pad_type",
+                          model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
+
+        // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
+        // x1_start, x1_end, x2_start, x2_end,...
+        size_t num_pads = onnx_pads->size();
+        size_t num_dims = num_pads / 2;
+        std::vector<int64_t> reordered_pads(num_pads, 0);
+        for (size_t i = 0; i < num_pads; ++i) {
+          auto cur_dim = i % num_dims;
+          if (i < num_dims) {  // start values
+            reordered_pads[cur_dim * 2] = (*onnx_pads)[i];
+          } else {  // end values
+            reordered_pads[cur_dim * 2 + 1] = (*onnx_pads)[i];
+          }
+        }
+
+        AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", reordered_pads));
+
+        break;
+      }
+
+      // fall through if explicit pads were not provided as the default value for `pads` is all zeros,
+      // which is the same as 'valid' padding.
+      [[fallthrough]];
+    }
+    case AutoPadType::VALID:
+      AddOperationInput(op, "pad_type",
+                        model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
+
+      break;
+    case AutoPadType::SAME_UPPER:
+    case AutoPadType::SAME_LOWER: {
+      const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
+      AddOperationInput(op, "pad_type",
+                        model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
+
+      // despite what the spec says, a 'pad' input seems to be required.
+      // https://github.com/apple/coremltools/issues/2127
+      // Provide the default value as that's what coremltools does for conv/avg_pool/max_pool.
+      std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
+      AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
+
+      break;
+    }
+  }
+}
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

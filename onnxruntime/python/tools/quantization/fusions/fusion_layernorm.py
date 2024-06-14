@@ -127,6 +127,7 @@ class FusionLayerNormalization(Fusion):
 
         normalize_node = onnx.helper.make_node(
             "LayerNormalization",
+            name=self.create_unique_node_name(),
             inputs=[reduce_mean_node.input[0], weight_input, bias_input],
             outputs=[last_add_node.output[0]],
         )

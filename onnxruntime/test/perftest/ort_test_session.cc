@@ -18,6 +18,7 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
 
 #ifdef _WIN32
@@ -244,10 +245,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
-                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16"};
+        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                           "GPU.0", "GPU.1", "NPU"};
+        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
+                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                         "GPU.0_FP16", "GPU.1_FP16"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          ov_options[key] = value;
+        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
           ov_options[key] = value;
@@ -257,13 +262,45 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
-              "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16' or from"
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
-        ov_options[key] = value;
+        if (value == "CPU" || value == "GPU" || value == "NPU") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+        }
+      } else if (key == "precision") {
+        auto device_type = ov_options["device_type"];
+        if (device_type.find("GPU") != std::string::npos) {
+          if (value == "") {
+            ov_options[key] = "FP16";
+            continue;
+          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
+            ov_options[key] = value;
+            continue;
+          } else {
+            ORT_THROW(
+                "[ERROR] [OpenVINO] Unsupported inference precision is selected. "
+                "GPU only supported FP32 / FP16. \n");
+          }
+        } else if (device_type.find("NPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP16") {
+            ov_options[key] = "FP16";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+          }
+        } else if (device_type.find("CPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP32") {
+            ov_options[key] = "FP32";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+          }
+        }
       } else if (key == "enable_npu_fast_compile") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -277,6 +314,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "enable_qdq_optimizer") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
@@ -293,6 +337,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ov_options[key] = value;
         }
+      } else if (key == "model_priority") {
+        ov_options[key] = value;
       } else if (key == "cache_dir") {
         ov_options[key] = value;
       } else if (key == "context") {
@@ -302,6 +348,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
         } else {
           ov_options[key] = value;
+        }
+      } else if (key == "export_ep_ctx_blob") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
+              "should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else {
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
@@ -334,9 +389,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       std::string key(token.substr(0, pos));
       std::string value(token.substr(pos + 1));
 
-      if (key == "backend_path") {
+      if (key == "backend_path" || key == "profiling_file_path") {
         if (value.empty()) {
-          ORT_THROW("Please provide the QNN backend path.");
+          ORT_THROW("Please provide the valid file path.");
         }
       } else if (key == "profiling_level") {
         std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
@@ -381,11 +436,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
+      } else if (key == "enable_htp_fp16_precision") {
+        std::unordered_set<std::string> supported_options = {"0", "1"};
+        if (supported_options.find(value) == supported_options.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_options.begin(), supported_options.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for enable_htp_fp16_precision. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
-'htp_arch', 'device_id'])");
+'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
 
       qnn_options[key] = value;
@@ -467,7 +531,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
       } else if (key.empty()) {
       } else {
-        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+        ORT_THROW(
+            "[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options "
+            "that are available for NNAPI. "
+            "['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
@@ -475,10 +542,31 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
+#ifdef __APPLE__
 #ifdef USE_COREML
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
+    uint32_t coreml_flags = 0;
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::istringstream ss(ov_string);
+
+    std::string key;
+    while (ss >> key) {
+      if (key == "COREML_FLAG_CREATE_MLPROGRAM") {
+        coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+        std::cout << "Enabling ML Program.\n";
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW(
+            "[ERROR] [CoreML] wrong key type entered. Choose from the following runtime key options "
+            "that are available for CoreML. ['COREML_FLAG_CREATE_MLPROGRAM'] \n");
+      }
+    }
+    // COREML_FLAG_CREATE_MLPROGRAM
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, coreml_flags));
 #else
-    ORT_THROW("COREML is not supported in this build\n");
+    ORT_THROW("CoreML is not supported in this build\n");
+#endif
+#else
+    ORT_THROW("COREML is not supported on this platform.\n");
 #endif
   } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -486,7 +574,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
     dml_options["disable_metacommands"] = "false";
-    dml_options["enable_dynamic_graph_fusion"] = "false";
+    dml_options["enable_graph_capture"] = "false";
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -530,16 +618,25 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'disable_metacommands'. "
               "Select from 'true' or 'false' \n");
         }
-      } else if (key == "enable_dynamic_graph_fusion") {
+      } else if (key == "enable_graph_capture") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_capture'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_graph_serialization") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          session_options.AddConfigEntry(kOrtSessionOptionsConfigEnableGraphSerialization, value.data());
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selected a wrong value for the key 'enable_graph_serialization'. "
               "Select from 'true' or 'false' \n");
         }
       }
@@ -615,7 +712,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       std::string value(token.substr(pos + 1));
       vitisai_session_options[key] = value;
     }
-    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
+    session_options.AppendExecutionProvider_VitisAI(vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif

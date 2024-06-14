@@ -1,6 +1,7 @@
 /.vscode/
 /build/
 /script/
+!/script/install.js
 /src/
 /test/
 

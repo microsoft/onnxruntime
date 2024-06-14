@@ -21,14 +21,15 @@ parameters:
     values:
       - 11.8
       - 12.2
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact
+    type: boolean
+    default: false
 
-resources:
-  repositories:
-    - repository: manylinux
-      type: Github
-      endpoint: Microsoft
-      name: pypa/manylinux
-      ref: 5eda9aded5462201e6310105728d33016e637ea7
+  - name: BuildId
+    displayName: Specific Artifact's BuildId
+    type: string
+    default: '0'
 
 stages:
   - template: stages/py-cuda-packaging-stage.yml
@@ -37,3 +38,5 @@ stages:
       enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
       cmake_build_type: ${{ parameters.cmake_build_type }}
       cuda_version: ${{ parameters.cuda_version }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}

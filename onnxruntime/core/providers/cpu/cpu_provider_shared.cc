@@ -25,6 +25,7 @@
 #include "core/providers/cpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -62,6 +63,7 @@
 #endif
 
 #include "cpu_provider_shared.h"
+#include <limits>
 
 namespace onnxruntime {
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
@@ -291,6 +293,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void Sampling__Init(contrib::transformers::Sampling* p, const OpKernelInfo& info) override { p->contrib::transformers::Sampling::Init(info); }
   Status Sampling__Compute(const contrib::transformers::Sampling* p, OpKernelContext* ctx) override { return p->contrib::transformers::Sampling::Compute(ctx); }
   Status Sampling__SetupSubgraphExecutionInfo(contrib::transformers::Sampling* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::Sampling::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
+  void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                              gsl::span<const int64_t> input_dims,
+                                              InlinedVector<float>& scales) const override {
+    p->AdjustOutputSizeAsPolicy(output_dims, input_dims, scales);
+  }
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

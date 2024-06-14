@@ -53,7 +53,7 @@ stages:
     displayName: "Set common variables"
 
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-latest"
 
     timeoutInMinutes: 5
 
@@ -88,10 +88,6 @@ stages:
         set_var "ORT_POD_VERSION" "${VERSION}"
       displayName: "Set common variables"
       name: SetCommonVariables
-
-- template: templates/stages/mac-ios-packaging-build-stage.yml
-  parameters:
-    packageVariant: Mobile
 
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:

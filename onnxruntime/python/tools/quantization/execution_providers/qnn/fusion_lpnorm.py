@@ -122,6 +122,11 @@ class FusionLpNormalization(Fusion):
 
         self.nodes_to_remove.extend(subgraph_nodes)
         fused_node = onnx.helper.make_node(
-            self.fused_op_type, inputs=[subgraph_input], outputs=[subgraph_output], p=2, axis=-1
+            self.fused_op_type,
+            name=self.create_unique_node_name(),
+            inputs=[subgraph_input],
+            outputs=[subgraph_output],
+            p=2,
+            axis=-1,
         )
         self.nodes_to_add.append(fused_node)

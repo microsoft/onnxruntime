@@ -4,6 +4,7 @@
 #include "common_subexpression_elimination.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 
 #include <memory>
 #include <type_traits>
@@ -170,6 +171,32 @@ bool AreRangesEqual(const Range& lhs, const Range& rhs) {
          std::equal(lhs.begin(), lhs.end(), rhs.begin());
 }
 
+// Check if two tensor attributes are equal scalar tensors, mainly to support ConstantOfShape Op.
+// Currently support float, float16 and int64 data types, and requires the data are raw data in TensorProto.
+bool AreScalarTensorAttributeEqual(const ONNX_NAMESPACE::TensorProto& lhs_t, const ONNX_NAMESPACE::TensorProto& rhs_t) {
+  if (!(utils::HasDataType(lhs_t) && utils::HasDataType(rhs_t) && lhs_t.data_type() == rhs_t.data_type() &&
+        (lhs_t.data_type() == onnx::TensorProto_DataType_FLOAT ||
+         lhs_t.data_type() == onnx::TensorProto_DataType_FLOAT16 ||
+         lhs_t.data_type() == onnx::TensorProto_DataType_INT64) &&
+        lhs_t.dims_size() == 1 && rhs_t.dims_size() == 1 && lhs_t.dims()[0] == 1 && rhs_t.dims()[0] == 1 &&
+        utils::HasRawData(lhs_t) && utils::HasRawData(rhs_t))) {
+    return false;
+  }
+  const void* lhs_value = lhs_t.raw_data().data();
+  const void* rhs_value = rhs_t.raw_data().data();
+  switch (lhs_t.data_type()) {
+    case onnx::TensorProto_DataType_FLOAT:
+      return *reinterpret_cast<const float*>(lhs_value) == *reinterpret_cast<const float*>(rhs_value);
+    case onnx::TensorProto_DataType_FLOAT16:
+      return *reinterpret_cast<const MLFloat16*>(lhs_value) == *reinterpret_cast<const MLFloat16*>(rhs_value);
+    case onnx::TensorProto_DataType_INT64:
+      return *reinterpret_cast<const int64_t*>(lhs_value) == *reinterpret_cast<const int64_t*>(rhs_value);
+    default:
+      break;
+  }
+  return false;
+}
+
 bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::AttributeProto& rhs) {
   if (&lhs == &rhs) {
     return true;
@@ -193,6 +220,7 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
     case onnx::AttributeProto_AttributeType_STRINGS:
       return AreRangesEqual(lhs.strings(), rhs.strings());
     case onnx::AttributeProto_AttributeType_TENSOR:
+      return AreScalarTensorAttributeEqual(lhs.t(), rhs.t());
     case onnx::AttributeProto_AttributeType_GRAPH:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
     case onnx::AttributeProto_AttributeType_TYPE_PROTO:
@@ -205,6 +233,31 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
   }
 
   return false;
+}
+
+// Support scalar float/int64/fp16 tensor attribute only for now, and requires data is raw data in TensorProto.
+std::size_t GetTensorAttributeHash(const ONNX_NAMESPACE::TensorProto& attr_t) {
+  std::size_t hash = 0;
+  if (utils::HasDataType(attr_t) && attr_t.dims_size() == 1 && attr_t.dims()[0] == 1 && utils::HasRawData(attr_t)) {
+    int data_type = attr_t.data_type();
+    switch (data_type) {
+      case onnx::TensorProto_DataType_FLOAT:
+        UpdateHash(data_type, hash);
+        UpdateHash(*reinterpret_cast<const float*>(attr_t.raw_data().data()), hash);
+        break;
+      case onnx::TensorProto_DataType_FLOAT16:
+        UpdateHash(data_type, hash);
+        UpdateHash(static_cast<float>(*reinterpret_cast<const MLFloat16*>(attr_t.raw_data().data())), hash);
+        break;
+      case onnx::TensorProto_DataType_INT64:
+        UpdateHash(data_type, hash);
+        UpdateHash(*reinterpret_cast<const int64_t*>(attr_t.raw_data().data()), hash);
+        break;
+      default:
+        break;
+    }
+  }
+  return hash;
 }
 
 std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
@@ -233,6 +286,8 @@ std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
       UpdateHashWithContainer(attr.strings(), hash);
       break;
     case onnx::AttributeProto_AttributeType_TENSOR:
+      UpdateHash(attr.t(), &GetTensorAttributeHash, hash);
+      break;
     case onnx::AttributeProto_AttributeType_GRAPH:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
     case onnx::AttributeProto_AttributeType_TYPE_PROTO:

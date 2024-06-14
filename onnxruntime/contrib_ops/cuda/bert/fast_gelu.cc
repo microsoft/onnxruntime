@@ -8,8 +8,7 @@
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
 #ifdef USE_ROCM
 #include "contrib_ops/rocm/bert/elementwise.h"
-#endif
-#ifdef USE_CUDA
+#else
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #endif
 
@@ -36,7 +35,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-#ifdef USE_CUDA
+#ifndef USE_ROCM
   const TransformerOptions* options = TransformerOptions::GetInstance();
   use_half2_ = !options->DisableHalf2();
 #endif
@@ -63,8 +62,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->Data<T>()), static_cast<int>(input_length),
       (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr, static_cast<int>(bias_length),
       reinterpret_cast<CudaT*>(output->MutableData<T>()));
-#endif
-#ifdef USE_CUDA
+#else
   return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                      Stream(context),
                                      static_cast<int>(input_length),

@@ -81,6 +81,13 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
     } else if (name == "coreml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
 #endif
+#ifdef USE_QNN
+    } else if (name == "qnn") {
+      std::unordered_map<std::string, std::string> qnn_options;
+      qnn_options["backend_path"] = "QnnHtp.dll";
+      qnn_options["enable_htp_fp16_precision"] = "1";
+      sessionOptions.AppendExecutionProvider("QNN", qnn_options);
+#endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
                            "] is unsupported: '", name, "'.");

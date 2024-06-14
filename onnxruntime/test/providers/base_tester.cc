@@ -120,6 +120,20 @@ void BaseTester::SetOutputRelErr(const char* name, float v) {
   it->validation_params.relative_error = optional<float>(v);
 }
 
+void BaseTester::SetOutputTolerance(float abs_error, float rel_error) {
+  for (auto& output : output_data_) {
+    if (output.def.Exists()) {
+      if (abs_error >= 0.0f) {
+        output.validation_params.absolute_error = optional<float>(abs_error);
+      }
+
+      if (rel_error >= 0.0f) {
+        output.validation_params.relative_error = optional<float>(rel_error);
+      }
+    }
+  }
+}
+
 std::vector<int64_t> BaseTester::GetDimsForProto(gsl::span<const int64_t> dims) {
   std::vector<int64_t> dims_for_proto{dims.begin(), dims.end()};
   if (add_symbolic_dim_to_tensor_data_ >= 0 &&
@@ -613,6 +627,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                          number_of_pre_packed_weights_counter,
                          number_of_shared_pre_packed_weights_counter);
     } else {
+      // synthetic EP name for testing CoreML EP with ML Program
+      constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
+
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
       static const std::string all_provider_types[] = {
@@ -622,6 +639,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       static const std::string all_provider_types[] = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
+#ifdef ENABLE_CUDA_NHWC_OPS
+          kCudaNHWCExecutionProvider,
+#endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
           kOpenVINOExecutionProvider,
@@ -631,10 +651,16 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kNnapiExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
+          kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
       };
+
+      // need to special case any synthetic EP names in the exclude list
+      if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
+        ctx_.excluded_provider_types.insert(kCoreMLExecutionProviderMLProgram);
+      }
 #endif
 
       bool has_run = false;
@@ -650,6 +676,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
+#ifdef ENABLE_CUDA_NHWC_OPS
+        else if (provider_type == onnxruntime::kCudaNHWCExecutionProvider)
+          execution_provider = DefaultCudaNHWCExecutionProvider();
+#endif
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
@@ -668,6 +698,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == kCoreMLExecutionProviderMLProgram)
+          execution_provider = DefaultCoreMLExecutionProvider(/*use_mlprogram*/ true);
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kQnnExecutionProvider)

@@ -311,11 +311,9 @@ template <typename T, typename TOut>
 static std::vector<OrtValue> RunSCELossWithEP(const char* op,
                                               int opset_version,
                                               const char* domain,
-                                              std::function<std::unique_ptr<IExecutionProvider>()>
-                                                  ep_creator,
+                                              std::function<std::unique_ptr<IExecutionProvider>()> ep_creator,
                                               const std::string& reduction,
                                               const std::int64_t ignore_index,
-                                              const double error_tolerance,
                                               const std::vector<int64_t>* X_dims,
                                               const std::vector<int64_t>* index_dims,
                                               const std::vector<int64_t>* weight_dims,
@@ -403,7 +401,7 @@ static void TestSCELoss(const char* op, int opset_version,
     cpu_fetches = RunSCELossWithEP<float, float>(
         op, opset_version, domain,
         []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-        reduction, ignore_index, error_tolerance,
+        reduction, ignore_index,
         X_dims, index_dims, weight_dims,
         Y_dims, log_prob_dims,
         X_data_temp, index_data, weight_data_temp);
@@ -411,7 +409,7 @@ static void TestSCELoss(const char* op, int opset_version,
     cpu_fetches = RunSCELossWithEP<T, float>(
         op, opset_version, domain,
         []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-        reduction, ignore_index, error_tolerance,
+        reduction, ignore_index,
         X_dims, index_dims, weight_dims,
         Y_dims, log_prob_dims,
         X_data, index_data, weight_data);
@@ -429,7 +427,7 @@ static void TestSCELoss(const char* op, int opset_version,
         return DefaultRocmExecutionProvider();
 #endif
       },
-      reduction, ignore_index, error_tolerance,
+      reduction, ignore_index,
       X_dims, index_dims, weight_dims,
       Y_dims, log_prob_dims,
       X_data, index_data, weight_data);

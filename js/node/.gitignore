@@ -6,4 +6,5 @@ node_modules/
 
 /lib/**/*.js
 /script/**/*.js
+!/script/install.js
 /test/**/*.js

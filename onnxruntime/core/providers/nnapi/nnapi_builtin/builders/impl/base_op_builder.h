@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
@@ -72,7 +72,7 @@ class BaseOpBuilder : public IOpBuilder {
                                             const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 19; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 21; }
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported

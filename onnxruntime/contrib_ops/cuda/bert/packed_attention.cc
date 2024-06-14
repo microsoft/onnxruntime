@@ -288,11 +288,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = is_good_for_rpb &&
-                                     sizeof(T) == 2 &&  // only enable for fp16
-                                     (parameters.head_size & 7) == 0 &&
-                                     (parameters.v_head_size & 7) == 0 &&
-                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+    use_memory_efficient_attention =
+        is_good_for_rpb &&
+        sizeof(T) == 2 &&  // only enable for fp16
+        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
@@ -304,7 +303,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = this->GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
@@ -328,7 +327,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;

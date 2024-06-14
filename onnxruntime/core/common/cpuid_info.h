@@ -93,17 +93,7 @@ class CPUIDInfo {
   }
 
  private:
-  CPUIDInfo() {
-#ifdef CPUIDINFO_ARCH_X86
-    X86Init();
-#elif defined(CPUIDINFO_ARCH_ARM)
-#ifdef __linux__
-    ArmLinuxInit();
-#elif defined(_WIN32)
-    ArmWindowsInit();
-#endif /* (arm or arm64) and windows */
-#endif
-  }
+  CPUIDInfo();
   bool has_amx_bf16_{false};
   bool has_avx_{false};
   bool has_avx2_{false};
@@ -128,22 +118,32 @@ class CPUIDInfo {
   bool has_arm_sve_i8mm_{false};
   bool has_arm_neon_bf16_{false};
 
-#ifdef CPUIDINFO_ARCH_X86
+#if defined(CPUIDINFO_ARCH_X86)
 
   void X86Init();
 
 #elif defined(CPUIDINFO_ARCH_ARM)
-#ifdef __linux__
 
+#if defined(CPUINFO_SUPPORTED)
+  // Now the following var is only used in ARM build, but later on we may expand the usage.
   bool pytorch_cpuinfo_init_{false};
+#endif  // defined(CPUINFO_SUPPORTED)
+
+#if defined(__linux__)
+
   void ArmLinuxInit();
 
 #elif defined(_WIN32)
 
   void ArmWindowsInit();
 
-#endif /* (arm or arm64) and windows */
+#elif defined(__APPLE__)
+
+  void ArmAppleInit();
+
 #endif
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 };
 
 }  // namespace onnxruntime

@@ -288,7 +288,7 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
     // Get scales data
     const auto* scales = ctx->Input<Tensor>(scales_input_idx_);
-    std::vector<float> scales_array(X->Shape().GetDims().size());
+    InlinedVector<float> scales_array(X->Shape().GetDims().size());
 
     if (scales != nullptr && scales->Shape().Size() != 0) {
       ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, output_shape.size()));

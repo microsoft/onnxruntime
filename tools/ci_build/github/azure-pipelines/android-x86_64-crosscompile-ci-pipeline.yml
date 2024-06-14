@@ -53,7 +53,7 @@ stages:
     Codeql.Enabled: false
   jobs:
   - job: Build_CPU_EP
-    pool: onnxruntime-Linux-CPU-For-Android-CI
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     workspace:
       clean: all
     timeoutInMinutes: 30
@@ -140,7 +140,7 @@ stages:
 
   jobs:
   - job: Build_NNAPI_EP
-    pool: onnxruntime-Linux-CPU-For-Android-CI
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
@@ -394,14 +394,6 @@ stages:
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
 
-      # We build the host protoc to <ORT_ROOT>/protobuf_install
-      - script: |
-          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-            $(Build.SourcesDirectory) \
-            $(Build.BinariesDirectory)/protobuf \
-            $(Build.SourcesDirectory)/protobuf_install
-        displayName: Build Host Protoc
-
       - template: templates/use-android-emulator.yml
         parameters:
           create: true
@@ -456,7 +448,7 @@ stages:
     variables:
     - name: skipComponentGovernanceDetection
       value: true
-    pool: 'onnxruntime-Linux-CPU-For-Android-CI'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     dependsOn:
     - NNAPI_EP_MASTER

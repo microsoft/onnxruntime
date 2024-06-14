@@ -34,18 +34,23 @@ struct ATenOperator {
   std::vector<bool> is_optional_arguments;
   std::vector<c10::optional<c10::IValue>> default_values;
   size_t return_size;
+  std::vector<c10::TypeKind> ret_kinds;
 
-  c10::IValue ToIValueArgument(const DLManagedTensor* dlpack, size_t index) const {
+  c10::IValue ToIValueArgument(DLManagedTensor* dlpack, size_t index) const {
     TORCH_INTERNAL_ASSERT(index < argument_size);
     bool is_optional = is_optional_arguments[index];
-    TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index]);
+    TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index] ||
+                          elem_kinds[index] == c10::TypeKind::TensorType);
     if (!dlpack) {
       if (is_optional) {
         // Optional argument always has no default value.
         return c10::IValue(c10::nullopt);
       }
-
-      return *default_values[index];
+      if (default_values[index]) {
+        return *default_values[index];
+      }
+      // Fow bw func, it's possible that input is an undefined tensor from fw outputs, dlpack is nullptr for such case.
+      return c10::IValue(at::Tensor());
     }
 
     bool is_list = is_list_arguments[index];
@@ -142,7 +147,10 @@ class ATenOperatorCache {
       }
       aten_op.return_size = schema.returns().size();
       for (const auto& ret : schema.returns()) {
-        TORCH_INTERNAL_ASSERT(ret.type()->kind() == c10::TypeKind::TensorType);
+        c10::TypeKind ret_type = ret.type()->kind();
+        // Support tensor or int only for now.
+        TORCH_INTERNAL_ASSERT(ret_type == c10::TypeKind::TensorType || ret_type == c10::TypeKind::IntType);
+        aten_op.ret_kinds.emplace_back(ret_type);
       }
       ops_.emplace(key, aten_op);
     }
@@ -154,32 +162,15 @@ class ATenOperatorCache {
   std::unordered_map<std::pair<std::string, std::string>, ATenOperator, PairHash> ops_;
 };
 
-const std::unordered_map<std::string, std::unordered_set<size_t>> kCpuTensorInputsMap = {
-    {"_efficient_attention_forward", {4, 5, 11, 12}}, {"_efficient_attention_backward", {6, 7, 12, 13}}};
-
-const std::unordered_map<std::string, std::unordered_set<size_t>> kCpuTensorOutputsMap = {
-    {"_efficient_attention_forward", {2, 3}}};
-
-// Backend uses this function to check if an argument is CPU input or not.
-bool IsCpuArgument(const char* op_name, const char* overload_name, size_t index, bool is_input) {
+// Backend uses this function to check if an argument is tensor type or not.
+bool IsTensorArgument(const char* op_name, const char* overload_name, size_t index, bool is_input) {
+  const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   if (is_input) {
-    // If the argument is non-tensor type, it's CPU argument.
-    const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
     TORCH_INTERNAL_ASSERT(index < aten_op.argument_size);
-    if (aten_op.elem_kinds[index] != c10::TypeKind::TensorType) {
-      return true;
-    }
+    return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
   }
-
-  std::string full_name = std::string(op_name);
-  std::string overload_name_str = std::string(overload_name);
-  if (overload_name_str != "") {
-    full_name += ("." + overload_name_str);
-  }
-
-  const auto& cpu_tensors_map = is_input ? kCpuTensorInputsMap : kCpuTensorOutputsMap;
-  return cpu_tensors_map.find(full_name) != cpu_tensors_map.end() &&
-         cpu_tensors_map.at(full_name).find(index) != cpu_tensors_map.at(full_name).end();
+  TORCH_INTERNAL_ASSERT(index < aten_op.return_size);
+  return aten_op.ret_kinds[index] == c10::TypeKind::TensorType;
 }
 
 void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t input_size,
@@ -216,16 +207,23 @@ void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t 
   TORCH_INTERNAL_ASSERT(output_size == aten_op.return_size);
   size_t output_index = 0;
   for (const auto& ret : torch::jit::pop(stack, output_size)) {
-    const auto& tensor = ret.toTensor();
-    dlpack_outputs[output_index++] =
-        tensor.defined() ? at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()) : nullptr;
+    if (ret.isTensor()) {
+      const auto& tensor = ret.toTensor();
+      dlpack_outputs[output_index++] =
+          tensor.defined() ? at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()) : nullptr;
+    } else if (ret.isInt()) {
+      at::Tensor scalar = at::scalar_to_tensor(at::Scalar(ret.toInt()));
+      dlpack_outputs[output_index++] = at::toDLPack(scalar);
+    } else {
+      TORCH_INTERNAL_ASSERT(false);
+    }
   }
 }
 
-size_t is_cpu_argument_address() { return reinterpret_cast<size_t>(&IsCpuArgument); }
+size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("is_cpu_argument_address", &is_cpu_argument_address, "Address of tensor argument check.");
+  m.def("is_tensor_argument_address", &is_tensor_argument_address, "Address of tensor argument check.");
   m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
 }

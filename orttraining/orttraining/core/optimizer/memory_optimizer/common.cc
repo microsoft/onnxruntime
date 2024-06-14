@@ -2,18 +2,22 @@
 // Licensed under the MIT License.
 
 #include <charconv>
+#include <fstream>
 #include <vector>
 #include <utility>
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_viewer.h"
-#include "core/framework/tensorprotoutils.h"
-
 #include "core/common/string_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/optimizer/utils.h"
+
+#include "nlohmann/json.hpp"
 
 namespace onnxruntime::optimizer::memory_optimizer {
+
+using json = nlohmann::json;
 
 namespace {
 
@@ -114,32 +118,48 @@ int ParseIntValueFromString(std::string_view str) {
   return int_value;
 }
 
-Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
+void from_json(const json& j, UserConfig& mo) {
+  j.at("type").get_to(mo.type);
+  j.at("requested_count").get_to(mo.requested_count);
+}
+
+Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config_file_path,
                                          InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map) {
-  if (!memory_optimization_config.empty()) {
-    const auto user_config_strs = utils::SplitString(memory_optimization_config, ",");
-    for (const auto& user_config_str : user_config_strs) {
-      const auto user_config = utils::SplitString(user_config_str, ":");
-      ORT_RETURN_IF_NOT(user_config.size() == 3,
-                        "User config should be in the format of SubgraphStr:OptimizationType:RequestApplyCount.");
+  if (!memory_optimization_config_file_path.empty()) {
+    InlinedVector<std::string> configs_by_cluster_id;  // Each cluster_id might contains multiple plans.
+    try {
+      std::ifstream in{std::string(memory_optimization_config_file_path).c_str()};
+      const json j = json::parse(in);
+      j.get_to<InlinedVector<std::string>>(configs_by_cluster_id);
+    } catch (const std::exception& ex) {
+      ORT_THROW("Fail to parse from json file: ", ex.what());
+    }
 
-      const std::string subgraph_string_representation(user_config[0]);
-      int optimization_type_int = ParseIntValueFromString(user_config[1]);
-      int requested_apply_count = ParseIntValueFromString(user_config[2]);
-      ORT_RETURN_IF_NOT(optimization_type_int <
-                                static_cast<int>(OptimizationType::TypeMax) &&
-                            optimization_type_int >= 0,
-                        "Invalid optimization type specified for subgraph: ",
-                        subgraph_string_representation);
+    for (const auto& config_for_cur_cluster : configs_by_cluster_id) {
+      const auto configs_by_plan_id = utils::SplitString(config_for_cur_cluster, ",");
+      for (const auto& config_for_cur_plan : configs_by_plan_id) {
+        const auto user_config = utils::SplitString(config_for_cur_plan, ":");
+        ORT_RETURN_IF_NOT(user_config.size() == 3,
+                          "User config should be in the format of SubgraphStr:OptimizationType:RequestApplyCount.");
 
-      ORT_RETURN_IF_NOT(requested_apply_count == -1 || requested_apply_count >= 0,
-                        "Invalid requested_apply_count specified for subgraph: ", requested_apply_count);
+        const std::string subgraph_string_representation(user_config[0]);
+        int optimization_type_int = ParseIntValueFromString(user_config[1]);
+        int requested_apply_count = ParseIntValueFromString(user_config[2]);
+        ORT_RETURN_IF_NOT(optimization_type_int <
+                                  static_cast<int>(OptimizationType::TypeMax) &&
+                              optimization_type_int >= 0,
+                          "Invalid optimization type specified for subgraph: ",
+                          subgraph_string_representation);
 
-      // At this point, subgraph_string_representation is a pattern graph string representation.
-      // If a duplicated subgraph_string_representation is found in user config, the last one will be used.
-      cluster_id_to_config_map[subgraph_string_representation] = UserConfig{
-          static_cast<OptimizationType>(optimization_type_int),
-          requested_apply_count};
+        ORT_RETURN_IF_NOT(requested_apply_count == -1 || requested_apply_count >= 0,
+                          "Invalid requested_apply_count specified for subgraph: ", requested_apply_count);
+
+        // At this point, subgraph_string_representation is a pattern graph string representation.
+        // If a duplicated subgraph_string_representation is found in user config, the last one will be used.
+        cluster_id_to_config_map[subgraph_string_representation] = UserConfig{
+            static_cast<OptimizationType>(optimization_type_int),
+            requested_apply_count};
+      }
     }
   }
 

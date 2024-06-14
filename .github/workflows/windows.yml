@@ -41,38 +41,4 @@ jobs:
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
-        run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75     
-     
-  Onnxruntime-TVM:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: "ort_build"
-          python-version: 3.8
-      - name: 'Install LLVM-Dev'
-        shell: pwsh
-        run: |
-          conda install llvmdev=12.0.0
-          conda info
-          conda list
-      - name: 'Add LLVM-Dev binaries to the PATH'
-        run: |
-          echo "C:/Miniconda/Library/bin" >> $GITHUB_PATH
-      - name: 'Setup TVM EP Python requirements'
-        run: |
-          python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
-      - name: 'rm gtest in conda'
-        shell: pwsh
-        run: |
-          Remove-Item 'C:\Miniconda\Library\lib\cmake\gtest' -Recurse -Force
-          Remove-Item 'C:\Miniconda\Library\lib\gmock.lib' -Force
-          Remove-Item 'C:\Miniconda\Library\lib\gmock_main.lib' -Force
-          Remove-Item 'C:\Miniconda\Library\lib\gtest.lib' -Force
-          Remove-Item 'C:\Miniconda\Library\lib\gtest_main.lib' -Force
-      - name: 'Build and Test'
-        run: |
-          python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm
+        run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75

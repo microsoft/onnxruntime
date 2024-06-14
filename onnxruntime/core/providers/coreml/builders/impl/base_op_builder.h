@@ -28,9 +28,9 @@ class BaseOpBuilder : public IOpBuilder {
   void AddInitializersToSkip(ModelBuilder& /*model_builder*/, const Node& /*node*/) const override {}
 
  protected:
-  // check if the first input's data type is supported.
-  static bool IsInput0Supported(const Node& node, const OpBuilderInputParams& input_params,
-                                const logging::Logger& logger);
+  // currently we only support float
+  static bool IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
+                           const logging::Logger& logger);
 
  private:
   virtual bool IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& /*input_params*/,
@@ -42,7 +42,7 @@ class BaseOpBuilder : public IOpBuilder {
                                       const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /*node*/) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 20; }
+  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 21; }
 
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
   bool HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,

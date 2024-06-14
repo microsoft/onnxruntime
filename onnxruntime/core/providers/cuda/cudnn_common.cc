@@ -37,13 +37,28 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
   TensorPitches pitches(input_dims);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> dims(rank);
   InlinedVector<int, kTensorShapeSmallBufferElementsSize> strides(rank);
-  for (int i = 0; i < rank; i++) {
-    dims[i] = gsl::narrow_cast<int>(input_dims[i]);
-    strides[i] = gsl::narrow_cast<int>(pitches[i]);
-  }
-  if (is_nhwc) {
-    std::swap(dims[1], dims[rank - 1]);
-    std::swap(strides[1], strides[rank - 1]);
+
+  if (!is_nhwc) {
+    for (int i = 0; i < rank; i++) {
+      dims[i] = gsl::narrow_cast<int>(input_dims[i]);
+      strides[i] = gsl::narrow_cast<int>(pitches[i]);
+    }
+  } else {
+    // NHWDC <-> NCHWD
+
+    // N
+    dims[0] = gsl::narrow_cast<int>(input_dims[0]);
+    strides[0] = gsl::narrow_cast<int>(pitches[0]);
+
+    // HWD
+    for (int i = 1; i < rank - 1; i++) {
+      dims[i + 1] = gsl::narrow_cast<int>(input_dims[i]);
+      strides[i + 1] = gsl::narrow_cast<int>(pitches[i]);
+    }
+
+    // C
+    dims[1] = gsl::narrow_cast<int>(input_dims[rank - 1]);
+    strides[1] = gsl::narrow_cast<int>(pitches[rank - 1]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
   return Status::OK();
@@ -160,7 +175,6 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
   ORT_THROW("cuDNN doesn't support BFloat16.");
-  return CUDNN_DATA_FLOAT;
 }
 
 template <>

@@ -186,22 +186,23 @@ export declare namespace InferenceSession {
   // #region execution providers
 
   // Currently, we have the following backends to support execution providers:
-  // Backend Node.js binding: supports 'cpu' and 'cuda'.
+  // Backend Node.js binding: supports 'cpu', 'dml' (win32), 'coreml' (macOS) and 'cuda' (linux).
   // Backend WebAssembly: supports 'cpu', 'wasm', 'webgpu' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
   // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
+    coreml: CoreMLExecutionProviderOption;
     cpu: CpuExecutionProviderOption;
-    coreml: CoreMlExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     dml: DmlExecutionProviderOption;
+    nnapi: NnapiExecutionProviderOption;
     tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
-    xnnpack: XnnpackExecutionProviderOption;
     webgpu: WebGpuExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
-    nnapi: NnapiExecutionProviderOption;
+    qnn: QnnExecutionProviderOption;
+    xnnpack: XnnpackExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -218,10 +219,6 @@ export declare namespace InferenceSession {
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
     deviceId?: number;
-  }
-  export interface CoreMlExecutionProviderOption extends ExecutionProviderOption {
-    readonly name: 'coreml';
-    coreMlFlags?: number;
   }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';
@@ -245,16 +242,101 @@ export declare namespace InferenceSession {
     readonly name: 'webgpu';
     preferredLayout?: 'NCHW'|'NHWC';
   }
-  export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
+
+  // #region WebNN options
+
+  interface WebNNExecutionProviderName extends ExecutionProviderOption {
     readonly name: 'webnn';
-    deviceType?: 'cpu'|'gpu';
+  }
+
+  /**
+   * Represents a set of options for creating a WebNN MLContext.
+   *
+   * @see https://www.w3.org/TR/webnn/#dictdef-mlcontextoptions
+   */
+  export interface WebNNContextOptions {
+    deviceType?: 'cpu'|'gpu'|'npu';
     numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
   }
+
+  /**
+   * Represents a set of options for WebNN execution provider without MLContext.
+   */
+  export interface WebNNOptionsWithoutMLContext extends WebNNExecutionProviderName, WebNNContextOptions {
+    context?: never;
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider with MLContext.
+   *
+   * When MLContext is provided, the deviceType is also required so that the WebNN EP can determine the preferred
+   * channel layout.
+   *
+   * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
+   */
+  export interface WebNNOptionsWithMLContext extends WebNNExecutionProviderName,
+                                                     Omit<WebNNContextOptions, 'deviceType'>,
+                                                     Required<Pick<WebNNContextOptions, 'deviceType'>> {
+    context: unknown /* MLContext */;
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider with MLContext which is created from GPUDevice.
+   *
+   * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext-gpudevice
+   */
+  export interface WebNNOptionsWebGpu extends WebNNExecutionProviderName {
+    context: unknown /* MLContext */;
+    gpuDevice: unknown /* GPUDevice */;
+  }
+
+  /**
+   * Options for WebNN execution provider.
+   */
+  export type WebNNExecutionProviderOption = WebNNOptionsWithoutMLContext|WebNNOptionsWithMLContext|WebNNOptionsWebGpu;
+
+  // #endregion
+
+  export interface QnnExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'qnn';
+    // TODO add flags
+  }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';
+    /**
+     * The bit flags for CoreML execution provider.
+     *
+     * ```
+     * COREML_FLAG_USE_CPU_ONLY = 0x001
+     * COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002
+     * COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004
+     * COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008
+     * COREML_FLAG_CREATE_MLPROGRAM = 0x010
+     * ```
+     *
+     * See include/onnxruntime/core/providers/coreml/coreml_provider_factory.h for more details.
+     *
+     * This flag is available only in ONNXRuntime (Node.js binding).
+     */
+    coreMlFlags?: number;
+    /**
+     * Specify whether to use CPU only in CoreML EP.
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
     useCPUOnly?: boolean;
+    /**
+     * Specify whether to enable CoreML EP on subgraph.
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
     enableOnSubgraph?: boolean;
+    /**
+     * Specify whether to only enable CoreML EP for Apple devices with ANE (Apple Neural Engine).
+     *
+     * This setting is available only in ONNXRuntime (react-native).
+     */
     onlyEnableDeviceWithANE?: boolean;
   }
   export interface NnapiExecutionProviderOption extends ExecutionProviderOption {

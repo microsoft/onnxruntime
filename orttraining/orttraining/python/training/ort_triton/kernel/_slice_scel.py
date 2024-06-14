@@ -13,7 +13,7 @@ from onnx import TensorProto, helper
 
 from onnxruntime.training.ortmodule import register_graph_optimizer
 
-from .._utils import get_attribute, to_numpy_array
+from .._utils import get_attribute, to_torch_tensor
 
 
 @triton.jit
@@ -212,7 +212,7 @@ def _get_constant(graph, arg):
             initializer = init
     if initializer is None:
         return None
-    return to_numpy_array(initializer)
+    return to_torch_tensor(initializer).tolist()
 
 
 def _check_slice(graph, node, start, end, axis, step):
@@ -224,9 +224,9 @@ def _check_slice(graph, node, start, end, axis, step):
         axis += rank
     for idx, value in enumerate([start, end, axis, step]):
         constant = _get_constant(graph, node.input[idx + 1])
-        if constant is None or constant.size != 1:
+        if constant is None or len(constant) != 1:
             return False
-        constant_value = constant.item()
+        constant_value = constant[0]
         if idx == 2 and constant_value < 0:
             constant_value += rank
         if constant_value != value:

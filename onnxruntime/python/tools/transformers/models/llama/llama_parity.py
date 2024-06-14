@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
 from __future__ import annotations
 
 import argparse
@@ -10,11 +15,12 @@ import torch
 from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
-    add_io_bindings,
+    add_io_bindings_as_ortvalues,
     convert_inputs_for_ort,
     get_merged_sample_with_past_kv_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
 from transformers import AutoConfig
@@ -24,10 +30,9 @@ import onnxruntime as ort
 logger = logging.getLogger("")
 
 
-def get_sequence_lengths(args: argparse.Namespace):
+def get_sequence_lengths(args: argparse.Namespace, config: AutoConfig):
     past_sequence_length, curr_sequence_length = (8, 1) if args.use_past_kv else (0, 8)
-    temp_name = args.model_name.lower().replace("-", "").replace("_", "")
-    max_sequence_length = 16384 if "codellama" in temp_name else 4096 if "llama2" in temp_name else 2048
+    max_sequence_length = config.max_position_embeddings
     return past_sequence_length, curr_sequence_length, max_sequence_length
 
 
@@ -35,7 +40,7 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     # Dummy values for parity
     world_size = get_size()
     batch_size = 2
-    past_sequence_length, sequence_length, max_sequence_length = get_sequence_lengths(args)
+    past_sequence_length, sequence_length, max_sequence_length = get_sequence_lengths(args, config)
 
     if args.merged:
         inputs = get_merged_sample_with_past_kv_inputs(
@@ -46,7 +51,7 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
             past_seq_len=past_sequence_length,
             max_seq_len=max_sequence_length,
             use_fp16=args.use_fp16,
-            use_gqa=args.use_gqa,
+            use_buffer_share=args.use_buffer_share,
             return_dict=True,
             world_size=world_size,
         )
@@ -102,14 +107,12 @@ def verify_parity(
         torch.cuda.empty_cache()
 
     # Run inference with ORT
-    past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
+    past_sequence_length, _, max_sequence_length = get_sequence_lengths(args, config)
     inputs = convert_inputs_for_ort(
         inputs,
-        use_gqa=args.use_gqa,
+        use_buffer_share=args.use_buffer_share,
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
-        device=args.execution_provider,
-        device_id=int(args.rank),
     )
 
     ep = f"{args.execution_provider.upper()}ExecutionProvider"
@@ -120,16 +123,17 @@ def verify_parity(
         sess_options=ort.SessionOptions(),
         providers=[ep],
     )
+    inputs = verify_ort_inputs(ort_model, inputs)
 
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":
-        io_binding, kv_cache_ortvalues = add_io_bindings(
+        io_binding, kv_cache_ortvalues = add_io_bindings_as_ortvalues(
             ort_model,
-            inputs,
-            args.execution_provider,
-            int(args.rank),
-            args.use_gqa,
-            kv_cache_ortvalues,
+            ort_inputs=inputs,
+            device=args.execution_provider,
+            device_id=int(args.rank),
+            use_buffer_share=args.use_buffer_share,
+            kv_cache_ortvalues=kv_cache_ortvalues,
         )
 
         io_binding.synchronize_inputs()
@@ -165,7 +169,7 @@ def get_args(argv: list[str]):
     parser.add_argument(
         "-m",
         "--model_name",
-        required=True,
+        required=False,
         help="Model name in Hugging Face",
     )
 
@@ -212,11 +216,11 @@ def get_args(argv: list[str]):
 
     parser.add_argument(
         "-g",
-        "--use_gqa",
+        "--use_buffer_share",
         action="store_true",
-        help="Use if model has GroupQueryAttention",
+        help="Use if model has GroupQueryAttention and you want to enable past-present buffer sharing",
     )
-    parser.set_defaults(use_gqa=False)
+    parser.set_defaults(use_buffer_share=False)
 
     parser.add_argument(
         "--merged",

@@ -99,6 +99,48 @@ TEST(IsInfTest, test_isinf_negative_double20) {
   run_is_inf_test(20, 0, 1, input, output);
 }
 
+TEST(IsInfTest, test_isinf_mlfloat16) {
+  std::initializer_list<MLFloat16> input = {MLFloat16{-1.7f}, MLFloat16::NaN, MLFloat16::Infinity, 3.6_fp16,
+                                            MLFloat16::NegativeInfinity, MLFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, true, false, true, true};
+  run_is_inf_test(20, 1, 1, input, output);
+}
+
+TEST(IsInfTest, test_isinf_positive_mlfloat16) {
+  std::initializer_list<MLFloat16> input = {MLFloat16{-1.7f}, MLFloat16::NaN, MLFloat16::Infinity, 3.6_fp16,
+                                            MLFloat16::NegativeInfinity, MLFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, true, false, false, true};
+  run_is_inf_test(20, 1, 0, input, output);
+}
+
+TEST(IsInfTest, test_isinf_negative_mlfloat16) {
+  std::initializer_list<MLFloat16> input = {MLFloat16{-1.7f}, MLFloat16::NaN, MLFloat16::Infinity, 3.6_fp16,
+                                            MLFloat16::NegativeInfinity, MLFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, false, false, true, false};
+  run_is_inf_test(20, 0, 1, input, output);
+}
+
+TEST(IsInfTest, test_isinf_bfloat16) {
+  std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
+                                           BFloat16::NegativeInfinity, BFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, true, false, true, true};
+  run_is_inf_test(20, 1, 1, input, output);
+}
+
+TEST(IsInfTest, test_isinf_positive_bfloat16) {
+  std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
+                                           BFloat16::NegativeInfinity, BFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, true, false, false, true};
+  run_is_inf_test(20, 1, 0, input, output);
+}
+
+TEST(IsInfTest, test_isinf_negative_bfloat16) {
+  std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
+                                           BFloat16::NegativeInfinity, BFloat16::Infinity};
+  std::initializer_list<bool> output = {false, false, false, false, true, false};
+  run_is_inf_test(20, 0, 1, input, output);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 TEST(IsInfTest, test_Float8E4M3FN) {
   std::initializer_list<Float8E4M3FN> input = {

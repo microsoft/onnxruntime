@@ -53,9 +53,9 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
   ~mhaImpl() {}
 
-  void setup(const int S, const int B) {
+  void setup(const int seq_len, const int B) {
     // For bert and vit, use flash attention when sequence length is larger than the threshold.
-    use_flash_attention = is_flash_attention(S);
+    use_flash_attention = is_flash_attention(seq_len);
 
     params.force_unroll = use_flash_attention;
 
@@ -68,26 +68,26 @@ class FusedMHARunnerFP16v2::mhaImpl {
       warps_n = 1;
     } else {
       if (sm == 70) {
-        if (S == 64 || S == 96) {
+        if (seq_len == 64 || seq_len == 96) {
           warps_m = 2;
           warps_n = 2;
-        } else if (S == 128) {
+        } else if (seq_len == 128) {
           warps_m = 1;
           warps_n = 4;
-        } else if (S == 256 || S == 384) {
+        } else if (seq_len == 256 || seq_len == 384) {
           warps_m = 1;
           warps_n = 8;
         } else {
           ORT_ENFORCE(false, "Unsupported sequence length");
         }
       } else {
-        if (S == 32 || S == 64 || S == 96 || S == 128) {
+        if (seq_len == 32 || seq_len == 64 || seq_len == 96 || seq_len == 128) {
           warps_m = 2;
           warps_n = 2;
-        } else if (S == 192 || S == 256) {
+        } else if (seq_len == 192 || seq_len == 256) {
           warps_m = 1;
           warps_n = 4;
-        } else if (S == 384) {
+        } else if (seq_len == 384) {
           warps_m = 1;
           warps_n = 8;
         } else {
@@ -99,7 +99,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     // The number of threads per CTA.
     threads_per_cta = warps_m * warps_n * warps_k * 32;
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
-    xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
+    xmmas_m = (seq_len + 16 * warps_m - 1) / (16 * warps_m);
 
     const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
@@ -111,7 +111,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
     params.b = B;
     params.h = interface->mNumHeads;
-    params.s = S;
+    params.s = seq_len;
     params.d = interface->mHeadSize;
 
     params.qkv_stride_in_bytes = 3 * interface->mNumHeads * interface->mHeadSize * sizeof(half);
@@ -121,7 +121,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     has_causal_mask = false;
   }
 
-  void setup_causal_masked_fmha(const int S, const int B) {
+  void setup_causal_masked_fmha(const int seq_len, const int B) {
     const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
@@ -132,7 +132,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
 
     params.b = B;
     params.h = interface->mNumHeads;
-    params.s = S;
+    params.s = seq_len;
     params.d = interface->mHeadSize;
 
     params.qkv_stride_in_bytes = 3 * interface->mNumHeads * interface->mHeadSize * sizeof(half);
@@ -182,30 +182,30 @@ class FusedMHARunnerFP16v2::mhaImpl {
       return max_seq_len;
     }
 
-    int S = max_seq_len;
+    int seq_len = max_seq_len;
     if (max_seq_len <= 32) {
-      S = (sm == 70) ? 64 : 32;
+      seq_len = (sm == 70) ? 64 : 32;
     } else if (max_seq_len <= 64) {
-      S = 64;
+      seq_len = 64;
     } else if (max_seq_len <= 96) {
-      S = 96;
+      seq_len = 96;
     } else if (max_seq_len <= 128) {
-      S = 128;
+      seq_len = 128;
     } else if (max_seq_len <= 192) {
-      S = (sm == 70) ? 256 : 192;
+      seq_len = (sm == 70) ? 256 : 192;
     } else if (max_seq_len <= 256) {
-      S = 256;
+      seq_len = 256;
     } else if (max_seq_len <= 384) {
-      S = 384;
+      seq_len = 384;
     }
 
-    return S;
+    return seq_len;
   }
 
  protected:
-  bool is_flash_attention(const int S) const {
+  bool is_flash_attention(const int seq_len) const {
     ORT_ENFORCE(interface->mHasCausalMask == false);
-    return interface->mEnableFlashAttention && S >= kMinSequenceLengthFlashAttention;
+    return interface->mEnableFlashAttention && seq_len >= kMinSequenceLengthFlashAttention;
   }
 
  private:
@@ -232,12 +232,12 @@ FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
       pimpl(new mhaImpl(this)) {
 }
 
-void FusedMHARunnerFP16v2::setup(const int S, const int B) {
-  MHARunner::setup(S, B);
+void FusedMHARunnerFP16v2::setup(const int seq_len, const int B) {
+  MHARunner::setup(seq_len, B);
   if (mHasCausalMask) {
-    pimpl->setup_causal_masked_fmha(S, B);
+    pimpl->setup_causal_masked_fmha(seq_len, B);
   } else {
-    pimpl->setup(S, B);
+    pimpl->setup(seq_len, B);
   }
 }
 

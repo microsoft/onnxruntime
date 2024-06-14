@@ -3,11 +3,13 @@
 
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <unordered_set>
+
+#include <core/common/inlined_containers_fwd.h>
 #include "core/common/status.h"
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
@@ -58,7 +60,73 @@ enum class AspectRatioPolicy {
   NOT_SMALLER,
 };
 
+// Antialias types
+template <typename T>
+struct AccumulateType {
+  using type = int32_t;
+  using Dtype = T;
+};
+
+template <>
+struct AccumulateType<int32_t> {
+  using type = float;
+};
+
+template <>
+struct AccumulateType<float> {
+  using type = float;
+};
+
+template <>
+struct AccumulateType<MLFloat16> {
+  using type = float;
+};
+
+template <>
+struct AccumulateType<double> {
+  using type = double;
+};
+
+namespace antialias_constants {
+constexpr float kCubicCoeffA = -0.75f;
+constexpr float kSupportSize = 2.0f;
+constexpr float kBiCubicSupportSize = 4.0f;
+}  // namespace antialias_constants
+
+namespace ConstValue {
+constexpr int32_t mag_factor = 1 << (22 - 1);
+// We use to multiply by 2, let's make a constant which is twice as big
+constexpr int32_t mag_factor_x_2 = 1 << 22;
+}  // namespace ConstValue
+
+template <class T>
+inline constexpr bool is_8bit_v = std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value;
+
+template <typename T>
+void PrintAntiAliasBuffers(std::ostream& os, gsl::span<int64_t> bounds, gsl::span<int64_t> out_of_bounds,
+                           gsl::span<T> weight_coefficients) {
+  os << "#### Bounds: ";
+  std::copy(bounds.begin(), bounds.end(), std::ostream_iterator<int64_t>(os, " "));
+  os << std::endl;
+
+  os << "#### Out of Bounds: ";
+  std::copy(out_of_bounds.begin(), out_of_bounds.end(),
+            std::ostream_iterator<int64_t>(os, " "));
+  os << std::endl;
+
+  os << "#### Scale Buffer: ";
+  std::copy(weight_coefficients.begin(), weight_coefficients.end(),
+            std::ostream_iterator<T>(os, " "));
+  os << std::endl;
+}
+
 class UpsampleBase {
+ public:
+  // Make this available in other EP via provider bridge
+  // it works iff output_shape is specified
+  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                InlinedVector<float>& scales) const;
+
  protected:
   explicit UpsampleBase(const OpKernelInfo& info)
       : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
@@ -69,23 +137,32 @@ class UpsampleBase {
     std::string mode;
     ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
-    antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
-    if (antialias_) {
-      ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
-                  "when anti-aliasing is set, Resize only supports mode `LINEAR` and `CUBIC`.");
-    }
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
-      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales_));
-      ORT_THROW_IF_ERROR(ScalesValidation(scales_, mode_));
+      std::vector<float> scales;
+      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales));
+      ORT_THROW_IF_ERROR(ScalesValidation(scales, mode_));
+      scales_.assign(scales.cbegin(), scales.cend());
       scales_cached_ = true;
     }
 
-    std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
-    keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
+    if (opset >= 18) {
+      antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
-    axes_ = info.GetAttrsOrDefault<int64_t>("axes");
+      if (antialias_) {
+        ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
+                    "when anti-aliasing is set, Resize only supports mode `LINEAR` and `CUBIC`.");
+      }
+
+      // The attribute is absent in opset < 18, but the default value as if stretch.
+      std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
+      keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
+
+      // guard against unit tests that can add an attribute
+      auto axes = info.GetAttrsOrDefault<int64_t>("axes");
+      axes_.assign(axes.cbegin(), axes.cend());
+    }
 
     extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
@@ -112,7 +189,7 @@ class UpsampleBase {
     nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
-    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", -0.75f);
+    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
     exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
@@ -166,7 +243,7 @@ class UpsampleBase {
   ResizeCoordinateTransformationMode coordinate_transform_mode_;
   GetOriginalCoordinateFunc get_original_coordinate_;
   ResizeNearestMode nearest_mode_;
-  AspectRatioPolicy keep_aspect_ratio_policy_;
+  AspectRatioPolicy keep_aspect_ratio_policy_{AspectRatioPolicy::STRETCH};
   GetNearestPixelFunc get_nearest_pixel_;
   float cubic_coeff_a_;
   bool exclude_outside_;
@@ -174,9 +251,9 @@ class UpsampleBase {
   float extrapolation_value_;
   bool use_nearest2x_optimization_ = false;
 
-  std::vector<float> scales_;
-  std::vector<float> roi_;
-  std::vector<int64_t> axes_;
+  InlinedVector<float> scales_;
+  InlinedVector<float> roi_;
+  TensorShapeVector axes_;
 
   bool scales_cached_;
   bool roi_cached_;
@@ -335,7 +412,7 @@ class UpsampleBase {
     }
   }
 
-  [[nodiscard]] Status ScalesValidation(const std::vector<float>& scales, const UpsampleMode mode) const {
+  [[nodiscard]] Status ScalesValidation(gsl::span<const float> scales, const UpsampleMode mode) const {
     if (!is_resize_) {
       for (auto& scale : scales) {
         ORT_RETURN_IF_NOT(scale >= 1, "Scale value should be greater than or equal to 1.");
@@ -372,7 +449,7 @@ class UpsampleBase {
   }
 
   [[nodiscard]] Status
-  ParseScalesData(const Tensor* scale, std::vector<float>& scales, int64_t rank) const {
+  ParseScalesData(const Tensor* scale, InlinedVector<float>& scales, int64_t rank) const {
     const auto* scale_data = scale->Data<float>();
     int64_t scales_size = scale->Shape().Size();
     ORT_RETURN_IF_NOT(scales_size > 0, "scales size should be greater than 0.");
@@ -387,19 +464,19 @@ class UpsampleBase {
     // in which case the other axes is ignored and use default scale of 1
     // scales_size == axes_.size() should be guaranteed if axes is not empty
     if (rank > 0 && (scales_size != rank || axes_.size())) {
-      std::vector<float> new_scales(size_t(rank), 1.0f);
+      InlinedVector<float> new_scales(size_t(rank), 1.0f);
       ORT_RETURN_IF_NOT(*std::max_element(axes_.begin(), axes_.end()) < rank && (int64_t(axes_.size()) == scales_size),
                         "all values in axes should be less than rank of the data");
 
       for (size_t i = 0; i < axes_.size(); i++) {
         new_scales[static_cast<size_t>(axes_[i])] = scales[i];
       }
-      scales = new_scales;
+      scales.swap(new_scales);
     }
     return ScalesValidation(scales, mode_);
   }
 
-  void ParseRoiData(const Tensor* roi, std::vector<float>& roi_array) const {
+  void ParseRoiData(const Tensor* roi, InlinedVector<float>& roi_array) const {
     int64_t roi_size = roi->Shape().Size();
     if (roi_size > 0) {
       roi_array.resize(onnxruntime::narrow<size_t>(roi_size));
@@ -429,52 +506,11 @@ class UpsampleBase {
     return Status::OK();
   }
 
-  // it works iff output_shape is specified
-  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
-                                std::vector<float>& scales) const {
-    std::unordered_set<int64_t> axes_set(axes_.begin(), axes_.end());
-
-    // AspectRatioPolicy::STRETCH is default policy when opset < 18
-    if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::STRETCH) {
-      return;
-    }
-
-    float scale_in_policy = 0.0f;
-    if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::NOT_LARGER) {
-      scale_in_policy = std::numeric_limits<float>::max();
-
-      for (size_t i = 0; i < scales.size(); i++) {
-        if (axes_set.empty() || axes_set.count(i) > 0) {
-          scale_in_policy = std::min(scale_in_policy, scales[i]);
-        }
-      }
-    } else if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::NOT_SMALLER) {
-      scale_in_policy = std::numeric_limits<float>::min();
-
-      for (size_t i = 0; i < scales.size(); i++) {
-        if (axes_set.empty() || axes_set.count(i) > 0) {
-          scale_in_policy = std::max(scale_in_policy, scales[i]);
-        }
-      }
-    }
-
-    for (size_t i = 0; i < scales.size(); i++) {
-      // if axes is not specified (AKA axes_set.empty()), we apply the policy to all axes
-      if (axes_set.empty() || axes_set.count(i) > 0) {
-        scales[i] = scale_in_policy;
-        output_dims[i] = static_cast<int64_t>(std::round(scales[i] * input_dims[i]));
-      } else {
-        scales[i] = 1.0f;
-        output_dims[i] = input_dims[i];
-      }
-    }
-  }
-
   // It's different in Opset 18 and before.
   // we will modify output_shape by sorts of policy even if it's specified
   [[nodiscard]] Status ParseScalesDataAndAdjustOutputSize(TensorShapeVector& output_dims,
                                                           gsl::span<const int64_t> input_dims,
-                                                          std::vector<float>& scales) const {
+                                                          InlinedVector<float>& scales) const {
     for (size_t i = 0, end = input_dims.size(); i < end; ++i) {
       // Handle corner case to avoid dividing by zero in the next step
       if (input_dims[i] == 0) {
@@ -507,9 +543,9 @@ class UpsampleBase {
 
   // Roi is redefined in Opset-18, we have a concept of axes.
   // So we need to update it accordingly.
-  void ComputeROIWithAxes(std::vector<float>& roi_array, size_t rank) const {
+  void ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
     if (axes_.size()) {
-      std::vector<float> roi_tmp(rank * 2, 0);
+      InlinedVector<float> roi_tmp(rank * 2, 0);
       for (size_t i = rank; i < rank * 2; ++i) {
         roi_tmp[i] = 1;
       }
@@ -518,8 +554,31 @@ class UpsampleBase {
         roi_tmp[v_in_axes] = (roi_array[i]);
         roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
       }
-      roi_array = roi_tmp;
+      roi_array.swap(roi_tmp);
     }
+  }
+
+ public:
+  static constexpr size_t kLookupTableSize = 1280;
+
+  static const uint8_t* GetLookupTableShared() {
+    // initialized once
+    static const auto* lookup_table = []() {
+      // if we have already initialized the lookup table, just return
+      // ideally we could have a global lookup table, but that account for too much space.
+      /* Handles values form -640 to 639. */
+      static uint8_t table[kLookupTableSize] = {0};
+
+      // taken from https://github.com/python-pillow/Pillow/blob/66add095a50d76c35c7f58643461f2edf78a3f05/src/libImaging/Resample.c#L94
+      //  we need to handle negative values
+      //  it's equivalent to :x = np.clip(x, 0, 255) where x \in [-640, 639]
+      // we will accept a negative x for (&table[640])[x] means table +640 -x
+      for (int i = 0; i < static_cast<int>(kLookupTableSize); ++i) {
+        table[i] = static_cast<uint8_t>(std::min(std::max(i - 640, 0), 255));
+      }
+      return table;
+    }();
+    return lookup_table;
   }
 };  // UpsampleBase
 

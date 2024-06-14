@@ -38,9 +38,6 @@ jobs:
 
   workspace:
     clean: all
-  variables:
-  - name: skipComponentGovernanceDetection
-    value: ${{eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')}}
   timeoutInMinutes:  210
   pool: ${{parameters.PoolName}}
   steps:
@@ -48,14 +45,22 @@ jobs:
       clean: true
       submodules: none
     - template: set-version-number-variables-step.yml
-    - template: get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
-        Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}
-        ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
-            UpdateDepsTxt: false
+    - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}
+          
+    - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}
+          UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:

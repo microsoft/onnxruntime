@@ -11,17 +11,19 @@
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
-#include "core/providers/shared/node_unit/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/optimizer/initializer.h"
+#include "core/providers/shared/utils/utils.h"
 
 using namespace android::nn::wrapper;
 
@@ -119,7 +121,7 @@ const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  std::tie(node_unit_holder_, node_unit_map_) = GetAllNodeUnits(graph_viewer_);
+  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_);
 }
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
@@ -664,7 +666,7 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
 
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   bool fuse_code_assigned_from_activation = false;
-  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(), end = node_unit.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 

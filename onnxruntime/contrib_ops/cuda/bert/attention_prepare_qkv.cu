@@ -231,7 +231,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                                 AttentionData<T>& data,
                                 cudaStream_t stream,
                                 int max_threads_per_block,
-                                T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                                AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
@@ -257,9 +257,9 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                            batch_size, sequence_length, num_heads, qk_head_size,
                            data.query, data.bias, qkv,
                            true, v_head_size, qkv_add_bias, 3);
-    DUMP_TENSOR_D("q(BSNH)", q, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("k(BSNH)", k, batch_size, sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("v(BSNH)", v, batch_size, sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR_D("q(BSNH)", data.q, batch_size, sequence_length, num_heads, qk_head_size);
+    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, sequence_length, num_heads, qk_head_size);
+    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, sequence_length, num_heads, v_head_size);
     qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else {
     if (!use_fused_kernel) {
@@ -279,7 +279,7 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
                                AttentionData<T>& data,
                                cudaStream_t stream,
                                int max_threads_per_block,
-                               T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                               AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
@@ -301,10 +301,10 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
     const T* kv_bias = (data.bias == nullptr ? data.bias : data.bias + parameters.hidden_size);
     LaunchAddBiasTranspose(stream, 2, format, max_threads_per_block,
                            batch_size, kv_sequence_length, num_heads, qk_head_size,
-                           data.key, kv_bias, k,
+                           data.key, kv_bias, data.k,
                            true, v_head_size, qkv_add_bias, 2);
-    DUMP_TENSOR_D("k(BSNH)", k, batch_size, kv_sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("v(BSNH)", v, batch_size, kv_sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR_D("k(BSNH)", data.k, batch_size, kv_sequence_length, num_heads, qk_head_size);
+    DUMP_TENSOR_D("v(BSNH)", data.v, batch_size, kv_sequence_length, num_heads, v_head_size);
     qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else {
     if (data.fused_cross_attention_kernel == nullptr) {
@@ -461,11 +461,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_WithPast(parameters, data, stream, max_threads_per_block,
                                                 data.q, data.k, data.v, data.qkv_format));
   } else if (data.key == nullptr) {  // multihead attention operator, no past, packed qkv
-    ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedQKV(parameters, data, stream, max_threads_per_block,
-                                                 data.q, data.k, data.v, data.qkv_format));
+    ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedQKV(parameters, data, stream, max_threads_per_block, data.qkv_format));
   } else if (data.value == nullptr) {  // multihead attention operator, no past, packed kv
-    ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedKV(parameters, data, stream, max_threads_per_block,
-                                                data.q, data.k, data.v, data.qkv_format));
+    ORT_RETURN_IF_ERROR(PrepareQkv_MHA_PackedKV(parameters, data, stream, max_threads_per_block, data.qkv_format));
   } else {  // multihead attention operator, no past, separated Q/K/V inputs
     ORT_RETURN_IF_ERROR(PrepareQkv_MHA_NotPacked(parameters, data, stream, max_threads_per_block,
                                                  data.q, data.k, data.v, data.qkv_format));

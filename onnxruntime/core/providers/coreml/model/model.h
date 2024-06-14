@@ -35,6 +35,8 @@ using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& n
 class Model {
  public:
   Model(const std::string& path,
+        std::vector<std::string>&& model_input_names,
+        std::vector<std::string>&& model_output_names,
         std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
         std::unordered_set<std::string>&& scalar_outputs,
         std::unordered_set<std::string>&& int64_outputs,
@@ -60,12 +62,11 @@ class Model {
   // Mutex for exclusive lock to this model object
   OrtMutex& GetMutex() { return mutex_; }
 
-  // Input and output names in the onnx model's order
-  const std::vector<std::string>& GetOnnxInputs() const { return onnx_inputs_; }
-  void SetOnnxInputs(std::vector<std::string>&& inputs) { onnx_inputs_ = std::move(inputs); }
-
-  const std::vector<std::string>& GetOnnxOutputs() const { return onnx_outputs_; }
-  void SetOnnxOutputs(std::vector<std::string>&& outputs) { onnx_outputs_ = std::move(outputs); }
+  // Input and output names in the ORT fused node's order.
+  // Names may have been adjusted from the originals due to CoreML naming rules.
+  // We do inputs/outputs based on order at the ONNX level so this doesn't matter.
+  const std::vector<std::string>& GetOrderedInputs() const { return model_input_names_; }
+  const std::vector<std::string>& GetOrderedOutputs() const { return model_output_names_; }
 
   const OnnxTensorInfo* TryGetInputOutputInfo(const std::string& name) const {
     const auto info_it = input_output_info_.find(name);
@@ -80,12 +81,12 @@ class Model {
 
  private:
   std::unique_ptr<Execution> execution_;
+  std::vector<std::string> model_input_names_;   // input names in the order of the ORT fused node's inputs
+  std::vector<std::string> model_output_names_;  // output names in the order of the ORT fused node's outputs
+
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
-
-  std::vector<std::string> onnx_inputs_;
-  std::vector<std::string> onnx_outputs_;
 
   OrtMutex mutex_;
 };

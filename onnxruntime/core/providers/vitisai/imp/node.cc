@@ -34,9 +34,17 @@ vaip_core::DllSafe<std::vector<const NodeArg*>> node_get_output_node_args(const 
   auto ret = std::vector<const NodeArg*>(size);
   for (auto i = 0u; i < size; ++i) {
     auto output = outputs[i];
-    ret[i] = output;
     assert(output != nullptr);
-    vai_assert(output->Exists(), std::string("output must exists. name=" + output->Name()));
+    // Optional Outputs
+    // Some operators have outputs that are optional. When an actual output parameter of an operator is not specified, the operator implementation MAY forgo computing values for such outputs.
+    // There are two ways to leave an optional input or output unspecified: the first, available only for trailing inputs and outputs, is to simply not provide that input; the second method is to use an empty string in place of an input or output name.
+    // so optional output maybe output != null && output->Exists() return false
+    // Our processing : nullptr means optional output , and clinet code needs to handle nullptr
+    if (output->Exists()) {
+      ret[i] = output;
+    } else {
+      ret[i] = nullptr;
+    }
   }
   return vaip_core::DllSafe(ret);
 }
