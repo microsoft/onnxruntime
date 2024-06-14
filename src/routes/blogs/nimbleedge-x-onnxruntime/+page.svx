@@ -78,7 +78,7 @@ NimbleEdge helps circumvent the complexity mentioned above with an end-to-end ma
 
 #### **Effortless on-device ML model management**
 
-- **Over the air updates,** to complete decouple ML model updates and front-end app updates, enabling aid rapid ML experimentation
+- **Over the air updates,** to completely decouple ML model updates and front-end app updates, enabling aid rapid ML experimentation
 
 #### **Turnkey, optimized inference runtime configuration**
 
