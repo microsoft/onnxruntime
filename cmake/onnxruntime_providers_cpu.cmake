@@ -222,7 +222,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cp
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
-  set_target_properties(onnxruntime_providers PROPERTIES DEBUG_POSTFIX "_d")
+  set_target_properties(onnxruntime_providers PROPERTIES DEBUG_POSTFIX "${POSTFIX_FOR_DEBUG}")
 endif()
 
 
@@ -239,7 +239,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
-  set_target_properties(onnxruntime_providers_shared PROPERTIES DEBUG_POSTFIX "_d")
+  set_target_properties(onnxruntime_providers_shared PROPERTIES DEBUG_POSTFIX "${POSTFIX_FOR_DEBUG}")
 
   target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
   target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_MINOR=${VERSION_MINOR_PART})
