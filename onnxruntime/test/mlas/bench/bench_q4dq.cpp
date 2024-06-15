@@ -72,12 +72,12 @@ BENCHMARK_CAPTURE(BM_QDQBlockwiseQuantizer_QuantizeColumnwise)
     ->UseRealTime()
     ->Apply([](benchmark::internal::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
-      b->ArgsProduct({{1024, 4096}, {4096}, {64, 128}, {8}});
+      b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
     });
 
 BENCHMARK_CAPTURE(BM_QDQBlockwiseQuantizer_TransposeColumnwise)
     ->UseRealTime()
     ->Apply([](benchmark::internal::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
-      b->ArgsProduct({{1024, 4096}, {4096}, {64, 128}, {8}});
+      b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
     });
