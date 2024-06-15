@@ -18,15 +18,15 @@ jobs:
   Onnxruntime-SCA-training-CUDA:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: false
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11.x'
           architecture: 'x64'
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -49,7 +49,7 @@ jobs:
         run: npx @microsoft/sarif-multitool merge *.sarif --recurse --output-directory=${{ github.workspace }}\output --output-file=MergeResult.sarif --merge-runs && dir ${{ github.workspace }}\output
 
       - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
@@ -59,15 +59,15 @@ jobs:
   Onnxruntime-SCA-win32-WINML-x64:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: false
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11.x'
           architecture: 'x64'
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -87,7 +87,7 @@ jobs:
         run: npx @microsoft/sarif-multitool merge *.sarif --recurse --output-directory=${{ github.workspace }}\output --output-file=MergeResult.sarif --merge-runs && dir ${{ github.workspace }}\output
 
       - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
@@ -97,15 +97,15 @@ jobs:
   Onnxruntime-SCA-win32-WINML-x86:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: false
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11.x'
           architecture: 'x86'
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -125,7 +125,7 @@ jobs:
         run: npx @microsoft/sarif-multitool merge *.sarif --recurse --output-directory=${{ github.workspace }}\output --output-file=MergeResult.sarif --merge-runs && dir ${{ github.workspace }}\output
 
       - name: Upload SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
