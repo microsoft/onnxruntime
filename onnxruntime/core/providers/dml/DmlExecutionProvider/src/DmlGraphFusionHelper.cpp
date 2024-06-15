@@ -940,7 +940,8 @@ namespace DmlGraphFusionHelper
         gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
-        bool keepTemporaryResourceAlive)
+        bool keepTemporaryResourceAlive,
+        ID3D12Resource* temporaryResource)
     {
         std::vector<DML_BUFFER_BINDING> inputBindings(compiledOpInfo.graphInfo->inputs.size());
         std::vector<DML_BINDING_DESC> inputBindingDescs(compiledOpInfo.graphInfo->inputs.size());
@@ -1087,18 +1088,27 @@ namespace DmlGraphFusionHelper
 
         if (compiledOpInfo.temporaryResourceSize > 0)
         {
-            // Allocate temporary data which will automatically be freed when the GPU work
-            // which is scheduled up to the point that this method returns has completed.
-            ComPtr<IUnknown> tempAlloc;
             uint64_t tempAllocId = 0;
-            ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(compiledOpInfo.temporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
+            ComPtr<ID3D12Resource> tempResource;
 
-            ComPtr<IUnknown> tempResourceUnknown;
-            winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
+            if (temporaryResource)
+            {
+                tempResource = temporaryResource;
+            }
+            else
+            {
+                // Allocate temporary data which will automatically be freed when the GPU work
+                // which is scheduled up to the point that this method returns has completed.
+                ComPtr<IUnknown> tempAlloc;
+                ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(compiledOpInfo.temporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
+
+                ComPtr<IUnknown> tempResourceUnknown;
+                winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnknown);
+
+                ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
+            }
 
             // Bind the temporary resource.
-            ComPtr<ID3D12Resource> tempResource;
-            ORT_THROW_IF_FAILED(tempResourceUnknown->QueryInterface(tempResource.GetAddressOf()));
             DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, compiledOpInfo.temporaryResourceSize};
             DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
 
@@ -1129,7 +1139,8 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        bool keepTemporaryResourceAlive)
+        bool keepTemporaryResourceAlive,
+        ID3D12Resource* temporaryResource)
     {
         OpKernelContextWrapper contextWrapper(
             kernelContext,
@@ -1147,7 +1158,8 @@ namespace DmlGraphFusionHelper
                 nonOwnedGraphInputsFromInitializers,
                 outputShapes,
                 winmlProvider,
-                keepTemporaryResourceAlive);
+                keepTemporaryResourceAlive,
+                temporaryResource);
         }
 
         // Execute the command list and if it succeeds, update the fence value at which this command may be

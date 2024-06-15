@@ -37,25 +37,6 @@ namespace Dml
           m_partitionNodePropsMap(std::move(partitionNodePropsMap)),
           m_ownedInitializers(std::move(ownedInitializers))
         {
-            GraphInfo graphInfo;
-
-            for (uint32_t i = 0; i < m_subgraphInputs.size(); ++i)
-            {
-                graphInfo.inputs.emplace_back(GraphInputInfo{m_subgraphInputs[i], std::optional<uint32_t>(i)});
-            }
-
-            for (uint32_t i = 0; i < m_subgraphOutputs.size(); ++i)
-            {
-                graphInfo.outputs.emplace_back(GraphOutputInfo{m_subgraphOutputs[i], std::optional<uint32_t>(i)});
-            }
-
-            for (const auto& node : m_subgraphNodes)
-            {
-                graphInfo.nodes.push_back(node.get());
-            }
-
-            m_graphsInfo.push_back(std::move(graphInfo));
-
             for (const auto& initializer : m_ownedInitializers)
             {
                 m_isInitializerTransferable[initializer.name()] = std::make_pair(&initializer, false);
@@ -81,28 +62,49 @@ namespace Dml
             }
         }
 
-        void TranslateAndCompileGraph(const onnxruntime::OpKernelInfo& kernelInfo, std::vector<DML_BUFFER_BINDING> initInputBindings) const
+        void ResetGraphsInfo() const
         {
-            for (auto& graphInfo : m_graphsInfo)
+            m_graphsInfo.clear();
+
+            GraphInfo graphInfo;
+
+            for (uint32_t i = 0; i < m_subgraphInputs.size(); ++i)
             {
-                // Allocate a persistent resource and initialize the operator
-                UINT64 persistentResourceSize = graphInfo.compiledOp->GetBindingProperties().PersistentResourceSize;
-                if (persistentResourceSize > 0)
-                {
-                    ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                        static_cast<size_t>(persistentResourceSize),
-                        AllocatorRoundingMode::Disabled,
-                        graphInfo.persistentResource.ReleaseAndGetAddressOf(),
-                        graphInfo.persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
-
-                    graphInfo.persistentResourceBinding = DML_BUFFER_BINDING { graphInfo.persistentResource.Get(), 0, persistentResourceSize };
-                }
-
-                ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                    graphInfo.compiledOp.Get(),
-                    graphInfo.persistentResourceBinding ? &*graphInfo.persistentResourceBinding : nullptr,
-                    gsl::make_span(initInputBindings)));
+                graphInfo.inputs.emplace_back(GraphInputInfo{m_subgraphInputs[i], std::optional<uint32_t>(i)});
             }
+
+            for (uint32_t i = 0; i < m_subgraphOutputs.size(); ++i)
+            {
+                graphInfo.outputs.emplace_back(GraphOutputInfo{m_subgraphOutputs[i], std::optional<uint32_t>(i)});
+            }
+
+            for (const auto& node : m_subgraphNodes)
+            {
+                graphInfo.nodes.push_back(node.get());
+            }
+
+            m_graphsInfo.push_back(std::move(graphInfo));
+        }
+
+        void TranslateAndCompileGraph(GraphInfo& graphInfo, std::vector<DML_BUFFER_BINDING> initInputBindings) const
+        {
+            // Allocate a persistent resource and initialize the operator
+            UINT64 persistentResourceSize = graphInfo.compiledOp->GetBindingProperties().PersistentResourceSize;
+            if (persistentResourceSize > 0)
+            {
+                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                    static_cast<size_t>(persistentResourceSize),
+                    AllocatorRoundingMode::Disabled,
+                    graphInfo.persistentResource.ReleaseAndGetAddressOf(),
+                    graphInfo.persistentResourceAllocatorUnknown.ReleaseAndGetAddressOf()));
+
+                graphInfo.persistentResourceBinding = DML_BUFFER_BINDING { graphInfo.persistentResource.Get(), 0, persistentResourceSize };
+            }
+
+            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                graphInfo.compiledOp.Get(),
+                graphInfo.persistentResourceBinding ? &*graphInfo.persistentResourceBinding : nullptr,
+                gsl::make_span(initInputBindings)));
         }
 
         std::tuple<GraphInfo, GraphInfo> SplitGraph(
@@ -232,7 +234,7 @@ namespace Dml
 
             ORT_THROW_HR_IF(E_UNEXPECTED, static_cast<ptrdiff_t>(m_subgraphInputs.size()) != kernelContext->InputCount());
 
-            bool recompileNeeded = m_graphsInfo.front().compiledOp == nullptr;
+            bool recompileNeeded = m_graphsInfo.empty();
 
             for (int inputIndex = 0; inputIndex < kernelContext->InputCount(); ++inputIndex)
             {
@@ -289,6 +291,8 @@ namespace Dml
 
             if (recompileNeeded)
             {
+                ResetGraphsInfo();
+
                 // Go through all the node args and replace their shapes with the real ones
                 for (auto& nodeArg : m_intermediateNodeArgs)
                 {
@@ -309,9 +313,7 @@ namespace Dml
 
                 // Populate input bindings for operator initialization
                 const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
-                std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
                 std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
-                auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
 
                 // Convert partitionONNXGraph into DML EP GraphDesc
                 ComPtr<IDMLDevice> device;
@@ -409,13 +411,39 @@ namespace Dml
                     }
                 }
 
-                TranslateAndCompileGraph(Info(), initInputBindings);
+                for (auto& graphInfo : m_graphsInfo)
+                {
+                    std::vector<DML_BUFFER_BINDING> initInputBindings(graphInfo.inputs.size());
+                    TranslateAndCompileGraph(graphInfo, initInputBindings);
+                }
 
                 std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
                 std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
 
                 m_reusedCommandLists.clear();
             }
+
+            uint64_t temporaryResourceSize = 0;
+            for (auto& graphInfo : m_graphsInfo)
+            {
+                temporaryResourceSize = std::max(temporaryResourceSize, graphInfo.compiledOp->GetBindingProperties().TemporaryResourceSize);
+            }
+
+            ComPtr<ID3D12Device> d3d12Device;
+            ORT_THROW_IF_FAILED(providerImpl->GetD3DDevice(d3d12Device.GetAddressOf()));
+
+            ComPtr<ID3D12Resource> temporaryResource;
+            auto buffer = CD3DX12_RESOURCE_DESC::Buffer(temporaryResourceSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+            ORT_THROW_IF_FAILED(d3d12Device->CreateCommittedResource(
+                unmove_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)),
+                D3D12_HEAP_FLAG_NONE,
+                &buffer,
+                D3D12_RESOURCE_STATE_COMMON,
+                nullptr,
+                IID_GRAPHICS_PPV_ARGS(temporaryResource.GetAddressOf())
+            ));
+
+            m_winmlProvider->QueueReference(temporaryResource.Get());
 
             // When we are capturing a graph, we don't pool the command list and instead transfer it to the execution provider. Captured graph
             // have the same bindings for their entire lifetime.
@@ -437,7 +465,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    keepTemporaryResourceAlive);
+                    keepTemporaryResourceAlive,
+                    temporaryResource.Get());
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
             }
@@ -462,7 +491,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    keepTemporaryResourceAlive);
+                    keepTemporaryResourceAlive,
+                    temporaryResource.Get());
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();

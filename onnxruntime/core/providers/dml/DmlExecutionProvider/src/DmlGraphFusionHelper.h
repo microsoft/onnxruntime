@@ -115,6 +115,7 @@ namespace DmlGraphFusionHelper
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
         IExecutionProvider* provider,
-        bool keepTemporaryResourceAlive);
+        bool keepTemporaryResourceAlive,
+        ID3D12Resource* temporaryResource = nullptr);
 }
 }
