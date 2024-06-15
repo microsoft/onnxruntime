@@ -298,7 +298,7 @@ void DumpEPContextModel(
 
 bool ValidateEPContextNode(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
-  LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes.size();
+  LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes().size();
   assert(graph.Nodes().size() == 1);
   auto* p_node = graph.GetNode(0);
   assert(p_node->OpType() == kEPContextOp);
