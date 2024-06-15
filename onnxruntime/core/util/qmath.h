@@ -827,7 +827,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
               }
 
               auto output_t = reinterpret_cast<typename TOut::UnpackedType*>(output);
-              for (out_start; out_start < out_end; out_start += 2) {
+              for (; out_start < out_end; out_start += 2) {
                 auto v0 = std::clamp(
                     static_cast<int32_t>(std::nearbyint(input[out_start].ToFloat() / sc)) + zp, low, high);
                 auto v1 = std::clamp(
