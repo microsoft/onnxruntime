@@ -31,7 +31,7 @@ namespace logging {
 
 class EtwSink : public ISink {
  public:
-  EtwSink() = default;
+  EtwSink() : ISink(SinkType::EtwSink) {}
   ~EtwSink() = default;
 
   constexpr static const char* kEventName = "ONNXRuntimeLogEvent";

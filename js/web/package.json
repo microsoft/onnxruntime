@@ -73,13 +73,13 @@
         "import": "./dist/ort.node.min.mjs",
         "require": "./dist/ort.node.min.js"
       },
-      "import": "./dist/ort.min.mjs",
+      "import": "./dist/ort.bundle.min.mjs",
       "require": "./dist/ort.min.js",
       "types": "./types.d.ts"
     },
     "./all": {
       "node": null,
-      "import": "./dist/ort.all.min.mjs",
+      "import": "./dist/ort.all.bundle.min.mjs",
       "require": "./dist/ort.all.min.js",
       "types": "./types.d.ts"
     },
@@ -97,7 +97,7 @@
     },
     "./webgpu": {
       "node": null,
-      "import": "./dist/ort.webgpu.min.mjs",
+      "import": "./dist/ort.webgpu.bundle.min.mjs",
       "require": "./dist/ort.webgpu.min.js",
       "types": "./types.d.ts"
     },

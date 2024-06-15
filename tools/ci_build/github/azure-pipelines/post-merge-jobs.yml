@@ -406,6 +406,7 @@ stages:
         script: |
           "$(Build.SourcesDirectory)/tools/android_custom_build/build_custom_android_package.py" \
             --docker_image_tag=$(dockerImageTag) \
+            --build_settings="$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json" \
             "$(Build.BinariesDirectory)/custom_android_package"
         workingDirectory: '$(Build.BinariesDirectory)'
 

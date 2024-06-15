@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.21.0.240401'
+  QnnSdk: '2.22.0.240425'
   build_config: 'RelWithDebInfo'  
   IsReleaseBuild: false
   DoEsrp: false
@@ -15,7 +15,7 @@ stages:
 - stage: ${{ parameters.StageName }}
   dependsOn: []
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 120
 
     pool: ${{ parameters.qnn_ep_build_pool_name }}
