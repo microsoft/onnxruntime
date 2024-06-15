@@ -36,6 +36,34 @@ static void BM_QDQBlockwiseQuantizer_QuantizeColumnwise(benchmark::State& state)
   }
 }
 
+static void BM_MlasQuantizeBlockwise(benchmark::State& state) {
+  int M = state.range(0);
+  int N = state.range(1);
+  int quant_block_size = state.range(2);
+  int threads = state.range(3);
+  size_t scale_size = (M + quant_block_size - 1) / quant_block_size * N;
+
+  auto src = RandomVectorUniform(M * N, -16.0f, 14.0f);
+  auto scales = std::vector<float>(scale_size);
+  auto zero_points = std::vector<uint8_t>((scale_size + 1) / 2);
+  auto dst = std::vector<uint8_t>((M * N + 1) / 2);
+
+  OrtThreadPoolParams tpo;
+  tpo.thread_pool_size = static_cast<int>(threads);
+  tpo.auto_set_affinity = true;
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
+      onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(dst.data());
+    MlasQuantizeBlockwise<float, 4>(
+        dst.data(), scales.data(), zero_points.data(), src.data(),
+        quant_block_size, true, M, N, N, tp.get());
+    benchmark::ClobberMemory();
+  }
+}
+
 static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state) {
   int M = state.range(0);
   int N = state.range(1);
@@ -68,16 +96,23 @@ static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state
   }
 }
 
-BENCHMARK_CAPTURE(BM_QDQBlockwiseQuantizer_QuantizeColumnwise)
+BENCHMARK(BM_QDQBlockwiseQuantizer_QuantizeColumnwise)
     ->UseRealTime()
     ->Apply([](benchmark::internal::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
     });
 
-BENCHMARK_CAPTURE(BM_QDQBlockwiseQuantizer_TransposeColumnwise)
+BENCHMARK(BM_MlasQuantizeBlockwise)
     ->UseRealTime()
     ->Apply([](benchmark::internal::Benchmark* b) {
       b->ArgNames({"M", "N", "quant_block_size", "threads"});
       b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {8}});
+    });
+
+BENCHMARK(BM_QDQBlockwiseQuantizer_TransposeColumnwise)
+    ->UseRealTime()
+    ->Apply([](benchmark::internal::Benchmark* b) {
+      b->ArgNames({"M", "N", "quant_block_size", "threads"});
+      b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {2, 8, 16}});
     });
