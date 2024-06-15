@@ -298,6 +298,7 @@ void DumpEPContextModel(
 
 bool ValidateEPContextNode(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
+  LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes.size();
   assert(graph.Nodes().size() == 1);
   auto* p_node = graph.GetNode(0);
   assert(p_node->OpType() == kEPContextOp);
@@ -311,6 +312,7 @@ bool ValidateEPContextNode(const Graph& graph) {
 
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
+  LOGS_DEFAULT(VERBOSE) << "Validating EP context node";
   if (!ValidateEPContextNode(graph)) {
     ORT_THROW("Invalid EP context model for Vitis AI");
   }
