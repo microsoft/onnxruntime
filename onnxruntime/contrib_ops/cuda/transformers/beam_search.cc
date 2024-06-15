@@ -5,7 +5,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/beam_search.h"
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -56,7 +56,7 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<MLFloat16>()}),
     WhisperBeamSearch);
 
-transformers::CudaTensorConsoleDumper g_cuda_dumper;
+CudaTensorConsoleDumper g_cuda_dumper;
 
 BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {

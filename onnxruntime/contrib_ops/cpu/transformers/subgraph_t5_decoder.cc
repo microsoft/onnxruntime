@@ -8,7 +8,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 
