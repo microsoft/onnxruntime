@@ -51,7 +51,7 @@ jobs:
         run: nvidia-smi
 
       - name: Build code
-        run: python tools\ci_build\build.py --enable_training --build_java --config Debug --build_dir ${{ runner.temp }} --skip_submodule_sync --build_csharp --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        run: python tools\ci_build\build.py --enable_training --build_java --config Debug --build_dir ${{ runner.temp }} --skip_submodule_sync --build_csharp --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling --use_binskim_compliant_compile_flags  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
