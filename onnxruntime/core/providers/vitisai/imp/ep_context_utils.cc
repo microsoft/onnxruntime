@@ -196,7 +196,7 @@ std::unique_ptr<Model> CreateEPContexModel(
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
   // auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
-  auto p_temp_model = graph_viewer.CreateModel(*logger);
+  auto p_temp_model = graph_viewer.CreateModel(*p_logger);
   auto& ep_ctx_graph = p_temp_model->MainGraph();
 #if 0
   LOGS_DEFAULT(VERBOSE) << "Doing early model graph resloving";
