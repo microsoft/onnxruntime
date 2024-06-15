@@ -937,7 +937,6 @@ namespace DmlGraphFusionHelper
         DmlReusedCompiledOpInfo& compiledOpInfo,
         const OpKernelContextWrapper& contextWrapper,
         gsl::span<const uint8_t> isInputsUploadedByDmlEP,
-        const std::vector<bool>& inputsUsed,
         gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
@@ -953,6 +952,11 @@ namespace DmlGraphFusionHelper
 
         for (uint32_t inputIndex = 0; inputIndex < inputBindings.size(); ++inputIndex)
         {
+            if (!compiledOpInfo.graphInfo->inputsUsed[inputIndex])
+            {
+                continue;
+            }
+
             auto globalInputIndex = compiledOpInfo.graphInfo->inputs[inputIndex].globalInputIndex;
 
             // The input of a graph can also be a global output when we have more than 1 graph. For example, the first graph can produce
@@ -995,7 +999,7 @@ namespace DmlGraphFusionHelper
                 inputBindingDescs[inputIndex] = {DML_BINDING_TYPE_BUFFER, &inputBindings[inputIndex]};
                 compiledOpInfo.outputBindingAllocIds[inputIndex] = allocId;
             }
-            else if (globalInputIndex && !isInputsUploadedByDmlEP[*globalInputIndex] && inputsUsed[*globalInputIndex])
+            else if (globalInputIndex && !isInputsUploadedByDmlEP[*globalInputIndex])
             {
                 // Otherwise, we fetch the corresponding input from the global inputs and unwrap it
                 if (nonOwnedGraphInputsFromInitializers[*globalInputIndex])
@@ -1121,7 +1125,6 @@ namespace DmlGraphFusionHelper
         DmlReusedCommandListState& commandListState,
         const onnxruntime::OpKernelInfo& kernelInfo,
         gsl::span<const uint8_t> isInputsUploadedByDmlEP,
-        const std::vector<bool>& inputsUsed,
         gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
@@ -1141,7 +1144,6 @@ namespace DmlGraphFusionHelper
                 commandListState.compiledOpsInfo[operatorIndex],
                 contextWrapper,
                 isInputsUploadedByDmlEP,
-                inputsUsed,
                 nonOwnedGraphInputsFromInitializers,
                 outputShapes,
                 winmlProvider,

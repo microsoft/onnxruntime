@@ -179,6 +179,7 @@ namespace Dml
                         GraphInputInfo newSecondGraphInput{};
                         newSecondGraphInput.inputArg = parentGraphOutput.outputArg;
                         newSecondGraphInput.globalOutputIndex = parentGraphOutput.globalOutputIndex;
+                        newSecondGraphInput.ownedInputTensor = parentGraphOutput.ownedOutputTensor;
                         secondGraph.inputs.push_back(std::move(newSecondGraphInput));
                     }
                 }
@@ -329,7 +330,7 @@ namespace Dml
                 uint32_t graphInfoIndex = 0;
 
                 std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
-                m_inputsUsed.clear();
+                m_outputShapes.Reset(0);
 
                 while (graphInfoIndex < m_graphsInfo.size())
                 {
@@ -366,20 +367,20 @@ namespace Dml
                         smallConstantData,
                         inferredOutputShapes);
 
-                    m_outputShapes = graphDesc.outputShapes;
+                    if (m_outputShapes.EdgeCount() == 0)
+                    {
+                        m_outputShapes = graphDesc.outputShapes;
+                    }
 
                     // Walk through each graph edge and mark used inputs, but only for the first graph (it will be reused even if the graph is split)
-                    if (m_inputsUsed.empty())
+                    m_graphsInfo[graphInfoIndex].inputsUsed.resize(inputArgs.size());
+                    for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++)
                     {
-                        m_inputsUsed.resize(fusedNodeInputCount);
-                        for (auto it = serializedGraphInputIndexToSubgraphInputIndex.begin(); it != serializedGraphInputIndexToSubgraphInputIndex.end(); it++)
-                        {
-                            m_inputsUsed[it->second] = true;
-                        }
-                        for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++)
-                        {
-                            m_inputsUsed[it->second] = true;
-                        }
+                        m_graphsInfo[graphInfoIndex].inputsUsed[it->second] = true;
+                    }
+                    for (auto it = serializedGraphLargeConstantNameToSubgraphInputIndex.begin(); it != serializedGraphLargeConstantNameToSubgraphInputIndex.end(); it++)
+                    {
+                        m_graphsInfo[graphInfoIndex].inputsUsed[it->second] = true;
                     }
 
                     m_isInputsUploadedByDmlEP.resize(fusedNodeInputCount, 0);
@@ -432,7 +433,6 @@ namespace Dml
                     *reusableCommandList,
                     Info(),
                     m_isInputsUploadedByDmlEP,
-                    m_inputsUsed,
                     m_nonOwnedGraphInputsFromInitializers,
                     m_outputShapes,
                     m_winmlProvider.Get(),
@@ -458,7 +458,6 @@ namespace Dml
                     *m_reusedCommandLists.front(),
                     Info(),
                     m_isInputsUploadedByDmlEP,
-                    m_inputsUsed,
                     m_nonOwnedGraphInputsFromInitializers,
                     m_outputShapes,
                     m_winmlProvider.Get(),
@@ -491,7 +490,6 @@ namespace Dml
 
         // Bindings from previous executions of a re-used command list
         mutable std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> m_ownedCpuInputs;
-        mutable std::vector<bool> m_inputsUsed;
         mutable Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
         mutable std::unordered_map<std::string, onnxruntime::TensorShape> m_inferredInputShapes;
         mutable std::deque<std::unique_ptr<DmlReusedCommandListState>> m_reusedCommandLists;

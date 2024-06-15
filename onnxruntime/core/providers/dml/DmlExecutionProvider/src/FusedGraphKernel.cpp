@@ -27,12 +27,12 @@ namespace Dml
             std::vector<uint8_t>&& isInputsUploadedByDmlEP,
             std::vector<bool>&& inputsUsed) :
         OpKernel(kernelInfo),
-        m_inputsUsed(std::move(inputsUsed)),
         m_outputShapes(outputShapes),
         m_isInputsUploadedByDmlEP(std::move(isInputsUploadedByDmlEP)),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {
             m_graphInfo.compiledOp = std::move(compiledExecutionPlanOperator);
+            m_graphInfo.inputsUsed = std::move(inputsUsed);
 
             for (uint32_t i = 0; i < m_nonOwnedGraphInputsFromInitializers.size(); ++i)
             {
@@ -128,7 +128,7 @@ namespace Dml
 
                 for (int i = 0; i < kernelContext->InputCount(); ++i)
                 {
-                    if (!m_inputsUsed[i])
+                    if (!m_graphInfo.inputsUsed[i])
                     {
                         continue;
                     }
@@ -175,7 +175,6 @@ namespace Dml
                     *m_reusedCommandLists.front(),
                     Info(),
                     m_isInputsUploadedByDmlEP,
-                    m_inputsUsed,
                     m_nonOwnedGraphInputsFromInitializers,
                     m_outputShapes,
                     m_winmlProvider.Get(),
@@ -253,7 +252,6 @@ namespace Dml
         }
 
     private:
-        std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;

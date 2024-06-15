@@ -31,6 +31,7 @@ namespace Dml
         std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
         Microsoft::WRL::ComPtr<ID3D12Resource> persistentResource;
         Microsoft::WRL::ComPtr<IUnknown> persistentResourceAllocatorUnknown;
+        std::vector<bool> inputsUsed;
     };
 
     struct DmlReusedCompiledOpInfo

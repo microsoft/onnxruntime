@@ -111,7 +111,6 @@ namespace DmlGraphFusionHelper
         DmlReusedCommandListState& commandListState,
         const onnxruntime::OpKernelInfo& kernelInfo,
         gsl::span<const uint8_t> isInputsUploadedByDmlEP,
-        const std::vector<bool>& inputsUsed,
         gsl::span<const ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers,
         const Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         IWinmlExecutionProvider* winmlProvider,
