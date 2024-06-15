@@ -326,11 +326,11 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
-                                                          const int64_t& n_targets_or_classes,
-                                                          POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+  TreeAggregatorMax(size_t n_trees,
+                    const int64_t& n_targets_or_classes,
+                    POST_EVAL_TRANSFORM post_transform,
+                    const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
+                                                                                                                          post_transform, base_values) {}
 
   // 1 output
 
