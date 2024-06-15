@@ -238,7 +238,8 @@ namespace Dml::GraphDescBuilder
         gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs,
         /*out*/ std::unordered_map<uint32_t, uint32_t>& serializedGraphInputIndexToSubgraphInputIndex,
         /*out*/ std::unordered_map<std::string_view, uint32_t>& serializedGraphLargeConstantNameToSubgraphInputIndex,
-        /*out*/ std::vector<std::unique_ptr<std::byte[]>>& smallConstantData)
+        /*out*/ std::vector<std::unique_ptr<std::byte[]>>& smallConstantData,
+        /*out*/ std::unordered_map<std::string, std::vector<uint32_t>>& inferredOutputShapes)
     {
         struct NodeAndIndex
         {
@@ -260,10 +261,6 @@ namespace Dml::GraphDescBuilder
         // This map will be used to re-index an subGraphInputIndex to sequential input index
         // for DmlGraph
         std::unordered_map<uint32_t, uint32_t> subGraphInputIndexToDmlGraphInputIndex;
-
-        // Iterate through each node and create a corresponding node in the new graph
-        // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
 
         std::vector<DmlSerializedGraphNode> dmlGraphNodes;
         std::vector<DmlInputSerializedGraphEdge> dmlGraphInputEdges;
