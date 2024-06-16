@@ -4,12 +4,11 @@
 import collections
 import contextlib
 import datetime
-import os
-import shutil
 import signal
 import subprocess
 import time
 import typing
+from pathlib import Path
 
 from ..logger import get_logger
 from ..platform_helpers import is_linux, is_windows
@@ -28,26 +27,17 @@ def get_sdk_tool_paths(sdk_root: str):
         else:
             return name
 
-    def resolve_path(dirnames, basename):
-        dirnames.insert(0, "")
-        for dirname in dirnames:
-            path = shutil.which(os.path.join(os.path.expanduser(dirname), basename))
-            if path is not None:
-                path = os.path.realpath(path)
-                _log.debug(f"Found {basename} at {path}")
-                return path
-        raise FileNotFoundError(f"Failed to resolve path for {basename}")
+    sdk_root = Path(sdk_root).resolve(strict=True)
 
     return SdkToolPaths(
-        emulator=resolve_path([os.path.join(sdk_root, "emulator")], filename("emulator", "exe")),
-        adb=resolve_path([os.path.join(sdk_root, "platform-tools")], filename("adb", "exe")),
-        sdkmanager=resolve_path(
-            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
-            filename("sdkmanager", "bat"),
+        # do not use sdk_root/tools/emulator as that is superceeded by sdk_root/emulator/emulator
+        emulator=str((sdk_root / "emulator" / filename("emulator", "exe")).resolve(strict=True)),
+        adb=str((sdk_root / "platform-tools" / filename("adb", "exe")).resolve(strict=True)),
+        sdkmanager=str(
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("sdkmanager", "bat")).resolve(strict=True)
         ),
-        avdmanager=resolve_path(
-            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
-            filename("avdmanager", "bat"),
+        avdmanager=str(
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("avdmanager", "bat")).resolve(strict=True)
         ),
     )
 
