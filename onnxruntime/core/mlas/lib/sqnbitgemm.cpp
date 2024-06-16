@@ -29,13 +29,13 @@ class ProfilerWrapper
     ProfilerWrapper()
     {
         profiler_ = std::make_unique<onnxruntime::profiling::Profiler>();
-        profiler_->StartProfiling<char>("profile.json");
+        //profiler_->StartProfiling<char>("profile.json");
     }
 
     ~ProfilerWrapper()
     {
         if (profiler_) {
-            profiler_->EndProfiling();
+            //profiler_->EndProfiling();
         }
     }
 
@@ -457,6 +457,7 @@ SQ4BitGemm_CompFp32(
     }
 }
 
+//#define BlockSumM1Layout 1
 //#define CALL_SGEMM_SEPARATELY 1
 #if defined(CALL_SGEMM_SEPARATELY)
 void
@@ -478,7 +479,12 @@ SQ4BitGemm_CompInt8_0(
 
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
 
+#if defined(BlockSumM1Layout)
+    const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN;
+#else
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
+#endif
+
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -489,19 +495,25 @@ SQ4BitGemm_CompInt8_0(
         for (size_t n = 0; n < RangeCountN; n += CountN) {
             CountN = std::min(RangeCountN - n, size_t{128});
 
-            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
             float* c_blk = C + n;
-            std::chrono::high_resolution_clock::time_point tp;
-            if (profiler_->IsEnabled()) {
-                tp = profiler_->Start();
-            }
+            //std::chrono::high_resolution_clock::time_point tp;
+            //if (profiler_->IsEnabled()) {
+            //    tp = profiler_->Start();
+            //}
+#if defined(BlockSumM1Layout)
+             const float* b_blk_sum = QuantBBlkSum + n;
+             GetMlasPlatform().KernelM1Routine(ABlockSum, b_blk_sum, c_blk, k_blks, CountN, ldc, 0.0f);
+            //  GetMlasPlatform().KernelM1TransposeBRoutine(ABlockSum, b_blk_sum, c_blk, k_blks, CountN, ldc, 0.0f);
+#else
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
             GetMlasPlatform().GemmFloatKernel(
                 ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, true
             );
-            if (profiler_->IsEnabled()) {
-                std::string eventName = DataParams->node_name + "Sep GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
-                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
-            }
+#endif
+            //if (profiler_->IsEnabled()) {
+            //    std::string eventName = DataParams->node_name + "Sep GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+            //    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            //}
         }
         // auto end = std::chrono::high_resolution_clock::now();  // End timing here
         //// Calculate and print the duration in nanoseconds
@@ -579,7 +591,11 @@ SQ4BitGemm_CompInt8(
             : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
 #ifndef CALL_SGEMM_SEPARATELY
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
+#if defined(BlockSumM1Layout)
+    const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN;
+#else
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
+#endif
 #endif
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -598,24 +614,10 @@ SQ4BitGemm_CompInt8(
                 const float* b_col_scale = QuantBScale + n * k_blks;
                 float* c_blk = C + n;
                 const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-                std::chrono::high_resolution_clock::time_point tp;
-#ifndef CALL_SGEMM_SEPARATELY
-                const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-                if (profiler_->IsEnabled()) {
-                    tp = profiler_->Start();
-                }
-
-                GetMlasPlatform().GemmFloatKernel(
-                    ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, true
-                );
-                if (profiler_->IsEnabled()) {
-                    std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
-                    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
-                }
-#endif
-                if (profiler_->IsEnabled()) {
-                    tp = profiler_->Start();
-                }
+                //std::chrono::high_resolution_clock::time_point tp;
+                //if (profiler_->IsEnabled()) {
+                //    tp = profiler_->Start();
+                //}
                 GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                     BlkLen,
                     QuantA,
@@ -631,11 +633,30 @@ SQ4BitGemm_CompInt8(
                     lda,
                     ldc
                 );
-                if (profiler_->IsEnabled()) {
-                    std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
-                    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
-                }
+                //if (profiler_->IsEnabled()) {
+                //    std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
+                //    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+                //}
 
+// #ifndef CALL_SGEMM_SEPARATELY
+//                 if (profiler_->IsEnabled()) {
+//                     tp = profiler_->Start();
+//                 }
+#if defined(BlockSumM1Layout)
+                const float* b_blk_sum = QuantBBlkSum + n;
+                GetMlasPlatform().KernelM1Routine(ABlockSum, b_blk_sum, c_blk, k_blks, CountN, ldc, 0.0f);
+                // GetMlasPlatform().KernelM1TransposeBRoutine(ABlockSum, b_blk_sum, c_blk, k_blks, CountN, ldc, 0.0f);
+#else
+                const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+                GetMlasPlatform().GemmFloatKernel(
+                    ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, false
+                );
+#endif
+                //                if (profiler_->IsEnabled()) {
+                //                    std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+                //                    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+                //                }
+// #endif
                 if (DataParams->PostProcessor != nullptr) {
                     DataParams->PostProcessor->Process(
                         DataParams->C, RangeStartM, RangeStartN + n,
@@ -687,35 +708,10 @@ SQ4BitGemm_CompInt8(
             const float* b_col_scale = QuantBScale + n * k_blks;
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-            std::chrono::high_resolution_clock::time_point tp;
-#ifndef CALL_SGEMM_SEPARATELY
-            if (profiler_->IsEnabled()) {
-                tp = profiler_->Start();
-            }
-
-            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
-                size_t RowsRemaining = RangeCountM;
-                const float* a_blksum_row = ABlockSum;
-                while (RowsRemaining > 0) {
-                    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-                        a_blksum_row, b_blk_sum, c_blk, k_blks, RowsRemaining, CountN, k_blks, ldc, 1.f, true
-                    );
-
-                    c_blk += ldc * RowsHandled;
-                    a_blksum_row += k_blks * RowsHandled;
-                    RowsRemaining -= RowsHandled;
-                }
-            }
-            if (profiler_->IsEnabled()) {
-                std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
-                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
-            }
-#endif
-            if (profiler_->IsEnabled()) {
-                tp = profiler_->Start();
-            }
-            c_blk = C + n;
+            //std::chrono::high_resolution_clock::time_point tp;
+            //if (profiler_->IsEnabled()) {
+            //    tp = profiler_->Start();
+            //}
             GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
                 QuantA,
@@ -731,11 +727,35 @@ SQ4BitGemm_CompInt8(
                 lda,
                 ldc
             );
-            if (profiler_->IsEnabled()) {
-                std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt8_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
-                profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
-            }
+            //if (profiler_->IsEnabled()) {
+            //    std::string eventName = DataParams->node_name + "SQ4BitGemmKernel_CompInt8_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(K);
+            //    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            //}
 
+#ifndef CALL_SGEMM_SEPARATELY
+            //if (profiler_->IsEnabled()) {
+            //    tp = profiler_->Start();
+            //}
+
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
+                size_t RowsRemaining = RangeCountM;
+                const float* a_blksum_row = ABlockSum;
+                while (RowsRemaining > 0) {
+                    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+                        a_blksum_row, b_blk_sum, c_blk, k_blks, RowsRemaining, CountN, k_blks, ldc, 1.f, false
+                    );
+
+                    c_blk += ldc * RowsHandled;
+                    a_blksum_row += k_blks * RowsHandled;
+                    RowsRemaining -= RowsHandled;
+                }
+            }
+            //if (profiler_->IsEnabled()) {
+            //    std::string eventName = DataParams->node_name + "GemmFloatKernel_" + std::to_string(RangeCountM) + "_" + std::to_string(CountN) + "_" + std::to_string(k_blks);
+            //    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, tp);
+            //}
+#endif
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
                     DataParams->C, RangeStartM, RangeStartN + n,
@@ -980,7 +1000,7 @@ MlasSQNBitGemmBatch(
                     reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
                 PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
 #if defined(CALL_SGEMM_SEPARATELY)
-                SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
+                //SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
 #endif
                 ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, 0, M, 0, N);
             } else {
@@ -1054,7 +1074,7 @@ MlasSQNBitGemmBatch(
             void* PerGemmWorkspace =
                 reinterpret_cast<std::byte*>(Workspace) + GemmIdx * PerGemmWorkspaceStride;
             PerGemmQuantAWorkspace per_gemm_quant_a_workspace(PerGemmWorkspace, M, BlockCountK, BlkLen);
-            SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+            //SQ4BitGemm_CompInt8_0(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
             //ComputeOperation(BlkLen, K, Data, &per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
         });
     }

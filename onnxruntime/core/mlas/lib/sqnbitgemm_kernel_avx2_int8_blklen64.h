@@ -158,11 +158,8 @@ Q4Int8GemmR2xC4BlkLen64Avx2(
                 acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
                 acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
             }
-            const __m128 level_r0 = _mm_loadu_ps(SumPtr);
-            _mm_storeu_ps(SumPtr, _mm_sub_ps(acc_r0, level_r0));
-
-            const __m128 level_r1 = _mm_loadu_ps(SumPtr + ldc);
-            _mm_storeu_ps(SumPtr + ldc, _mm_sub_ps(acc_r1, level_r1));
+            _mm_storeu_ps(SumPtr, acc_r0);
+            _mm_storeu_ps(SumPtr + ldc, acc_r1);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * StrideQuantBData;
@@ -236,8 +233,8 @@ Q4Int8GemmR2xC1BlkLen64Avx2(
                 QuantBScalePtr++;
             }
 
-            *SumPtr = hsum_float_8(acc0) - *SumPtr;
-            *(SumPtr + ldc) = hsum_float_8(acc1) - *(SumPtr + ldc);
+            *SumPtr = hsum_float_8(acc0);
+            *(SumPtr + ldc) = hsum_float_8(acc1);
             if (BiasPtr) {
                 *SumPtr += *BiasPtr;
                 *(SumPtr + ldc) += *BiasPtr;
@@ -319,8 +316,7 @@ Q4Int8GemmR1xC4BlkLen64Avx2(
                 acc_r0 = _mm_add_ps(acc_r0, _mm_loadu_ps(BiasPtr));
             }
 
-            const __m128 level_r0 = _mm_loadu_ps(SumPtr);
-            _mm_storeu_ps(SumPtr, _mm_sub_ps(acc_r0, level_r0));
+            _mm_storeu_ps(SumPtr, acc_r0);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * StrideQuantBData;
@@ -392,7 +388,7 @@ Q4Int8GemmR1xC1BlkLen64Avx2(
                 QuantBScalePtr++;
             }
 
-            *SumPtr = hsum_float_8(acc0) - *SumPtr;
+            *SumPtr = hsum_float_8(acc0);
             if (BiasPtr) {
                 *SumPtr += *BiasPtr;
             }

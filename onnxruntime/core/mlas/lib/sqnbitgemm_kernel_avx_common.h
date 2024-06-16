@@ -132,9 +132,15 @@ ComputePackBlkSum(
                 zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
             }
 
-            // BlockSum is a width 16 row major matrix
-            const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-            *(BlockSumBegin + dst_offset) = *QuantBScale * zp;
+//#define BlockSumM1Layout 1
+#if defined(BlockSumM1Layout)
+             // BlockSum is a regular row major matrix
+            const size_t dst_offset = k_blk * N + n;
+#else
+             // BlockSum is a width 16 row major matrix
+             const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+#endif
+            *(BlockSumBegin + dst_offset) = -(*QuantBScale) * zp;
         }
     );
 }

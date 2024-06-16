@@ -324,11 +324,9 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
                 acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
                 acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
             }
-            const __m128 level_r0 = _mm_loadu_ps(SumPtr);
-            _mm_storeu_ps(SumPtr, _mm_sub_ps(acc_r0, level_r0));
 
-            const __m128 level_r1 = _mm_loadu_ps(SumPtr + ldc);
-            _mm_storeu_ps(SumPtr + ldc, _mm_sub_ps(acc_r1, level_r1));
+            _mm_storeu_ps(SumPtr, acc_r0);
+            _mm_storeu_ps(SumPtr + ldc, acc_r1);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * StrideQuantBData;
@@ -444,11 +442,9 @@ Q4Int8Gemm2x4x1BlkLen32Avx2(
                 acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
                 acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
             }
-            const __m128 level_r0 = _mm_loadu_ps(SumPtr);
-            _mm_storeu_ps(SumPtr, _mm_sub_ps(acc_r0, level_r0));
+            _mm_storeu_ps(SumPtr, acc_r0);
 
-            const __m128 level_r1 = _mm_loadu_ps(SumPtr + ldc);
-            _mm_storeu_ps(SumPtr + ldc, _mm_sub_ps(acc_r1, level_r1));
+            _mm_storeu_ps(SumPtr + ldc, acc_r1);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * StrideQuantBData;
@@ -547,8 +543,8 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
                 accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc0, acc1);
             }
 
-            *SumPtr = hsum_float_8(acc0) - *SumPtr;
-            *(SumPtr + ldc) = hsum_float_8(acc1) - *(SumPtr + ldc);
+            *SumPtr = hsum_float_8(acc0);
+            *(SumPtr + ldc) = hsum_float_8(acc1);
             if (BiasPtr) {
                 *SumPtr += *BiasPtr;
                 *(SumPtr + ldc) += *BiasPtr;
@@ -691,8 +687,7 @@ Q4Int8GemmXx4BlkLen32Avx2(
                 acc_r0 = _mm_add_ps(acc_r0, _mm_loadu_ps(BiasPtr));
             }
 
-            const __m128 level_r0 = _mm_loadu_ps(SumPtr);
-            _mm_storeu_ps(SumPtr, _mm_sub_ps(acc_r0, level_r0));
+            _mm_storeu_ps(SumPtr, acc_r0);
 
             // move to next NCols columns
             QuantBDataColPtr += NCols4 * StrideQuantBData;
@@ -774,7 +769,7 @@ Q4Int8GemmXxXBlkLen32Avx2(
                 accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr, scale_00, acc0);
             }
 
-            *SumPtr = hsum_float_8(acc0) - *SumPtr;
+            *SumPtr = hsum_float_8(acc0);
             if (BiasPtr) {
                 *SumPtr += *BiasPtr;
             }
