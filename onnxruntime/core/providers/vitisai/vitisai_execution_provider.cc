@@ -117,7 +117,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
+  DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 // This version of implementation (vs the overloaded version of implementation above)
@@ -147,12 +147,12 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", ep_ctx_cache_path_str, 0, cache_dir, cache_key, false, &logger);
+    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger);
   } else {
     p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_, ep_ctx_model_file_loc_);
+  DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
