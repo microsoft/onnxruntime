@@ -58,6 +58,10 @@ stages:
             ArtifactName: 'onnxruntime-linux-x64-tensorrt'
             TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+        - task: UseDotNet@2
+          inputs:
+            version: 6.x
+
         # Reconstruct the build dir
         - task: PowerShell@2
           displayName: 'PS: Extract nuget files gpu'

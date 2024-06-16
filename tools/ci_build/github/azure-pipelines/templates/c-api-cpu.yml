@@ -364,6 +364,9 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
+    - task: UseDotNet@2
+      inputs:
+        version: 6.x
     # Reconstruct the build dir
     - task: PowerShell@2
       displayName: 'Extract native libraries for addition to nuget native package'
