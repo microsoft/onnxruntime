@@ -146,6 +146,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     device = torch.device(device_name)
                     self.gradient_correctness(name, device)
 
+    @unittest.skipIf(not torch.cuda.is_bf16_supported(), "Test requires CUDA and BF16 support")
     def test_softmax_bf16_large(self):
         if not torch.cuda.is_available():
             # only test bf16 on cuda
