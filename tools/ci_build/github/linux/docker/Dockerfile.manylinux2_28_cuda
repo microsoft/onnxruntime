@@ -44,7 +44,3 @@ WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
 ENV PATH /usr/local/dotnet:$PATH
 ENV CUDA_MODULE_LOADING "LAZY"
-# Verify dependency version
-RUN nvcc --version
-RUN cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
-RUN dpkg -l | grep nvinfer

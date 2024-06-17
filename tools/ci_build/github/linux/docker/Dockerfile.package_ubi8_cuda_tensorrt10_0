@@ -52,8 +52,3 @@ ARG BUILD_UID=1000
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-ENV CUDA_MODULE_LOADING "LAZY"
-# Verify dependency version
-RUN nvcc --version
-RUN cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
-RUN dpkg -l | grep nvinfer
