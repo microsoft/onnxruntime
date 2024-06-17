@@ -87,6 +87,9 @@ Status SplitKernel::ComputeInternal(OpKernelContext* ctx) const {
     output_dimensions[axis] = split_sizes[2];
     Tensor* output2 = ctx->Output(2, TensorShape{output_dimensions});
 
+    // if input tensor is empty, we don't need to launch kernel, but still need to set output tensor.
+    if (input_tensor->Shape().Size() <= 0) return Status::OK();
+
     return Split3Inner(Stream(ctx),
                        input_tensor->DataType()->Size(),
                        split_sizes[0], split_sizes[1],
