@@ -194,7 +194,7 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
   assert (inner_size == (size0 + size1 + size2));
 
   int64_t N = outer_size * inner_size;
-  int blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
+  auto blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
   dim3 block(kNumThreadsPerBlock);
   dim3 grid(blocksPerGrid);
 
