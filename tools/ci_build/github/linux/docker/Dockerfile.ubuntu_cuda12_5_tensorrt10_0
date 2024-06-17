@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 AS base
+FROM nvidia/cuda:12.5.0-devel-ubuntu20.04 AS base
 
 # The local directory into which to build and install CMAKE
 ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
@@ -28,21 +28,22 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=68.2.2
+RUN pip install setuptools>=68.2.2 psutil
 
 # Install cuDNN v9
 RUN apt-get -y install cudnn9-cuda-12
 
 # Install TensorRT
-RUN v="8.6.1.6-1+cuda12.0" &&\
+RUN version="10.0.1.6-1+cuda12.4" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} libnvinfer-lean8=${v} libnvinfer-vc-plugin8=${v} libnvinfer-dispatch8=${v}\
-        libnvinfer-headers-dev=${v} libnvinfer-headers-plugin-dev=${v} libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} libnvinfer-lean-dev=${v} libnvinfer-vc-plugin-dev=${v}  libnvinfer-dispatch-dev=${v}\
-        python3-libnvinfer=${v} libnvinfer-samples=${v} tensorrt-dev=${v} tensorrt-libs=${v}
+    apt-get install -y \
+    tensorrt=${version}
 
-# Compile trtexec
-RUN cd /usr/src/tensorrt/samples/trtexec && make
+# Compile trtexec if not installed
+RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ]; then \
+    cd /usr/src/tensorrt/samples/trtexec && make; \
+    fi
 
 # Install Valgrind
 RUN apt-get install -y valgrind
@@ -94,3 +95,8 @@ USER root
 
 # Intall ORT wheel
 RUN pip install ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime/build/Linux/Release/dist/*.whl
+
+# Verify dependency version
+RUN nvcc --version
+RUN cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+RUN dpkg -l | grep nvinfer

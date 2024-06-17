@@ -104,3 +104,8 @@ USER root
 
 # Intall ORT wheel
 RUN pip install ${ONNXRUNTIME_LOCAL_CODE_DIR}/onnxruntime/build/Linux/Release/dist/*.whl
+
+# Verify dependency version
+RUN nvcc --version
+RUN cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+RUN dpkg -l | grep nvinfer
