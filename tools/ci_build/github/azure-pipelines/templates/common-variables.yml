@@ -2,7 +2,7 @@ variables:
   common_cuda_version: '11.8'
   common_cuda_baseimg: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
   # variables below are for TensorRT EP
-  common_trt_version: '10.0.1.6'
+  common_trt_version: '10.1.0.27'
   linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda11.8
   linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda12.4
   common_linux_trt_version: ${{ variables.linux_trt_version_cuda11 }}
