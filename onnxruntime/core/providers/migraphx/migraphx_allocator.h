@@ -9,12 +9,12 @@
 
 namespace onnxruntime {
 
-class HIPAllocator : public IAllocator {
+class MIGraphXAllocator : public IAllocator {
  public:
-  HIPAllocator(int device_id, const char* name)
+  MIGraphXAllocator(int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device_id)),
                           device_id, OrtMemTypeDefault)) {}
 
   virtual void* Alloc(size_t size) override;
@@ -24,14 +24,14 @@ class HIPAllocator : public IAllocator {
   void CheckDevice() const;
 };
 
-class HIPExternalAllocator : public HIPAllocator {
+class MIGraphXExternalAllocator : public MIGraphXAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
   typedef void (*ExternalEmptyCache)();
 
  public:
-  HIPExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
-      : HIPAllocator(device_id, name) {
+  MIGraphXExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
+      : MIGraphXAllocator(device_id, name) {
     alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
     free_ = reinterpret_cast<ExternalFree>(free);
     empty_cache_ = reinterpret_cast<ExternalEmptyCache>(empty_cache);
@@ -55,7 +55,7 @@ class HIPPinnedAllocator : public IAllocator {
   HIPPinnedAllocator(int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(device_id)),
                           device_id, OrtMemTypeCPUOutput)) {}
 
   virtual void* Alloc(size_t size) override;

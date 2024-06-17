@@ -603,6 +603,7 @@ def parse_arguments():
             "MinGW Makefiles",
             "Ninja",
             "NMake Makefiles",
+            "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
             "Xcode",
@@ -1721,9 +1722,7 @@ def setup_cuda_vars(args):
         if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
+                f"cuda_home='{cuda_home}' valid={cuda_home_valid}. cudnn_home='{cudnn_home}' valid={cudnn_home_valid}",
             )
 
     return cuda_home, cudnn_home
@@ -2173,6 +2172,7 @@ def build_python_wheel(
     use_cuda,
     cuda_version,
     use_rocm,
+    use_migraphx,
     rocm_version,
     use_dnnl,
     use_tensorrt,
@@ -2224,6 +2224,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+        elif use_migraphx:
+            args.append("--use_migraphx")
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -2489,9 +2491,9 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     nonlocal have_diff
                     have_diff = True
                     log.warning(
-                        "The updated document {} is different from the checked in version. "
-                        "Please regenerate the file{}, or copy the updated version from the "
-                        "CI build's published artifacts if applicable.".format(path, regenerate_qualifiers)
+                        f"The updated document {path} is different from the checked in version. "
+                        f"Please regenerate the file{regenerate_qualifiers}, or copy the updated version from the "
+                        "CI build's published artifacts if applicable."
                     )
                     log.debug("diff:\n" + diff)
 
@@ -2548,9 +2550,6 @@ def main():
 
     if args.use_tensorrt:
         args.use_cuda = True
-
-    if args.use_migraphx:
-        args.use_rocm = True
 
     if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
@@ -2832,7 +2831,8 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
-        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and the target OS is Windows
+        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and
+        #  the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
@@ -2843,6 +2843,7 @@ def main():
                 args.use_cuda,
                 args.cuda_version,
                 args.use_rocm,
+                args.use_migraphx,
                 args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,
