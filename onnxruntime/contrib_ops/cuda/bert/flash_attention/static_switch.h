@@ -23,6 +23,7 @@
     }                                           \
   }()
 
+#define FLASHATTENTION_DISABLE_ALIBI // TEMP: Remove if we enable alibi
 #ifdef FLASHATTENTION_DISABLE_ALIBI
 #define ALIBI_SWITCH(COND, CONST_NAME, ...)   \
   [&] {                                       \
