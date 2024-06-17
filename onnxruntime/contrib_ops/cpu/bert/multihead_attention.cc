@@ -144,7 +144,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
 
-  if(std::is_same_v<T, float> && !disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr){
+  if (std::is_same_v<T, float> && !disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr) {
     FlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
     args.num_heads = num_heads_;
@@ -170,7 +170,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.value = V.Get<Tensor>().Data<float>();
     args.output = output->MutableData<float>();
 
-    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id){
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
       FlashAttentionThreaded(thread_id, &args);
     });
 
