@@ -59,6 +59,7 @@ parameters:
       - 12.2
 
 variables:
+  - template: templates/common-variables.yml
   - name: ReleaseVersionSuffix
     value: ''
   - name: docker_base_image
@@ -68,9 +69,9 @@ variables:
       value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
   - name: win_trt_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
+      value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-12.4
+      value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
   - name: win_cuda_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: $(Agent.TempDirectory)\v11.8

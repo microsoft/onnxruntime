@@ -222,11 +222,12 @@ stages:
     dependsOn: []
     jobs:
     - template: templates/jobs/win-ci-vs-2022-job.yml
+    - template: templates/common-variables.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
