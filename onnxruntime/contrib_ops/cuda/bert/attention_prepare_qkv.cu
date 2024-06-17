@@ -4,7 +4,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 

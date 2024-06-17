@@ -288,7 +288,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper) {           // tensor dumper
+                     const IConsoleDumper* dumper) {                         // tensor dumper
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -450,7 +450,7 @@ Status GreedySearchProcessLogits(
     bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     Stream* stream,                                         // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper) {           // tensor dumper
+    const IConsoleDumper* dumper) {                         // tensor dumper
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -810,7 +810,7 @@ Status UpdateDecoderFeeds(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper) {
+    const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
@@ -952,7 +952,7 @@ template Status ProcessLogits<float>(
     const transformers::IGenerationParameters* parameters,
     int step,
     Stream* stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
@@ -966,7 +966,7 @@ template Status GreedySearchProcessLogits<float>(
     bool do_sampling,
     int step,
     Stream* ort_stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status DeviceCopy<float>(
     gsl::span<float> target,
@@ -1017,7 +1017,7 @@ template Status UpdateDecoderFeeds<float>(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status UpdateDecoderFeeds<MLFloat16>(
     AllocatorPtr allocator,
@@ -1037,7 +1037,7 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 

@@ -219,8 +219,10 @@ class QnnModelWrapper {
   Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points,
                           int32_t& onnx_data_type) const;
 
-  // Checks if a tensor in the ONNX graph is per-axis quantized.
-  Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def, /*out*/ bool& is_per_axis) const;
+  // Checks if a tensor in the ONNX graph is per-channel quantized.
+  Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
+                               /*out*/ bool& is_per_channel,
+                               /*out*/ int64_t& axis) const;
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,
