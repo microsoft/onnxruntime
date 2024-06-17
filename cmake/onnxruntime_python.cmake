@@ -514,7 +514,8 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/mobile_helpers/*.py
     ${REPO_ROOT}/tools/ci_build/github/android/mobile_package.required_operators.config
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
-    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
 )
 file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
