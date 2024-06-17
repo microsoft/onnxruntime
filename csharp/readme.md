@@ -68,9 +68,8 @@ The IncludeMobileTargets property determines whether the MAUI targets are includ
 real package build.
 
 Make sure all the required workloads are installed if the MAUI targets are included.
-  `dotnet workload install android ios maccatalyst`
+  `dotnet workload install maui android ios maccatalyst`
     - original example from [here](https://github.com/Sweekriti91/maui-samples/blob/swsat/devops/6.0/Apps/WeatherTwentyOne/devops/AzureDevOps/azdo_windows.yml):
-      - `dotnet workload install android ios maccatalyst maui`
 
 Restore and build the managed package.
   `msbuild -t:restore .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:IncludeMobileTargets=true`
