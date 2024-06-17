@@ -632,13 +632,17 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
     } else if (data_type->s() == "string") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    } else if (data_type->s() == "complex64") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
+    } else if (data_type->s() == "complex128") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
     } else if (data_type->s() == "float8e4m3fn") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
     } else if (data_type->s() == "float8e4m3fnuz") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
-    } else if (data_type->s() == "float8f5m2") {
+    } else if (data_type->s() == "float8e5m2") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
-    } else if (data_type->s() == "float8f5m2funz") {
+    } else if (data_type->s() == "float8e5m2funz") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
     } else if (data_type->s() == "uint4") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
