@@ -328,7 +328,10 @@ class HQQWeightOnlyQuantizer:
         return w_q, scale.to(tensor.dtype), zero.to(tensor.dtype)
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]):
-        """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node."""
+        """
+        If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node.
+        If QOperator format, return MatMulNbits. If QDQ format, return DeQuantizeLinear + MatMul.
+        """
         if node.op_type != "MatMul":
             return node  # only care about MatMul for now
         import torch
