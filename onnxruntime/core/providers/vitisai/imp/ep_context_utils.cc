@@ -182,7 +182,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
-std::unique_ptr<Model> CreateEPContexModel(
+Status CreateEPContexModel(
     const GraphViewer& graph_viewer,
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
@@ -190,15 +190,9 @@ std::unique_ptr<Model> CreateEPContexModel(
     const std::string& backend_cache_dir,
     const std::string& backend_cache_key,
     bool saving_orig_graph,
+    Model* p_ep_ctx_model,
     const logging::Logger* p_logger) {
-  // Create a new graph/model, reusing the graph name,
-  // the op-domain-to-opset-version map,
-  // and the op schema registry of the current graph.
-  // XXX: This approach will cause a memory fault issue (std::bad_alloc).
-  // auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
-  // This apporach is working well and has no memory falut issue.
-  auto p_temp_model = graph_viewer.CreateModel(*p_logger);
-  auto& ep_ctx_graph = p_temp_model->MainGraph();
+  auto& ep_ctx_graph = p_ep_ctx_model->MainGraph();
 
   std::vector<NodeArg*> input_node_arg_ptrs;
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
@@ -268,16 +262,14 @@ std::unique_ptr<Model> CreateEPContexModel(
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
-  LOGS_DEFAULT(VERBOSE) << "EP context model graph resolved";
+  LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
   if (ValidateEPContextNode(ep_ctx_graph)) {
-    LOGS_DEFAULT(VERBOSE) << "EP context model graph validated";
+    LOGS_DEFAULT(VERBOSE) << "Created EP context model graph validated";
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Created EP context model is invalid");
   }
-  auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
-  auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
-  auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
-  p_ep_ctx_graph_viewer->ToProto(*p_ep_ctx_model_proto->mutable_graph(), true, true);
 
-  return p_ep_ctx_model;
+  return Status::OK();
 }
 
 void DumpEPContextModel(

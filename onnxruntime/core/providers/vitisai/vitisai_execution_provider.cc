@@ -96,11 +96,16 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const onnxruntime::GraphViewer& graph_viewer) const {
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+    ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
+  }
+  if (!p_ep_ctx_model_) {
+    // Empty model proto.
+    auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
+    p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
+  }
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
-    if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
-      ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
-    }
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
@@ -112,9 +117,10 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, &logger);
+    ORT_THROW_IF_ERROR(
+        CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, p_ep_ctx_model_.get(), &logger));
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger);
+    ORT_THROW_IF_ERROR(CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, p_ep_ctx_model_.get(), &logger));
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
@@ -132,10 +138,15 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+    ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
+  }
+  if (!p_ep_ctx_model_) {
+    // Empty model proto.
+    auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
+    p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
+  }
   if (!ep_ctx_embed_mode_) {
-    if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
-      ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
-    }
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
     if (!ep_ctx_cache_ofs.is_open()) {
@@ -147,9 +158,10 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger);
+    ORT_THROW_IF_ERROR(
+        CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, p_ep_ctx_model_.get(), &logger));
   } else {
-    p_ep_ctx_model_ = CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger);
+    ORT_THROW_IF_ERROR(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, p_ep_ctx_model_.get(), &logger));
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
