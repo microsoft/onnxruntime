@@ -79,10 +79,12 @@
 				<OnnxLight width={32} height={32} />
 			</div>
 		</a>
+		
+		<a class="hover:bg-primary focus:bg-primary menu-item py-2 sr-only focus:not-sr-only" href="#main-content">Skip to main content</a>
 	</div>
 	<!-- Navbar for deskop -->
 	<div class="navbar-center hidden lg:flex">
-		<ul class="menu menu-horizontal px-1">
+		<ul class="menu menu-horizontal px-1">		
 			<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/getting-started'}>Get Started</a></li>
 			<li><a class="hover:bg-primary focus:bg-primary" href={pathvar + '/blogs'}>Blogs</a></li>
 			<li><a class="hover:bg-primary focus:bg-primary" rel="external" href={pathvar + '/docs'}>Docs</a></li>

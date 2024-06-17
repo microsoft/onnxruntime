@@ -8,7 +8,7 @@ nav_order: 6
 
 Using device tensors can be a crucial part in building efficient AI pipelines, especially on heterogenous memory systems.
 A typical example of such systems is any PC with a dedicated GPU.
-While a [recent GPU](https://www.techpowerup.com/gpu-specs/geforce-rtx-4090.c3889) itself has a memory bandwidth of about 1TB/s, the interconnect [PCI 4.0 x16](https://de.wikipedia.org/wiki/PCI_Express) to the CPU can often be the limiting factor with only ~32GB/s.
+While a [recent GPU](https://www.techpowerup.com/gpu-specs/geforce-rtx-4090.c3889) itself has a memory bandwidth of about 1TB/s, the interconnect [PCI 4.0 x16](https://en.wikipedia.org/wiki/PCI_Express) to the CPU can often be the limiting factor with only ~32GB/s.
 Therefore it is often best to keep data local to the GPU as much as possible or hide slow memory traffic behind computation as the GPU is able to execute compute and PCI memory traffic simultaneously.
 
 A typical use case for these scenarios where memory is already local to the inference device would be a GPU accelerated video processing of an encoded video stream which can be decoded with GPU decoders.
@@ -20,7 +20,7 @@ Tile based inference for high resolution images is another use-case where custom
 ## CUDA
 
 CUDA in ONNX Runtime has two custom memory types.
-`"CudaPinned"` and `"Cuda"` memory where [CUDA pinned](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/) is actually CPU memory which is directly accesible by the GPU allowing for fully asynchronous up and download of memory using [`cudaMemcpyAsync`](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1g85073372f776b4c4d5f89f7124b7bf79).
+`"CudaPinned"` and `"Cuda"` memory where [CUDA pinned](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/) is actually CPU memory which is directly accessible by the GPU allowing for fully asynchronous up and download of memory using [`cudaMemcpyAsync`](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1g85073372f776b4c4d5f89f7124b7bf79).
 Normal CPU tensors only allow for a synchronous downloads from GPU to CPU while CPU to GPU copies can always be executed asynchronous.
 
 Allocating a tensor using the `Ort::Sessions`'s allocator is very straight forward using the [C++ API](https://onnxruntime.ai/docs/api/c/struct_ort_1_1_value.html#a5d35080239ae47cdbc9e505666dc32ec) which directly maps to the C API.
@@ -132,5 +132,4 @@ binding.bind_output("out", "dml")
 # binding.bind_ortvalue_output("out", dml_array_out)
 
 session.run_with_iobinding(binding)
-
 ```

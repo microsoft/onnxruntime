@@ -82,7 +82,7 @@
 				<p class="inline">By:</p>
 			{/if}
 			{#each authors as author, i}
-				<a href={authorsLink[i]} class="text-blue-500">{author}</a>{i + 1 === authors.length
+				<a href={authorsLink[i]} class="text-blue-700">{author}</a>{i + 1 === authors.length
 					? ''
 					: ', '}
 			{/each}
