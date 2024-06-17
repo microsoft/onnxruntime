@@ -385,7 +385,7 @@ stages:
 
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - job: Windows_py_GPU_Wheels
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       workspace:
         clean: all
       pool: 'onnxruntime-Win2022-GPU-A10'

@@ -43,7 +43,7 @@ stages:
       clean: all
     pool: ${{ parameters.machine_pool }}
     variables:
-      - template: templates/common-variables.yml
+      - template: ../common-variables.yml
       # The build machine pool doesn't have dotnet, so it can't run CG.
       - name: skipComponentGovernanceDetection
         value: true
