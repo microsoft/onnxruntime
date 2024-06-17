@@ -9,7 +9,7 @@ import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUn
 
 import {applyAttention, AttentionAttrs, AttentionMaskType, AttentionParameters, AttentionQkvFormat} from './attention';
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
-import {maybeTransposeToBNSHAndAddBias} from './multihead-attentiion';
+import {maybeTransposeToBNSHAndAddBias} from './multihead-attention';
 import {createTileProgramInfo} from './tile';
 import {createTransposeProgramInfo, TransposeAttributes} from './transpose';
 

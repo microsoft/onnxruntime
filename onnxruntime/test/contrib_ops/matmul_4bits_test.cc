@@ -319,7 +319,7 @@ TEST(MatMulNBits, Float32) {
   }
 }
 
-#if defined(USE_CUDA) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 
 namespace {
 // Legacy test function.
@@ -343,10 +343,13 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
     opts.output_abs_error = fp16_abs_error;
   }
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (use_float16) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+#ifdef USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 #ifdef USE_DML
     execution_providers.push_back(DefaultDmlExecutionProvider());
@@ -354,13 +357,17 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 
     RunTest<MLFloat16>(opts, std::move(execution_providers));
   } else {
-    RunTest<float>(opts);
+#ifdef USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+
+    RunTest<float>(opts, std::move(execution_providers));
   }
 }
 }  // namespace
 
 TEST(MatMulNBits, Float16) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   auto has_gidx_options = {true, false};
 #else
   auto has_gidx_options = {false};
@@ -404,7 +411,7 @@ TEST(MatMulNBits, Float16Large) {
   }
 }
 
-#endif  // defined(USE_CUDA) || defined(USE_DML)
+#endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 
 #if defined(ORT_NEURAL_SPEED)
 namespace {

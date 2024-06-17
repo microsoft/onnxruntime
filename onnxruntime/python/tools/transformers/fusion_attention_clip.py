@@ -97,7 +97,33 @@ class FusionAttentionClip(FusionAttention):
         else:
             # Deal with the first attention after the embedding layer.
             for i in [0, 1]:
-                node_before_layer_norm = self.model.match_parent(normalize_node, "Add", i)
+                node_before_layer_norm = None
+
+                node_before_layer_norm_1 = self.model.match_parent(normalize_node, "Add", i)
+                node_before_layer_norm_2 = self.model.match_parent(normalize_node, "LayerNormalization", i)
+                if node_before_layer_norm_1 is not None:
+                    #           Add -----------+
+                    #            |             |
+                    #        LayerNorm         |
+                    #            |             |
+                    #        LayerNorm         |
+                    #            |             |
+                    #   Attention subgraph     |
+                    #            |             |
+                    #      SkipLayerNorm ------+
+                    node_before_layer_norm = node_before_layer_norm_1
+                elif node_before_layer_norm_2 is not None:
+                    #           Add
+                    #            |
+                    #        LayerNorm --------+
+                    #            |             |
+                    #        LayerNorm         |
+                    #            |             |
+                    #   Attention subgraph     |
+                    #            |             |
+                    #      SkipLayerNorm ------+
+                    node_before_layer_norm = node_before_layer_norm_2
+
                 if node_before_layer_norm is None:
                     continue
                 child = self.model.find_first_child_by_type(
@@ -130,20 +156,32 @@ class FusionAttentionClip(FusionAttention):
             return
         (_, _, reshape_v, add_v, matmul_v) = v_nodes
 
+        add_mask = None
         add_mask_indices = []
-        qk_nodes = self.model.match_parent_path(
+        qk_nodes = None
+        qk_nodes_1 = self.model.match_parent_path(
             matmul_qkv,
             ["Softmax", "Reshape", "Add", "Reshape", "MatMul"],
             [0, 0, 0, None, 0],
             return_indice=add_mask_indices,
         )
-        if qk_nodes is None:
+        qk_nodes_2 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Softmax", "MatMul"],
+            [0, 0],
+        )
+        if qk_nodes_1 is not None:
+            qk_nodes = qk_nodes_1
+            assert len(add_mask_indices) == 1
+            causal_mask_input_index = 1 - add_mask_indices[0]
+
+            (_softmax_qk, _, add_mask, _, matmul_qk) = qk_nodes
+        elif qk_nodes_2 is not None:
+            qk_nodes = qk_nodes_2
+            (_softmax_qk, matmul_qk) = qk_nodes
+        else:
             logger.debug("fuse_attention: failed to match qk path")
             return
-        assert len(add_mask_indices) == 1
-        causal_mask_input_index = 1 - add_mask_indices[0]
-
-        (_softmax_qk, _, add_mask, _, matmul_qk) = qk_nodes
 
         q_nodes = self.model.match_parent_path(
             matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
@@ -172,23 +210,24 @@ class FusionAttentionClip(FusionAttention):
 
         attention_last_node = reshape_qkv
 
-        # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
-        # of computing causal mask.
-        causal_mask_nodes = self.model.match_parent_path(
-            add_mask,
-            ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
-            [causal_mask_input_index, 0, 0, 0, 0, 0],
-        )
-        if causal_mask_nodes is None:
-            # If the model is exported with batch_size == 1, there is no Concat node
+        if add_mask is not None:
+            # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
+            # of computing causal mask.
             causal_mask_nodes = self.model.match_parent_path(
                 add_mask,
-                ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
-                [causal_mask_input_index, 0, 0, 0, 0],
+                ["Concat", "Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
+                [causal_mask_input_index, 0, 0, 0, 0, 0],
             )
             if causal_mask_nodes is None:
-                logger.debug("fuse_attention: failed to match causal mask subgraph")
-                return
+                # If the model is exported with batch_size == 1, there is no Concat node
+                causal_mask_nodes = self.model.match_parent_path(
+                    add_mask,
+                    ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
+                    [causal_mask_input_index, 0, 0, 0, 0],
+                )
+                if causal_mask_nodes is None:
+                    logger.debug("fuse_attention: failed to match causal mask subgraph")
+                    return
 
         new_node = self.create_attention_node(
             mask_index=None,
@@ -204,7 +243,7 @@ class FusionAttentionClip(FusionAttention):
             output=attention_last_node.output[0],
             add_qk_str=None,
             scale=None,
-            causal=True,
+            causal=(add_mask is not None),
         )
         if new_node is None:
             return

@@ -3,14 +3,18 @@
 
 #pragma once
 
+// Standard headers/libs.
 #include <ctime>
 #include <vector>
 #include <memory>
 #include <set>
 #include <string>
 
+// 1st-party headers/libs.
+// #include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/common/inlined_containers_fwd.h"
 
 // we cannot include vaip/vaip.hpp here because header file referred by
 // onnxruntime_pybind_state_common.cc
@@ -24,9 +28,11 @@ namespace onnxruntime {
 class VitisAIExecutionProvider : public IExecutionProvider {
  public:
   explicit VitisAIExecutionProvider(const ProviderOptions& info);
+  // explicit VitisAIExecutionProvider(const ProviderOptions& info,
+  //     const SessionOptions* p_sess_opts = nullptr);
   ~VitisAIExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                 const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return 0; }
@@ -34,6 +40,10 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
+  // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
  private:
   void CreateKernelRegistry();
@@ -45,6 +55,24 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::shared_ptr<KernelRegistry> registry_;
   std::set<std::string> vitisai_optypes_;
+  // EP context related.
+  bool ep_ctx_enabled_ = false;
+  bool ep_ctx_embed_mode_ = true;
+  std::string ep_ctx_model_path_cfg_{""};
+  mutable PathString ep_ctx_model_file_loc_{};
+  // FIXME: This might not be needed.
+  mutable std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
+  // It might need to be called before loading
+  // the EP context model that is compiled AOT/offline.
+  void LoadEPContexModelFromFile() const;
+  // Create EP context model and dump it for future use.
+  // This implementation here is only working for non-compilation-based EPs.
+  void FulfillEPContextEnablement(
+      const std::vector<std::unique_ptr<ComputeCapability>>&,
+      const onnxruntime::GraphViewer&) const;
+  void FulfillEPContextEnablement(const onnxruntime::GraphViewer&) const;
+  std::string GetBackendCompileCacheDir() const;
+  std::string GetBackendCompileCacheKey(const GraphViewer&) const;
 };
 
 }  // namespace onnxruntime

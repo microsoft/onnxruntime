@@ -16,9 +16,10 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
                        const std::vector<float>& fc2_experts_bias, const std::vector<float>& output_data, int num_rows,
                        int num_experts, int hidden_size, int inter_size, std::string activation_type,
                        int normalize_routing_weights = 0, int top_k = 1, bool use_float16 = false) {
-  int min_cuda_architecture = use_float16 ? 700 : 0;
+  constexpr int min_cuda_arch = 700;
+  constexpr int max_cuda_arch = 900;
 
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) && !NeedSkipIfCudaArchGreaterEqualThan(max_cuda_arch);
   if (enable_cuda) {
     OpTester tester("MoE", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
@@ -91,7 +92,10 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
                         const std::vector<float>& fc2_scales, const std::vector<float>& fc3_scales,
                         const std::vector<float>& output_data, int num_rows, int num_experts, int hidden_size,
                         int inter_size, std::string activation_type, int normalize_routing_weights = 0, int top_k = 1) {
-  bool enable_cuda = HasCudaEnvironment(700);
+  constexpr int min_cuda_arch = 700;
+  constexpr int max_cuda_arch = 900;
+
+  bool enable_cuda = HasCudaEnvironment(min_cuda_arch) && !NeedSkipIfCudaArchGreaterEqualThan(max_cuda_arch);
   if (enable_cuda) {
     OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));

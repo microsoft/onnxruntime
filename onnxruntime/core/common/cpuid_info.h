@@ -129,7 +129,7 @@ class CPUIDInfo {
   bool pytorch_cpuinfo_init_{false};
 #endif  // defined(CPUINFO_SUPPORTED)
 
-#ifdef __linux__
+#if defined(__linux__)
 
   void ArmLinuxInit();
 
@@ -137,7 +137,11 @@ class CPUIDInfo {
 
   void ArmWindowsInit();
 
-#endif /* (arm or arm64) and windows */
+#elif defined(__APPLE__)
+
+  void ArmAppleInit();
+
+#endif
 
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 };

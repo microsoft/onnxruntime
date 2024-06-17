@@ -16,42 +16,19 @@ parameters:
   default: '*.dll'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
+- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
   displayName: ${{ parameters.DisplayName }}
   condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
-    ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
+    ConnectedServiceName: 'OnnxrunTimeCodeSign_20240611'
+    AppRegistrationClientId: '53d54d02-978d-4305-8572-583cf6711c4f'
+    AppRegistrationTenantId: '72f988bf-86f1-41af-91ab-2d7cd011db47'
+    AuthAKVName: 'buildkeyvault'
+    AuthCertName: '53d54d02-SSL-AutoRotate'
+    AuthSignCertName: '53d54d02-978d-4305-8572-583cf6711c4f'
+
     FolderPath: ${{ parameters.FolderPath }}
     Pattern: ${{ parameters.Pattern }}
-    signConfigType: inlineSignParams
-    inlineOperation: |
-      [
-        {
-          "keyCode": "CP-230012",
-          "operationSetCode": "SigntoolSign",
-          "parameters": [
-            {
-              "parameterName": "OpusName",
-              "parameterValue": "Microsoft"
-            },
-            {
-              "parameterName": "OpusInfo",
-              "parameterValue": "http://www.microsoft.com"
-            },
-            {
-              "parameterName": "PageHash",
-              "parameterValue": "/NPH"
-            },
-            {
-              "parameterName": "FileDigest",
-              "parameterValue": "/fd sha256"
-            },
-            {
-              "parameterName": "TimeStamp",
-              "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
-            }
-          ],
-          "toolName": "signtool.exe",
-          "toolVersion": "6.2.9304.0"
-        }
-      ]
+    SessionTimeout: 90
+    ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+    MaxConcurrency: 25

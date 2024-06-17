@@ -22,8 +22,6 @@ Abstract:
 
 #pragma once
 
-#include <cassert>
-
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
@@ -42,56 +40,6 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
     } else {
         return BlkCount;
     }
-}
-
-//
-// Quantized int8 block helpers.
-//
-
-MLAS_FORCEINLINE
-const float&
-Q8BlkScale(const std::byte* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
-
-MLAS_FORCEINLINE
-float&
-Q8BlkScale(std::byte* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
-
-MLAS_FORCEINLINE
-const int8_t*
-Q8BlkData(const std::byte* BlkPtr)
-{
-    return reinterpret_cast<const int8_t*>(BlkPtr + sizeof(float));
-}
-
-MLAS_FORCEINLINE
-int8_t*
-Q8BlkData(std::byte* BlkPtr)
-{
-    return reinterpret_cast<int8_t*>(BlkPtr + sizeof(float));
-}
-
-MLAS_FORCEINLINE
-constexpr size_t
-Q8BlkSize(size_t BlkLen)
-{
-    const size_t BlkSize = sizeof(float) + BlkLen * sizeof(int8_t);
-    // Currently, the strictest alignment requirement of a block is for a float.
-    // Ensure contiguous blocks are suitably aligned.
-    assert(BlkSize % alignof(float) == 0);
-    return BlkSize;
-}
-
-MLAS_FORCEINLINE
-constexpr size_t
-Q8BlkAlignment()
-{
-    return alignof(float);
 }
 
 //
@@ -125,6 +73,43 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+
+    //
+    // Workspace size calculation function prototypes.
+    //
+
+    /**
+     * @brief Gets the required size in bytes of the per-GEMM intermediate workspace.
+     *        Returns a size of zero if no intermediate workspace is needed.
+     *
+     * @param[in]   M               row size of matrix A and C
+     * @param[in]   N               column size of matrix B and C
+     * @param[in]   K               column size of matrix A and row size of matrix B
+     * @param[in]   BlkLen          number of quantized values per block
+     * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+     */
+    typedef size_t(SQ4BitGemmPerGemmWorkspaceSize_Fn)(
+        size_t M,
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
+    SQ4BitGemmPerGemmWorkspaceSize_Fn* SQ4BitGemmPerGemmWorkspaceSize = nullptr;
+
+    /**
+     * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
+     *
+     * @param[in]   BlkLen          number of quantized values per block
+     * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+     */
+    typedef size_t(SQ4BitGemmPerGemmWorkspaceAlignment_Fn)(
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
+    SQ4BitGemmPerGemmWorkspaceAlignment_Fn* SQ4BitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
     // CompFp32 kernel function prototypes.

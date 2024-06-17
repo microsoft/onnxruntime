@@ -41,6 +41,8 @@ def get_pipeline_names():
         "onnxruntime-binary-size-checks-ci-pipeline",
         # big models
         "Big Models",
+        # android
+        "Linux Android Emulator QNN CI Pipeline",
         # not currently required, but running ensures we're hitting all mobile platforms
         "Android CI Pipeline",
         "iOS CI Pipeline",

@@ -226,9 +226,12 @@ else()
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
+    "SHELL:-s WASM_BIGINT=1"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
+    "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
+  set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
 
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
@@ -237,11 +240,11 @@ else()
 
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
-      --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
+      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
-    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -252,7 +255,10 @@ else()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s ASSERTIONS=2"
+      # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
+      #       However, it may be very slow.
+      # "SHELL:-s ASSERTIONS=2"
+      "SHELL:-s ASSERTIONS=1"
       "SHELL:-s SAFE_HEAP=1"
       "SHELL:-s STACK_OVERFLOW_CHECK=2"
     )
@@ -266,7 +272,7 @@ else()
   endif()
 
   if (onnxruntime_USE_WEBNN)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind -sWASM_BIGINT")
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --bind")
     if (onnxruntime_DISABLE_RTTI)
       set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -fno-rtti -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
     endif()
@@ -283,7 +289,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
-      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]"
+      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]-1"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
@@ -309,5 +315,9 @@ else()
 
   list(JOIN target_name_list  "-" target_name)
 
-  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
+  if (onnxruntime_USE_JSEP)
+    string(APPEND target_name ".jsep")
+  endif()
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
 endif()

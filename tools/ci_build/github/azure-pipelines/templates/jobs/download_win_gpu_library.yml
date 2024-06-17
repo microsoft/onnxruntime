@@ -35,19 +35,19 @@ steps:
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
     - ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        - bash: |
-            echo "##vso[task.setvariable variable=trtCudaVersion]11.8"
+        - powershell: |
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]11.8"
           displayName: Set trtCudaVersion
     - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '8.6.1.6')) }}:
-        - bash: |
-            echo "##vso[task.setvariable variable=trtCudaVersion]12.0"
+        - powershell: |
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.0"
           displayName: Set trtCudaVersion
     - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.0.1.6')) }}:
-        - bash: |
-            echo "##vso[task.setvariable variable=trtCudaVersion]12.4"
+        - powershell: |
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.4"
           displayName: Set trtCudaVersion
 
-    - bash: |
+    - script: |
         echo $(trtCudaVersion) && echo TensorRT-${{ parameters.TrtVersion }}.Windows10.x86_64.cuda-$(trtCudaVersion)
       displayName: Get trtCudaVersion and Directory Name
 

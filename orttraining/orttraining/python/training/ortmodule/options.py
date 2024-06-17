@@ -282,8 +282,10 @@ class _RuntimeOptions:
         # Configuration for memory optimization.
         self.memory_optimization_level = (
             _MemoryOptimizationLevel.USER_SPECIFIED
-        )  # 0: use `memory_optimizer_config`; 1: aggressive optimization, enable all recomputable subgraphs.
-        self.memory_optimizer_config = ""  # This is an advanced config, please refer to onnxruntime docs for details.
+        )  # 0: use `memory_optimizer_config_file_path`; 1: aggressive optimization, enable all recomputable subgraphs.
+        self.memory_optimizer_config_file_path = (
+            ""  # This is an advanced config, please refer to onnxruntime docs for details.
+        )
         # 1 is the op set level; 0 indicates whether consider the Transformer-based model's layer boundary when
         # detecting recompute subgraphs.
         self.recompute_probe_config = "1:0"
@@ -351,8 +353,9 @@ class _RuntimeOptions:
 
         # Configuration for memory optimization.
         self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
-        user_given_memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
-        self.memory_optimizer_config = ",".join([c for c in user_given_memory_optimizer_config.split(",") if c])
+        self.memory_optimizer_config_file_path = os.getenv(
+            "ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config_file_path
+        )
         if self.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
@@ -429,7 +432,7 @@ class _RuntimeOptions:
     def memory_optimizer_is_enabled(self) -> bool:
         """Check whether memory optimizer is enabled."""
         if self.memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
-            return len(self.memory_optimizer_config) > 0
+            return len(self.memory_optimizer_config_file_path) > 0
         elif self.memory_optimization_level in [
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,

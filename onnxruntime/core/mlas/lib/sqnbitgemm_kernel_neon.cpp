@@ -22,6 +22,7 @@ Abstract:
 #include <utility>
 
 #include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 //
 // Quantized B data packing function implementation.
@@ -116,6 +117,52 @@ SQ4BitGemmPackQuantBData(
             }
         }
     );
+}
+
+//
+// Workspace size calculation function implementation.
+//
+
+size_t
+SQ4BitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(N);
+
+    switch(ComputeType) {
+        case CompInt8: {
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+            return PerGemmWorkspaceSize;
+        }
+        default: {
+            return 0;
+        }
+    }
+}
+
+size_t
+SQ4BitGemmPerGemmWorkspaceAlignment(
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
+
+    switch (ComputeType) {
+        case CompInt8: {
+            return Q8BlkAlignment();
+        }
+        default: {
+            return 1;
+        }
+    }
 }
 
 }  // namespace
@@ -1440,6 +1487,9 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
 
     d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
+
+    d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
+    d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
 
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32;

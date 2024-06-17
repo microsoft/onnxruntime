@@ -36,6 +36,7 @@ class BackendManager {
       const onnxruntime::Node& fused_node,
       const onnxruntime::GraphViewer& subgraph,
       const logging::Logger& logger) const;
+
   bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 

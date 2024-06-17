@@ -24,7 +24,7 @@ namespace openvino_ep {
 int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set) {
   int count = 0;
   for (const auto& input : node->InputDefs()) {
-    auto name = input->Name();
+    const auto& name = input->Name();
     auto it = initializer_set.find(name);
     if (it == initializer_set.end()) {
       count++;
