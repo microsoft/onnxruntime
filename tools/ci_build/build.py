@@ -1541,7 +1541,6 @@ def generate_build_tree(
                     cflags += ["/MP"]
                 else:
                     cflags += ["/MP%d" % njobs]
-
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
