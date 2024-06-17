@@ -1,7 +1,7 @@
-import time
-import os
-from typing import Optional
 import argparse
+import os
+import time
+from typing import Optional
 
 import torch
 from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
@@ -9,6 +9,7 @@ from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttent
 
 def save_results(results, filename):
     import pandas as pd
+
     df = pd.DataFrame(
         results,
         columns=[
@@ -25,6 +26,7 @@ def save_results(results, filename):
     df.to_csv(filename, header=True, index=False)
     print(f"Results saved in {filename}!")
 
+
 def benchmark(
     batch_size: int,
     num_heads: int,
@@ -34,7 +36,7 @@ def benchmark(
     sequence_length: int = 1,
     past_sequence_length: int = 0,
     local_window_size: Optional[int] = None,
-    model_name: str = "Llama3-8B"
+    model_name: str = "Llama3-8B",
 ):
     warmup = 15
     repeat = 100
@@ -85,7 +87,7 @@ def run_performance_tests(args):
         (32, 128, 8, 65536, None, "Phi-3-small-128k"),  # Sparsity is not used in this test
         (40, 128, 10, 32768, None, "Phi-3-medium-128K"),
     ]
-    if args.kernel == 'flash_attention':
+    if args.kernel == "flash_attention":
         configures.append((32, 128, 8, 32768, 4096, "Mistral-7B-v0.1"))
 
     # Reduce max sequence length when GPU memory is not enough.
@@ -97,10 +99,30 @@ def run_performance_tests(args):
         token_metrics_model = []
         for batch_size in [1, 4]:
             # Benchmark prompt
-            for sequence_length in [1, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072]:
+            for sequence_length in [
+                1,
+                4,
+                8,
+                16,
+                32,
+                64,
+                128,
+                256,
+                512,
+                1024,
+                2048,
+                4096,
+                8192,
+                16384,
+                32768,
+                65536,
+                131072,
+            ]:
                 if sequence_length >= min(threshold, max_seq_len):
                     continue
-                print(f"Prompt: batch_size={batch_size}, num_heads={num_heads}, kv_num_heads={kv_num_heads}, head_size={head_size}, sequence_length={sequence_length}, max_seq_len={max_seq_len}, local_window_size={local_window_size}, model_name={model_name}")
+                print(
+                    f"Prompt: batch_size={batch_size}, num_heads={num_heads}, kv_num_heads={kv_num_heads}, head_size={head_size}, sequence_length={sequence_length}, max_seq_len={max_seq_len}, local_window_size={local_window_size}, model_name={model_name}"
+                )
                 metrics = benchmark(
                     batch_size=batch_size,
                     num_heads=num_heads,
@@ -109,16 +131,36 @@ def run_performance_tests(args):
                     sequence_length=sequence_length,
                     max_seq_len=min(threshold, max_seq_len),
                     local_window_size=local_window_size,
-                    model_name=model_name
+                    model_name=model_name,
                 )
-                metrics = metrics + [batch_size, max_seq_len, sequence_length, 0, model_name]
+                metrics = [*metrics, batch_size, max_seq_len, sequence_length, 0, model_name]
                 prompt_metrics_model.append(metrics)
                 all_metrics.append(metrics)
             # Benchmark token
-            for past_sequence_length in [0, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383, 32767, 65535, 131071]:
+            for past_sequence_length in [
+                0,
+                3,
+                7,
+                15,
+                31,
+                63,
+                127,
+                255,
+                511,
+                1023,
+                2047,
+                4095,
+                8191,
+                16383,
+                32767,
+                65535,
+                131071,
+            ]:
                 if past_sequence_length >= min(threshold, max_seq_len):
                     continue
-                print(f"Token: batch_size={batch_size}, num_heads={num_heads}, kv_num_heads={kv_num_heads}, head_size={head_size}, past_sequence_length={past_sequence_length}, max_seq_len={max_seq_len}, local_window_size={local_window_size}, model_name={model_name}")
+                print(
+                    f"Token: batch_size={batch_size}, num_heads={num_heads}, kv_num_heads={kv_num_heads}, head_size={head_size}, past_sequence_length={past_sequence_length}, max_seq_len={max_seq_len}, local_window_size={local_window_size}, model_name={model_name}"
+                )
                 metrics = benchmark(
                     batch_size=batch_size,
                     num_heads=num_heads,
@@ -127,9 +169,9 @@ def run_performance_tests(args):
                     past_sequence_length=past_sequence_length,
                     max_seq_len=min(threshold, max_seq_len),
                     local_window_size=local_window_size,
-                    model_name=model_name
+                    model_name=model_name,
                 )
-                metrics = metrics + [batch_size, max_seq_len, 1, past_sequence_length, model_name]
+                metrics = [*metrics, batch_size, max_seq_len, 1, past_sequence_length, model_name]
                 token_metrics_model.append(metrics)
                 all_metrics.append(metrics)
         # Calculate average inference interval and throughput for each model
@@ -141,18 +183,35 @@ def run_performance_tests(args):
         print(f"Average {model_name} prompt throughput: {avg_prompt_throughput:.6f} samples/second")
         print(f"Average {model_name} token inference interval: {avg_token_infer_interval:.6f} milliseconds")
         print(f"Average {model_name} token throughput: {avg_token_throughput:.6f} samples/second")
-        all_metrics.append([avg_prompt_infer_interval, avg_prompt_throughput, 0, max_seq_len, 0, 0, model_name + " (Average Prompt)"])
-        all_metrics.append([avg_token_infer_interval, avg_token_throughput, 0, max_seq_len, 0, 0, model_name + " (Average Token)"])
+        all_metrics.append(
+            [avg_prompt_infer_interval, avg_prompt_throughput, 0, max_seq_len, 0, 0, model_name + " (Average Prompt)"]
+        )
+        all_metrics.append(
+            [avg_token_infer_interval, avg_token_throughput, 0, max_seq_len, 0, 0, model_name + " (Average Token)"]
+        )
 
     save_results(all_metrics, args.output)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="End-to-end benchmarking for gen-ai")
-    parser.add_argument('-o', '--output', type=str, default='benchmark_results.csv', help='Output CSV file name or path (with .csv extension)')
-    parser.add_argument('-k', '--kernel', type=str, default='flash_attention', help='GQA Kernel to use for benchmarking. Options: flash_attention, memory_efficient')
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="benchmark_results.csv",
+        help="Output CSV file name or path (with .csv extension)",
+    )
+    parser.add_argument(
+        "-k",
+        "--kernel",
+        type=str,
+        default="flash_attention",
+        help="GQA Kernel to use for benchmarking. Options: flash_attention, memory_efficient",
+    )
     args = parser.parse_args()
 
-    if args.kernel == 'memory_efficient':
+    if args.kernel == "memory_efficient":
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
     else:
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
