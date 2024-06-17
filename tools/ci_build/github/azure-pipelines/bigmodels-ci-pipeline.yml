@@ -297,7 +297,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: zhanyi_test_A100_pool
+      name: Onnxruntime-Linux-GPU-A100-WUS3
       demands:
       - WorkFolder -equals /mnt/storage/
     steps:
