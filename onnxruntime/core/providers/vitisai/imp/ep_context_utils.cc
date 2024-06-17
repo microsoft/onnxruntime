@@ -171,7 +171,6 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   std::string ser_buf;
-  LOGS_DEFAULT(VERBOSE) << "Serializing original model";
   p_orig_model_proto->SerializeToString(ser_buf);
   LOGS_DEFAULT(VERBOSE) << "Done serializing original model";
 
@@ -195,15 +194,11 @@ std::unique_ptr<Model> CreateEPContexModel(
   // Create a new graph/model, reusing the graph name,
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
+  // XXX: This approach will cause a memory fault issue (std::bad_alloc).
   // auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
+  // This apporach is working well and has no memory falut issue.
   auto p_temp_model = graph_viewer.CreateModel(*p_logger);
   auto& ep_ctx_graph = p_temp_model->MainGraph();
-#if 0
-  LOGS_DEFAULT(VERBOSE) << "Doing early model graph resloving";
-  auto early_res_status = ep_ctx_graph.Resolve();
-  ORT_ENFORCE(early_res_status.IsOK(), early_res_status.ErrorMessage());
-  LOGS_DEFAULT(VERBOSE) << "Done early model graph resloving";
-#endif
 
   std::vector<NodeArg*> input_node_arg_ptrs;
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
@@ -260,7 +255,6 @@ std::unique_ptr<Model> CreateEPContexModel(
     p_attr_4->set_s(j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
     LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
   }
-  LOGS_DEFAULT(VERBOSE) << "All attributes for EP context node created";
 
   auto p_node_attrs = NodeAttributes::Create();
   constexpr int num_attrs = 5;
@@ -270,21 +264,15 @@ std::unique_ptr<Model> CreateEPContexModel(
   p_node_attrs->emplace(kSourceAttr, *p_attr_2);
   p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
   p_node_attrs->emplace(kNotesAttr, *p_attr_4);
-  LOGS_DEFAULT(VERBOSE) << "Node-attributes for EP context node created";
 
   ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
-  LOGS_DEFAULT(VERBOSE) << "EP context node created and added to graph";
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "EP context model graph resolved";
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
-  LOGS_DEFAULT(VERBOSE) << "EP context graph viewer created with EP context node added";
-  LOGS_DEFAULT(VERBOSE) << "EP context graph viewer name " << p_ep_ctx_graph_viewer->Name();
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
-  LOGS_DEFAULT(VERBOSE) << "EP context model created";
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
   p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
-  LOGS_DEFAULT(VERBOSE) << "EP context model populated";
 
   return p_ep_ctx_model;
 }
@@ -312,7 +300,6 @@ bool ValidateEPContextNode(const Graph& graph) {
 
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
-  LOGS_DEFAULT(VERBOSE) << "Validating EP context node";
   if (!ValidateEPContextNode(graph)) {
     ORT_THROW("Invalid EP context model for Vitis AI");
   }
@@ -467,7 +454,6 @@ PathString GetEPContextCacheFileLocation(
 }
 
 std::string Slurp(const fs::path& file_location) {
-  // const char* location_str = file_location.u8string().c_str();
   const char* location_str = file_location.string().c_str();
   std::ifstream ifs;
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
