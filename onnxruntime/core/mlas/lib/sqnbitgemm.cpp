@@ -268,7 +268,7 @@ MlasSQNBitGemmPackQuantBData(
         } else if (Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             PackedQuantBDataStruct packed_quant_b(PackedQuantBDataAndOrBlkSum, N, BlockCountK, BlkLen);
-            assert(QuantBScale);
+            // assert(QuantBScale);
             // assert(QuantBZeroPoint);  // QuantBZeroPoint is nullptr if symetric quantization.
             Dispatch->SQ4BitGemmPackQuantBDataAndBlkSum(
                 N,

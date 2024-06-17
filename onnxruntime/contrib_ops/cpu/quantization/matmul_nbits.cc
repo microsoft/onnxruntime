@@ -229,11 +229,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   } else if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
     auto scales_ptr = tensor.DataRaw();
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), scales_ptr, nullptr);
-    if (prepacked_weights) {
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
-    is_packed = true;
+    is_packed = false;
   } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
     auto zero_points_ptr = tensor.DataRaw();
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), nullptr, zero_points_ptr);
@@ -340,11 +336,11 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
     if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
       const Tensor* scales = ctx->Input<Tensor>(InputIndex::scales);
-      const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
+      //const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
       const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
       const auto* scales_data = scales->Data<float>();
-      const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+      //const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
       const auto* bias_data = bias == nullptr ? nullptr : bias->Data<float>();
 
       IAllocatorUniquePtr<std::byte> workspace{};
@@ -362,7 +358,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
         data[i].lda = lda;
         data[i].QuantBData = packed_b_.get();
         data[i].QuantBScale = scales_data;
-        data[i].QuantBZeroPoint = zero_points_data;
+        //data[i].QuantBZeroPoint = zero_points_data;
         data[i].Bias = bias_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
         data[i].ldc = N;
