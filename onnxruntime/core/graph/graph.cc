@@ -9,6 +9,7 @@
 #include <numeric>
 #include <stack>
 #include <queue>
+#include <exception>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -1583,6 +1584,7 @@ GSL_SUPPRESS(es.84)  // ignoring return value from unordered_map::insert causes 
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
+    LOGS(logger_, VERBOSE) << "Doing BuildConnections recursively for subgraphs first";
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
         std::unordered_set<std::string> node_args_consumed;
@@ -1719,8 +1721,10 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
       RemoveNode(node.Index());
     }
   }
+  LOGS(logger_, VERBOSE) << "Done BuildConnections for current (sub)graph";
 
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
+  LOGS(logger_, VERBOSE) << "Done PopulateNodeArgToProducerConsumerLookupsFromNodes for current (sub)graph";
 
   return Status::OK();
 }
@@ -3023,9 +3027,29 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
+  LOGS(logger_, VERBOSE) << "Done CheckerContext set_opset_imports in VerifyNodeAndOpMatch";
   ctx.set_schema_registry(schema_registry_.get());
+  LOGS(logger_, VERBOSE) << "Done CheckerContext set_schema_registry in VerifyNodeAndOpMatch";
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  // ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
+  try {
+    const auto& temp_model_path = ModelPath();
+    LOGS(logger_, VERBOSE) << "Done ModelPath() in VerifyNodeAndOpMatch";
+    if (temp_model_path.IsEmpty()) {
+      LOGS(logger_, VERBOSE) << "Empty model path in VerifyNodeAndOpMatch";
+    }
+    const auto temp_parent_path = temp_model_path.ParentPath();
+    LOGS(logger_, VERBOSE) << "Done ParentPath() in VerifyNodeAndOpMatch";
+    const auto temp_parent_path_str = temp_parent_path.ToPathString();
+    LOGS(logger_, VERBOSE) << "Done ToPathString() in VerifyNodeAndOpMatch";
+    const auto temp_parent_path_u8str = PathToUTF8String(temp_parent_path_str);
+    LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in VerifyNodeAndOpMatch";
+    ctx.set_model_dir(temp_parent_path_u8str);
+  } catch (const std::exception& ex) {
+    LOGS(logger_, VERBOSE) << "Getting model path failed in VerifyNodeAndOpMatch: " << ex.what();
+    throw;
+  }
+  LOGS(logger_, VERBOSE) << "Done CheckerContext init in VerifyNodeAndOpMatch";
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3042,13 +3066,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // and need to call Resolve. parent_node_ would be null in this case
     parent.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
   }
-
+  LOGS(logger_, VERBOSE) << "Done LexicalScopeContext 1 init in VerifyNodeAndOpMatch";
   LexicalScopeContext lsc{parent};
   lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
 
   for (const std::string_view& input : resolve_context_.inputs_and_initializers) {
     lsc.output_names.insert(std::string(input));
   }
+  LOGS(logger_, VERBOSE) << "Done LexicalScopeContext 2 init in VerifyNodeAndOpMatch";
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
@@ -3146,6 +3171,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       lsc.output_names.insert(output->Name());
     }
   }
+  LOGS(logger_, VERBOSE) << "Done check and update nodes of current graph in VerifyNodeAndOpMatch";
 
   // verify subgraphs
   for (auto node_index : nodes_in_topological_order_) {
@@ -3155,6 +3181,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }
+  LOGS(logger_, VERBOSE) << "Done recursively check subgraphs in VerifyNodeAndOpMatch";
 
   return Status::OK();
 }
@@ -3209,6 +3236,7 @@ Status Graph::InitInputsInitializersOutputs() {
 
 Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   ORT_RETURN_IF_ERROR(TypeCheckInputsAndInitializers());
+  LOGS(logger_, VERBOSE) << "Done TypeCheckInputsAndInitializers in PerformTypeAndShapeInferencing";
 
   // type/shape inferencing on the nodes is done recursively as we need subgraph outputs
   // to be applied to Node outputs for the node containing the subgraph.
@@ -3223,6 +3251,7 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   //      - once we finish processing the subgraph/s we apply resultant type/shape information to the outputs
   //        of the node that contains the subgraph.
   ORT_RETURN_IF_ERROR(VerifyNodeAndOpMatch(options));
+  LOGS(logger_, VERBOSE) << "Done VerifyNodeAndOpMatch in PerformTypeAndShapeInferencing";
 
   return Status::OK();
 }
@@ -3249,6 +3278,22 @@ Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::
 }
 
 Status Graph::Resolve(const ResolveOptions& options) {
+  try {
+    const auto& temp_model_path = ModelPath();
+    LOGS(logger_, VERBOSE) << "Done ModelPath() in Resolve";
+    if (temp_model_path.IsEmpty()) {
+      LOGS(logger_, VERBOSE) << "Empty model path in Resolve";
+    }
+    const auto temp_model_path_str = temp_model_path.ToPathString();
+    LOGS(logger_, VERBOSE) << "Done ToPathString() in Resolve";
+    const auto temp_model_path_u8str = PathToUTF8String(temp_model_path_str);
+    LOGS(logger_, VERBOSE) << "Done PathToUTF8String() in Resolve";
+    LOGS(logger_, VERBOSE) << "Resolving model at " << temp_model_path_u8str;
+  } catch (const std::exception& ex) {
+    LOGS(logger_, VERBOSE) << "Getting model path failed in Resolve: " << ex.what();
+    throw;
+  }
+
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
     // connections correctly, so recurse up to that level to start
@@ -3258,6 +3303,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // find all subgraphs including nested ones.
   std::vector<Graph*> all_subgraphs;
   FindAllSubgraphs(all_subgraphs);
+  LOGS(logger_, VERBOSE) << "Done FindAllSubgraphs";
 
   bool subgraphs_need_resolve = std::any_of(all_subgraphs.cbegin(), all_subgraphs.cend(),
                                             [](const Graph* graph) {
@@ -3271,22 +3317,27 @@ Status Graph::Resolve(const ResolveOptions& options) {
   // init all graph/subgraphs. non-recursive so call via ForThisAndAllSubgraphs.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
+  LOGS(logger_, VERBOSE) << "Done graph InitInputsInitializersOutputs";
 
   std::unordered_set<std::string> outer_scope_node_args_consumed;
 
+  LOGS(logger_, VERBOSE) << "Doing recursive BuildConnections";
   // recursively build connections between nodes in this graph and all subgraphs
   ORT_RETURN_IF_ERROR(BuildConnections(outer_scope_node_args_consumed));
+  LOGS(logger_, VERBOSE) << "Done BuildConnections";
   ORT_ENFORCE(outer_scope_node_args_consumed.empty(),
               "Shouldn't be possible to have NodeArgs that haven't been handled already.");
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, topo_sort_func));
+  LOGS(logger_, VERBOSE) << "Done graph PerformTopologicalSortAndCheckIsAcyclic";
 
   // type/shape validation and inferencing on this and any subgraphs
   // recurses into subgraphs via the ONNX checker, which descends into the GraphProto in node attributes
   // which define a subgraph.
   ORT_RETURN_IF_ERROR(PerformTypeAndShapeInferencing(options));
+  LOGS(logger_, VERBOSE) << "Done PerformTypeAndShapeInferencing";
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
@@ -3310,6 +3361,7 @@ Status Graph::Resolve(const ResolveOptions& options) {
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
+  LOGS(logger_, VERBOSE) << "Done graph finalization";
 
   return Status::OK();
 }

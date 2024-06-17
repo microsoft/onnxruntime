@@ -300,7 +300,6 @@ def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
     unnecessary_inputs = user_inputs - model_inputs
     if len(unnecessary_inputs):
         for unnecessary_input in unnecessary_inputs:
-            print(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
             del ort_inputs[unnecessary_input]
 
     return ort_inputs
@@ -382,27 +381,20 @@ def add_io_bindings_as_tensors(
 
     for output in model.get_outputs():
         name = output.name
-        if use_buffer_share and "present" in name:
-            # Bind KV cache outputs to KV cache inputs
-            v = inputs[name.replace("present", "past_key_values")]
-            io_binding.bind_output(
-                name=name,
-                device_type=v.device.type,
-                device_id=v.device.index,
-                element_type=np.float16,
-                shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr(),
-            )
-        else:
-            v = outputs[name]
-            io_binding.bind_output(
-                name=name,
-                device_type=device.type,
-                device_id=0 if device.type == "cpu" else device.index,
-                element_type=(np.float16 if use_fp16 else np.float32),
-                shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr(),
-            )
+        # Bind KV cache outputs to KV cache inputs
+        v = (
+            inputs[name.replace("present", "past_key_values")]
+            if use_buffer_share and "present" in name
+            else outputs[name]
+        )
+        io_binding.bind_output(
+            name=name,
+            device_type=device.type,
+            device_id=0 if device.type == "cpu" else device.index,
+            element_type=(np.float16 if use_fp16 else np.float32),
+            shape=tuple(v.shape),
+            buffer_ptr=v.data_ptr(),
+        )
 
     return io_binding
 

@@ -21,7 +21,7 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
                               const logging::Logger& logger) const override;
 };
@@ -68,7 +68,7 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                            const Node& node,
-                                           WebnnDeviceType /* device_type */,
+                                           WebnnDeviceType device_type,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -76,6 +76,15 @@ bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
+  // WebNN CPU backend only supports select_last_index = 0.
+  if (device_type == WebnnDeviceType::CPU) {
+    NodeAttrHelper helper(node);
+    const auto select_last_index = helper.Get("select_last_index", 0);
+    if (select_last_index) {
+      LOGS(logger, VERBOSE) << "ArgMax/ArgMin with select_last_index = 1 is not supported on WebNN CPU backend.";
+      return false;
+    }
+  }
   return true;
 }
 

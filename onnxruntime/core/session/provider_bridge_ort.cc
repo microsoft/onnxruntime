@@ -27,6 +27,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
@@ -66,10 +67,12 @@ using StringStringEntryProtos = google::protobuf::RepeatedPtrField<StringStringE
 using TensorProtos = google::protobuf::RepeatedPtrField<TensorProto>;
 using TensorShapeProto_Dimensions = google::protobuf::RepeatedPtrField<TensorShapeProto_Dimension>;
 using ValueInfoProtos = google::protobuf::RepeatedPtrField<ValueInfoProto>;
+using FunctionProtos = google::protobuf::RepeatedPtrField<FunctionProto>;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
+using IndexedSubGraph_SourceOfSchema = IndexedSubGraph::SourceOfSchema;
 }  // namespace onnxruntime
 
 #include "core/common/cpuid_info.h"
@@ -614,14 +617,6 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& FunctionProto__name(const ONNX_NAMESPACE::FunctionProto* p) const override { return p->name(); }
   void FunctionProto__set_name(ONNX_NAMESPACE::FunctionProto* p, const std::string& name) override { p->set_name(name); }
 
-  bool FunctionProto__has_since_version(const ONNX_NAMESPACE::FunctionProto* p) override { return p->has_since_version(); }
-  int FunctionProto__since_version(const ONNX_NAMESPACE::FunctionProto* p) const override { return p->since_version(); }
-  void FunctionProto__set_since_version(ONNX_NAMESPACE::FunctionProto* p, int since_version) override { p->set_since_version(since_version); }
-
-  bool FunctionProto__has_status(const ONNX_NAMESPACE::FunctionProto* p) override { return p->has_status(); }
-  const ONNX_NAMESPACE::OperatorStatus& FunctionProto__status(const ONNX_NAMESPACE::FunctionProto* p) const override { return p->status(); }
-  void FunctionProto__set_status(ONNX_NAMESPACE::FunctionProto* p, const ONNX_NAMESPACE::OperatorStatus& status) override { p->set_status(status); }
-
   bool FunctionProto__has_doc_string(const ONNX_NAMESPACE::FunctionProto* p) override { return p->has_doc_string(); }
   const std::string& FunctionProto__doc_string(const ONNX_NAMESPACE::FunctionProto* p) const override { return p->doc_string(); }
   void FunctionProto__set_doc_string(ONNX_NAMESPACE::FunctionProto* p, const std::string& doc_string) override { p->set_doc_string(doc_string); }
@@ -631,26 +626,23 @@ struct ProviderHostImpl : ProviderHost {
   void FunctionProto__set_domain(ONNX_NAMESPACE::FunctionProto* p, const std::string& domain) override { p->set_domain(domain); }
 
   const std::string& FunctionProto__input(const ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->input(index); }
-  std::vector<string>* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p) override { return p->mutable_input(); }
   std::string* FunctionProto__mutable_input(ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->mutable_input(index); }
   int FunctionProto__input_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->input_size(); }
   void FunctionProto__add_input(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) override { p->add_input(value); }
 
   const std::string& FunctionProto__output(const ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->output(index); }
-  std::vector<string>* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p) override { return p->mutable_output(); }
   std::string* FunctionProto__mutable_output(ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->mutable_output(index); }
   int FunctionProto__output_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->output_size(); }
   void FunctionProto__add_output(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) override { p->add_output(value); }
 
   const std::string& FunctionProto__attribute(const ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->attribute(index); }
-  std::vector<string>* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p) override { return p->mutable_attribute(); }
   std::string* FunctionProto__mutable_attribute(ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->mutable_attribute(index); }
   int FunctionProto__attribute_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->attribute_size(); }
   void FunctionProto__add_attribute(ONNX_NAMESPACE::FunctionProto* p, const std::string& value) override { p->add_attribute(value); }
 
   const ONNX_NAMESPACE::AttributeProto& FunctionProto__attribute_proto(const ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->attribute_proto(index); }
   ONNX_NAMESPACE::AttributeProto* FunctionProto__mutable_attribute_proto(ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->mutable_attribute_proto(index); }
-  int FunctionProto__attribute_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->attribute_proto_size(); }
+  int FunctionProto__attribute_proto_size(const ONNX_NAMESPACE::FunctionProto* p) override { return p->attribute_proto_size(); }
   ONNX_NAMESPACE::AttributeProto* FunctionProto__add_attribute_proto(ONNX_NAMESPACE::FunctionProto* p) override { return p->add_attribute_proto(); }
 
   const ONNX_NAMESPACE::NodeProto& FunctionProto__node(const ONNX_NAMESPACE::FunctionProto* p, int index) override { return p->node(index); }
@@ -807,8 +799,8 @@ struct ProviderHostImpl : ProviderHost {
   void IndexedSubGraph__SetMetaDef(IndexedSubGraph* p, std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) override { p->SetMetaDef(std::move(meta_def_)); }
   const IndexedSubGraph_MetaDef* IndexedSubGraph__GetMetaDef(const IndexedSubGraph* p) override { return p->GetMetaDef(); }
 
-  void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph::SourceOfSchema schema_source) override { p->schema_source = schema_source; }
-  IndexedSubGraph::SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
+  void IndexedSubGraph__SetSchemaSource(IndexedSubGraph* p, IndexedSubGraph_SourceOfSchema schema_source) override { p->schema_source = schema_source; }
+  IndexedSubGraph_SourceOfSchema IndexedSubGraph__GetSchemaSource(const IndexedSubGraph* p) override { return p->schema_source; }
 
   // KernelDef (wrapped)
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }
@@ -1195,6 +1187,7 @@ struct ProviderHostImpl : ProviderHost {
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
+    LOGS_DEFAULT(VERBOSE) << "Making a unique ptr of Model";
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
@@ -2172,22 +2165,36 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
   return OrtApis::SessionOptionsAppendExecutionProvider_CUDA(options, &provider_options);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }

@@ -46,6 +46,11 @@ else()
 set(CMAKE_CXX_STANDARD 17)
 endif()
 
+if (MSVC)
+  #  Make sure Visual Studio sets __cplusplus macro correctly: https://learn.microsoft.com/en-us/cpp/build/reference/zc-cplusplus
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+endif()
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -59,8 +64,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
 endif()
 
 # Options
@@ -1300,12 +1305,6 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
-# needs to link with stdc++fs in Linux
-if (UNIX AND "${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  set(FS_STDLIB stdc++fs)
-endif()
-list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
-
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
   include(extensions)
@@ -1472,16 +1471,6 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
     add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
   endif()
-endif()
-
-if (onnxruntime_USE_TENSORRT)
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)

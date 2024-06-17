@@ -2,10 +2,10 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-FROM $BASEIMAGE
-ARG TRT_VERSION
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11_dotnet:20240531.1
 
+ARG TRT_VERSION
+RUN  rpm -Uvh https://packages.microsoft.com/config/centos/8/packages-microsoft-prod.rpm && dnf install -y msopenjdk-11
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
@@ -31,13 +31,13 @@ else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/lib/jvm/msopenjdk-11/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH /usr/lib/jvm/msopenjdk-11/bin:$PATH
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
-
+ENV CUDAHOSTCXX /opt/rh/gcc-toolset-11/root/usr/bin/g++
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

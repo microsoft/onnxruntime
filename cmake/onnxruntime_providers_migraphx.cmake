@@ -49,7 +49,7 @@
   target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
-  target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync::nsync_cpp stdc++fs)
+  target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync::nsync_cpp)
 
   include(CheckLibraryExists)
   check_library_exists(migraphx::c "migraphx_program_run_async" "/opt/rocm/migraphx/lib" HAS_STREAM_SYNC)
