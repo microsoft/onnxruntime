@@ -36,7 +36,7 @@ struct ParamsHash {
   // Params must be a POD because we read out its memory
   // contenst as char* when hashing
 
-  static_assert(std::is_pod<T>::value, "Params is not POD");
+  static_assert(std::is_trivial<T>::value, "Params is not POD");
   size_t operator()(const T& params) const {
     auto ptr = reinterpret_cast<const uint8_t*>(&params);
     uint32_t value = 0x811C9DC5;
@@ -53,7 +53,7 @@ struct ParamsEqual {
   // Params must be a POD because we read out its memory
   // contenst as char* when comparing
 
-  static_assert(std::is_pod<T>::value, "Params is not POD");
+  static_assert(std::is_trivial<T>::value, "Params is not POD");
 
   bool operator()(const T& a, const T& b) const {
     auto ptr1 = reinterpret_cast<const uint8_t*>(&a);
