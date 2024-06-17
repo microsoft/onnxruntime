@@ -268,3 +268,5 @@ def generate_artifacts(
     onnx.save(optim_model, optimizer_model_path)
     _export_to_ort_format(optimizer_model_path, artifact_directory, ort_format, custom_op_library_path)
     logging.info("Saved optimizer model to %s", optimizer_model_path)
+
+    training_block.release()

@@ -31,7 +31,7 @@ class Block(ABC):
 
     def __init__(self, temp_file_name="temp.onnx"):
         self.base = None
-        self.temp_onnx_path = temp_file_name
+        self.temp_onnx_file_name = temp_file_name
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -50,20 +50,16 @@ class Block(ABC):
         output = self.build(*args, **kwargs)
 
         if accessor._GLOBAL_ACCESSOR.has_path:
+            temp_external_path = self.temp_onnx_file_name + ".data"
             onnx.save(
                 accessor._GLOBAL_ACCESSOR.model,
-                self.temp_onnx_path,
+                self.temp_onnx_file_name,
                 save_as_external_data=True,
                 all_tensors_to_one_file=True,
+                location=temp_external_path,
             )
 
-            onnx.checker.check_model(self.temp_onnx_path, True)
-
-            # clean-up temp files
-            if os.path.exists(self.temp_onnx_path):
-                os.remove(self.temp_onnx_path)
-            if os.path.exists(self.temp_onnx_path):
-                os.remove(self.temp_onnx_path)
+            onnx.checker.check_model(self.temp_onnx_file_name, True)
         else:
             onnx.checker.check_model(self.base, True)
 
@@ -77,25 +73,31 @@ class Block(ABC):
         Returns the shape-inferenced ModelProto.
         """
         if accessor._GLOBAL_ACCESSOR.has_path:
+            temp_external_path = self.temp_onnx_file_name + ".data"
             onnx.save(
                 accessor._GLOBAL_ACCESSOR.model,
-                self.temp_onnx_path,
+                self.temp_onnx_file_name,
                 save_as_external_data=True,
                 all_tensors_to_one_file=True,
+                location=temp_external_path,
             )
 
-            onnx.shape_inference.infer_shapes_path(self.temp_onnx_path)
+            onnx.shape_inference.infer_shapes_path(self.temp_onnx_file_name)
             # shape inferenced model is saved to original path
-            model = onnx.load(self.temp_onnx_path)
+            model = onnx.load(self.temp_onnx_file_name)
 
-            # clean-up temp files
-            if os.path.exists(self.temp_onnx_path):
-                os.remove(self.temp_onnx_path)
-            if os.path.exists(self.temp_onnx_path):
-                os.remove(self.temp_onnx_path)
             return model
         else:
             return onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+
+    def release(self):
+        # since the ModelProto does not store the external data parameters themselves, just the metadata
+        # for where the external data can be found, we retain the external data files for the intermediate
+        # calls until the Block no longer needs to be used.
+        if os.path.exists(self.temp_onnx_file_name):
+            os.remove(self.temp_onnx_file_name)
+        if os.path.exists(self.temp_onnx_file_name + ".data"):
+            os.remove(self.temp_onnx_file_name + ".data")
 
 
 class _BinaryOp(Block):
