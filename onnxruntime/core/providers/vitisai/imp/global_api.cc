@@ -270,6 +270,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
       graph.SetGraphResolveNeeded();
     }
     auto status = graph.Resolve();
+    if (!status.IsOK()) {
+      std::error << "graph resolve error:" << status.ErrorMessage() << std::endl;
+    }
     return status.Code();
   };
   the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {
