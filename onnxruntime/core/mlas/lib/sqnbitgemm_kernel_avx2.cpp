@@ -1144,7 +1144,6 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    constexpr size_t BlkBitWidth = 4;
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
@@ -1154,39 +1153,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     if (BlkLen == 32 && ComputeType == CompInt8) {
         SubBlkLen = 64;
     }
-
-    // TODO: move to avx_common
-    if (QuantBDataBegin) {
-        PackQuantB(QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
-    }
-
-    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-
-    if (QuantBScaleBegin && has_zp_input && !QuantBZPBegin) {
-      // scale is provided but still missing zp in order to compute the blksum.
-      // cache the scale in the later half of PackedQuantBData.
-      std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, (float*)(PackedQuantBDataBegin + PackedQuantBDataSize));
-      return;
-    }
-
-    // if called with QuantBZPBegin and without QuantBScaleBegin it must be that
-    // the scale is already cached in PackedQuantBData (offset PackedQuantBDataSize)
-    bool delete_quant_b_scale_begin = false;
-    if (!QuantBScaleBegin && QuantBZPBegin) {
-        QuantBScaleBegin = new float[N * BlockCountK];
-        const float* QuantBScaleBeginSaved = reinterpret_cast<const float*>(PackedQuantBDataBegin + PackedQuantBDataSize);
-        std::copy(QuantBScaleBeginSaved, QuantBScaleBeginSaved + N * BlockCountK, const_cast<float*>(QuantBScaleBegin));
-        delete_quant_b_scale_begin = true;
-    }
-
-    bool last_call = QuantBScaleBegin && (!has_zp_input || QuantBZPBegin);
-
-    if (last_call) {
-        ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
-    }
-    if (delete_quant_b_scale_begin) {
-        delete[] QuantBScaleBegin;
-    }
+    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin,
+      PackedQuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, BlockSumBegin, ThreadPool);
 }
 
 //

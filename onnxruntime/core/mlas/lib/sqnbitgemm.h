@@ -47,7 +47,7 @@ struct PackedQuantBDataStruct {
         PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
         QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
 
-        const size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
+        constexpr size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
         const uintptr_t QuantBBlkSumAddr = reinterpret_cast<uintptr_t>(QuantBBlkSum);
         QuantBBlkSum = reinterpret_cast<float*>(
             (QuantBBlkSumAddr + Alignment - 1) & (~(Alignment - 1))

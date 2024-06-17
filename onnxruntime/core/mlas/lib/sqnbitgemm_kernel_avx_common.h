@@ -22,7 +22,7 @@ SQ4BitGemmPackQuantBDataSize(
     const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
-    const size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
+    constexpr size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
     BlkSumSize += Alignment - 1;
 
     return PackedQuantBDataSize + BlkSumSize;
@@ -145,6 +145,56 @@ ComputePackBlkSum(
     );
 }
 
+#pragma warning(disable:4505)
+static void
+PackQuantBDataAndBlkSum(
+    size_t N,
+    size_t BlockCountK,
+    size_t BlkLen,
+    size_t SubBlkLen,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool has_zp_input,
+    const std::byte* QuantBZPBegin,
+    float* BlockSumBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    constexpr size_t BlkBitWidth = 4;
+    if (QuantBDataBegin) {
+        PackQuantB(QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
+    }
+
+    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+
+    if (QuantBScaleBegin && has_zp_input && !QuantBZPBegin) {
+        // scale is provided but still missing zp in order to compute the blksum.
+        // cache the scale in the later half of PackedQuantBData.
+        std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, (float*)(PackedQuantBDataBegin + PackedQuantBDataSize));
+        return;
+    }
+
+    // if called with QuantBZPBegin and without QuantBScaleBegin it must be that
+    // the scale is already cached in PackedQuantBData (offset PackedQuantBDataSize)
+    bool delete_quant_b_scale_begin = false;
+    if (!QuantBScaleBegin && QuantBZPBegin) {
+        QuantBScaleBegin = new float[N * BlockCountK];
+        const float* QuantBScaleBeginSaved = reinterpret_cast<const float*>(PackedQuantBDataBegin + PackedQuantBDataSize);
+        std::copy(QuantBScaleBeginSaved, QuantBScaleBeginSaved + N * BlockCountK, const_cast<float*>(QuantBScaleBegin));
+        delete_quant_b_scale_begin = true;
+    }
+
+    bool last_call = QuantBScaleBegin && (!has_zp_input || QuantBZPBegin);
+
+    if (last_call) {
+        ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
+    }
+    if (delete_quant_b_scale_begin) {
+        delete[] QuantBScaleBegin;
+    }
+}
+#pragma warning(default:4505)
 //
 // Workspace size calculation function implementation.
 //
@@ -344,7 +394,7 @@ get_2_zps(const std::byte* QuantBZeroPointPtr, int8_t& zp0, int8_t& zp1)
         zp1 = 8;
         (void)QuantBZeroPointPtr;
     }
-} 
+}
 
 template <bool HasZeroPoint>
 int8_t MLAS_FORCEINLINE
