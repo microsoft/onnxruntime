@@ -174,7 +174,7 @@ stages:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
-    timeoutInMinutes: 120
+    timeoutInMinutes: 240
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
       RocmVersion: '5.6'
