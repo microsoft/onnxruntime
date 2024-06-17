@@ -48,8 +48,7 @@
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
 			blurb:
-				"Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, enabling real-time and privacy-preserving personalization in mobile apps.
-",
+				'Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, enabling real-time and privacy-preserving personalization in mobile apps.',
 			link: 'blogs/nimbleedge-x-onnxruntime',
 			image: 'https://iili.io/d95Pwcx.png',
 			imgalt:
