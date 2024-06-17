@@ -51,7 +51,7 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
   }
   auto p_parent_graph_proto = parent_graph.ToGraphProto();
   for (auto node_index : const_cast<IndexedSubGraph&>(sub_graph).Nodes()) {
-    auto* p_node_proto = p_parent_graph_proto->mutable_node(node_index);
+    auto* p_node_proto = p_parent_graph_proto->mutable_node(static_cast<int>(node_index));
     auto* p_attr_proto = p_node_proto->add_attribute();
     p_attr_proto->set_name("parent_graph_node_index");
     p_attr_proto->set_type(ONNX_NAMESPACE::AttributeProto::INT);
@@ -338,7 +338,8 @@ std::string RetrieveEPContextCache(
     ORT_THROW("Exception opening EP context cache file");
   }
   ifs.seekg(0, ifs.end);
-  int cache_len = ifs.tellg();
+  size_t cache_len = ifs.tellg();
+  // std::streampos cache_len = ifs.tellg();
   ifs.seekg(0, ifs.beg);
   char* buf = new char[cache_len];
   ifs.read(buf, cache_len);
@@ -467,7 +468,7 @@ PathString GetEPContextCacheFileLocation(
 
 std::string Slurp(const fs::path& file_location) {
   // const char* location_str = file_location.u8string().c_str();
-  const char* location_str = file_location.c_str();
+  const char* location_str = file_location.string().c_str();
   std::ifstream ifs;
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
