@@ -43,6 +43,7 @@ stages:
       clean: all
     pool: ${{ parameters.machine_pool }}
     variables:
+      - template: templates/common-variables.yml
       # The build machine pool doesn't have dotnet, so it can't run CG.
       - name: skipComponentGovernanceDetection
         value: true
@@ -51,6 +52,11 @@ stages:
           value: -x ${{ parameters.extra_build_arg }}
         ${{ if eq(parameters.extra_build_arg, '') }}:
           value: ''
+      - name: linux_trt_version
+        ${{ if eq(parameters.cuda_version, '11.8') }}:
+          value: ${{ variables.linux_trt_version_cuda11 }}
+        ${{ if eq(parameters.cuda_version, '12.2') }}:
+          value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self
         clean: true

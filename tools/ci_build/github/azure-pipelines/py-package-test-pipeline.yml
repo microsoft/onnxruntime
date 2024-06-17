@@ -49,14 +49,15 @@ stages:
     - Packages_Somking_Test
   jobs:
   - template: templates/py-packaging-linux-test-cuda.yml
+  - template: templates/common-variables.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'Onnxruntime-Linux-GPU'
       python_wheel_suffix: '_gpu'
       timeout: 480
       docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
-      trt_version: '10.0.1.6-1.cuda11.8'
       cuda_version: '11.8'
+      trt_version: ${{ variables.common_linux_trt_version }}
 
 
 # if final job not extecuted, it will not run nightlly build

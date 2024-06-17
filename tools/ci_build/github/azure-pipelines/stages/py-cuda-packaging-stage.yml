@@ -58,6 +58,7 @@ stages:
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:
       - template: ../templates/py-win-gpu.yml
+      - template: ../templates/common-variables.yml
         parameters:
           PYTHON_VERSION: ${{ python_version }}
           EP_NAME: gpu
@@ -65,12 +66,13 @@ stages:
           SpecificArtifact: ${{ parameters.SpecificArtifact }}
           BuildId: ${{ parameters.BuildId }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8 --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\${{win_trt_folder_cuda11}} --cuda_home=$(Agent.TempDirectory)\v11.8  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-12.4 --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+            EP_BUILD_FLAGS: --enable_lto --use_tensorrt --tensorrt_home=$(Agent.TempDirectory)\${{win_trt_folder_cuda12}} --cuda_home=$(Agent.TempDirectory)\v12.2  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
       - template: ../templates/py-linux-gpu.yml
+      - template: ../templates/common-variables.yml
         parameters:
           arch: 'x86_64'
           machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
@@ -79,7 +81,7 @@ stages:
           cuda_version: ${{ parameters.cuda_version }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
-            trt_version: 10.0.1.6-1.cuda11.8
+            trt_version: ${{ variables.linux_trt_version_cuda11 }}
           ${{ if eq(parameters.cuda_version, '12.2') }}:
             docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
-            trt_version: 10.0.1.6-1.cuda12.4
+            trt_version: ${{ variables.linux_trt_version_cuda12 }}
