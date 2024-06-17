@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.21.0.240401
+  default: 2.22.0.240425
 
 - name: build_config
   displayName: Build Configuration
@@ -51,7 +51,7 @@ stages:
   - OnnxRuntime_QNN_Nuget_Win_Arm64
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_QNN
     workspace:
       clean: all
     steps:
