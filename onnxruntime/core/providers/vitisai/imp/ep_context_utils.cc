@@ -456,20 +456,19 @@ PathString GetEPContextCacheFileLocation(
 std::string Slurp(const fs::path& file_location) {
   // std::filesystem::value_type == onnxruntime::PathChar == ORTCHAR_T
   // std::filesystem::string_type == onnxruntime::PathString
-  const char* location_str = PathToUTF8String(file_location.native()).c_str();
-  LOGS_DEFAULT(WARNING) << "String representation of file path: " << location_str;
+  // const char* location_str = PathToUTF8String(file_location.native()).c_str();
   std::ifstream ifs;
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
   try {
-    ifs.open(location_str, std::ifstream::in);
+    ifs.open(file_location.string().c_str(), std::ifstream::in);
     ss << ifs.rdbuf();
     if (!ss.good()) {
       LOGS_DEFAULT(WARNING) << "Failed to write to stream";
     }
     ifs.close();
   } catch (std::system_error& se) {
-    LOGS_DEFAULT(WARNING) << "Failed to read " << location_str << ": " << se.code().message();
+    LOGS_DEFAULT(WARNING) << "Failed to read " << file_location << ": " << se.code().message();
   }
   return ss.str();
 }
