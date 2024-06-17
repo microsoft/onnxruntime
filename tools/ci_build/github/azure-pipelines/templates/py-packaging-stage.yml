@@ -296,7 +296,7 @@ stages:
 
 - ${{ if eq(parameters.enable_windows_gpu, true) }}:
     - template: py-win-gpu.yml
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.8'
@@ -307,7 +307,7 @@ stages:
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.9'
@@ -318,7 +318,7 @@ stages:
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.10'
@@ -329,7 +329,7 @@ stages:
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.11'
@@ -340,7 +340,7 @@ stages:
         cmake_build_type: ${{ parameters.cmake_build_type }}
 
     - template: py-win-gpu.yml
-    - template: templates/common-variables.yml
+    - template: ../common-variables.yml
       parameters:
         MACHINE_POOL: 'onnxruntime-Win2022-GPU-A10'
         PYTHON_VERSION: '3.12'
