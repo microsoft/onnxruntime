@@ -612,8 +612,12 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     } else if (data_type->s() == "int32") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    } else if (data_type->s() == "uint32") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT32;
     } else if (data_type->s() == "int64") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    } else if (data_type->s() == "uint64") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT64;
     } else if (data_type->s() == "int1") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
     } else if (data_type->s() == "bfloat16") {
@@ -624,6 +628,22 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
     } else if (data_type->s() == "int16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
+    } else if (data_type->s() == "double") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    } else if (data_type->s() == "string") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    } else if (data_type->s() == "float8e4m3fn") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
+    } else if (data_type->s() == "float8e4m3fnuz") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
+    } else if (data_type->s() == "float8f5m2") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
+    } else if (data_type->s() == "float8f5m2funz") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
+    } else if (data_type->s() == "uint4") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+    } else if (data_type->s() == "int4") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT4;
     } else {
       return;
     }
