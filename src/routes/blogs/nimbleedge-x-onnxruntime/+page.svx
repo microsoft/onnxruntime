@@ -1,0 +1,143 @@
+---
+title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime'
+date: '17th June, 2024'
+description: 'Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, achieving a 15x speedup over cloud methods.'
+keywords: 'onnx, onnx runtime, nimbleedge, dream11, machine learning, ml, on-device, real-time, mobile apps, recommendation systems, privacy, performance, cost-efficient, phi-3, small, medium, models, phi-3s, phi-3m, phi-3l, phi-3xl, phi-3xxl, phi-3s-optimized, phi-3m-optimized, phi-3l-optimized, phi-3xl-optimized, phi-3xxl-optimized, phi-3s-onnx, phi-3m-onnx, phi-3l-onnx, phi-3xl-onnx, phi-3xxl-onnx, phi-3s-onnx-optimized, phi-3m-onnx-optimized, phi-3l-onnx-optimized, phi-3xl-onnx-optimized, phi-3xxl-onnx-optimized'
+authors:
+  [
+    'Nilotpal Pathak',
+    'Siddharth Mittal',
+    'Scott McKay',
+    'Natalie Kershaw',
+    'Emma Ning'
+    ]
+authorsLink:
+  [
+    'https://www.linkedin.com/in/nilotpal-pathak-228b97192/',
+    'https://www.linkedin.com/in/siddharth-mittal-b877a3135/',
+    'https://www.linkedin.com/in/scott-mckay-68b5ab/',
+    'https://www.linkedin.com/in/natkershaw/',
+    'https://www.linkedin.com/in/qiong-ning-21b554236/'
+
+   ]
+image: 'https://iili.io/d95Pwcx.png'
+imageSquare: 'https://iili.io/d95Pwcx.png'
+url: 'https://onnxruntime.ai/blogs/nimbleedge-x-onnxruntime'
+---
+<style>
+  ol{
+    list-style-type: decimal;
+  }
+</style>
+
+[NimbleEdge](https://www.nimbleedge.com/) is an on-device Machine Learning (ML) platform that enables real-time personalization in mobile apps, executing data capture, processing and ML inference on end users' mobile devices vs. on cloud. Using mobile compute efficiently to deliver optimal performance with minimal device resource usage is a key priority for NimbleEdge. For this, NimbleEdge leverages various ML inference runtimes, including, prominently, **ONNX Runtime**.
+
+In this blog post, we'll explore how on-device compute can be leveraged for cost-efficient, privacy-preserving real-time ML in mobile apps, and how NimbleEdge leverages ONNX Runtime to enable this. We also share results from NimbleEdge's on-device deployment with Dream11, India's largest fantasy gaming platform with 200Mn+ users.
+
+### **Introduction**
+
+As digital consumer apps have evolved, Machine Learning (ML) has become increasingly central to digital experiences (across e-commerce, gaming, entertainment). ML-based recommendation systems are a prominent example of this phenomenon. Reducing choice paralysis and aiding conversion and engagement, these are now common in large-scale apps.
+
+Traditionally, recommendation systems utilized only historical customer behavior (e.g. purchases, views, likes), updated weekly, daily, or every few hours. However, pioneering apps such as [LinkedIn](https://www.linkedin.com/blog/engineering/member-customer-experience/near-real-time-features-for-near-real-time-personalization), [Doordash](https://doordash.engineering/2021/03/04/building-a-declarative-real-time-feature-engineering-framework/), and [Pinterest](https://medium.com/pinterest-engineering/how-pinterest-leverages-realtime-user-actions-in-recommendation-to-boost-homefeed-engagement-volume-165ae2e8cde8), have lately incorporated near-real-time and real-time features in recommendations. This has enabled highly fresh recommendations based on user interactions from just a few minutes, or even seconds ago, enabling a significant uptick in key business metrics.
+
+### **Challenges in real-time ML on cloud**
+
+However, building real-time ML system on cloud involves several major challenges:
+
+<img class="m-auto w50" src="./cloud_challenges.png" alt="Summary of the challenges of real-time ML on the cloud">
+
+- **High Compute Costs:** Prohibitively large cloud costs for storing and processing in-session user interaction data in real-time
+- **Time to market and complexity:** Setting up real-time cloud pipelines for ML is complex, and requires significant time and developer bandwidth
+- **Privacy Risk and Compliance:** Users' in-session clickstream data must be sent to cloud servers for processing, raising privacy concerns
+- **Scaling Challenges:** Handling traffic surges requires either massive reserve cloud capacity, or rapid scaling which is difficult to achieve on cloud
+- **High Latency:** High latency due to time required to make cloud API calls from/to user mobile devices
+
+### **On-device ML as an alternative**
+
+Running real-time ML for recommendations on users' mobile devices is a viable alternative to using cloud. This eliminates most of the challenges associated with cloud, as described above.
+
+- **Cost:** Significantly lower cloud compute requirements through on-device inference and data processing
+- **Privacy:** In-session user interaction data is processed on device, enhancing privacy
+- **Latency:** Most modern smartphones are highly capable of rapid data processing and inference computations
+- **Scaling:** Effortless scaling, as traffic increase translates to more mobile devices available for computation
+
+However, developing and maintaining on-device real-time ML systems is also highly complex, and requires building systems for
+
+1. on-device real-time event capture and storage
+2. on-device feature processing (like rolling window aggregates)
+3. feature syncing from cloud
+4. ML inference execution suitably balancing latency and resource utilization across diverse mobile devices.
+
+All of these are highly complex and time consuming endeavors, due to which performant on-device real-time ML is highly challenging.
+
+### **NimbleEdge with ONNX Runtime: End-to-end on-device ML platform**
+
+NimbleEdge helps circumvent the complexity mentioned above with an end-to-end managed on-device real-time ML platform. The platform accelerates and streamlines processes across the on-device ML lifecycle - be it experimentation, deployment or maintenance:
+<img class="m-auto w50" src="./ml_pipeline_architecture.png" alt="NimbleEdge's cloud ML pipeline architecture and its interlinks with ONNX Runtime">
+
+#### **Ready-to-use on-device ML infrastructure**
+
+- **On-device data warehouse:** Store in-session user events (e.g. product views, cart additions in e-commerce) in a managed on-device database, with querying latency `< 1ms`
+- **Data processing:** Run Python-like preprocessing scripts on-device to compute features from real-time user inputs
+- **Feature store synchronization:** Maintain a frequently updated on-device copy of cloud features required for real-time ML (e.g. list of open restaurants for real-time ranking of restaurants on a food delivery app's homepage)
+
+#### **Effortless on-device ML model management**
+
+- **Over the air updates,** to completely decouple ML model updates and front-end app updates, enabling aid rapid ML experimentation
+
+#### **Turnkey, optimized inference runtime configuration**
+
+- **Deployment and compatibility verification:** Managing deployments and compatibility matrices (e.g. ML model, SDK operators, Android/iOS, Hardware capabilities such as NPU/ GPU, etc)
+- **Model performance optimization:** Ensuring optimal model performance by selecting best-performing inference runtime from a multi executor foundation; configuring backend dispatch execution, parallel processing, thread & core count, and more for each (device model x ML model) permutation
+
+#### **ONNX runtime for inference execution**
+
+Executing inference optimally is critical in on-device ML. On one hand, real-time ML use-cases demand rapid computations to minimize latency for end users. On the other, mobile devices are resource constrained, with limited battery and processing power. Achieving the optimal balance of latency and device resource utilization for 5,000+ unique device types in distribution today, is a massive challenge.
+
+For inference execution, NimbleEdge utilizes a number of runtimes, prominently including ONNX Runtime. [ONNX Runtime](https://onnxruntime.ai/) is an open-source, high-performance engine to accelerate machine learning models on both cloud and edge environments. One of its key features, ONNX Runtime Mobile, is specifically optimized to deliver lighter and faster model inferences. It offers configurations for **quantization, hardware acceleration (e.g. using CPU/GPU/NPU), operator fusion, parallel processing,** and more. NimbleEdge leverages ONNX Runtime Mobile in a variety of impactful ways:
+
+- Applying static and dynamic quantization techniques to significantly reduce the memory footprint of models
+- Customizing the runtime build to match the specific operators and data types required by the model(s)
+- Utilizing low-level control mechanisms to meticulously manage and optimize resource (CPU, Battery) consumption
+
+Through the capabilities listed here, NimbleEdge's comprehensive on-device ML platform enables high performance real-time ML deployments in days vs. months.
+
+### **Case Study: Real time ranking of fantasy sports contests for Dream11**
+
+Dream11 is an Indian fantasy sports platform (like Fanduel/ Draftkings in USA) with 200M+ users, and a peak concurrency of ~15 million users. Dream11 offers thousands of fantasy contests across dozens of matches from 10+ sports, with each contest varying in contest entry amount, win %, and participant count.
+
+To streamline the user journey, Dream11 was running a recommendation system that delivered personalized contest recommendations to users, based on historical interactions. Dream11 analyzed customer clickstream data, and identified that incorporating in-session user interactions in the recommender systems would significantly improve quality of recommendations vs. leveraging batch predictions generated hourly.
+
+Due to this, Dream11 was keen to deploy real-time, session-aware recommendations, but implementation was challenging due to the aforementioned challenges in real-time ML on cloud. Hence, Dream11 turned to on-device ML with NimbleEdge for implementing real-time personalized contest recommendations.
+
+**Results**
+
+With NimbleEdge, Dream11 is now able to generate features and predictions based on real-time user interactions, resulting in improved relevance of recommendations for millions of users. Additionally, inference was delivered at millisecond latency, with minimal battery and CPU usage impact!
+
+**No. of inferences:** `7B+`
+
+**No. of device crashes:** `0`
+
+**Avg. latency:** `~15 milliseconds`
+
+**CPU usage spike:** `<1%`
+
+### **Extensible use-cases**
+
+The methodology discussed in this blog applies easily to similar real-time use-cases in other verticals as well - such as e-commerce, social media and entertainment.
+
+#### **E-Commerce: Real-time recommendations**
+
+E-commerce apps offer recommendations at checkout, on homepage and on product pages. Incorporating in-session user inputs, such as page views, search queries, and cart additions can significantly improve the quality of recommendations.
+
+Chinese e-commerce giant, Taobao, [reports an uptick of ~10% in GMV](https://arxiv.org/abs/2005.08416) through session-aware personalized homepage recommendations! Due to challenges of real-time ML on cloud, Alibaba deployed the recommendation system on device, yielding significant topline uplift.
+
+#### **Social media: Feed ranking**
+
+User intent can vary significantly from one session to another for social media users. Social media apps that are adept at capturing intent in real-time and adapting accordingly end up garnering much higher engagement.
+
+As an example, [Pinterest increased Repins by >10%](https://medium.com/pinterest-engineering/how-pinterest-leverages-realtime-user-actions-in-recommendation-to-boost-homefeed-engagement-volume-165ae2e8cde8) by incorporating in-session user actions to tailor users' homepage in real-time!
+
+### **Conclusion**
+
+In conclusion, on-device execution of real-time ML enables a host of transformative use-cases across verticals, unlocking massive topline benefits. While challenging to execute, tools such as NimbleEdge and ONNX Runtime massively accelerate and simplify implementation, thus emerging as the leading alternatives for performant, real-time on-device ML.

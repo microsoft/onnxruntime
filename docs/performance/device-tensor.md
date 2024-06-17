@@ -51,7 +51,7 @@ auto ort_value = Ort::Value::CreateTensor(
 These allocated tensors can then be used as [I/O Binding](../performance/tune-performance/iobinding.md) to eliminate copy ops on the network and move the responsibility to the user.
 With such IO bindings more performance tunings are possible:
 - due to the fixed tensor address, a CUDA graph can be captured to reduce CUDA launch latency on CPU
-- due to either having fully asynchronous downloads to pinned memory or eliminating memory copies by using device local tensor, CUDA can run [fully asynchronous via a run option](../execution-providers/CUDA-ExecutionProvider.md#performance-tuning) on its given stream.
+- due to either having fully asynchronous downloads to pinned memory or eliminating memory copies by using device local tensor, CUDA can run [fully asynchronous via a run option](../execution-providers/CUDA-ExecutionProvider.md#performance-tuning) on its given stream
 
 To set the custom compute stream for CUDA, refer to the V2 option API exposing the `Ort[CUDA|TensorRT]ProviderOptionsV2*`opaque struct pointer and the function `Update[CUDA|TensorRT]ProviderOptionsWithValue(options, "user_compute_stream", cuda_stream);` to set it's stream member.
 More details can be found in each execution provider doc.

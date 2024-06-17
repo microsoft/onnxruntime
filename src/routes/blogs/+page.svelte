@@ -45,6 +45,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
+			date: 'June 17th, 2024',
+			blurb:
+				'Using NimbleEdge with ONNX Runtime delivers millisecond latency and minimal resource use, enabling real-time and privacy-preserving personalization in mobile apps.',
+			link: 'blogs/nimbleedge-x-onnxruntime',
+			image: 'https://iili.io/d95Pwcx.png',
+			imgalt:
+				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
+		},
+		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
 			blurb:
@@ -64,6 +74,10 @@
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
 		},
+		
+		
+	];
+	let blogs = [
 		{
 			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
 			date: 'May 20th, 2024',
@@ -73,11 +87,7 @@
 			image: Phi3OnDeviceImage,
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-mini for web and mobile with original Phi-3-mini'
-		},
-		
-	];
-	let blogs = [
-		{
+		},{
 			title: 'ONNX Runtime supports Phi-3 mini models across platforms and devices',
 			date: 'April 22nd, 2024',
 			blurb:
@@ -384,7 +394,7 @@
 			link: 'https://www.linkedin.com/pulse/hcm-sentence-similarity-language-model-using-java-jonathon-palmieri-tdlpc%3FtrackingId=CN2PPVO4Toqh8r6JsAYMIw%253D%253D/?trackingId=ByNomo0pQFKM%2F%2BWEknVs7Q%3D%3D'
 		}
 	];
-	let description = 'ONNX Runtime Blogs - your source for staying updated on the latest ONNX Runtime updated and information.'
+	let description = 'ONNX Runtime Blogs - your source for the latest ONNX Runtime updates and information.'
 	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
 	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
 	let authors = ['']
