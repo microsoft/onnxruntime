@@ -14,15 +14,13 @@ import os
 import platform
 import random
 import unittest
+from packaging import version
 
 import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
-
-if platform.system() == "Linux":
-    from rotary_flash import apply_rotary_emb
 
 from parameterized import parameterized
 
@@ -2067,7 +2065,8 @@ class TestMHA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, _ = torch.cuda.get_device_capability()
-        if major < 8:
+        has_flash_attention = major >= 8 and (platform.system() == "Linux" or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse('12.0')))
+        if not has_flash_attention:
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST PACKED MHA ---------")
@@ -2079,7 +2078,8 @@ class TestMHA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, _ = torch.cuda.get_device_capability()
-        if major < 8:
+        has_flash_attention = major >= 8 and (platform.system() == "Linux" or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse('12.0')))
+        if not has_flash_attention:
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
@@ -2286,7 +2286,8 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, _ = torch.cuda.get_device_capability()
-        if major < 8:
+        has_flash_attention = major >= 8 and (platform.system() == "Linux" or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse('12.0')))
+        if not has_flash_attention:
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
@@ -2346,7 +2347,8 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, _ = torch.cuda.get_device_capability()
-        if major < 8:
+        has_flash_attention = major >= 8 and (platform.system() == "Linux" or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse('12.0')))
+        if not has_flash_attention:
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
