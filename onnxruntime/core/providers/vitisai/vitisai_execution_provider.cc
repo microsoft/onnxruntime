@@ -188,6 +188,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
                               << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
         LoadEPContexModelFromFile();
+        ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_);
         std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
         DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
@@ -219,6 +220,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
                               << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
         LoadEPContexModelFromFile();
+        ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
         auto cache_dir = GetBackendCompileCacheDir();
         auto cache_key = GetBackendCompileCacheKey(graph_viewer);
         LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
