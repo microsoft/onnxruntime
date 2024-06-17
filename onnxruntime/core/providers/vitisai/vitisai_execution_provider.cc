@@ -168,6 +168,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     // Once we are done with the verification of functionalities and performance
     // of both implementations, we may eliminate this part.
     if (is_ep_ctx_model) {
+      ValidateEPContextNode(graph_viewer.GetGraph());
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_);
       std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
       DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
@@ -205,6 +206,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
 #if 1
     // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
     if (is_ep_ctx_model) {
+      ValidateEPContextNode(graph_viewer.GetGraph());
       std::string cache_dir, cache_key;
       RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
       LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;

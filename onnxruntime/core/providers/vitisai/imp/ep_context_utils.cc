@@ -300,9 +300,6 @@ bool ValidateEPContextNode(const Graph& graph) {
 
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
-  if (!ValidateEPContextNode(graph)) {
-    ORT_THROW("Invalid EP context model for Vitis AI");
-  }
   // TODO: Support for multi-node EP context model.
   auto* p_node = graph.GetNode(0);
   const auto& attrs = p_node->GetAttributes();
@@ -341,9 +338,6 @@ std::string RetrieveEPContextCache(
 }
 
 void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::string& cache_key) {
-  if (!ValidateEPContextNode(graph)) {
-    ORT_THROW("Invalid EP context model for Vitis AI");
-  }
   // TODO: Support for multi-node EP context model.
   auto* p_node = graph.GetNode(0);
   const auto& attrs = p_node->GetAttributes();
@@ -360,9 +354,6 @@ void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::s
 }
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
-  if (!ValidateEPContextNode(ep_ctx_graph)) {
-    ORT_THROW("Invalid EP context model for Vitis AI");
-  }
   // TODO: Support for multi-node EP context model.
   auto* p_node = ep_ctx_graph.GetNode(0);
   const auto& attrs = p_node->GetAttributes();
