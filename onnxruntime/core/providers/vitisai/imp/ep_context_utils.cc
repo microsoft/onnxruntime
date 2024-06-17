@@ -454,7 +454,9 @@ PathString GetEPContextCacheFileLocation(
 }
 
 std::string Slurp(const fs::path& file_location) {
-  const char* location_str = file_location.string().c_str();
+  // std::filesystem::value_type == onnxruntime::PathChar == ORTCHAR_T
+  // std::filesystem::string_type == onnxruntime::PathString
+  const char* location_str = PathToUTF8String(file_location.native()).c_str();
   std::ifstream ifs;
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
