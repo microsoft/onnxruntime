@@ -209,22 +209,6 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Bias = BufferBias.GetBuffer(N);
     }
 
-#if 0
-    auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
-      for (size_t row = 0; row < nrows; ++row) {
-        for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * ncols + col] << "\t";
-        }
-        std::cout << "\n";
-      }
-    };
-
-    std::cout << "A:\n";
-    print_matrix(M, K, A);
-    std::cout << "B:\n";
-    print_matrix(K, N, B);
-#endif
-
     float* C = BufferC.GetBuffer(N * M, true);
     float* CReference = BufferCReference.GetBuffer(N * M, true);
 
@@ -283,6 +267,26 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              Workspace,
              ComputeType,
              Threadpool);
+
+#if 0
+    auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
+      for (size_t row = 0; row < nrows; ++row) {
+        for (size_t col = 0; col < ncols; ++col) {
+          std::cout << data[row * ncols + col] << "\t";
+        }
+        std::cout << "\n";
+      }
+    };
+
+    std::cout << "A:\n";
+    print_matrix(M, K, A);
+    std::cout << "B:\n";
+    print_matrix(K, N, B);
+    std::cout << "CReference:\n";
+    print_matrix(M, N, CReference);
+    std::cout << "C:\n";
+    print_matrix(M, N, C);
+#endif
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {

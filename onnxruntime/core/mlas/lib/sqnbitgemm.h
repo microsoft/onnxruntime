@@ -44,6 +44,13 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
     }
 }
 
+constexpr MLAS_FORCEINLINE size_t
+MlasQNBitQuantBBlkSumAlignment()
+{
+    // 16 floats. this alignment is required by GemmFloatKernel
+    return 16 * sizeof(float);
+}
+
 //
 // Kernel dispatch structure.
 //
