@@ -457,6 +457,7 @@ std::string Slurp(const fs::path& file_location) {
   // std::filesystem::value_type == onnxruntime::PathChar == ORTCHAR_T
   // std::filesystem::string_type == onnxruntime::PathString
   const char* location_str = PathToUTF8String(file_location.native()).c_str();
+  LOGS_DEFAULT(WARNING) << "String representation of file path: " << location_str;
   std::ifstream ifs;
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
@@ -468,7 +469,7 @@ std::string Slurp(const fs::path& file_location) {
     }
     ifs.close();
   } catch (std::system_error& se) {
-    LOGS_DEFAULT(WARNING) << "Failed to read " << location_str << ". " << se.code().message();
+    LOGS_DEFAULT(WARNING) << "Failed to read " << location_str << ": " << se.code().message();
   }
   return ss.str();
 }
@@ -479,7 +480,7 @@ std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) 
                           << backend_cache_file_location;
     return "";
   }
-  LOGS_DEFAULT(VERBOSE) << "Reading backend compilation cache";
+  LOGS_DEFAULT(VERBOSE) << "Reading backend compilation cache from " << backend_cache_file_location;
   return Slurp(backend_cache_file_location);
 }
 
