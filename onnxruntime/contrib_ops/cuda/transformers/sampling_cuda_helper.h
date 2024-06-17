@@ -26,7 +26,7 @@ Status Sample(AllocatorPtr& allocator,
               transformers::IGreedySearchState<T>* greedy_state,
               const transformers::IGenerationParameters* parameters,
               int step,
-              const transformers::IConsoleDumper* dumper) {
+              const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
   typedef typename ToCudaType<T>::MappedType CudaT;
 

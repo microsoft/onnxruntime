@@ -2099,22 +2099,36 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
   return OrtApis::SessionOptionsAppendExecutionProvider_CUDA(options, &provider_options);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }

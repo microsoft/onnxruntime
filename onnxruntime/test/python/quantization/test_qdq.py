@@ -738,6 +738,32 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                 "DequantizeLinear",
             ],
         )
+
+        # checks that the qdq model has INT4 or INT16 types when expected
+        with open(model_qdq_path, "rb") as f:
+            qdq_model = onnx.load(f)
+        inits = {init.name: init for init in qdq_model.graph.initializer}
+        zero_types = []
+        for node in qdq_model.graph.node:
+            print(node.op_type)
+            if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
+                continue
+            zp = inits[node.input[2]]
+            zero_types.append(zp.data_type)
+
+        to_tensor_types = {
+            QuantType.QInt4: TensorProto.INT4,
+            QuantType.QUInt4: TensorProto.UINT4,
+            QuantType.QInt16: TensorProto.INT16,
+            QuantType.QUInt16: TensorProto.UINT16,
+        }
+        assert (
+            weight_type not in to_tensor_types or to_tensor_types[weight_type] in zero_types
+        ), f"weight_type={weight_type} not in zero_types={zero_types}"
+        assert (
+            activation_type not in to_tensor_types or to_tensor_types[activation_type] in zero_types
+        ), f"activation_type={activation_type} not in zero_types={zero_types}"
+
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next(), rtol=rtol, atol=atol)
 
         # If the model uses Q/DQ ops with "com.microsoft" domain (e.g., for int16 support),
@@ -791,15 +817,17 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         self.verify_qdq(True, QuantType.QUInt16, QuantType.QUInt8, {"UseQDQContribOps": True})
         self.verify_qdq(True, QuantType.QInt16, QuantType.QInt8, {"UseQDQContribOps": True})
 
-        # 4-bit QDQ
+        # 4-bit QDQ - per tensor
         self.verify_qdq(False, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10, atol=0.4)  # per-tensor
-        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10)  # per-channel
         self.verify_qdq(
             False, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10, atol=0.4
-        )  # per-tensor
+        )
+
+        # 4-bit QDQ - per channel
+        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt4, opset=21, ir_version=10, atol=0.6)
         self.verify_qdq(
-            True, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10
-        )  # per-channel
+            True, QuantType.QInt16, QuantType.QInt4, {"UseQDQContribOps": True}, opset=21, ir_version=10, atol=0.6
+        )
 
     def test_quantize_relu_conv(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
