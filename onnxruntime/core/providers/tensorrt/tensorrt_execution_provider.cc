@@ -113,8 +113,10 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
               break;
 #if NV_TENSORRT_MAJOR >= 10
             case nvinfer1::DataType::kINT64:
-              weight = static_cast<const int64_t*>(trt_weights.values)[k];
+            {
+              weight = static_cast<double>(static_cast<const int64_t*>(trt_weights.values)[k]);
               break;
+            }
 #endif  // NV_TENSORRT_MAJOR >= 10
             default:
               LOGS_DEFAULT(ERROR) << "Found unsupported datatype for layer " << const_layer_name;
