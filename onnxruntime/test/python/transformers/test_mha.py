@@ -291,6 +291,8 @@ def parity_check_mha(
     if config.causal:
         mask = causal_mask(config.sequence_length, config.total_sequence_length, device=config.device)
 
+    k_cache = None
+    v_cache = None
     if config.use_kv_cache:
         past_k = ref_inputs["past_key"]
         past_v = ref_inputs["past_value"]

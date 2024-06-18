@@ -54,23 +54,22 @@ class AttentionCPUBase : public AttentionBase {
     // Total sequence length including that of past state: T = P + L
     const int total_sequence_length = past_sequence_length + kv_sequence_length;
 
-    // Consolidate causal mask with user provided mask, and convert attention mask from 0/1 to -inf/0,
-    // and broadcast mask data to 3D (BxSxT)
+    // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0, then broadcast to 3D (BxSxT).
+    bool causal = (is_unidirectional_ && sequence_length > 1);
     void* mask_data = nullptr;
-    if (mask_index != nullptr || is_unidirectional_) {
+    if (mask_index != nullptr || causal) {
       size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
       mask_data = allocator->Alloc(mask_data_bytes);
       memset(mask_data, 0, mask_data_bytes);
     }
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
-
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
     gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
                                                    ? mask_index->Shape().GetDims()
                                                    : gsl::span<const int64_t>{};
     if (mask_data != nullptr) {
       PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                  is_unidirectional_, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+                  causal, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       DUMP_CPU_TENSOR_INIT();
       DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
     }
