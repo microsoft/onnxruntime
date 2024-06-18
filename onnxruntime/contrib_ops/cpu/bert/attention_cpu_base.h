@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -204,12 +205,18 @@ class AttentionCPUBase : public AttentionBase {
       });
     }
 
+    DUMP_CPU_TENSOR_INIT();
+    DUMP_CPU_TENSOR("Q", Q, batch_size, num_heads_, sequence_length, head_size);
+    DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
+
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
       ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
     }
+
+    DUMP_CPU_TENSOR("Softmax(QK)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
   }
 
   template <typename T>
