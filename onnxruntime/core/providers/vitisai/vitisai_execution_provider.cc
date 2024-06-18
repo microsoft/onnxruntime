@@ -257,7 +257,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph_viewer, ep.get(), index));
     index = index + 1;
   }
-  if (ep_ctx_enabled_) {
+  if (ep_ctx_enabled_ && !is_ep_ctx_model) {
 #if 0
     FulfillEPContextEnablement(result, graph_viewer);
 #endif

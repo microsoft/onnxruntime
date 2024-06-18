@@ -65,6 +65,7 @@ std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionP
     auto p_node_proto = ONNX_NAMESPACE::NodeProto::Create();
     // XXX
     p_node->ToProto(*p_node_proto, true);
+    auto* p_attr_proto = p_node_proto->add_attribute();
     p_attr_proto->set_name("parent_graph_node_index");
     p_attr_proto->set_type(ONNX_NAMESPACE::AttributeProto::INT);
     p_attr_proto->set_i(node_index);
@@ -314,13 +315,13 @@ std::string RetrieveEPContextCache(
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
   // Attr "ep_cache_context" stores a relative path.
   ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
-  LOGS_DEFAULT(VERBOSE) << "EP context model path: " << ep_ctx_fs_path.string();
+  LOGS_DEFAULT(VERBOSE) << "EP context cache path: " << ep_ctx_fs_path.string();
   // TODO: Validaion of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
   }
   auto open_mode = binary_mode ? (std::ios::in | std::ios::binary) : std::ios::in;
-  std::ifstream ifs(ep_ctx_cache, open_mode);
+  std::ifstream ifs(ep_ctx_fs_path.string().c_str(), open_mode);
   if (!ifs.is_open()) {
     ORT_THROW("Exception opening EP context cache file");
   }
@@ -372,7 +373,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   // XXX: maybe ineffective.
   graph.ToGraphProto()->set_name(j_obj["orig_graph_name"]);
 
-  return p_model->MainGraph().CreateGraphViewer();
+  return graph.CreateGraphViewer();
 }
 
 bool GraphHasEPContextNode(const GraphViewer& graph_viewer) {
@@ -428,7 +429,6 @@ bool GetEPContextModelFileLocation(
       ep_ctx_model_file_loc = ToPathString(ep_ctx_model_fs_path.string());
     }
   }
-  // return !ep_ctx_model_file_loc.empty() && fs::exists(ep_ctx_model_file_loc) && fs::is_regular_file(ep_ctx_model_file_loc);
   return !ep_ctx_model_file_loc.empty();
 }
 
@@ -487,13 +487,13 @@ void RestoreBackendCompileCache(
   }
   ofs.write(compile_cache.data(), compile_cache.length());
   if (!ofs.good()) {
-    ofs.close();
     LOGS_DEFAULT(WARNING) << "[VitisAI EP]Failed to restore backend compilation cache: "
                           << backend_cache_file_location;
-    return;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Succeeded to restore backend compilation cache: "
+                          << backend_cache_file_location;
   }
-  LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Succeeded to restore backend compilation cache: "
-                        << backend_cache_file_location;
+  ofs.close();
 }
 
 #if 0
