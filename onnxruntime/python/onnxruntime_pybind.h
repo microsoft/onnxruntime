@@ -11,17 +11,8 @@
 //
 // see https://github.com/microsoft/onnxruntime/issues/9735
 //
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4127)
-#endif
-
 #if defined(_MSC_FULL_VER) && defined(_DEBUG) && _MSC_FULL_VER >= 192930145
 #include <corecrt.h>
 #endif
 
 #include <pybind11/pybind11.h>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif

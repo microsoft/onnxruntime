@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4127)
-#endif
 
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -12,7 +8,6 @@
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 #include "python/numpy_helper.h"
 
 #include "core/framework/tensor_shape.h"
@@ -27,9 +22,6 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/session/provider_bridge_ort.h"
 
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 namespace onnxruntime {
 namespace python {
 
