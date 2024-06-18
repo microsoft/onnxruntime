@@ -1172,7 +1172,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     }
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(graph_body_viewer, input_names, output_names);
+    no_input_shape = no_input_shape || get_input_output_names(graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
@@ -1356,7 +1356,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               quant_params.add(cal_key.c_str(), migraphx::argument(cal_val_shape, static_cast<void*>(std::move(&cal_val))));
             }
             quant_opts.add_calibration_data(quant_params);
-
             // specify thing we want to int8 quantize
             quant_opts.add_op_name("convolution");
             quant_opts.add_op_name("dot");

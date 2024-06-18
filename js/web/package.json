@@ -43,7 +43,7 @@
     "@types/minimatch": "^5.1.2",
     "@types/minimist": "^1.2.2",
     "@types/platform": "^1.3.4",
-    "@webgpu/types": "^0.1.38",
+    "@webgpu/types": "^0.1.42",
     "base64-js": "^1.5.1",
     "chai": "^4.3.7",
     "electron": "^28.1.4",
