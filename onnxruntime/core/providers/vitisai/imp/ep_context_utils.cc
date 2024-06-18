@@ -182,7 +182,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
-Model* CreateEPContexModel(
+ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
     const GraphViewer& graph_viewer,
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
@@ -269,28 +269,20 @@ Model* CreateEPContexModel(
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
-  if (ValidateEPContextNode(ep_ctx_graph)) {
-    LOGS_DEFAULT(VERBOSE) << "Created EP context model graph validated";
-  }
-  auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
-  auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
-  auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
-  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  p_ep_ctx_graph_viewer->ToProto(*p_ep_ctx_model_proto->mutable_graph(), true, true);
-  if (ValidateEPContextNode(p_ep_ctx_model->MainGraph())) {
-    LOGS_DEFAULT(VERBOSE) << "Validated EP context model graph after tranformation";
-  }
 
-  return p_ep_ctx_model.release();
+  auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
+  auto p_temp_model_2 = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
+  auto p_ep_ctx_model_proto = p_temp_model_2->ToProto();
+  p_ep_ctx_graph_viewer->ToProto(*p_ep_ctx_model_proto->mutable_graph(), true, true);
+  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  return p_ep_ctx_model_proto.release();
 }
 
 void DumpEPContextModel(
-    const std::unique_ptr<Model>& p_model, const std::string& ep_ctx_model_file_loc) {
-  if (ValidateEPContextNode(p_model->MainGraph())) {
-    LOGS_DEFAULT(VERBOSE) << "Validated EP context model to be dumped";
-  }
+    const std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_model_proto, const std::string& ep_ctx_model_file_loc) {
   std::fstream dump_stream(ep_ctx_model_file_loc, std::ios::out | std::ios::trunc | std::ios::binary);
-  p_model->ToProto()->SerializeToOstream(dump_stream);
+  p_model_proto->SerializeToOstream(dump_stream);
   LOGS_DEFAULT(VERBOSE) << "[VitisAI EP] Dumped " << ep_ctx_model_file_loc;
 }
 

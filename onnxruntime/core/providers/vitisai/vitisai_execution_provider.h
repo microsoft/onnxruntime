@@ -62,6 +62,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   mutable PathString ep_ctx_model_file_loc_{};
   // FIXME: This might not be needed.
   mutable std::unique_ptr<onnxruntime::Model> p_ep_ctx_model_;
+  mutable std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_ep_ctx_model_proto_;
   // It might need to be called before loading
   // the EP context model that is compiled AOT/offline.
   void LoadEPContexModelFromFile() const;

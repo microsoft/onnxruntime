@@ -49,13 +49,12 @@ VitisAIExecutionProvider::~VitisAIExecutionProvider() {
 void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
   // XXX: should "p_ep_ctx_model_" be checked or not?
   if (!p_ep_ctx_model_ && !ep_ctx_model_file_loc_.empty()) {
-    auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
-    auto status = Model::Load(ep_ctx_model_file_loc_, *p_model_proto);
+    auto status = Model::Load(ep_ctx_model_file_loc_, *p_ep_ctx_model_proto_);
     if (!status.IsOK()) {
       ORT_THROW("Loading EP context model failed from ", PathToUTF8String(ep_ctx_model_file_loc_));
     }
     auto& logger = logging::LoggingManager::DefaultLogger();
-    p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
+    p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
     LOGS_DEFAULT(VERBOSE) << "Loaded EP context model from: " << PathToUTF8String(ep_ctx_model_file_loc_);
   } else if (ep_ctx_model_file_loc_.empty()) {
     LOGS_DEFAULT(WARNING) << "Cannot load an EP-context model due to bad file path";
@@ -112,12 +111,14 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, &logger));
+    p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, &logger));
+    p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   } else {
-    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger));
+    p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger));
+    p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
+  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 // This version of implementation (vs the overloaded version of implementation above)
@@ -147,12 +148,14 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger));
+    p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger));
+    p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   } else {
-    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger));
+    p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger));
+    p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
+  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
@@ -216,9 +219,11 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
       RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
     } else {
-      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_)) {
-        LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
-                              << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
+        std::string warning = "The inference session was created with a normal ONNX model but a model file with EP context cache exists at " + PathToUTF8String(ep_ctx_model_file_loc_) + ". Please remove the EP context model manually if you want to re-generate it.";
+        ORT_THROW(warning);
+        // Disable the flexibility implemented below.
+        // Now the code below is unreachable and DCE will take care of it.
         LoadEPContexModelFromFile();
         ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
         auto cache_dir = GetBackendCompileCacheDir();

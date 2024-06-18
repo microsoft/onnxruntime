@@ -37,10 +37,10 @@ void DeserializeCapabilities(
 
 std::string SerializeOrigialGraph(const GraphViewer&);
 
-Model* CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
-                           const std::string&, const std::string&, bool, const logging::Logger*);
+ONNX_NAMESPACE::ModelProto* CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
+                                                const std::string&, const std::string&, bool, const logging::Logger*);
 
-void DumpEPContextModel(const std::unique_ptr<Model>&, const std::string&);
+void DumpEPContextModel(const std::unique_ptr<ONNX_NAMESPACE::ModelProto>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
 
