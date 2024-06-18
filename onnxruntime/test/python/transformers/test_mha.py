@@ -121,7 +121,18 @@ def get_provider_support_info(provider: str, use_kv_cache: bool):
     return device, dtype, formats
 
 
+def has_cuda_support():
+    if torch.cuda.is_available() and "CUDAExecutionProvider" in onnxruntime.get_available_providers():
+        major, _ = torch.cuda.get_device_capability()
+        return major >= 6
+    return False
+
+
 def no_kv_cache_test_cases(provider: str, comprehensive: bool):
+    if provider == "CUDAExecutionProvider" and not has_cuda_support():
+        return
+        yield
+
     batch_sizes = [1, 2, 3]
     sequence_lengths = [1, 16, 127, 128, 255, 256, 383, 384, 2048]
     heads = [1, 3, 4, 16]
@@ -181,6 +192,10 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
 
 
 def kv_cache_test_cases(provider: str, comprehensive: bool):
+    if provider == "CUDAExecutionProvider" and not has_cuda_support():
+        return
+        yield
+
     batch_sizes = [1, 2, 3]
     sequence_lengths = [1, 15, 16, 255, 256, 2048]
     heads = [1, 3, 4, 16]
@@ -331,26 +346,16 @@ def parity_check_mha(
         )
 
 
-def has_cuda_mha():
-    if torch.cuda.is_available() and "CUDAExecutionProvider" in onnxruntime.get_available_providers():
-        major, _ = torch.cuda.get_device_capability()
-        return major >= 6
-    return False
-
-
 # Do not run too many tests in CI pipeline. Change it to True to run all combinations in dev machine.
 comprehensive_mode = False
 
 
-class TestMHA(unittest.TestCase):
-    @parameterized.expand(mha_test_cases("CUDAExecutionProvider", comprehensive_mode))
+class TestMultiHeadAttention(unittest.TestCase):
+    @parameterized.expand(mha_test_cases("CUDAExecutionProvider", comprehensive_mode), skip_on_empty=True)
     def test_mha_cuda(self, config):
-        if not has_cuda_mha():
-            self.skipTest("no support for cuda provider")
-        else:
-            parity_check_mha(config)
+        parity_check_mha(config)
 
-    @parameterized.expand(mha_test_cases("CPUExecutionProvider", comprehensive_mode))
+    @parameterized.expand(mha_test_cases("CPUExecutionProvider", comprehensive_mode), skip_on_empty=True)
     def test_mha_cpu(self, config):
         parity_check_mha(config)
 
