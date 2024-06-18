@@ -219,8 +219,8 @@ static bool DQFeedsASupportedOp(const Node* dq_node, const onnxruntime::GraphVie
       return true;
     }
   } else if (op_type == "Add") {
-    // Add => keeps all DQs 
-    return true
+    // Add => keeps all DQs
+    return true;
   }
   return false;
 }
