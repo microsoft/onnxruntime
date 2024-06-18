@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/flash_attention/flash_attention_api.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
@@ -37,7 +38,8 @@ class AttentionCPUBase : public AttentionBase {
                         int v_head_size,                       // head size of V (H_v)
                         int v_hidden_size,                     // hidden size of V (D_v)
                         const Tensor* relative_position_bias,  // bias addition in QK. Its size is BxNxSxT
-                        OpKernelContext* context) const {
+                        OpKernelContext* context,
+                        bool disable_flash_attention = false) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -76,6 +78,110 @@ class AttentionCPUBase : public AttentionBase {
 
     float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
+    if (!disable_flash_attention && relative_position_bias == nullptr && v_head_size == qk_head_size) {
+      auto data_type = DataTypeImpl::GetType<T>();
+
+      Tensor query(data_type,
+                   TensorShape({batch_size, num_heads_, sequence_length, qk_head_size}),
+                   const_cast<void*>(reinterpret_cast<const void*>(Q)), allocator->Info());
+
+      T* present_key_data = nullptr;
+      if (present_key != nullptr) {
+#if DUMP_CPU_TENSOR_LEVEL > 0
+        printf("present_key shape %s\n", present_key->Shape().ToString().c_str());
+#endif
+        present_key_data = present_key->MutableData<T>();
+      } else if (present != nullptr) {
+#if DUMP_CPU_TENSOR_LEVEL > 0
+        printf("present shape %s\n", present->Shape().ToString().c_str());
+#endif
+        present_key_data = present->MutableData<T>();
+      }
+
+      T* present_value_data = nullptr;
+      if (present_value != nullptr) {
+#if DUMP_CPU_TENSOR_LEVEL > 0
+        printf("present_value shape %s\n", present_value->Shape().ToString().c_str());
+#endif
+        present_value_data = present_value->MutableData<T>();
+      } else if (present != nullptr) {
+        // present has shape (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
+#if DUMP_CPU_TENSOR_LEVEL > 0
+        printf("present shape %s\n", present->Shape().ToString().c_str());
+#endif
+        present_value_data = present->MutableData<T>() + present->Stride(0);
+      }
+
+      if (present_key_data || present_value_data) {
+        const T* past_key_data = nullptr;
+        if (past_key != nullptr) {
+          past_key_data = past_key->Data<T>();
+        } else if (past != nullptr) {
+          past_key_data = past->Data<T>();
+        }
+
+        const T* past_value_data = nullptr;
+        if (past_value != nullptr) {
+          past_value_data = past_value->Data<T>();
+        } else if (past != nullptr) {
+          // past has shape (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
+          printf("past shape %s\n", present->Shape().ToString().c_str());
+          past_value_data = past->Data<T>() + present->Stride(0);
+        }
+
+        assert(qk_head_size == v_head_size);
+        UpdateKVCache(K, V, past_key_data, past_value_data, present_key_data, present_value_data,
+                      batch_size, kv_sequence_length, past_sequence_length, v_head_size);
+      }
+
+      if (present_key_data == nullptr) {
+        present_key_data = const_cast<T*>(K);
+      }
+      if (present_value_data == nullptr) {
+        present_value_data = const_cast<T*>(V);
+      }
+
+      Tensor key(data_type,
+                 TensorShape({batch_size, num_heads_, total_sequence_length, qk_head_size}),
+                 reinterpret_cast<void*>(present_key_data), allocator->Info());
+#if DUMP_CPU_TENSOR_LEVEL > 0
+      printf("key shape %s\n", key.Shape().ToString().c_str());
+#endif
+
+      Tensor value(data_type,
+                   TensorShape({batch_size, num_heads_, total_sequence_length, v_head_size}),
+                   reinterpret_cast<void*>(present_value_data), allocator->Info());
+#if DUMP_CPU_TENSOR_LEVEL > 0
+      printf("value shape %s\n", value.Shape().ToString().c_str());
+#endif
+      Tensor mask(data_type,
+                  TensorShape({batch_size, 1, sequence_length, total_sequence_length}),
+                  const_cast<void*>(reinterpret_cast<const void*>(mask_data)), allocator->Info());
+
+      // output is 3D, we reshape it to 4D here.
+      Tensor out(data_type,
+                 TensorShape({batch_size, sequence_length, num_heads_, v_head_size}),
+                 const_cast<void*>(reinterpret_cast<const void*>(output->MutableData<T>())), allocator->Info());
+#if DUMP_CPU_TENSOR_LEVEL > 0
+      printf("Use CPU Flash Attention!\n");
+#endif
+      constexpr bool is_q_bnsh = true;
+      constexpr bool is_kv_bnsh = true;
+      cpu_flash_attention(
+          out,
+          query,
+          present_key == nullptr ? key : *present_key,
+          present_value == nullptr ? value : *present_value,
+          is_unidirectional_,
+          mask_data == nullptr ? nullptr : &mask,
+          static_cast<double>(scale),
+          tp,
+          allocator,
+          is_q_bnsh,
+          is_kv_bnsh);
+      return Status::OK();
+    }
+
     const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
     const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
@@ -111,6 +217,42 @@ class AttentionCPUBase : public AttentionBase {
   }
 
  private:
+  // Helper function to Concate past to present
+  template <typename T>
+  void UpdateKVCache(
+      const T* K,                // K value with size BxNxLxH
+      const T* V,                // V value with size BxNxLxH
+      const T* past_key,         // past key
+      const T* past_value,       // past value
+      T* present_key,            // present key
+      T* present_value,          // present value
+      int batch_size,            // batch size of self-attention
+      int kv_sequence_length,    // sequence length of cross-attention (L)
+      int past_sequence_length,  // sequence length of past state
+      int head_size              // head size of self-attention
+  ) const {
+    if (past_sequence_length > 0) {
+      const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H
+      const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
+      const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
+
+      for (std::ptrdiff_t i = 0; i != batch_size * num_heads_; ++i) {
+        const T* k = K + kv_input_chunk_length * i;
+        const T* v = V + kv_input_chunk_length * i;
+        if (nullptr != present_key) {
+          k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
+        }
+        if (nullptr != present_value) {
+          v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i);
+        }
+      }
+    } else {  // past_sequence_length == 0
+      const size_t bytes = sizeof(T) * batch_size * num_heads_ * kv_sequence_length * head_size;
+      memcpy(present_key, K, bytes);
+      memcpy(present_value, V, bytes);
+    }
+  }
+
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T) +
   //                                1 x mask_data(B, N, S, T)
@@ -207,8 +349,11 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     DUMP_CPU_TENSOR_INIT();
-    DUMP_CPU_TENSOR("Q", Q, batch_size, num_heads_, sequence_length, head_size);
-    DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
+    DUMP_CPU_TENSOR("query", Q, batch_size, num_heads_, sequence_length, head_size);
+    if (nullptr != present_key) {
+      DUMP_CPU_TENSOR("present_key", present_key, batch_size, num_heads_, total_sequence_length, head_size);
+    }
+    DUMP_CPU_TENSOR("QK", attention_probs, batch_size, num_heads_, sequence_length, total_sequence_length);
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
     {

@@ -5,6 +5,7 @@
 #include "multihead_attention.h"
 #include "multihead_attention_helper.h"
 #include "attention_utils.h"
+#include "core/platform/env_var_utils.h"
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -39,6 +40,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+
+  disable_flash_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 }
 
 template <typename T>
@@ -128,7 +131,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           value->Data<T>(),
                           key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
                           batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context,
+                          disable_flash_attention_);
   }
 
   OrtValue K;
@@ -144,7 +148,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
                         batch_size, q_sequence_length, kv_sequence_length,
-                        qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+                        qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context,
+                        disable_flash_attention_);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
