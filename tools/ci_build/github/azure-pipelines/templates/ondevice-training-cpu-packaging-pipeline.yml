@@ -116,7 +116,7 @@ stages:
   - Android_Java_API_AAR_Packaging_Training_Full
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_Training_CPU
     workspace:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.

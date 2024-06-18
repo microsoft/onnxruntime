@@ -16,7 +16,7 @@ stages:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
     workspace:
       clean: all
     timeoutInMinutes: 120
