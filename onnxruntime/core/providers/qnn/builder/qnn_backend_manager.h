@@ -50,7 +50,7 @@ class QnnBackendManager {
         device_id_(device_id),
         htp_arch_(htp_arch),
         soc_model_(soc_model),
-        enable_htp_weight_sharing_(enable_htp_weight_sharing){
+        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
