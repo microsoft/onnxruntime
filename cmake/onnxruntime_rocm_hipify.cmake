@@ -96,6 +96,7 @@ set(contrib_ops_excluded_files
   "collective/distributed_*"
   "collective/ipc_*"
   "collective/shard*"
+  "math/fft_op*"
 )
 
 if (NOT onnxruntime_USE_NCCL)
@@ -125,6 +126,7 @@ set(provider_excluded_files
   "math/softmax_common.h"
   "math/softmax.cc"
   "math/softmax.h"
+  "math/fft_op*"
   "nn/conv.cc"
   "nn/conv.h"
   "nn/conv_transpose.cc"
