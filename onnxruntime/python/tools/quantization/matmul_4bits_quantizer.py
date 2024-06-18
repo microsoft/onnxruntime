@@ -61,6 +61,8 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
         """
+        assert quant_format == QuantFormat.QOperator, "RTN only supports QOperator format"
+
         if ratios is None:
             ratios = {}
         super().__init__(
@@ -103,6 +105,8 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
         """
+        assert quant_format == QuantFormat.QOperator, "GPTQ only supports QOperator format"
+
         super().__init__(
             algorithm="GPTQ",
             quant_format=quant_format,
@@ -139,6 +143,8 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
         """
+        assert quant_format == QuantFormat.QOperator, "HQQ only supports QOperator format"
+
         super().__init__(
             algorithm="HQQ",
             quant_format=quant_format,
@@ -459,7 +465,10 @@ class DefaultWeightOnlyQuantizer:
         return (packed, scales, zero_point)
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
-        """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
+        """
+        If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node.
+        If QOperator format, return MatMulNbits. If QDQ format, return DeQuantizeLinear + MatMul.
+        """
 
         if node.op_type != "MatMul":
             return [node]  # only care about MatMul for now
@@ -814,7 +823,7 @@ if __name__ == "__main__":
 
     model = onnx.load(input_model_path)
     if args.quant_method == "hqq":
-        quant_config = HQQWeightOnlyQuantConfig(block_size=args.block_size, bits=args.bits, quant_format=quant_format)
+        quant_config = HQQWeightOnlyQuantConfig(block_size=args.block_size, bits=args.bits)
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
             block_size=args.block_size,
@@ -823,9 +832,9 @@ if __name__ == "__main__":
             quant_format=quant_format,
         )
     elif args.quant_method == "rtn":
-        quant_config = RTNWeightOnlyQuantConfig(quant_format=quant_format)
+        quant_config = RTNWeightOnlyQuantConfig()
     elif args.quant_method == "gptq":
-        quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size, quant_format=quant_format)
+        quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size)
     else:
         raise ValueError(f"Unsupported quantization method: {args.quant_method}")
 
