@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - rel-*
+      - snnn/sca1
   pull_request:
 
 concurrency:
@@ -16,6 +17,9 @@ env:
 
 jobs:
   Onnxruntime-SCA-training-CUDA:
+    permissions:
+      # required for all workflows
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +61,9 @@ jobs:
 
   # No python
   Onnxruntime-SCA-win32-WINML-x64:
+    permissions:
+      # required for all workflows
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +102,9 @@ jobs:
 
   # No java, No python
   Onnxruntime-SCA-win32-WINML-x86:
+    permissions:
+      # required for all workflows
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
