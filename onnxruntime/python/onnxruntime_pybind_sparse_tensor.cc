@@ -1,5 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
 
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -23,6 +27,9 @@
 #include "core/framework/provider_options_utils.h"
 #include "core/session/provider_bridge_ort.h"
 
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 namespace onnxruntime {
 namespace python {
 
