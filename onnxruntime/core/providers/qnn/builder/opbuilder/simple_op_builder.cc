@@ -41,7 +41,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplicitOpCheck(const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
   Status ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     std::vector<std::string>&& input_names,
@@ -138,7 +138,8 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
+                                        const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
@@ -156,6 +157,20 @@ Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
   if (op_type == "Min" || op_type == "Max") {
     ORT_RETURN_IF_NOT(node_unit.Inputs().size() == 2,
                       "QNN EP only supports Min and Max operators with exactly 2 inputs.");
+  }
+
+  if (op_type == "DequantizeLinear") {
+    bool is_per_chan_quant = false;
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Inputs()[0], is_per_chan_quant, quant_axis));
+    ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone DQ op with per-channel quantization");
+  }
+
+  if (op_type == "QuantizeLinear") {
+    bool is_per_chan_quant = false;
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Outputs()[0], is_per_chan_quant, quant_axis));
+    ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone Q op with per-channel quantization");
   }
 
   return Status::OK();
@@ -475,7 +490,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const std::string& op_type = node_unit.OpType();
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplicitOpCheck(node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
