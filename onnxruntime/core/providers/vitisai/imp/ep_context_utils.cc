@@ -413,9 +413,9 @@ bool GetEPContextModelFileLocation(
     const PathString& model_path_str,
     bool is_ep_ctx_model,
     PathString& ep_ctx_model_file_loc) {
-  // if (!ep_ctx_model_file_loc.empty()) {
-  //   return true;
-  // }
+  if (!ep_ctx_model_file_loc.empty()) {
+    return true;
+  }
   if (!ep_ctx_model_path_cfg.empty()) {
     ep_ctx_model_file_loc = ToPathString(ep_ctx_model_path_cfg);
   } else if (!model_path_str.empty()) {
