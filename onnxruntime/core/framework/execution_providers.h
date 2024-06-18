@@ -48,7 +48,7 @@ class ExecutionProviders {
     LogProviderOptions(provider_id, providerOptions, false);
 
     // Register callback for ETW capture state (rundown)
-    WindowsTelemetry::RegisterInternalCallback(
+    auto callback_MLORT_provider = std::make_shared<onnxruntime::WindowsTelemetry::EtwInternalCallback>(
         [this](
             LPCGUID SourceId,
             ULONG IsEnabled,
@@ -79,6 +79,7 @@ class ExecutionProviders {
             }
           }
         });
+    WindowsTelemetry::RegisterInternalCallback(callback_MLORT_provider);
 #endif
 
     exec_provider_ids_.push_back(provider_id);

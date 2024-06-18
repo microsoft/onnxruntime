@@ -64,7 +64,7 @@ bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
-std::vector<WindowsTelemetry::EtwInternalCallback> WindowsTelemetry::callbacks_;
+std::vector<std::shared_ptr<WindowsTelemetry::EtwInternalCallback>> WindowsTelemetry::callbacks_;
 OrtMutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -86,6 +86,9 @@ WindowsTelemetry::~WindowsTelemetry() {
       TraceLoggingUnregister(telemetry_provider_handle);
     }
   }
+
+  std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
+  callbacks_.clear();
 }
 
 bool WindowsTelemetry::IsEnabled() const {
@@ -107,9 +110,14 @@ UINT64 WindowsTelemetry::Keyword() const {
 //     return etw_status_;
 // }
 
-void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
-  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+void WindowsTelemetry::RegisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+  std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
   callbacks_.push_back(callback);
+}
+
+void WindowsTelemetry::UnregisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+  std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
+  callbacks_.erase(std::remove(callbacks_.begin(), callbacks_.end(), callback), callbacks_.end());
 }
 
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
@@ -131,9 +139,9 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
 void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                        ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                        PVOID CallbackContext) {
-  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
-    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
