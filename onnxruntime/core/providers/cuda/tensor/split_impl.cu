@@ -195,13 +195,11 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
 
   size_t N = outer_size * inner_size;
   size_t blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
-  dim3 block(kNumThreadsPerBlock);
-  dim3 grid(blocksPerGrid);
 
   switch (element_size) {
 #define CASE_ELEMENT_TYPE(type)                                                                 \
   case sizeof(type): {                                                                          \
-    _Split3InnerKernel<<<grid, block, 0, stream>>>(size0, size1, size2,                           \
+    _Split3InnerKernel<<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(size0, size1, size2,   \
         reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data),                       \
         reinterpret_cast<ToCudaType<type>::MappedType*>(output_data0),                           \
         reinterpret_cast<ToCudaType<type>::MappedType*>(output_data1),                           \
