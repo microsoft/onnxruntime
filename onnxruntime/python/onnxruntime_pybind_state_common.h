@@ -15,7 +15,16 @@
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
+
 #include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // execution provider factory creator headers
 struct OrtStatus {
@@ -197,6 +206,8 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
+
+
 
 namespace onnxruntime {
 #if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
