@@ -25,10 +25,6 @@ from parameterized import parameterized
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
-RED = "\033[31m"
-GREEN = "\033[32m"
-RESET = "\033[0m"
-
 torch.manual_seed(0)
 
 pipeline_mode = True  # Reduces number of tests so pipeline doesn't time out
@@ -47,6 +43,7 @@ class Config:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
     def __init__(
         self, batch_size, sequence_length, kv_sequence_length, past_sequence_length, num_heads, kv_num_heads, head_size
@@ -60,10 +57,11 @@ class Config:
         self.head_size = head_size
 
     def __repr__(self):
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
         return (
             f"Config(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
-            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size})"
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
         )
 
 
@@ -75,6 +73,7 @@ class PromptConfig:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
     def __init__(
         self,
@@ -95,10 +94,11 @@ class PromptConfig:
         self.head_size = head_size
 
     def __repr__(self):
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
         return (
             f"PromptConfig(batch_size={self.batch_size}, q_sequence_length={self.q_sequence_length}, "
             f"kv_sequence_length={self.kv_sequence_length}, buffer_sequence_length={self.buffer_sequence_length}, "
-            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size})"
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
         )
 
 
@@ -739,7 +739,7 @@ def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config
         "cumulative_sequence_length": cu_seqlens.cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     output = torch.tensor(ort_output)
     return output
@@ -756,7 +756,7 @@ def mha_func(q, k, v, config):
         "value": v.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     ort_output = numpy.array(ort_output)
     output = torch.tensor(ort_output)
@@ -808,7 +808,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -849,7 +849,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -916,7 +916,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -964,7 +964,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -1172,25 +1172,9 @@ def parity_check_mha(
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
 
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " N:",
-        config.num_heads,
-        " kvN:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    numpy.testing.assert_allclose(
+        out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config} packed={packed}"
     )
-    return all_close
 
 
 def rotary_embedding(*args, **kwargs):
@@ -1367,60 +1351,19 @@ def parity_check_gqa_prompt(
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
     # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "KV-buffer",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.q_sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
 
-    if not all_close:
-        close_mask = numpy.isclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-        not_close_mask = numpy.logical_not(close_mask)
-
-        # Values that are not close
-        out_not_close = out[not_close_mask]
-        out_ref_not_close = out_ref[not_close_mask]
-
-        # Indices that are not close
-        not_close_indices = numpy.argwhere(not_close_mask)
-
-        print("Values in 'out' that are not close:", out_not_close)
-        print("Corresponding values in 'out_ref':", out_ref_not_close)
-        print("Indices of values that are not close:", not_close_indices)
-
-    return all_close
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1567,44 +1510,19 @@ def parity_check_gqa_prompt_no_buff(
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "No buff",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.q_sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
-    return all_close
+    # Make sure past-present buffer updating correctly
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past(
@@ -1770,44 +1688,19 @@ def parity_check_gqa_past(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "KV-buffer",
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
-    return all_close
+    # Make sure past-present buffer updating correctly
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past_no_buff(
@@ -1979,40 +1872,11 @@ def parity_check_gqa_past_no_buff(
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "NO buff",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
-    return all_close
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def has_flash_attention():
@@ -2083,8 +1947,7 @@ class TestMHA(unittest.TestCase):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST PACKED MHA ---------")
-        all_close = parity_check_mha(config, True)
-        self.assertTrue(all_close)
+        parity_check_mha(config, True)
 
     @parameterized.expand(mha_test_cases())
     def test_mha(self, _, config):
@@ -2092,8 +1955,7 @@ class TestMHA(unittest.TestCase):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
-        all_close = parity_check_mha(config, False)
-        self.assertTrue(all_close)
+        parity_check_mha(config, False)
 
 
 def gqa_no_past_memory_efficient_test_cases():
@@ -2266,7 +2128,7 @@ class TestGQA(unittest.TestCase):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("------- MEMORY EFFICIENT ATTENTION (PROMPT CASE) ---------")
 
-        all_close = parity_check_gqa_prompt(
+        parity_check_gqa_prompt(
             config,
             rtol=5e-3,
             atol=5e-3,
@@ -2275,8 +2137,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
-        all_close = parity_check_gqa_prompt_no_buff(
+        parity_check_gqa_prompt_no_buff(
             config,
             rtol=5e-3,
             atol=5e-3,
@@ -2285,7 +2146,6 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
 
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
     def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
@@ -2294,7 +2154,7 @@ class TestGQA(unittest.TestCase):
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
 
-        all_close = parity_check_gqa_prompt(
+        parity_check_gqa_prompt(
             config,
             local=local,
             past_format=Formats.BNSH,
@@ -2302,8 +2162,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
-        all_close = parity_check_gqa_prompt_no_buff(
+        parity_check_gqa_prompt_no_buff(
             config,
             local=local,
             past_format=Formats.BNSH,
@@ -2311,7 +2170,6 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
 
     @parameterized.expand(gqa_past_memory_efficient_test_cases())
     def test_gqa_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
@@ -2320,7 +2178,7 @@ class TestGQA(unittest.TestCase):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
 
-        all_close = parity_check_gqa_past(
+        parity_check_gqa_past(
             config,
             past_format=Formats.BNSH,
             rtol=1e-3,
@@ -2329,8 +2187,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
-        all_close = parity_check_gqa_past_no_buff(
+        parity_check_gqa_past_no_buff(
             config,
             past_format=Formats.BNSH,
             rtol=1e-3,
@@ -2339,7 +2196,6 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
     def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
@@ -2348,7 +2204,7 @@ class TestGQA(unittest.TestCase):
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
 
-        all_close = parity_check_gqa_past(
+        parity_check_gqa_past(
             config,
             local=local,
             past_format=Formats.BNSH,
@@ -2358,8 +2214,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
-        all_close = parity_check_gqa_past_no_buff(
+        parity_check_gqa_past_no_buff(
             config,
             local=local,
             past_format=Formats.BNSH,
@@ -2369,7 +2224,6 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        self.assertTrue(all_close)
 
 
 if __name__ == "__main__":

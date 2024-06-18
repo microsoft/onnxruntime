@@ -8,7 +8,6 @@
 
 namespace onnxruntime {
 namespace utils {
-
 constexpr int64_t kDefaultSnippetEdgeItems = 3;
 constexpr int64_t kDefaultSnippetThreshold = 200;
 
@@ -40,12 +39,12 @@ inline void PrintValue(const T& value) {
 
 // Explicit specialization
 template <>
-inline void PrintValue(const MLFloat16& value) {
+inline void PrintValue(const onnxruntime::MLFloat16& value) {
   std::cout << std::setprecision(8) << value.ToFloat();
 }
 
 template <>
-inline void PrintValue(const BFloat16& value) {
+inline void PrintValue(const onnxruntime::BFloat16& value) {
   std::cout << std::setprecision(8) << value.ToFloat();
 }
 
@@ -220,7 +219,9 @@ DEF_PRINT_CPU_TENSOR_FULL_3D_INT4(Int4x2)
 DEF_PRINT_CPU_TENSOR_FULL_3D_INT4(UInt4x2)
 
 template <typename T>
-void PrintCpuTensor(const Tensor& tensor, int threshold = kDefaultSnippetThreshold, int edge_items = kDefaultSnippetEdgeItems) {
+void PrintCpuTensor(const onnxruntime::Tensor& tensor,
+                    int threshold = kDefaultSnippetThreshold,
+                    int edge_items = kDefaultSnippetEdgeItems) {
   const auto& shape = tensor.Shape();
   auto num_items = shape.Size();
   if (num_items == 0) {

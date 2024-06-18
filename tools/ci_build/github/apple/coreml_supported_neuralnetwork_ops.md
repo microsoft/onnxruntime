@@ -30,7 +30,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx.ReduceSum||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
-|ai.onnx:Resize||
+|ai.onnx:Resize|4D input.<br/>`coordinate_transformation_mode` == `asymmetric`.<br/>`mode` == `linear` or `nearest`.<br/>`nearest_mode` == `floor`.<br/>`exclude_outside` == false<br/>`scales` or `sizes` must be constant.|
 |ai.onnx:Shape|Attribute `start` with non-default value is not supported.<br/>Attribute `end` is not supported.|
 |ai.onnx:Sigmoid||
 |ai.onnx:Slice|Inputs `starts`, `ends`, `axes`, and `steps` should be constant. Empty slice is not supported.|
