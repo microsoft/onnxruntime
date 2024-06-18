@@ -126,10 +126,7 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     } else {
       MergeWeights<float>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto((TensorProto*)&initializer);
-    }
+    utils::SetRawDataInTensorProto(initializer,result.data(),gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
@@ -141,10 +138,7 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     } else {
       MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    initializer.set_raw_data(result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto((TensorProto*)&initializer);
-    }
+    utils::SetRawDataInTensorProto(initializer,result.data(),gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializer(graph, initializer);

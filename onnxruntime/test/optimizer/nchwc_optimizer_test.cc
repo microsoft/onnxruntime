@@ -63,10 +63,7 @@ struct NchwcTestHelper {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
-    tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
-    }
+    utils::SetRawDataInTensorProto(tensor_proto,data.data(), data.size() * sizeof(T)); 
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);

@@ -276,6 +276,45 @@ namespace utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+template <typename T1,typename T2 >
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1 *raw_data, T2 raw_data_len)
+{
+  tensor_proto.set_raw_data(raw_data,raw_data_len);
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+  }
+}
+
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param )
+{
+ tensor_proto.set_raw_data(std::move(param));
+}
+
+#define INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(raw_data,raw_data_len) \
+   template void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, raw_data*, raw_data_len); 
+
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(float,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const float,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const std::byte,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(double,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint8_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int8_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int16_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint16_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int32_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int64_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint64_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint32_t,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const long,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(void const,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(char,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const char,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(unsigned const char,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(unsigned const char,unsigned int)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(onnxruntime::MLFloat16,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const onnxruntime::MLFloat16,unsigned long)
+INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(onnxruntime::BFloat16,unsigned long)
+
 void ConvertRawDataInTensorProto(TensorProto* tensor)
 {
   size_t element_size=1;
@@ -1277,10 +1316,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
       *mutable_string_data->Add() = *f;
     }
   } else {
-    tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
-    }
+    utils::SetRawDataInTensorProto(tensor_proto,tensor.DataRaw(),tensor.SizeInBytes());
   }
 
   return tensor_proto;
@@ -1565,8 +1601,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
       ORT_RETURN_IF_ERROR(status);
     }
-    dense.set_raw_data(std::move(dense_data_storage));
-
+    utils::SetRawDataInTensorProto(dense,std::move(dense_data_storage));
   } else {
     // No request for std::string
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
@@ -1663,12 +1698,12 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
     } else {
       SetIndices<int64_t>(gathered_span, raw_indices, indices);
     }
+    if constexpr (endian::native != endian::little) {
+      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices);
+    }
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    indices.set_raw_data(std::string());
-  }
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices);
+    utils::SetRawDataInTensorProto(indices,std::string());
   }
   nnz = gathered_indices.size();
 }

@@ -840,10 +840,7 @@ static void TestConversion(
 template <typename T>
 static void RawDataWriter(const std::vector<T>& values, TensorProto& tp, TensorProto_DataType datatype) {
   tp.set_data_type(datatype);
-  tp.set_raw_data(values.data(), values.size() * sizeof(T));
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tp);
-  }
+  utils::SetRawDataInTensorProto(tp,values.data(), values.size() * sizeof(T));
 }
 
 int64_t ActualSize(const TensorProto& actual) {

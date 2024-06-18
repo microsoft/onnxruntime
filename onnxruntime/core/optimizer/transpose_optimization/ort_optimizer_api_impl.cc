@@ -763,13 +763,10 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(data.data(), data.size());
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((TensorProto*)&tensor_proto);
-  }
+  utils::SetRawDataInTensorProto(tensor_proto,data.data(), data.size());
 
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();

@@ -480,5 +480,27 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
  * @returns                 None
  */
 void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto *initializer);
+
+/**
+ * Wrapper function for set_raw_data.
+ * First calls the set_raw_data and then calls ConvertRawDataInTensorProto
+ * under big endian system.
+ * @param tensor_proto given initializer tensor
+ * @param raw_data     source raw_data pointer
+ * @param raw_data_len  length of raw_data
+ * @returns                 None
+ */
+template <typename T1,typename T2>
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1 *raw_data, T2 raw_data_len);
+
+/**
+ * Overload Wrapper function for set_raw_data handling string object.
+ * Forward the string object to set_raw_data.
+ * @param tensor_proto given initializer tensor
+ * @param param   string object reference
+ * @returns                 None
+ */
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param );
+
 }  // namespace utils
 }  // namespace onnxruntime
