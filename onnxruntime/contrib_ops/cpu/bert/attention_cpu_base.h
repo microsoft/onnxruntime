@@ -71,6 +71,8 @@ class AttentionCPUBase : public AttentionBase {
     if (mask_data != nullptr) {
       PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                   is_unidirectional_, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
+      DUMP_CPU_TENSOR_INIT();
+      DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
     }
 
     float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
