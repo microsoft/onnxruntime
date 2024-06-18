@@ -233,7 +233,7 @@ export class WebGpuBackend {
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.adapterInfo = new AdapterInfoImpl(await adapter.requestAdapterInfo());
+    this.adapterInfo = new AdapterInfoImpl(adapter.info || await adapter.requestAdapterInfo());
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
