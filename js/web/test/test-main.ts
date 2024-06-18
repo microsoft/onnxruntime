@@ -52,6 +52,10 @@ function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
     return false;
   }
 
+  if (test.skip) {
+    return true;
+  }
+
   if (!platform.description) {
     throw new Error('failed to check current platform');
   }
