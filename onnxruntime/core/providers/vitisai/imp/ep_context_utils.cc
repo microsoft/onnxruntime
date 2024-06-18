@@ -182,7 +182,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
-Status CreateEPContexModel(
+Model* CreateEPContexModel(
     const GraphViewer& graph_viewer,
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
@@ -190,9 +190,15 @@ Status CreateEPContexModel(
     const std::string& backend_cache_dir,
     const std::string& backend_cache_key,
     bool saving_orig_graph,
-    Model* p_ep_ctx_model,
     const logging::Logger* p_logger) {
-  auto& ep_ctx_graph = p_ep_ctx_model->MainGraph();
+  // Create a new graph/model, reusing the graph name,
+  // the op-domain-to-opset-version map,
+  // and the op schema registry of the current graph.
+  // XXX: This approach (immediately below) has a memory fault issue (std::bad_alloc).
+  // auto& ep_ctx_graph = graph_viewer.CreateModel(*p_logger)->MainGraph();
+  // This apporach (immediately below) has no memory falut issue.
+  auto p_temp_model = graph_viewer.CreateModel(*p_logger);
+  auto& ep_ctx_graph = p_temp_model->MainGraph();
 
   std::vector<NodeArg*> input_node_arg_ptrs;
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
@@ -263,13 +269,12 @@ Status CreateEPContexModel(
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
-  if (ValidateEPContextNode(ep_ctx_graph)) {
-    LOGS_DEFAULT(VERBOSE) << "Created EP context model graph validated";
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Created EP context model is invalid");
-  }
+  auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
+  auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
+  auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
+  p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
 
-  return Status::OK();
+  return p_ep_ctx_model.release();
 }
 
 void DumpEPContextModel(
@@ -289,6 +294,7 @@ bool ValidateEPContextNode(const Graph& graph) {
   assert(attrs.count(kEmbedModeAttr) > 0);
   assert(attrs.count(kEPCacheContextAttr) > 0);
   assert(attrs.count(kSourceAttr) > 0);
+  assert(attrs.at(kSourceAttr).s() == kVitisAIExecutionProvider);
   (void)attrs;
   return true;
 }

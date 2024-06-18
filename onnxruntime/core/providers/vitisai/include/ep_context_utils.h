@@ -37,8 +37,8 @@ void DeserializeCapabilities(
 
 std::string SerializeOrigialGraph(const GraphViewer&);
 
-Status CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
-                           const std::string&, const std::string&, bool, Model*, const logging::Logger*);
+Model* CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
+                           const std::string&, const std::string&, bool, const logging::Logger*);
 
 void DumpEPContextModel(const std::unique_ptr<Model>&, const std::string&);
 

@@ -73,7 +73,7 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
 
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
-// This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
+// This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {
   InlinedVector<const Node*> ep_context_node_ptrs;
   // All preconditions are supposed to have happened.
@@ -99,11 +99,6 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
-  if (!p_ep_ctx_model_) {
-    // Empty model proto.
-    auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
-    p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
-  }
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
@@ -117,10 +112,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    ORT_THROW_IF_ERROR(
-        CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, p_ep_ctx_model_.get(), &logger));
+    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, "", "", true, &logger));
   } else {
-    ORT_THROW_IF_ERROR(CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, p_ep_ctx_model_.get(), &logger));
+    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, ep_ctx_payload, "", 1, "", "", true, &logger));
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
@@ -141,11 +135,6 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
-  if (!p_ep_ctx_model_) {
-    // Empty model proto.
-    auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
-    p_ep_ctx_model_ = Model::Create(std::move(*p_model_proto), ep_ctx_model_file_loc_, nullptr, logger);
-  }
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
@@ -158,10 +147,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
     }
     ep_ctx_cache_ofs.close();
-    ORT_THROW_IF_ERROR(
-        CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, p_ep_ctx_model_.get(), &logger));
+    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger));
   } else {
-    ORT_THROW_IF_ERROR(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, p_ep_ctx_model_.get(), &logger));
+    p_ep_ctx_model_.reset(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger));
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   DumpEPContextModel(p_ep_ctx_model_, PathToUTF8String(ep_ctx_model_file_loc_));
@@ -187,8 +175,8 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       // FIXME
       // 1) `execution_providers_` is used by `Compiler()` as well, so, even in this case, we need to make it ready.
       // 2) Computing (using cache) `execution_providers_` needs the original model/graph for signature match.
-      // 3) The closed-source backend of VitisAI EP has complication cache, so no real overhead.
-      // 4) In next iteration of EP context model implementaiton, we are getting rid of this dependency.
+      // 3) The closed-source backend of VitisAI EP has compilation cache, so no real overhead.
+      // 4) In next iteration of EP context model implementation, we are getting rid of this dependency.
       if (!execution_providers_) {
         auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
         execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));

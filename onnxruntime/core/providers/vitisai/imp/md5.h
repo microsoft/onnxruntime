@@ -6,7 +6,7 @@
 
 #pragma once
 
-//#include "hash.h"
+// #include "hash.h"
 #include <string>
 
 // define fixed size integer types
