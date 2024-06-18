@@ -269,10 +269,14 @@ Model* CreateEPContexModel(
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
+  if (ValidateEPContextNode(ep_ctx_graph)) {
+    LOGS_DEFAULT(VERBOSE) << "Created EP context model graph validated";
+  }
   auto p_ep_ctx_graph_viewer = ep_ctx_graph.CreateGraphViewer();
   auto p_ep_ctx_model = p_ep_ctx_graph_viewer->CreateModel(*p_logger);
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
-  p_ep_ctx_graph_viewer->ToProto(*(p_ep_ctx_model_proto->mutable_graph()), true, true);
+  p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  p_ep_ctx_graph_viewer->ToProto(*p_ep_ctx_model_proto->mutable_graph(), true, true);
 
   return p_ep_ctx_model.release();
 }
