@@ -187,9 +187,11 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
       return capability_ptrs;
     } else {
-      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_)) {
-        LOGS_DEFAULT(WARNING) << "The inference session was created with a normal ONNX model "
-                              << "but a model file with EP context cache exists at " << ep_ctx_model_file_loc_.c_str();
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
+        std::string warning = "The inference session was created with a normal ONNX model but a model file with EP context cache exists at " + PathToUTF8String(ep_ctx_model_file_loc_) + ". Please remove the EP context model manually if you want to re-generate it.";
+        ORT_THROW(warning);
+        // Disable the flexibility implemented below.
+        // Now the code below is unreachable and DCE will take care of it.
         LoadEPContexModelFromFile();
         ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_);

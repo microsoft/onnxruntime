@@ -9,7 +9,6 @@
 #include <numeric>
 #include <stack>
 #include <queue>
-#include <exception>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -3043,6 +3042,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // and need to call Resolve. parent_node_ would be null in this case
     parent.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
   }
+
   LexicalScopeContext lsc{parent};
   lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
 
