@@ -35,16 +35,16 @@
 #include "cutlass/gemm/kernel/gemm_universal.hpp"
 #include "cutlass/tensor_ref.h"
 
-#include "cutlass_extensions/compute_occupancy.h"
-#include "cutlass_extensions/epilogue_helpers.h"
-#include "cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
-#include "cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
-#include "cutlass_extensions/gemm/threadblock/default_mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/compute_occupancy.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/epilogue_helpers.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_mma.h"
 
 #pragma GCC diagnostic pop
 
 #include "cutlass_heuristic.h"
-//#include "tensorrt_llm/kernels/cutlass_kernels/cutlass_type_conversion.h"
+// #include "tensorrt_llm/kernels/cutlass_kernels/cutlass_type_conversion.h"
 #include "moe_sm90_traits.h"
 #include "moe_gemm_launcher_sm90.h"
 #include "moe_gemm_kernels.h"
@@ -65,11 +65,11 @@ struct HopperGroupedGemmInfo {
   static_assert(cutlass::platform::is_same<T, WeightType>::value,
                 "CUTLASS does not currently have specialised SM90 support for quantized operations");
 
-//#ifdef ENABLE_FP8
+  // #ifdef ENABLE_FP8
   constexpr static bool IsFP8 = cutlass::platform::is_same<T, __nv_fp8_e4m3>::value || cutlass::platform::is_same<T, __nv_fp8_e5m2>::value;
-// #else
-//   constexpr static bool IsFP8 = false;
-// #endif
+  // #else
+  //   constexpr static bool IsFP8 = false;
+  // #endif
 
   static_assert(cutlass::platform::is_same<T, half>::value || cutlass::platform::is_same<T, float>::value || IsFP8,
                 "Specialized for half, float, fp8");
@@ -166,16 +166,16 @@ struct HopperGroupedGemmInfo {
 template <typename T, typename WeightType, typename EpilogueTag, typename TileShape, typename ClusterShape, bool BIAS>
 void sm90_generic_moe_gemm_kernelLauncher(HopperGroupedGemmInput hopper_input, int num_experts,
                                           int const multi_processor_count, cudaStream_t stream, int* kernel_occupancy, size_t* workspace_size) {
-// #ifdef COMPILE_HOPPER_TMA_GEMMS
+  // #ifdef COMPILE_HOPPER_TMA_GEMMS
   using namespace cute;
   // For FAST_BUILD, only instantiate kernels with 128x128x128B with 1x1x1 cluster shape.
-// #ifdef FAST_BUILD
-//   constexpr int TILE_K = 128 * 8 / cutlass::sizeof_bits<WeightType>::value;
-//   using SupportedCtaShape = Shape<_128, _128, cute::Int<TILE_K>>;
-//   using SupportedCgaShape = Shape<_1, _1, _1>;
+  // #ifdef FAST_BUILD
+  //   constexpr int TILE_K = 128 * 8 / cutlass::sizeof_bits<WeightType>::value;
+  //   using SupportedCtaShape = Shape<_128, _128, cute::Int<TILE_K>>;
+  //   using SupportedCgaShape = Shape<_1, _1, _1>;
 
-//   if constexpr (cute::is_same_v<SupportedCtaShape, TileShape> && cute::is_same_v<SupportedCgaShape, ClusterShape>)
-// #endif  // FAST_BUILD
+  //   if constexpr (cute::is_same_v<SupportedCtaShape, TileShape> && cute::is_same_v<SupportedCgaShape, ClusterShape>)
+  // #endif  // FAST_BUILD
   {
     using GemmInfo = HopperGroupedGemmInfo<T, WeightType, EpilogueTag, TileShape, ClusterShape, BIAS>;
 
@@ -254,15 +254,15 @@ void sm90_generic_moe_gemm_kernelLauncher(HopperGroupedGemmInput hopper_input, i
                          "Failed to run cutlass variable batched gemm. Error: " + std::string(cutlassGetStatusString(run_status)));
     sync_check_cuda_error();
   }
-// #ifdef FAST_BUILD
-//   else {
-//     TLLM_THROW("Configuration was disabled by FAST_BUILD");
-//   }
-// #endif
+  // #ifdef FAST_BUILD
+  //   else {
+  //     TLLM_THROW("Configuration was disabled by FAST_BUILD");
+  //   }
+  // #endif
 
-// #else   // COMPILE_HOPPER_TMA_GEMMS
-//   TLLM_THROW("Please recompile with support for hopper by passing 90-real as an arch to build_wheel.py.");
-// #endif  // COMPILE_HOPPER_TMA_GEMMS
+  // #else   // COMPILE_HOPPER_TMA_GEMMS
+  //   TLLM_THROW("Please recompile with support for hopper by passing 90-real as an arch to build_wheel.py.");
+  // #endif  // COMPILE_HOPPER_TMA_GEMMS
 }
 
 }  // namespace ort_fastertransformer

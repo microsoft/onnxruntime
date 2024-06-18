@@ -15,8 +15,16 @@
  */
 
 // Ignore CUTLASS warnings about type punning
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
+// Ignore CUTLASS warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
 
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
@@ -38,23 +46,27 @@
 #include "cutlass/gemm/kernel/gemm_universal.hpp"
 #include "cutlass/tensor_ref.h"
 
-#include "cutlass_extensions/compute_occupancy.h"
-#include "cutlass_extensions/epilogue_helpers.h"
-#include "cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
-#include "cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
-#include "cutlass_extensions/gemm/threadblock/default_mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/compute_occupancy.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/epilogue_helpers.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/moe_cutlass_kernel.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_mma.h"
 
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
+#endif
 
-#include "tensorrt_llm/common/assert.h"
-#include "tensorrt_llm/common/cudaUtils.h"
-#include "tensorrt_llm/kernels/cutlass_kernels/cutlass_heuristic.h"
+#include "cutlass_heuristic.h"
 
-#include "tensorrt_llm/kernels/cutlass_kernels/cutlass_type_conversion.h"
+// #include "tensorrt_llm/kernels/cutlass_kernels/cutlass_type_conversion.h"
 
-#include "tensorrt_llm/kernels/cutlass_kernels/moe_gemm/launchers/moe_gemm_launcher_sm90.h"
-#include "tensorrt_llm/kernels/cutlass_kernels/moe_gemm/moe_gemm_kernels.h"
-#include "tensorrt_llm/kernels/cutlass_kernels/moe_gemm/moe_sm90_traits.h"
+#include "moe_gemm_launcher_sm90.h"
+#include "moe_gemm_kernels.h"
+#include "moe_sm90_traits.h"
 
 #include <cuda.h>
 #include <cuda_fp16.h>
@@ -132,7 +144,7 @@ void dispatchMoeGemmSelectClusterShapeSM90(HopperGroupedGemmInput hopper_input, 
           hopper_input, num_experts, multi_processor_count, stream, occupancy, workspace_size); \
       break;                                                                                    \
     } else {                                                                                    \
-      TLLM_THROW("Unsupported tile and cluster shape combination");                             \
+      ORT_THROW("Unsupported tile and cluster shape combination");                              \
     }                                                                                           \
   }
 
@@ -144,7 +156,7 @@ void dispatchMoeGemmSelectClusterShapeSM90(HopperGroupedGemmInput hopper_input, 
 
 #undef SHAPE_CASE
     default:
-      TLLM_THROW("Unsupported config for MoE gemm.");
+      ORT_THROW("Unsupported config for MoE gemm.");
   }
 }  // namespace tensorrt_llm
 
@@ -173,13 +185,13 @@ void dispatchMoeGemmSelectTileShapeSM90(HopperGroupedGemmInput hopper_input, int
 
 #undef SHAPE_CASE
     case cutlass_extensions::CutlassTileConfigSM90::Undefined:
-      TLLM_THROW("GEMM config undefined.");
+      ORT_THROW("GEMM config undefined.");
       break;
     case cutlass_extensions::CutlassTileConfigSM90::ChooseWithHeuristic:
-      TLLM_THROW("GEMM config should have already been set by heuristic.");
+      ORT_THROW("GEMM config should have already been set by heuristic.");
       break;
     default:
-      TLLM_THROW("Unsupported config for MoE gemm.");
+      ORT_THROW("Unsupported config for MoE gemm.");
       break;
   }
 }
