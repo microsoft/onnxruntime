@@ -277,12 +277,18 @@ Model* CreateEPContexModel(
   auto p_ep_ctx_model_proto = p_ep_ctx_model->ToProto();
   p_ep_ctx_model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   p_ep_ctx_graph_viewer->ToProto(*p_ep_ctx_model_proto->mutable_graph(), true, true);
+  if (ValidateEPContextNode(p_ep_ctx_model->MainGraph())) {
+    LOGS_DEFAULT(VERBOSE) << "Validated EP context model graph after tranformation";
+  }
 
   return p_ep_ctx_model.release();
 }
 
 void DumpEPContextModel(
     const std::unique_ptr<Model>& p_model, const std::string& ep_ctx_model_file_loc) {
+  if (ValidateEPContextNode(p_model->MainGraph())) {
+    LOGS_DEFAULT(VERBOSE) << "Validated EP context model to be dumped";
+  }
   std::fstream dump_stream(ep_ctx_model_file_loc, std::ios::out | std::ios::trunc | std::ios::binary);
   p_model->ToProto()->SerializeToOstream(dump_stream);
   LOGS_DEFAULT(VERBOSE) << "[VitisAI EP] Dumped " << ep_ctx_model_file_loc;
