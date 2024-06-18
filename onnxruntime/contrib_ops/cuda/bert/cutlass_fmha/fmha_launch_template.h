@@ -55,15 +55,15 @@ struct RightPaddingBatchHook {
     p.query_ptr += batch_id * p.q_strideB + query_start * p.q_strideM + head_id * p.q_strideH;
     p.key_ptr += batch_id * p.k_strideB + head_id * p.k_strideH;
     p.value_ptr += batch_id * p.v_strideB + head_id * p.v_strideH;
-    p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM + head_id * p.head_dim_value;
+    p.output_ptr += int64_t(batch_id * p.num_queries) * p.o_strideM + int64_t(query_start) * p.o_strideM +
+                    head_id * p.head_dim_value;
 
     if (kSupportsBias && p.attn_bias_ptr != nullptr) {
       p.attn_bias_ptr += (batch_id * p.bias_strideB) + (head_id * p.bias_strideH);
     }
     if (p.output_accum_ptr != nullptr) {
       p.output_accum_ptr += int64_t(batch_id * p.num_queries) * (p.head_dim_value * p.num_heads) +
-                            int64_t(query_start) * (p.head_dim_value * p.num_heads) +
-                            head_id * p.head_dim_value;
+                            int64_t(query_start) * (p.head_dim_value * p.num_heads) + head_id * p.head_dim_value;
     } else {
       // Accumulate directly in the destination buffer (eg for f32)
       p.output_accum_ptr = (accum_t*)(p.output_ptr);
@@ -71,8 +71,7 @@ struct RightPaddingBatchHook {
 
     if (p.logsumexp_ptr != nullptr) {
       // lse[batch_id, head_id, query_start]
-      p.logsumexp_ptr +=
-          batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
+      p.logsumexp_ptr += batch_id * lse_dim * p.num_heads + head_id * lse_dim + query_start;
     }
 
     // Custom masking
@@ -88,9 +87,7 @@ struct RightPaddingBatchHook {
       // the last active key is then query_start + causal_diagonal_offset +
       // kQueriesPerBlock so num_keys is the min between actual num_keys and
       // this to avoid extra computations
-      p.num_keys = cutlass::fast_min(
-          int32_t(query_start + p.causal_diagonal_offset + kQueriesPerBlock),
-          p.num_keys);
+      p.num_keys = cutlass::fast_min(int32_t(query_start + p.causal_diagonal_offset + kQueriesPerBlock), p.num_keys);
     }
 
     p.num_queries -= query_start;
@@ -101,8 +98,7 @@ struct RightPaddingBatchHook {
     //  - we only launch kernels for head_id % kQueriesPerBlock == 0
     //  - we iterate over heads instead of queries (strideM = strideH)
     if (p.num_queries == 1 && p.k_strideH == 0 && p.v_strideH == 0) {
-      if (head_id % kQueriesPerBlock != 0)
-        return false;
+      if (head_id % kQueriesPerBlock != 0) return false;
       p.q_strideM = p.q_strideH;
       p.num_queries = p.num_heads;
       p.num_heads = 1;  // unused but here for intent
@@ -143,7 +139,8 @@ __global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
   AK::attention_kernel(p);
 }
 
-template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block, bool single_value_iteration>
+template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, int keys_per_block,
+          bool single_value_iteration>
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, single_value_iteration>;
   typename Attention::Params p;
@@ -248,9 +245,10 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
   bool is_aligned = params.qk_head_size % AlignedAK::kAlignmentQ == 0 &&
                     params.qk_head_size % AlignedAK::kAlignmentK == 0 &&
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
-  DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
-                }));
+  DISPATCH_BOOL(
+      is_aligned, kIsAligned, ([&]() {
+        LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, single_value_iteration>(params);
+      }));
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

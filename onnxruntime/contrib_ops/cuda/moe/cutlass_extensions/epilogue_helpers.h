@@ -30,6 +30,7 @@
 #include "cutlass/epilogue/thread/linear_combination_generic.h"
 #include "cutlass/epilogue/thread/linear_combination_relu.h"
 #include "cutlass/epilogue/thread/linear_combination_silu.h"
+#include <cutlass/epilogue/fusion/operations.hpp>
 
 namespace ort_fastertransformer {
 
@@ -39,18 +40,20 @@ struct EpilogueOpBiasReLU {};
 
 struct EpilogueOpBiasFtGelu {};
 
+struct EpilogueOpBias {};
+
 struct EpilogueOpDefaultSilu {};
 
 struct EpilogueOpDefaultReLU {};
 
 struct EpilogueOpDefaultFtGelu {};
 
-struct EpilogueOpBias {};
-
 struct EpilogueOpDefault {};
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator, typename Op>
-struct Epilogue {};
+struct Epilogue {
+  static_assert(sizeof(ElementType) == 0, "Unrecognized Epilogue Tag");
+};
 
 constexpr auto BiasScaleMode = cutlass::epilogue::thread::ScaleType::NoBetaScaling;
 

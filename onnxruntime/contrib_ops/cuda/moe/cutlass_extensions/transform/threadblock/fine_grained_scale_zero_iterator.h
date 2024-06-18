@@ -85,6 +85,8 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
 
   using AccessType = AlignedArray<Element, kAlignment>;
 
+  using Fragment = cutlass::Array<Element, kAlignment>;
+
   // For compatibility with existing iterator interface
   struct Params {
     LongIndex stride_ = 0;

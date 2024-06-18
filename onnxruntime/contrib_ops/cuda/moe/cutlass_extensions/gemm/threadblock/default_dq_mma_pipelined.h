@@ -25,10 +25,57 @@
 #include "contrib_ops/cuda/moe/cutlass_extensions/tile_interleaved_layout.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_dq_mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/transform/threadblock/fine_grained_scale_zero_iterator.h"
 
 namespace cutlass {
 namespace gemm {
 namespace threadblock {
+
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename MmaShape, typename Element, typename Layout, WeightOnlyQuantOp QuantOp, int Alignment,
+          typename Enable = void>
+struct DefaultScaleIteratorsPipelined;
+
+// Fine grained iterators
+template <typename MmaShape, typename Element, typename Layout, WeightOnlyQuantOp QuantOp, int Alignment>
+struct DefaultScaleIteratorsPipelined<MmaShape, Element, Layout, QuantOp, Alignment,
+                                      std::enable_if_t<isFinegrained(QuantOp)>> {
+ private:
+  using SmemScaleType = half_t;
+
+ public:
+  using IteratorScale =
+      cutlass::transform::threadblock::FineGrainedScaleZeroIterator<cutlass::MatrixShape<1, MmaShape::kN>, Element,
+                                                                    Layout, 0, Alignment>;
+
+  using SmemIteratorScale =
+      cutlass::transform::threadblock::FineGrainedScaleZeroIterator<cutlass::MatrixShape<1, MmaShape::kN>,
+                                                                    SmemScaleType, Layout, 0, Alignment>;
+};
+
+// Per column iterators
+template <typename MmaShape, typename Element, typename Layout, WeightOnlyQuantOp QuantOp, int Alignment>
+struct DefaultScaleIteratorsPipelined<MmaShape, Element, Layout, QuantOp, Alignment,
+                                      std::enable_if_t<!isFinegrained(QuantOp)>> {
+  static_assert((MmaShape::kN % Alignment) == 0, "");
+
+ private:
+  // ThreadMap for scale iterator
+  using IteratorScaleThreadMap = transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaShape::kN, 1>,
+                                                                           MmaShape::kN / Alignment, Alignment>;
+  using SmemScaleType = half_t;
+
+ public:
+  // Define iterators over tiles from the scale operand
+  using IteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaShape::kN>, Element, Layout, 0,
+                                                              IteratorScaleThreadMap, Alignment>;
+
+  using SmemIteratorScale =
+      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaShape::kN>, SmemScaleType,
+                                                              Layout, 0, IteratorScaleThreadMap, Alignment>;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -81,8 +128,7 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
   static_assert(OperatorInfo::QuantOp == WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY, "");
 
   static constexpr bool DqAfterLDG = platform::is_same<arch::OpMultiplyAdd, Operator>::value;
-  static constexpr bool arch_has_bf16_mma = ArchTag::kMinComputeCapability >= 80;
-  using MmaCoreElementA = typename platform::conditional<arch_has_bf16_mma, ElementA, half_t>::type;
+  using MmaCoreElementA = half_t;
   using MmaCoreElementB = typename platform::conditional<DqAfterLDG, MmaCoreElementA, ElementB>::type;
 
   // Define the MmaCore components
@@ -100,22 +146,13 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
       cutlass::MatrixShape<MmaCore::Shape::kK, MmaCore::Shape::kN>, ElementB, LayoutB, 0,
       typename MmaCore::IteratorThreadMapB, kAlignmentB>;
 
-  // ThreadMap for scale iterator
-  static_assert((MmaCore::Shape::kN % kAlignmentScale) == 0, "");
-  using IteratorScaleThreadMap =
-      transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
-                                                MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
+  using ScaleIterators = DefaultScaleIteratorsPipelined<typename MmaCore::Shape, ElementScale, LayoutScale,
+                                                        OperatorInfo::QuantOp, kAlignmentScale>;
 
   // Define iterators over tiles from the scale operand
-  using IteratorScale =
-      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>, ElementScale,
-                                                              LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using IteratorScale = typename ScaleIterators::IteratorScale;
 
-  using SmemScaleType = typename platform::conditional<arch_has_bf16_mma, ElementScale, half_t>::type;
-  using SmemIteratorScale =
-      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                              SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap,
-                                                              kAlignmentScale>;
+  using SmemIteratorScale = typename ScaleIterators::SmemIteratorScale;
 
   using Converters = SetConverters<IteratorB, typename MmaCore::MmaPolicy::Operator, Operator>;
 
@@ -173,11 +210,9 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
 
   using OperatorInfo = arch::DetagOperator<Operator_>;
   using Operator = typename OperatorInfo::Operator;
-  static_assert(OperatorInfo::QuantOp == WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY, "");
 
   static constexpr bool DqAfterLDG = platform::is_same<arch::OpMultiplyAdd, Operator>::value;
-  static constexpr bool arch_has_bf16_mma = ArchTag::kMinComputeCapability >= 80;
-  using MmaCoreElementA = typename platform::conditional<arch_has_bf16_mma, ElementA, half_t>::type;
+  using MmaCoreElementA = half_t;
   using MmaCoreElementB = typename platform::conditional<DqAfterLDG, MmaCoreElementA, ElementB>::type;
 
   // Define the MmaCore components
@@ -220,16 +255,13 @@ struct DqMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, Ele
       transform::PitchLinearStripminedThreadMap<layout::PitchLinearShape<MmaCore::Shape::kN, 1>,
                                                 MmaCore::Shape::kN / kAlignmentScale, kAlignmentScale>;
 
-  // Define iterators over tiles from the scale operand
-  using IteratorScale =
-      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>, ElementScale,
-                                                              LayoutScale, 0, IteratorScaleThreadMap, kAlignmentScale>;
+  using ScaleIterators = DefaultScaleIteratorsPipelined<typename MmaCore::Shape, ElementScale, LayoutScale,
+                                                        OperatorInfo::QuantOp, kAlignmentScale>;
 
-  using SmemScaleType = typename platform::conditional<arch_has_bf16_mma, ElementScale, half_t>::type;
-  using SmemIteratorScale =
-      cutlass::transform::threadblock::PredicatedTileIterator<cutlass::MatrixShape<1, MmaCore::Shape::kN>,
-                                                              SmemScaleType, LayoutScale, 0, IteratorScaleThreadMap,
-                                                              kAlignmentScale>;
+  // Define iterators over tiles from the scale operand
+  using IteratorScale = typename ScaleIterators::IteratorScale;
+
+  using SmemIteratorScale = typename ScaleIterators::SmemIteratorScale;
 
   using Converters = SetConverters<IteratorB, typename MmaCore::MmaPolicy::Operator, Operator>;
 

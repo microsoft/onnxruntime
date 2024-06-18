@@ -35,6 +35,8 @@
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/tile_interleaved_layout.h"
 
+// #include "contrib_ops/cuda/moe/ft_moe/moe_sm90_traits.h"
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {

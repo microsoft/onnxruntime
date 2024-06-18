@@ -28,13 +28,12 @@ using namespace onnxruntime;
 
 namespace ort_fastertransformer {
 
-std::vector<CutlassGemmConfig> get_candidate_configs(int sm, bool const is_weight_only, bool const simt_configs_only,
-                                                     bool const int8_configs_only = false, int const max_split_k = 1);
+std::vector<tensorrt_llm::cutlass_extensions::CutlassGemmConfig> get_candidate_configs(
+    int sm, int const max_split_k, tensorrt_llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam const);
 
-CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmConfig> const& candidate_configs,
-                                                        std::vector<int> const& occupancies, const int64_t m,
-                                                        const int64_t n, const int64_t k, const int64_t num_experts,
-                                                        int const split_k_limit, const size_t workspace_bytes,
-                                                        int const multi_processor_count, int const is_weight_only);
+tensorrt_llm::cutlass_extensions::CutlassGemmConfig estimate_best_config_from_occupancies(
+    std::vector<tensorrt_llm::cutlass_extensions::CutlassGemmConfig> const& candidate_configs,
+    std::vector<int> const& occupancies, const int64_t m, const int64_t n, const int64_t k, const int64_t num_experts,
+    int const split_k_limit, const size_t workspace_bytes, int const multi_processor_count, int const is_weight_only);
 
 }  // namespace ort_fastertransformer

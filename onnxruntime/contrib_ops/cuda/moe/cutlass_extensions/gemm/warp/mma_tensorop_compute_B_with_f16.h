@@ -46,6 +46,7 @@
 #include "cutlass/arch/memory_sm75.h"
 #include "cutlass/arch/mma_sm75.h"
 #include "cutlass/arch/mma_sm80.h"
+#include "cutlass/arch/mma_sm89.h"
 
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/warp/mma.h"
@@ -127,12 +128,16 @@ class MmaTensorOpComputeBWithF16 {
                  platform::is_same<typename ArchMmaOperator::ElementB, half_t>::value) ||
                     (platform::is_same<typename ArchMmaOperator::ElementA, bfloat16_t>::value &&
                      platform::is_same<typename ArchMmaOperator::ElementB, bfloat16_t>::value &&
-                     ArchTag::kMinComputeCapability >= 80),
-                "MmaTensorOpCvtBToA only supports underlying HMMA");
+                     ArchTag::kMinComputeCapability >= 80) ||
+                    (platform::is_same<typename ArchMmaOperator::ElementA, float_e4m3_t>::value &&
+                     platform::is_same<typename ArchMmaOperator::ElementB, float_e4m3_t>::value &&
+                     ArchTag::kMinComputeCapability >= 89),
+                "MmaTensorOpCvtBToA only supports underlying HMMA/QMMA");
 
   static_assert(platform::is_same<ElementA, half_t>::value ||
-                    (platform::is_same<ElementA, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80),
-                "MmaTensorOpCvtBToA only supports Fp16 A or Bf16 A on Ampere+");
+                    (platform::is_same<ElementA, bfloat16_t>::value && ArchTag::kMinComputeCapability >= 80) ||
+                    (platform::is_same<ElementA, float_e4m3_t>::value && ArchTag::kMinComputeCapability >= 89),
+                "MmaTensorOpCvtBToA only supports Fp16 A or Bf16 A on Ampere+, or FP8 on Ada");
 
   /// Indicates class of matrix operator
   using OperatorClass = arch::OpClassTensorOp;

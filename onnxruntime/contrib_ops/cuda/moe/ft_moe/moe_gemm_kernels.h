@@ -38,8 +38,15 @@ struct HopperGroupedGemmInput {
   using LayoutC = TransposeLayoutTag<cutlass::layout::RowMajor>;     // Layout type for C matrix operand
   using LayoutD = TransposeLayoutTag<cutlass::layout::RowMajor>;     // Layout type for D matrix operand
 
+<<<<<<< HEAD
   using StrideA = std::remove_pointer_t<cutlass::detail::TagToStrideB_t<LayoutA*>>;  // Use B because they will be swapped
   using StrideB = std::remove_pointer_t<cutlass::detail::TagToStrideA_t<LayoutB*>>;  // Use A because they will be swapped
+=======
+  using StrideA =
+      std::remove_pointer_t<cutlass::detail::TagToStrideB_t<LayoutA*>>;  // Use B because they will be swapped
+  using StrideB =
+      std::remove_pointer_t<cutlass::detail::TagToStrideA_t<LayoutB*>>;  // Use A because they will be swapped
+>>>>>>> 332b9ba3b4d59cc4856311a9446f86981731d701
   using StrideC = std::remove_pointer_t<cutlass::detail::TagToStrideC_t<LayoutC*>>;
   using StrideD = std::remove_pointer_t<cutlass::detail::TagToStrideC_t<LayoutD*>>;
 
@@ -76,8 +83,13 @@ struct HopperGroupedGemmInput {
     size_t ptr_buf_size = sizeof(void*) * num_experts;
     size_t scale_buf_size = sizeof(float**) * num_experts;
 
+<<<<<<< HEAD
     return std::array{problem_shape_size, stride_a_size, stride_b_size, stride_c_size, stride_d_size, ptr_buf_size,
                       ptr_buf_size, ptr_buf_size, ptr_buf_size, scale_buf_size};
+=======
+    return std::array{problem_shape_size, stride_a_size, stride_b_size, stride_c_size, stride_d_size,
+                      ptr_buf_size,       ptr_buf_size,  ptr_buf_size,  ptr_buf_size,  scale_buf_size};
+>>>>>>> 332b9ba3b4d59cc4856311a9446f86981731d701
   }
 
   static size_t workspaceSize(int num_experts) {
@@ -113,9 +125,7 @@ struct HopperGroupedGemmInput {
     this->gemm_workspace_size = gemm_workspace_size;
   }
 
-  bool isValid() const {
-    return stride_a != nullptr && ptr_a != nullptr;
-  }
+  bool isValid() const { return stride_a != nullptr && ptr_a != nullptr; }
 };
 
 struct MoEGemmConfigMap {
@@ -140,14 +150,7 @@ struct MoEGemmConfigMap {
   }
 };
 
-enum class ActivationType { Gelu,
-                            Relu,
-                            Silu,
-                            GeGLU,
-                            ReGLU,
-                            SiGLU,
-                            Identity,
-                            InvalidType };
+enum class ActivationType { Gelu, Relu, Silu, GeGLU, ReGLU, SiGLU, Identity, InvalidType };
 
 template <typename T, /*The type used for activations/scales/compute*/
           typename WeightType /* The type for the MoE weights */>
