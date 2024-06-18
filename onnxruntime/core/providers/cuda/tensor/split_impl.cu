@@ -186,14 +186,13 @@ __global__ void _Split3InnerKernel(const int64_t size0,
 Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
                    const int64_t size2, const void* input_data, void* output_data0, void* output_data1,
                    void* output_data2, const gsl::span<const int64_t>& input_shape) {
-  int outer_size = 1;
+  CUDA_LONG outer_size = 1;
   for (size_t i = 0; i < input_shape.size() - 1; ++i) {
-      outer_size *= input_shape[i];
+      outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
   }
-  int inner_size = input_shape[input_shape.size() - 1];
-  assert (inner_size == (size0 + size1 + size2));
+  CUDA_LONG inner_size = static_cast<CUDA_LONG>(input_shape[input_shape.size() - 1]);
 
-  int N = outer_size * inner_size;
+  CUDA_LONG N = outer_size * inner_size;
   int blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
 
   switch (element_size) {
