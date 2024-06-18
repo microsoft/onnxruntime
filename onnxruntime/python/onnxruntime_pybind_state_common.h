@@ -14,18 +14,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4127)
-#endif
-
 #include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 // execution provider factory creator headers
 struct OrtStatus {
   OrtErrorCode code;
