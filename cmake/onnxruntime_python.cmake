@@ -71,6 +71,7 @@ onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_p
 
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4127")
   if(onnxruntime_ENABLE_TRAINING)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
   endif()
