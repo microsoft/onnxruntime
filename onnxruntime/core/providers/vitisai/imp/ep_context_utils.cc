@@ -183,6 +183,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
+// Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
 ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
     const GraphViewer& graph_viewer,
     const std::string& serialized_ctx_cache,
@@ -213,6 +214,20 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
     auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
     output_node_arg_ptrs.push_back(&temp_node_arg);
   }
+  // FIXME: based on the current design and implementation of ONNXRT EP context model,
+  // i.e., single-node graph in practice, should we do this or not?
+  // ep_ctx_graph.SetInputs(input_node_arg_ptrs);
+  // ep_ctx_graph.SetOutputs(output_node_arg_ptrs);
+
+  // for (const Node* p_node : graph_viewer.GetGraph().Nodes()) {
+  //   ep_ctx_graph.AddNode(*p_node);
+  // }
+
+  // for (const auto& initialized_tensor : graph_viewer.GetAllInitializedTensors()) {
+  //   if (ep_ctx_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
+  //     ep_ctx_graph.AddInitializedTensor(*initialized_tensor.second);
+  //   }
+  // }
 
   // Attr "embed_mode".
   auto p_attr_0 = ONNX_NAMESPACE::AttributeProto::Create();
@@ -280,6 +295,7 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
   return p_ep_ctx_model_proto.release();
 }
 
+// Ref.: `static common::Status Save(Model& model, int fd)` in the file "model.h".
 void DumpEPContextModel(
     const std::unique_ptr<ONNX_NAMESPACE::ModelProto>& p_model_proto, const std::string& ep_ctx_model_file_loc) {
   std::fstream dump_stream(ep_ctx_model_file_loc, std::ios::out | std::ios::trunc | std::ios::binary);
@@ -423,10 +439,16 @@ bool GetEPContextModelFileLocation(
     if (is_ep_ctx_model) {
       ep_ctx_model_file_loc = model_path_str;
     } else {
+#if 0
       fs::path model_fs_path(model_path_str);
       fs::path ep_ctx_model_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
       ep_ctx_model_fs_path += fs::path("_ctx.onnx");
       ep_ctx_model_file_loc = ToPathString(ep_ctx_model_fs_path.string());
+#endif
+      // Adopt the ONNXRT built-in default EP context model path,
+      // even though it is sort of ugly.
+      // Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
+      ep_ctx_model_file_loc = model_path_str + ToPathString("_ctx.onnx");
     }
   }
   return !ep_ctx_model_file_loc.empty();

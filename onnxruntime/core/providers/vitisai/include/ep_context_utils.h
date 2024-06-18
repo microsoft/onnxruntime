@@ -37,9 +37,11 @@ void DeserializeCapabilities(
 
 std::string SerializeOrigialGraph(const GraphViewer&);
 
+// Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
 ONNX_NAMESPACE::ModelProto* CreateEPContexModel(const GraphViewer&, const std::string&, const std::string&, const int64_t,
                                                 const std::string&, const std::string&, bool, const logging::Logger*);
 
+// Ref.: `static common::Status Save(Model& model, int fd)` in the file "model.h".
 void DumpEPContextModel(const std::unique_ptr<ONNX_NAMESPACE::ModelProto>&, const std::string&);
 
 bool ValidateEPContextNode(const Graph&);
