@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- netstandard2.0 is required by xamarin and used by most platforms.
-         net6.0 is required for linux. -->
+    <!-- netstandard2.0 is used by most platforms. net6.0 is required for linux. -->
     <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
