@@ -24,10 +24,6 @@ namespace onnxruntime {
 Class for managing lookup of the execution providers in a session.
 */
 class ExecutionProviders {
-#ifdef _WIN32
-  WindowsTelemetry::EtwInternalCallback etw_callback_;
-#endif
-
  public:
   ExecutionProviders() {
 #ifdef _WIN32
@@ -170,5 +166,9 @@ class ExecutionProviders {
   // Whether the CPU provider was implicitly added to a session for fallback (true),
   // or whether it was explicitly added by the caller.
   bool cpu_execution_provider_was_implicitly_added_ = false;
-};  // namespace onnxruntime
+
+#ifdef _WIN32
+  WindowsTelemetry::EtwInternalCallback etw_callback_;
+#endif
+};
 }  // namespace onnxruntime
