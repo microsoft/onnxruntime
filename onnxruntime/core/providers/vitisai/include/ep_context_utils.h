@@ -44,7 +44,7 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(const GraphViewer&, const std::s
 // Ref.: `static common::Status Save(Model& model, int fd)` in the file "model.h".
 void DumpEPContextModel(const std::unique_ptr<ONNX_NAMESPACE::ModelProto>&, const std::string&);
 
-Node* GetEPContextNode(const Graph&);
+const Node* GetEPContextNode(const Graph&);
 
 bool ValidateEPContextNode(const Graph&);
 
