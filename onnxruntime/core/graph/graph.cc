@@ -1194,15 +1194,13 @@ Graph::Graph(const Model& owning_model,
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
     if constexpr (endian::native != endian::little) {
-    const AttributeProto& attrib = node.attribute(0);
-    if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR)
-    {
-       const TensorProto& sparse_values = node.attribute(0).sparse_tensor().values();
-       if ((!(sparse_values.has_raw_data())) && tensor->has_raw_data())
-       {
+      const AttributeProto& attrib = node.attribute(0);
+      if (attrib.type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+        const TensorProto& sparse_values = node.attribute(0).sparse_tensor().values();
+        if ((!(sparse_values.has_raw_data())) && tensor->has_raw_data()) {
           onnxruntime::utils::ConvertRawDataInTensorProto(tensor);
-       }
-    }
+        }
+      }
     }
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.

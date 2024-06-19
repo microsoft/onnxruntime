@@ -1648,7 +1648,14 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
     } else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
-      memcpy(dst, &v, sizeof(T));
+        if constexpr (endian::native != endian::little) {
+        auto src = gsl::make_span<const unsigned char>(static_cast<const unsigned char*>(reinterpret_cast<const unsigned char*>(&v)), sizeof(T));
+        auto dest = gsl::make_span<unsigned char>(static_cast<unsigned char*>(reinterpret_cast<unsigned char*>(dst)) , sizeof(T));
+        onnxruntime::utils::SwapByteOrderCopy(sizeof(T),src ,dest);
+      }
+      else {
+        memcpy(dst, &v, sizeof(T));
+      }
     }
     ++dest_index;
   }
@@ -1697,9 +1704,6 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
       SetIndices<int32_t>(gathered_span, raw_indices, indices);
     } else {
       SetIndices<int64_t>(gathered_span, raw_indices, indices);
-    }
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&indices);
     }
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
