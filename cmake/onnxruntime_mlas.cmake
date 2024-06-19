@@ -350,33 +350,52 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
         )
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
-                                    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
-        if (NOT APPLE)
-          set(mlas_platform_srcs
-            ${mlas_platform_srcs}
-            ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
-            ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
-            ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
-            ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
-            ${MLAS_SRC_DIR}/activate_fp16.cpp
-            ${MLAS_SRC_DIR}/dwconv.cpp
-            ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
-            ${MLAS_SRC_DIR}/pooling_fp16.cpp
-            ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
-            ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
-            ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
-          )
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
-          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+
+        check_cxx_compiler_flag("-march=armv8.2-a+dotprod" HAS_ARM64_DOTPROD)
+        if (HAS_ARM64_DOTPROD)
+          set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+dotprod")
+          check_cxx_source_compiles("#include <arm_neon.h>\nint main() { int32x4_t _s; int8x16_t _a, _b; _s = vdotq_s32(_s, _a, _b); return 0; }" COMPILES_ARM64_DOTPROD)
+          if(COMPILES_ARM64_DOTPROD)
+            set(mlas_platform_srcs
+              ${mlas_platform_srcs}
+              ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+            )
+            set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+          endif()
+        endif()
+
+        check_cxx_compiler_flag("-march=armv8.2-a+bf16" HAS_ARM64_BFLOAT16)
+        check_cxx_compiler_flag("-march=armv8.2-a+fp16" HAS_ARM64_FLOAT16)
+        if(NOT APPLE AND HAS_ARM64_FLOAT16 AND HAS_ARM64_BFLOAT16)
+          set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+bf16")
+          check_cxx_source_compiles("#include <arm_neon.h>\nint main() { float32x4_t _s; bfloat16x8_t _a, _b; _s = vcvt_f32_bf16(vcvt_bf16_f32(vbfmmlaq_f32(_s, _a, _b))); return 0; }" COMPILES_ARM64_BFLOAT16)
+          set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+fp16")
+          check_cxx_source_compiles("#include <arm_neon.h>\nint main() { float16x8_t _s, _a, _b; _s = vfmaq_f16(_s, _a, _b); return 0; }" COMPILES_ARM64_FLOAT16)
+          if(COMPILES_ARM64_BFLOAT16 AND COMPILES_ARM64_FLOAT16)
+            set(mlas_platform_srcs
+              ${mlas_platform_srcs}
+              ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
+              ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
+              ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
+              ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
+              ${MLAS_SRC_DIR}/activate_fp16.cpp
+              ${MLAS_SRC_DIR}/dwconv.cpp
+              ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
+              ${MLAS_SRC_DIR}/pooling_fp16.cpp
+              ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
+              ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
+              ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            )
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          endif()
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
