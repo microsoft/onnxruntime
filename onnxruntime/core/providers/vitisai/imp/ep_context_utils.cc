@@ -306,7 +306,7 @@ void DumpEPContextModel(
   LOGS_DEFAULT(VERBOSE) << "[VitisAI EP] Dumped " << ep_ctx_model_file_loc;
 }
 
-Node* GetEPContextNode(const Graph& graph) {
+const Node* GetEPContextNode(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
   LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes().size();
   for (const auto* p_node : graph.Nodes()) {
@@ -319,7 +319,7 @@ Node* GetEPContextNode(const Graph& graph) {
 
 bool ValidateEPContextNode(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
-  auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNode(graph);
   assert(p_node != nullptr);
   auto& attrs = p_node->GetAttributes();
   assert(attrs.count(kEmbedModeAttr) > 0);
@@ -340,7 +340,7 @@ bool ValidateEPContextNode(const Graph& graph) {
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
   // TODO: Support for multi-node EP context model.
-  auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNode(graph);
   const auto& attrs = p_node->GetAttributes();
   int64_t embed_mode = attrs.at(kEmbedModeAttr).i();
   const std::string& ep_ctx_cache = attrs.at(kEPCacheContextAttr).s();
@@ -378,7 +378,7 @@ std::string RetrieveEPContextCache(
 
 void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::string& cache_key) {
   // TODO: Support for multi-node EP context model.
-  auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNode(graph);
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
@@ -394,7 +394,7 @@ void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::s
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   // TODO: Support for multi-node EP context model.
-  auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNode(ep_ctx_graph);
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
