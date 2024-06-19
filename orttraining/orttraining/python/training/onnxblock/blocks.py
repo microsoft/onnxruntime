@@ -90,7 +90,7 @@ class Block(ABC):
         else:
             return onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
 
-    def release(self):
+    def __del__(self):
         # since the ModelProto does not store the external data parameters themselves, just the metadata
         # for where the external data can be found, we retain the external data files for the intermediate
         # calls until the Block no longer needs to be used.
