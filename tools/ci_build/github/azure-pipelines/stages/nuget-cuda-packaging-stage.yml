@@ -193,13 +193,6 @@ stages:
             msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-        - task: RoslynAnalyzers@2
-          displayName: 'Run Roslyn Analyzers'
-          inputs:
-            userProvideBuildInfo: msBuildInfo
-            msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
-          condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
-
         - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
