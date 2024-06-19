@@ -871,7 +871,7 @@ def update_submodules(source_dir):
 
 
 def install_python_deps(requirements_file='requirements.txt',numpy_version=None):
-    if numpy_version is not None:
+    if numpy_version is not None and numpy_version is not "":
         # Remove current numpy version from requirements-pybind.txt and add the specified version
         with open(requirements_file, 'r+') as file:
             lines = file.readlines()
