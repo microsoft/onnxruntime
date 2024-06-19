@@ -152,9 +152,15 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     ep_ctx_cache_ofs.close();
     p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, "", PathToUTF8String(ep_ctx_cache_path_str), 0, cache_dir, cache_key, false, &logger));
     p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
+    if (GraphHasEPContextNode(p_ep_ctx_model_->MainGraph())) {
+      LOGS_DEFAULT(VERBOSE) << "Created model has EP context nodes";
+    }
   } else {
     p_ep_ctx_model_proto_.reset(CreateEPContexModel(graph_viewer, backend_cache_str, "", 1, cache_dir, cache_key, false, &logger));
     p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
+    if (GraphHasEPContextNode(p_ep_ctx_model_->MainGraph())) {
+      LOGS_DEFAULT(VERBOSE) << "Created model has EP context nodes";
+    }
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
   // DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
@@ -162,8 +168,9 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
-  bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer);
+  bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
+  LOGS_DEFAULT(VERBOSE) << "Loaded model path: " << model_path_str.c_str();
   // XXX: One of the potential problems is the existing EP-context model file may be stale.
   if (GetEPContextModelFileLocation(
           ep_ctx_model_path_cfg_, model_path_str, is_ep_ctx_model, ep_ctx_model_file_loc_)) {

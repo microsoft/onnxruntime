@@ -409,11 +409,10 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   return graph.CreateGraphViewer();
 }
 
-bool GraphHasEPContextNode(const GraphViewer& graph_viewer) {
+bool GraphHasEPContextNode(const Graph& graph) {
   size_t vitisai_len = std::strlen(kVitisAI);
-  for (size_t i = 0, l = static_cast<size_t>(graph_viewer.MaxNodeIndex()); i < l; i++) {
-    auto* p_node = graph_viewer.GetNode(i);
-    if (p_node == nullptr || p_node->OpType() != kEPContextOp) {
+  for (const auto* p_node : graph.Nodes()) {
+    if (p_node->OpType() != kEPContextOp) {
       continue;
     }
     const auto& attrs = p_node->GetAttributes();
@@ -444,7 +443,7 @@ bool GraphHasEPContextNode(const GraphViewer& graph_viewer) {
 bool FusedGraphHasEPContextNode(
     const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-    bool has_node = GraphHasEPContextNode(fused_node_graph.filtered_graph);
+    bool has_node = GraphHasEPContextNode(fused_node_graph.filtered_graph.get().GetGraph());
     if (has_node) {
       return true;
     }
