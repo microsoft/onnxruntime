@@ -13,7 +13,13 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one, StridedDataReader, input_feeds_neg_one_zero_one_list
+from op_test_utils import (
+    StridedDataReader,
+    check_model_correctness,
+    generate_random_initializer,
+    input_feeds_neg_one_zero_one,
+    input_feeds_neg_one_zero_one_list,
+)
 
 import onnxruntime as ort
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
@@ -107,7 +113,9 @@ class TestStaticQuantization(unittest.TestCase):
 
         # strided calibration
         quant_model_path_1 = str(Path(self._tmp_model_dir.name) / "quant.strided.onnx")
-        data_reader_1 = StridedDataReader(data_list, input_nodes, input_shapes, no_tensor_num=0, in_dtypes=in_dtypes, stride=stride)
+        data_reader_1 = StridedDataReader(
+            data_list, input_nodes, input_shapes, no_tensor_num=0, in_dtypes=in_dtypes, stride=stride
+        )
         quant_config_1 = StaticQuantConfig(data_reader_1, extra_options={"CalibStridedMinMax": stride})
         quantize(str(self._model_fp32_path), str(quant_model_path_1), quant_config_1)
 
@@ -125,7 +133,13 @@ class TestStaticQuantization(unittest.TestCase):
         result_2 = self.run_inference(quant_model_path_2, input_data)
 
         # Assert that the outputs are close
-        np.testing.assert_allclose(result_1, result_2, rtol=0.01, atol=0.01, err_msg="Outputs from strided and non-strided models are not close enough.")
+        np.testing.assert_allclose(
+            result_1,
+            result_2,
+            rtol=0.01,
+            atol=0.01,
+            err_msg="Outputs from strided and non-strided models are not close enough.",
+        )
 
     def test_static_quant_config(self):
         data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})

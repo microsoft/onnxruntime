@@ -413,7 +413,6 @@ class MinMaxCalibrater(CalibraterBase):
             raise TypeError(f"compute_data must return a TensorsData not {type(t)}.")
         self.clear_collected_data()
 
-
     def merge_range(self, old_range, new_range):
         if not old_range:
             return new_range
@@ -446,7 +445,6 @@ class MinMaxCalibrater(CalibraterBase):
                 new_range[key] = (min_value, max_value)
 
         return new_range
-
 
     def compute_data(self) -> TensorsData:
         """

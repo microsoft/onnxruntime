@@ -252,8 +252,8 @@ def input_feeds_neg_one_zero_one_list(n, name2shape, seed=None):
 
 class GenerateCalibrationData(CalibrationDataReader):
     def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None):
-        print("Generating calibration dataset from "+str(data_list))
-        print("input nodes are ",input_nodes,"input shapes are ", input_shapes)
+        print("Generating calibration dataset from " + str(data_list))
+        print("input nodes are ", input_nodes, "input shapes are ", input_shapes)
         if inputs_conv_channel_last:
             print(f"Inputs that will be converted to channel last: {inputs_conv_channel_last}")
 
@@ -282,12 +282,25 @@ class GenerateCalibrationData(CalibrationDataReader):
 
 
 class StridedDataReader(GenerateCalibrationData):
-    def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None, stride=1, start_index=0, end_index=None):
+    def __init__(
+        self,
+        data_list,
+        input_nodes,
+        input_shapes,
+        no_tensor_num,
+        in_dtypes,
+        inputs_conv_channel_last=None,
+        stride=1,
+        start_index=0,
+        end_index=None,
+    ):
         super().__init__(data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last)
 
         self.stride = max(1, stride)  # Ensure stride is at least 1
         self.start_index = start_index
-        self.end_index = end_index if end_index is not None else len(self.calibration_dataset)  # Default to the end of the dataset
+        self.end_index = (
+            end_index if end_index is not None else len(self.calibration_dataset)
+        )  # Default to the end of the dataset
         self.enum_data_dicts = iter([])
 
     def get_next(self):
@@ -319,7 +332,7 @@ class StridedDataReader(GenerateCalibrationData):
 
     def process_data_item(self, data_item):
         feed_dict = {}
-        for i, node in enumerate(self.input_nodes):
+        for _, node in enumerate(self.input_nodes):
             # input_data = data_item[i].reshape(self.input_shapes[i])
             feed_dict[node] = data_item["input"]
         return feed_dict
@@ -348,6 +361,7 @@ def check_op_type_order(testcase, model_to_check, ops):
             node.op_type,
             f"op {node_idx} is not in order. Expected: {ops[node_idx]}, Actual: {node.op_type}",
         )
+
 
 def check_op_type_count(testcase, model_path, **kwargs):
     model = onnx.load(Path(model_path))

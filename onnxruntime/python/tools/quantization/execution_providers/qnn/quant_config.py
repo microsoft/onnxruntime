@@ -52,7 +52,7 @@ def get_qnn_qdq_config(
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
     keep_removable_activations: bool = False,
-    stride: int = None,
+    stride: int | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
