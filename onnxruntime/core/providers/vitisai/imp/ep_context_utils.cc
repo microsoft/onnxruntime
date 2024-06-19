@@ -13,6 +13,8 @@
 
 namespace onnxruntime {
 
+constexpr const char* kVitisAI = "vitisai";
+
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionProto(
     const IndexedSubGraph& sub_graph, const Graph& parent_graph) {
   auto p_func_proto = ONNX_NAMESPACE::FunctionProto::Create();
@@ -195,6 +197,7 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
     const std::string& backend_cache_key,
     bool saving_orig_graph,
     const logging::Logger* p_logger) {
+  LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Creating EP context node";
   // Create a new graph/model, reusing the graph name,
   // the op-domain-to-opset-version map,
   // and the op schema registry of the current graph.
@@ -322,7 +325,6 @@ bool ValidateEPContextNode(const Graph& graph) {
       (void)attrs;
       return true;
     }
-    constexpr const char* kVitisAI = "vitisai";
     size_t vitisai_len = std::strlen(kVitisAI);
     assert(source_val.length() == vitisai_len);
     for (size_t i = 0; i < vitisai_len; ++i) {
@@ -408,13 +410,32 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
 }
 
 bool GraphHasEPContextNode(const GraphViewer& graph_viewer) {
+  size_t vitisai_len = std::strlen(kVitisAI);
   for (size_t i = 0, l = static_cast<size_t>(graph_viewer.MaxNodeIndex()); i < l; i++) {
     auto* p_node = graph_viewer.GetNode(i);
-    if (p_node != nullptr && p_node->OpType() == kEPContextOp) {
-      const auto& attrs = p_node->GetAttributes();
-      if (attrs.count(kSourceAttr) > 0 && attrs.at(kSourceAttr).s() == kVitisAIExecutionProvider) {
-        return true;
+    if (p_node == nullptr || p_node->OpType() != kEPContextOp) {
+      continue;
+    }
+    const auto& attrs = p_node->GetAttributes();
+    if (attrs.count(kSourceAttr) == 0) {
+      continue;
+    }
+    const auto& source_val = attrs.at(kSourceAttr).s();
+    if (source_val == kVitisAIExecutionProvider) {
+      return true;
+    }
+    if (source_val.length() != vitisai_len) {
+      continue;
+    }
+    size_t j = 0;
+    do {
+      if (static_cast<unsigned char>(std::tolower(source_val[j])) != kVitisAI[j]) {
+        break;
       }
+      ++j;
+    } while (j < vitisai_len);
+    if (j == vitisai_len) {
+      return true;
     }
   }
   return false;

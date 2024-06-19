@@ -74,9 +74,11 @@ std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() co
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
 // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {
+  LOGS_DEFAULT(VERBOSE) << "`IExecutionProvider::GetEpContextNodes()` is called";
   InlinedVector<const Node*> ep_context_node_ptrs;
   // All preconditions are supposed to have happened.
   if (p_ep_ctx_model_) {
+    LOGS_DEFAULT(VERBOSE) << "Collecting EP context node";
     auto& graph = p_ep_ctx_model_->MainGraph();
     for (const auto* p_node : graph.Nodes()) {
       ep_context_node_ptrs.push_back(p_node);
