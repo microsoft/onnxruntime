@@ -153,8 +153,10 @@ RCT_EXPORT_METHOD(run
   @try {
     NSDictionary *resultMap = [self run:url input:input output:output options:options];
     resolve(resultMap);
+  } @catch (NSException *exception) {
+    reject(@"onnxruntime", exception.reason, nil);
   } @catch (...) {
-    reject(@"onnxruntime", @"failed to run model", nil);
+    reject(@"onnxruntime", @"failed to run model, unknown error", nil);
   }
 }
 
@@ -191,16 +193,22 @@ RCT_EXPORT_METHOD(run
   sessionInfo = new SessionInfo();
   Ort::SessionOptions sessionOptions = [self parseSessionOptions:options];
 
+  try {
 #ifdef ORT_ENABLE_EXTENSIONS
-  Ort::ThrowOnError(RegisterCustomOps(sessionOptions, OrtGetApiBase()));
+    Ort::ThrowOnError(RegisterCustomOps(sessionOptions, OrtGetApiBase()));
 #endif
 
-  if (modelData == nil) {
-    sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
-  } else {
-    NSUInteger dataLength = [modelData length];
-    Byte *modelBytes = (Byte *)[modelData bytes];
-    sessionInfo->session.reset(new Ort::Session(*ortEnv, modelBytes, (size_t)dataLength, sessionOptions));
+    if (modelData == nil) {
+      sessionInfo->session.reset(new Ort::Session(*ortEnv, [modelPath UTF8String], sessionOptions));
+    } else {
+      NSUInteger dataLength = [modelData length];
+      Byte *modelBytes = (Byte *)[modelData bytes];
+      sessionInfo->session.reset(new Ort::Session(*ortEnv, modelBytes, (size_t)dataLength, sessionOptions));
+    }
+  } catch (std::exception &e) {
+     NSString *reason = [NSString stringWithUTF8String:e.what()];
+     NSException *exception = [NSException exceptionWithName:@"onnxruntime" reason:reason userInfo:nil];
+     @throw exception;
   }
 
   sessionInfo->inputNames.reserve(sessionInfo->session->GetInputCount());
