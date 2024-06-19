@@ -33,8 +33,8 @@ struct CufftPlanInfo {
 // see https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
 template <typename T>
 struct ParamsHash {
-  // Params must be a trivial because we read out its memory
-  // constant as char* when hashing
+  // Params must be a trivial type because we read out its memory
+  // contents as char* when hashing
 
   static_assert(std::is_trivial<T>::value, "Params is not a trivial type");
   size_t operator()(const T& params) const {
