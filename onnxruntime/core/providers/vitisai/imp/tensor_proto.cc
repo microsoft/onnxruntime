@@ -68,7 +68,7 @@ ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
                                                   const std::vector<int64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT64,
                           reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_u8(const std::string& name, const std::vector<int64_t>& shape,
@@ -88,7 +88,7 @@ ONNX_NAMESPACE::TensorProto* tensor_proto_new_u32(const std::string& name, const
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_u64(const std::string& name, const std::vector<int64_t>& shape,
                                                   const std::vector<uint64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT64,
                           reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 

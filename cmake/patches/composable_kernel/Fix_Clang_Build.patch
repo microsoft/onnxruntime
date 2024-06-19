@@ -1,17 +1,21 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 04674124c..12e8b8b00 100644
+index c23746e7f..bc326c8b5 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -19,7 +19,7 @@ endif()
+@@ -23,10 +23,10 @@ endif()
  
  set(version 1.1.0)
  # Check support for CUDA/HIP in Cmake
--project(composable_kernel VERSION ${version})
+-project(composable_kernel VERSION ${version} LANGUAGES CXX)
 +project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
+ include(CTest)
+ 
+-find_package(Python3 3.6 COMPONENTS Interpreter REQUIRED)
++find_package(Python3 COMPONENTS Interpreter REQUIRED)
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -173,27 +173,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -227,27 +227,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,27 +43,20 @@ index 04674124c..12e8b8b00 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -215,8 +194,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+@@ -269,12 +248,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
      message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
 -link_libraries(hip::device)
--add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+-if(CK_hip_VERSION VERSION_GREATER_EQUAL 6.0.23494)
+-    add_compile_definitions(__HIP_PLATFORM_AMD__=1)
+-else()
+-    add_compile_definitions(__HIP_PLATFORM_HCC__=1)
+-endif()
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -376,7 +353,9 @@ if(BUILD_DEV)
-     add_compile_options(-Werror -Weverything)
- endif()
- #add flags to reduce the size of binaries
--add_compile_options(-Oz -flto=thin)
-+# -flto requires ORT to use a linker that support LTO and -flto flag shoud be passed to linker together.
-+# add_compile_options(-Oz -flto=thin)
-+add_compile_options(-Oz)
- message("CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
- 
- add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR})
-@@ -482,11 +461,3 @@ rocm_install(FILES
+@@ -541,11 +514,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -71,11 +68,122 @@ index 04674124c..12e8b8b00 100644
 -    LDCONFIG
 -    HEADER_ONLY
 -)
+diff --git a/example/ck_tile/01_fmha/generate.py b/example/ck_tile/01_fmha/generate.py
+index 51fecd07b..5ed371995 100644
+--- a/example/ck_tile/01_fmha/generate.py
++++ b/example/ck_tile/01_fmha/generate.py
+@@ -566,7 +566,7 @@ def write_blobs(output_dir : Optional[str], kernel_filter : Optional[str], recei
+ def list_blobs(output_file : Optional[str], kernel_filter : Optional[str], receipt, mask_impl) -> None:
+     assert output_file is not None
+     file_path = Path(output_file)
+-    with file_path.open('a') as f:
++    with file_path.open('w') as f:
+         _, kernels = get_blobs(kernel_filter, receipt, mask_impl)
+         for kernel in kernels:
+             f.write(str(file_path.parent / GEN_DIR / kernel.filename) + "\n")
+diff --git a/include/ck/host_utility/hip_check_error.hpp b/include/ck/host_utility/hip_check_error.hpp
+index c0894f1d7..559481fee 100644
+--- a/include/ck/host_utility/hip_check_error.hpp
++++ b/include/ck/host_utility/hip_check_error.hpp
+@@ -6,19 +6,7 @@
+ #include <sstream>
+ #include <hip/hip_runtime.h>
+ 
+-// To be removed, which really does not tell the location of failed HIP functional call
+-inline void hip_check_error(hipError_t x)
+-{
+-    if(x != hipSuccess)
+-    {
+-        std::ostringstream ss;
+-        ss << "HIP runtime error: " << hipGetErrorString(x) << ". "
+-           << "hip_check_error.hpp"
+-           << ": " << __LINE__ << "in function: " << __func__;
+-        throw std::runtime_error(ss.str());
+-    }
+-}
+-
++#ifndef HIP_CHECK_ERROR
+ #define HIP_CHECK_ERROR(retval_or_funcall)                                 \
+     do                                                                     \
+     {                                                                      \
+@@ -32,3 +20,9 @@ inline void hip_check_error(hipError_t x)
+             throw std::runtime_error(ostr.str());                          \
+         }                                                                  \
+     } while(0)
++#endif
++
++#ifndef hip_check_error
++#define hip_check_error HIP_CHECK_ERROR
++#endif
++
+diff --git a/include/ck_tile/core/utility/transpose_vectors.hpp b/include/ck_tile/core/utility/transpose_vectors.hpp
+index a164c3f94..293ead89a 100644
+--- a/include/ck_tile/core/utility/transpose_vectors.hpp
++++ b/include/ck_tile/core/utility/transpose_vectors.hpp
+@@ -11,6 +11,9 @@
+ 
+ namespace ck_tile {
+ 
++template <typename... Ts>
++constexpr bool always_false = false;
++
+ // S: scalar type (or it can be non-scalar type)
+ // NX: # of vector before transpose
+ // NY: # of vector after transpose
+@@ -117,9 +120,11 @@ struct transpose_vectors
+         }
+         else
+         {
+-            static_assert(false, "not implemented");
++            static_assert(always_false<S_, number<NX>, number<NY>>, "not implemented");
+         }
+     }
+ };
+ 
++
+ } // namespace ck_tile
++
+diff --git a/include/ck_tile/host/hip_check_error.hpp b/include/ck_tile/host/hip_check_error.hpp
+index 3acdb4d87..cc26e184f 100644
+--- a/include/ck_tile/host/hip_check_error.hpp
++++ b/include/ck_tile/host/hip_check_error.hpp
+@@ -8,20 +8,7 @@
+ #include <stdexcept>
+ #include <hip/hip_runtime.h>
+ 
+-namespace ck_tile {
+-// To be removed, which really does not tell the location of failed HIP functional call
+-CK_TILE_HOST void hip_check_error(hipError_t x)
+-{
+-    if(x != hipSuccess)
+-    {
+-        std::ostringstream ss;
+-        ss << "HIP runtime error: " << hipGetErrorString(x) << ". " << __FILE__ << ": " << __LINE__
+-           << "in function: " << __func__;
+-        throw std::runtime_error(ss.str());
+-    }
+-}
+-} // namespace ck_tile
+-
++#ifndef HIP_CHECK_ERROR
+ #define HIP_CHECK_ERROR(retval_or_funcall)                                         \
+     do                                                                             \
+     {                                                                              \
+@@ -34,3 +21,9 @@ CK_TILE_HOST void hip_check_error(hipError_t x)
+             throw std::runtime_error(ostr.str());                                  \
+         }                                                                          \
+     } while(0)
++#endif
++
++#ifndef hip_check_error
++#define hip_check_error HIP_CHECK_ERROR
++#endif
++
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index 9cb5d0e9a..141a46f3d 100644
+index c035e7e56..8c5f36d2e 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-@@ -44,8 +44,14 @@ function(add_instance_library INSTANCE_NAME)
+@@ -59,8 +59,14 @@ function(add_instance_library INSTANCE_NAME)
      endforeach()
      #only continue if there are some source files left on the list
      if(ARGN)

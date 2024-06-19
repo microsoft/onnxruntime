@@ -592,6 +592,12 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
+  // Report error if QNN CPU backend is loaded while CPU fallback is disabled
+  if (disable_cpu_ep_fallback_ && qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
+    LOGS(logger, ERROR) << "Qnn CPU backend is loaded while CPU fallback is disabled.";
+    return result;
+  }
+
   if ((context_cache_enabled_ || is_qnn_ctx_model) && !IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
     LOGS(logger, ERROR) << "Qnn context cache only works for HTP or DSP backend.";
     return result;

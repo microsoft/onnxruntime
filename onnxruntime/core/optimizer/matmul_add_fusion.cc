@@ -106,7 +106,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-    Node& gemm_node = graph.AddNode(graph.GenerateNodeName("gemm"),
+    Node& gemm_node = graph.AddNode(graph.GenerateNodeName(matmul_node.Name() + "/MatMulAddFusion/"),
                                     "Gemm",
                                     "fused Matmul and Add " + add_node.OpType(),
                                     gemm_input_defs,

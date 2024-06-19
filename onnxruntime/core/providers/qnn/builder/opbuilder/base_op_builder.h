@@ -163,6 +163,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Relu", QNN_OP_RELU},
         {"Gelu", QNN_OP_GELU},
 
+        {"HardSigmoid", QNN_OP_ELEMENT_WISE_NEURON},
         {"HardSwish", QNN_OP_HARD_SWISH},
         {"DepthToSpace", QNN_OP_DEPTH_TO_SPACE},
         {"SpaceToDepth", QNN_OP_SPACE_TO_DEPTH},
