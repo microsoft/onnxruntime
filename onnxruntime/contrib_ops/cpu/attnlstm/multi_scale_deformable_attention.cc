@@ -32,7 +32,6 @@ MultiScaleDeformableAttention::MultiScaleDeformableAttention(const OpKernelInfo&
   ebx = cpui[1];
   ecx = cpui[2];
 
-  bool AVX2 = ebx[5];
   bool AVX512F = ebx[16];
   bool AVX512DQ = ebx[17];
 
