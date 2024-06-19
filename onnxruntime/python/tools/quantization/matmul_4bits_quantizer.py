@@ -474,6 +474,7 @@ class DefaultWeightOnlyQuantizer:
             return [node]  # only care about MatMul for now
 
         logger.info(f"start to quantize {node.name} ...")
+        qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
         inputB = node.input[1]  # noqa: N806
         B, Bs_graph = get_initializer(inputB, graph_stack)  # noqa: N806
         if B is None:
@@ -491,8 +492,7 @@ class DefaultWeightOnlyQuantizer:
             B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
             B_quant.name = B.name + "_Q4"
         else:
-            # QDQ default UINT4
-            B_quant = onnx.helper.make_tensor(B.name + "_DQ_Q4", TensorProto.UINT4, B_array.shape, packed, True)
+            B_quant = onnx.helper.make_tensor(B.name + "_DQ_Q4", qtype, B_array.shape, packed, True)
 
         for input in Bs_graph.input:
             if input.name == inputB:
@@ -537,9 +537,7 @@ class DefaultWeightOnlyQuantizer:
             matmul_input_names = [node.input[0], dq_output_names[0]]
             matmul_output_names = [node.output[0]]
             if not self.config.is_symmetric:
-                zp_tensor = onnx.helper.make_tensor(
-                    B.name + "_DQ_zero_points", TensorProto.UINT4, scales.shape, zero_points, True
-                )
+                zp_tensor = onnx.helper.make_tensor(B.name + "_DQ_zero_points", qtype, scales.shape, zero_points, True)
                 dq_input_names.append(zp_tensor.name)
                 Bs_graph.initializer.extend([zp_tensor])
             dq_kwargs = {"axis": 0, "block_size": self.config.block_size}
