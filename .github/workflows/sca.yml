@@ -17,7 +17,6 @@ env:
 jobs:
   Onnxruntime-SCA-training-CUDA:
     permissions:
-      # required for all workflows
       security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
@@ -61,7 +60,6 @@ jobs:
   # No python
   Onnxruntime-SCA-win32-WINML-x64:
     permissions:
-      # required for all workflows
       security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
@@ -102,7 +100,6 @@ jobs:
   # No java, No python
   Onnxruntime-SCA-win32-WINML-x86:
     permissions:
-      # required for all workflows
       security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
