@@ -1,4 +1,3 @@
-# packages used by transformers python unittest (only enabled in Linux CPU CI Pipeline)
 packaging
 pytest
 wheel
