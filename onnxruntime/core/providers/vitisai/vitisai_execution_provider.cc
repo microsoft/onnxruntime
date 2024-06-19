@@ -118,7 +118,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
+  // DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 // This version of implementation (vs the overloaded version of implementation above)
@@ -155,7 +155,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
+  // DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(

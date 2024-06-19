@@ -2,6 +2,8 @@
 #include <fstream>
 #include <filesystem>
 #include <sstream>
+#include <cctype>
+#include <cstring>
 
 // 3rd-party headers/libs.
 #include <nlohmann/json.hpp>
@@ -214,8 +216,9 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
     auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
     output_node_arg_ptrs.push_back(&temp_node_arg);
   }
-  // FIXME: based on the current design and implementation of ONNXRT EP context model,
-  // i.e., single-node graph in practice, should we do this or not?
+  // Based on how `CreateEPContextModel()` in the file "graph_partitioner.cc"
+  // and `IExecutionProvider::GetEpContextNodes()` are implemented,
+  // the following pieces commented out below are not needed.
   // ep_ctx_graph.SetInputs(input_node_arg_ptrs);
   // ep_ctx_graph.SetOutputs(output_node_arg_ptrs);
 
@@ -313,7 +316,19 @@ bool ValidateEPContextNode(const Graph& graph) {
   assert(attrs.count(kEmbedModeAttr) > 0);
   assert(attrs.count(kEPCacheContextAttr) > 0);
   assert(attrs.count(kSourceAttr) > 0);
-  assert(attrs.at(kSourceAttr).s() == kVitisAIExecutionProvider);
+  {
+    const auto& source_val = attrs.at(kSourceAttr).s();
+    if (source_val == kVitisAIExecutionProvider) {
+      (void)attrs;
+      return true;
+    }
+    constexpr const char* kVitisAI = "vitisai";
+    size_t source_len = source_val.length();
+    assert(source_len == std::strlen(kVitisAI));
+    for (size_t i = 0; i < source_len; ++i) {
+      assert(static_cast<unsigned char>(std::tolower(source_val[i])) == kVitisAI[i]);
+    }
+  }
   (void)attrs;
   return true;
 }
@@ -439,16 +454,26 @@ bool GetEPContextModelFileLocation(
     if (is_ep_ctx_model) {
       ep_ctx_model_file_loc = model_path_str;
     } else {
+      // Two alternatives for this case.
+      // Alternative #1:
+      // 1) Implement/override the method `IExecutionProvider::GetEpContextNodes()`.
+      // 2) And follow how the default path is implemented in `CreateEpContextModel()`
+      // in the file "graph_partitioner.cc".
+      // 3) Model dump is not required.
+      // Alternative #2:
+      // 1) Do NOT implement/override `IExecutionProvider::GetEpContextNodes()`.
+      // 2) No need to follow `CreateEpContextModel()` in the file "graph_partitioner.cc",
+      // freely implement what the default path is like.
+      // 3) Model dump is required.
+#if 1
+      ep_ctx_model_file_loc = model_path_str + ToPathString("_ctx.onnx");
+#endif
 #if 0
       fs::path model_fs_path(model_path_str);
       fs::path ep_ctx_model_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
       ep_ctx_model_fs_path += fs::path("_ctx.onnx");
       ep_ctx_model_file_loc = ToPathString(ep_ctx_model_fs_path.string());
 #endif
-      // Adopt the ONNXRT built-in default EP context model path,
-      // even though it is sort of ugly.
-      // Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
-      ep_ctx_model_file_loc = model_path_str + ToPathString("_ctx.onnx");
     }
   }
   return !ep_ctx_model_file_loc.empty();
