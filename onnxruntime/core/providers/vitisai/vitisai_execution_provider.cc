@@ -71,6 +71,7 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
 
+#if 0
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
 // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {
@@ -78,7 +79,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   InlinedVector<const Node*> ep_context_node_ptrs;
   // All preconditions are supposed to have happened.
   if (p_ep_ctx_model_) {
-    LOGS_DEFAULT(VERBOSE) << "Collecting EP context node";
+    LOGS_DEFAULT(VERBOSE) << "Collecting EP context nodes: " << graph.Nodes().size();
     auto& graph = p_ep_ctx_model_->MainGraph();
     for (const auto* p_node : graph.Nodes()) {
       ep_context_node_ptrs.push_back(p_node);
@@ -86,6 +87,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   }
   return ep_context_node_ptrs;
 }
+#endif
 
 // Create EP context model and dump it for future use.
 // This implementation here is only working for non-compilation-based EPs.
@@ -120,7 +122,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     p_ep_ctx_model_ = Model::Create(std::move(*p_ep_ctx_model_proto_), ep_ctx_model_file_loc_, nullptr, logger);
   }
   LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  // DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
+  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 // This version of implementation (vs the overloaded version of implementation above)
@@ -162,8 +164,8 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
       LOGS_DEFAULT(VERBOSE) << "Created model has EP context nodes";
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "EP context modeld created";
-  // DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
+  LOGS_DEFAULT(VERBOSE) << "EP context model created";
+  DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
