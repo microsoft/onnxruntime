@@ -38,7 +38,7 @@ jobs:
   workspace:
     clean: all
   pool: onnxruntime-Ubuntu2204-AMD-CPU
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
 
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
