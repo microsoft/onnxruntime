@@ -50,8 +50,8 @@ struct ParamsHash {
 
 template <typename T>
 struct ParamsEqual {
-  // Params must be a trivial because we read out its memory
-  // constant as char* when comparing
+  // Params must be a trivial type because we read out its memory
+  // contents as char* when comparing
 
   static_assert(std::is_trivial<T>::value, "Params is not a trivial type");
 
