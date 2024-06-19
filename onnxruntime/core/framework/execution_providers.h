@@ -24,31 +24,15 @@ namespace onnxruntime {
 Class for managing lookup of the execution providers in a session.
 */
 class ExecutionProviders {
- public:
-  ExecutionProviders() = default;
-
-  common::Status Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
-    // make sure there are no issues before we change any internal data structures
-    if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
-      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
-      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-      return status;
-    }
-
-    // index that provider will have after insertion
-    auto new_provider_idx = exec_providers_.size();
-
-    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
-
-    // update execution provider options
-    auto providerOptions = p_exec_provider->GetProviderOptions();
-    exec_provider_options_[provider_id] = providerOptions;
-
 #ifdef _WIN32
-    LogProviderOptions(provider_id, providerOptions, false);
+  WindowsTelemetry::EtwInternalCallback etw_callback_;
+#endif
 
+ public:
+  ExecutionProviders() {
+#ifdef _WIN32
     // Register callback for ETW capture state (rundown)
-    auto callback_MLORT_provider = std::make_shared<onnxruntime::WindowsTelemetry::EtwInternalCallback>(
+    etw_callback_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
         [this](
             LPCGUID SourceId,
             ULONG IsEnabled,
@@ -79,7 +63,36 @@ class ExecutionProviders {
             }
           }
         });
-    WindowsTelemetry::RegisterInternalCallback(callback_MLORT_provider);
+    WindowsTelemetry::RegisterInternalCallback(etw_callback_);
+#endif
+  }
+
+  ~ExecutionProviders() {
+#ifdef _WIN32
+    WindowsTelemetry ::UnregisterInternalCallback(etw_callback_);
+#endif
+  }
+
+  common::Status
+  Add(const std::string& provider_id, const std::shared_ptr<IExecutionProvider>& p_exec_provider) {
+    // make sure there are no issues before we change any internal data structures
+    if (provider_idx_map_.find(provider_id) != provider_idx_map_.end()) {
+      auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Provider ", provider_id, " has already been registered.");
+      LOGS_DEFAULT(ERROR) << status.ErrorMessage();
+      return status;
+    }
+
+    // index that provider will have after insertion
+    auto new_provider_idx = exec_providers_.size();
+
+    ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
+
+    // update execution provider options
+    auto providerOptions = p_exec_provider->GetProviderOptions();
+    exec_provider_options_[provider_id] = providerOptions;
+
+#ifdef _WIN32
+    LogProviderOptions(provider_id, providerOptions, false);
 #endif
 
     exec_provider_ids_.push_back(provider_id);
@@ -157,5 +170,5 @@ class ExecutionProviders {
   // Whether the CPU provider was implicitly added to a session for fallback (true),
   // or whether it was explicitly added by the caller.
   bool cpu_execution_provider_was_implicitly_added_ = false;
-};
+};  // namespace onnxruntime
 }  // namespace onnxruntime

@@ -128,8 +128,8 @@ class InferenceSession {
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
-  static std::shared_ptr<onnxruntime::WindowsTelemetry::EtwInternalCallback> callback_ML_ORT_provider;
-  std::shared_ptr<onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback> callback_ETWSinkprovider;
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
 
  public:

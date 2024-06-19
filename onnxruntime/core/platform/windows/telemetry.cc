@@ -64,7 +64,7 @@ bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
-std::vector<std::shared_ptr<WindowsTelemetry::EtwInternalCallback>> WindowsTelemetry::callbacks_;
+std::vector<const WindowsTelemetry::EtwInternalCallback*> WindowsTelemetry::callbacks_;
 OrtMutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -110,14 +110,18 @@ UINT64 WindowsTelemetry::Keyword() const {
 //     return etw_status_;
 // }
 
-void WindowsTelemetry::RegisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.push_back(callback);
+  callbacks_.push_back(&callback);
 }
 
-void WindowsTelemetry::UnregisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+void WindowsTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.erase(std::remove(callbacks_.begin(), callbacks_.end(), callback), callbacks_.end());
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 }
 
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(

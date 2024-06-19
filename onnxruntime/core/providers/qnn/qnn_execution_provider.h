@@ -90,7 +90,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = false;
 #ifdef _WIN32
-  std::shared_ptr<onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback> callback_ETWSinkprovider;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
 
   class PerThreadContext final {

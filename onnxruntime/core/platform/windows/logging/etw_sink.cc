@@ -102,14 +102,18 @@ HRESULT EtwRegistrationManager::Status() const {
   return etw_status_;
 }
 
-void EtwRegistrationManager::RegisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
-  callbacks_.push_back(callback);
+  callbacks_.push_back(&callback);
 }
 
-void EtwRegistrationManager::UnregisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback) {
+void EtwRegistrationManager::UnregisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
-  callbacks_.erase(std::remove(callbacks_.begin(), callbacks_.end(), callback), callbacks_.end());
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 }
 
 void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(

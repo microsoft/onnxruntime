@@ -64,9 +64,9 @@ class WindowsTelemetry : public Telemetry {
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
-  static void RegisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback);
+  static void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  static void UnregisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback);
+  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   static OrtMutex mutex_;
@@ -74,7 +74,7 @@ class WindowsTelemetry : public Telemetry {
   static bool enabled_;
   static uint32_t projection_;
 
-  static std::vector<std::shared_ptr<EtwInternalCallback>> callbacks_;
+  static std::vector<const EtwInternalCallback*> callbacks_;
   static OrtMutex callbacks_mutex_;
   static OrtMutex provider_change_mutex_;
   static UCHAR level_;

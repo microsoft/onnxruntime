@@ -250,7 +250,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
-std::shared_ptr<onnxruntime::WindowsTelemetry::EtwInternalCallback> InferenceSession::callback_ML_ORT_provider;
+onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -375,7 +375,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   active_sessions_[global_session_id_++] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
-  auto callback_MLORT_provider = std::make_shared<onnxruntime::WindowsTelemetry::EtwInternalCallback>(
+  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
       [this](LPCGUID SourceId,
              ULONG IsEnabled,
              UCHAR Level,
@@ -396,12 +396,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           LogAllSessions();
         }
       });
-  WindowsTelemetry::RegisterInternalCallback(callback_MLORT_provider);
-  this->callback_ML_ORT_provider = callback_MLORT_provider;
+  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  auto callback_ETWSink_provider = std::make_shared<onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback>(
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
       [&etwRegistrationManager, this](LPCGUID SourceId,
                                       ULONG IsEnabled,
                                       UCHAR Level,
@@ -441,8 +440,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       });
 
   // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider);
-  this->callback_ETWSinkprovider = callback_ETWSink_provider;
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
 
 #endif
 
@@ -728,8 +726,8 @@ InferenceSession::~InferenceSession() {
   // Unregister the session and ETW callbacks
 #ifdef _WIN32
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
-  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider);
-  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSinkprovider);
+  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
+  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
   active_sessions_.erase(global_session_id_);
 

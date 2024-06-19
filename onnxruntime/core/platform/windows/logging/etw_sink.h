@@ -69,9 +69,9 @@ class EtwRegistrationManager {
   // Get the ETW registration status
   HRESULT Status() const;
 
-  void RegisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback);
+  void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  void UnregisterInternalCallback(std::shared_ptr<EtwInternalCallback> callback);
+  void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   EtwRegistrationManager();
@@ -92,7 +92,7 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::vector<std::shared_ptr<EtwInternalCallback>> callbacks_;
+  std::vector<const EtwInternalCallback*> callbacks_;
   OrtMutex callbacks_mutex_;
   mutable OrtMutex provider_change_mutex_;
   OrtMutex init_mutex_;

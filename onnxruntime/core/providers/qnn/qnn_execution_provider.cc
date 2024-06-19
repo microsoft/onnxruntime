@@ -233,7 +233,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 #ifdef _WIN32
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
   // Register callback for ETW capture state (rundown)
-  auto callback_ETWSink_provider = std::make_shared<onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback>(
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
       [&etwRegistrationManager, this](
           LPCGUID SourceId,
           ULONG IsEnabled,
@@ -270,8 +270,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
           (void)qnn_backend_manager_->ResetQnnLogLevel();
         }
       });
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider);
-  this->callback_ETWSinkprovider = callback_ETWSink_provider;
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
 #endif
 
   // In case ETW gets disabled later
@@ -402,7 +401,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
   // Unregister the ETW callback
 #ifdef _WIN32
-  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSinkprovider);
+  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
 }
 
