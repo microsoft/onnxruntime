@@ -1,9 +1,9 @@
-packaging
-pytest
-wheel
 setuptools
+wheel
+pytest
 numpy==1.24.0 ; python_version < '3.12'
 numpy==1.26.0 ; python_version >= '3.12'
 sympy>=1.10
-psutil
+packaging
 cerberus
+psutil
