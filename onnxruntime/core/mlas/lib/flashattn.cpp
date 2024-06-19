@@ -3,35 +3,6 @@
 
 #include <numeric>
 
-void MlasMatrixSubtractTensor(
-    const float* Matrix,
-    const float* Bias,
-    float* Output,
-    size_t M,
-    size_t N
-    )
-{
-    GetMlasPlatform().MatrixSubTensorF32Kernel(Matrix, Bias, Output, M, N);
-}
-
-void MlasMatrixSubTensorF32Kernel(
-    const float* Matrix,
-    const float* Bias,
-    float* Output,
-    size_t M,
-    size_t N
-    )
-{
-    for(size_t i = 0; i < M; ++i){
-        float currentBias = Bias[i];
-        for(size_t j = 0; j < N; ++j){
-            *Output = *Matrix - currentBias;
-            Matrix++;
-            Output++;
-        }
-    }
-}
-
 void FlashAttentionThreaded(
     std::ptrdiff_t thread_id,
     struct FlashAttentionThreadedArgs* args

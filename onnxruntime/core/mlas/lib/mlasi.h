@@ -715,15 +715,6 @@ struct MLAS_QUANT_KERNEL
         );
 };
 
-typedef
-void
-(MLASCALL MLAS_MATRIX_SUB_TENSOR_F32_KERNEL)(
-    const float* Matrix,
-    const float* Bias,
-    float* Output,
-    size_t M,
-    size_t N);
-
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -873,7 +864,6 @@ extern "C" {
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
-    MLAS_MATRIX_SUB_TENSOR_F32_KERNEL MlasMatrixSubTensorF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
@@ -1146,7 +1136,6 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
-    MLAS_MATRIX_SUB_TENSOR_F32_KERNEL* MatrixSubTensorF32Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
