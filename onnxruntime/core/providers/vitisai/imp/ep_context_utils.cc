@@ -323,9 +323,9 @@ bool ValidateEPContextNode(const Graph& graph) {
       return true;
     }
     constexpr const char* kVitisAI = "vitisai";
-    size_t source_len = source_val.length();
-    assert(source_len == std::strlen(kVitisAI));
-    for (size_t i = 0; i < source_len; ++i) {
+    size_t vitisai_len = std::strlen(kVitisAI);
+    assert(source_val.length() == vitisai_len);
+    for (size_t i = 0; i < vitisai_len; ++i) {
       assert(static_cast<unsigned char>(std::tolower(source_val[i])) == kVitisAI[i]);
     }
   }
