@@ -5,6 +5,10 @@ parameters:
 - name: RocmVersion
   type: string
 
+- name: RocmVersionPatchSuffix
+  type: string
+  default: ''
+
 - name: BuildConfig
   type: string
   default: 'Release'
@@ -55,7 +59,7 @@ jobs:
         --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
         --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
         --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
-        --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}
+        --build-arg ROCM_VERSION=${{ parameters.RocmVersion }}${{ parameters.RocmVersionPatchSuffix }}
       Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
 
   - task: CmdLine@2
