@@ -276,3 +276,14 @@ def upsample_nearest3d_gradient():
 @register_gradient("org.pytorch.aten", "ATen", "upsample_bicubic2d", "vec")
 def upsample_bicubic2d_gradient():
     return _upsample_gradient("upsample_bicubic2d_backward", 2)
+
+@register_gradient("org.pytorch.aten", "ATen", "scaled_dot_product_attention", "")
+def scaled_dot_product_attention_gradient():
+    return [
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(0)", "I(1)", "I(2)"],
+            ["GI(0)", "GI(1)", "GI(2)"],
+            {"operator": {"value": "scaled_dot_product_attention", "dtype": "string"}},
+        ),
+    ]

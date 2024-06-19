@@ -969,3 +969,17 @@ def softmax(g, input, dim, dtype=None):
     softmax = g.op("Softmax", casted_input, axis_i=dim)
 
     return softmax
+
+@register_symbolic("scaled_dot_product_attention")
+def scaled_dot_product_attention(g, query, key, value, attn_mask, dropout_p, is_causal, scale):
+    return g.op(
+        "org.pytorch.aten::ATen", 
+        query, 
+        key, 
+        value, 
+        attn_mask, 
+        dropout_p, 
+        is_causal, 
+        scale,
+        operator_s="scaled_dot_product_attention"
+    )
