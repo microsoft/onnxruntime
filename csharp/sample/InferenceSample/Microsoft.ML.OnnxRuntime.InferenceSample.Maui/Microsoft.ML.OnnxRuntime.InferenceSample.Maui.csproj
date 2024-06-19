@@ -29,6 +29,10 @@
 		<DefaultLanguage>en</DefaultLanguage>
 	</PropertyGroup>
 
+	<PropertyGroup>
+		<SelectedTargets>All</SelectedTargets>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- NOTE:
 		You need to manually put builds from other platforms such as Android in the correct place for this to work for cross-platform
