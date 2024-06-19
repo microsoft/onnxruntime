@@ -663,7 +663,7 @@ class TorchGroupQueryAttention:
         if ENABLE_DEBUG:
             print("query(BSNH, GQA)", query)
             print("present_key(BNSH, GQA)", present_key)
-            print("present_key(BNSH, GQA)", present_value)
+            print("present_value(BNSH, GQA)", present_value)
             print("dense_mask", self.dense_mask)
 
         return group_query_attention_reference(

@@ -366,7 +366,11 @@ def parse_arguments():
         default="",
         help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
-    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/25192
+    parser.add_argument(
+        "--msvc_toolset",
+        help="MSVC toolset to use. e.g. 14.11. It doesn't work if the version number is in the range of [14.36, 14.39]",
+    )
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
@@ -872,6 +876,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append("sympy>=1.10")
     dep_packages.append("packaging")
     dep_packages.append("cerberus")
+    dep_packages.append("psutil")
     run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
@@ -1535,6 +1540,8 @@ def generate_build_tree(
         cudaflags = []
         if is_windows() and not args.ios and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
+            if args.use_cuda:
+                cudaflags.append("-allow-unsupported-compiler")
             if njobs > 1:
                 if args.parallel == 0:
                     cflags += ["/MP"]
@@ -1590,7 +1597,6 @@ def generate_build_tree(
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
-                    cudaflags.append("-allow-unsupported-compiler")
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
@@ -2305,8 +2311,8 @@ def build_nuget_package(
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
 
-    # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
-    # mobile workloads must be installed on the machine.
+    # in most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
+    # must be installed on the machine.
     # they are only included in the Microsoft.ML.OnnxRuntime nuget package
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
