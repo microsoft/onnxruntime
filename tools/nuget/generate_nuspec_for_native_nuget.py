@@ -260,28 +260,16 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
-            # Support monoandroid11.0
-            xml_text.append('<group targetFramework="monoandroid11.0">')
+            # Support net8.0-android
+            xml_text.append('<group targetFramework="net8.0-android31.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
-            # Support xamarinios10
-            xml_text.append('<group targetFramework="xamarinios10">')
+            # Support net8.0-ios
+            xml_text.append('<group targetFramework="net8.0-ios15.4">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
-            # Support net6.0-android
-            xml_text.append('<group targetFramework="net6.0-android31.0">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            xml_text.append("</group>")
-            # Support net6.0-ios
-            xml_text.append('<group targetFramework="net6.0-ios15.4">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            xml_text.append("</group>")
-            # Support net6.0-macos
-            xml_text.append('<group targetFramework="net6.0-macos12.3">')
-            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            xml_text.append("</group>")
-            # Support net6.0-maccatalyst
-            xml_text.append('<group targetFramework="net6.0-maccatalyst14.0">')
+            # Support net8.0-maccatalyst
+            xml_text.append('<group targetFramework="net8.0-maccatalyst14.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
         # Support Native C++
@@ -321,6 +309,10 @@ def generate_release_notes(line_list, dependency_sdk_info):
 
 
 def generate_metadata(line_list, args):
+    tags = "native ONNX Runtime ONNXRuntime Machine Learning MachineLearning"
+    if "Microsoft.ML.OnnxRuntime.Training." in args.package_name:
+        tags.append(" ONNXRuntime-Training Learning-on-The-Edge On-Device-Training On-Device Training")
+
     metadata_list = ["<metadata>"]
     generate_id(metadata_list, args.package_name)
     generate_version(metadata_list, args.package_version)
@@ -328,13 +320,7 @@ def generate_metadata(line_list, args):
     generate_owners(metadata_list, "Microsoft")
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, "\xc2\xa9 " + "Microsoft Corporation. All rights reserved.")
-    (
-        generate_tags(metadata_list, "ONNX ONNX Runtime Machine Learning")
-        if "Microsoft.ML.OnnxRuntime.Training." in args.package_name
-        else generate_tags(
-            metadata_list, "native ONNX ONNXRuntime-Training Learning-on-The-Edge On-Device-Training MachineLearning"
-        )
-    )
+    generate_tags(metadata_list, tags)
     generate_icon(metadata_list, "ORT_icon_for_light_bg.png")
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
