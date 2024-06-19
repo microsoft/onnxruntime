@@ -870,8 +870,7 @@ def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 
-def install_python_deps(numpy_version=""):
-    requirements_file = 'requirements-pybind.txt'
+def install_python_deps(requirements_file='requirements.txt',numpy_version=""):
     if numpy_version:
         # Remove current numpy version from requirements-pybind.txt and add the specified version
         with open(requirements_file, 'r+') as file:
@@ -2154,10 +2153,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
-                            cwd=SCRIPT_DIR,
-                        )
+                        install_python_deps('requirements-transformers-test.txt')
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
@@ -2818,7 +2814,7 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps(args.numpy_version)
+            install_python_deps('requirements-pybind.txt',args.numpy_version)
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
