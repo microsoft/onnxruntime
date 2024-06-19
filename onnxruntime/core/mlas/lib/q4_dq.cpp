@@ -851,14 +851,14 @@ private:
         const auto num_row_thread_blk = (rows + quant_block_size - 1) / quant_block_size;
         const auto num_col_thread_blk = (columns + thread_blk_size - 1) / thread_blk_size;
         const auto num_thread_blk = num_row_thread_blk * num_col_thread_blk;
-        const auto minf = std::numeric_limits<float>::lowest();
-        const auto maxf = std::numeric_limits<float>::max();
+        constexpr auto minf = std::numeric_limits<float>::lowest();
+        constexpr auto maxf = std::numeric_limits<float>::max();
 
         MlasTryBatchParallel(
             thread_pool, static_cast<ptrdiff_t>(num_thread_blk),
             [&](ptrdiff_t thread_blk_idx) {
                 // !!warning!!: buffering the whole thread block
-                const int32_t buffer_size = 128;
+                constexpr int32_t buffer_size = 128;
                 ORT_ENFORCE(buffer_size == thread_blk_size, "buffer size must be equal to thread block size.");
                 float reciprocal_scale_t[buffer_size];
                 uint8_t zp_t[buffer_size];
@@ -952,7 +952,7 @@ private:
         MlasTryBatchParallel(
             thread_pool, static_cast<ptrdiff_t>(num_row_thread_blk),
             [&](ptrdiff_t thread_blk_idx) {
-                const int32_t buffer_size = 128;
+                constexpr int32_t buffer_size = 128;
                 float reciprocal_scale_t[buffer_size];
                 uint8_t zp_t[buffer_size];
                 float vmin_t[buffer_size];
