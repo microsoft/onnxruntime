@@ -407,11 +407,26 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
         ]
     else:
         configs = [
+            # TNLGv4
             (1, 128, 0, 32, 128, True),
             (1, 256, 0, 32, 128, True),
             (1, 512, 0, 32, 128, True),
             (1, 1024, 0, 32, 128, True),
             (1, 2048, 0, 32, 128, True),
+            # bert-base
+            (1, 128, 0, 12, 64, True),
+            (4, 128, 0, 12, 64, True),
+            (1, 384, 0, 12, 64, True),
+            (4, 384, 0, 12, 64, True),
+            (1, 512, 0, 12, 64, True),
+            (4, 512, 0, 12, 64, True),
+            # bert-large
+            (1, 128, 0, 16, 64, True),
+            (4, 128, 0, 16, 64, True),
+            (1, 384, 0, 16, 64, True),
+            (4, 384, 0, 16, 64, True),
+            (1, 512, 0, 16, 64, True),
+            (4, 512, 0, 16, 64, True),
         ]
 
     # List of environment variables to enable/disable attention kernels
