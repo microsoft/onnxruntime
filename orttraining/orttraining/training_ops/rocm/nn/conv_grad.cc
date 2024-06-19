@@ -85,7 +85,7 @@ struct ConvParamsHash {
 };
 
 struct ConvParamsEqual {
-  // ConvParams must be a trivial because we read out its memory constant as char* when hashing.
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
   static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
   bool operator()(const ConvParams& a, const ConvParams& b) const {
     auto ptr1 = reinterpret_cast<const uint8_t*>(&a);
