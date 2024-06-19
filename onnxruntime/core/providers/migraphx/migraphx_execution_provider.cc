@@ -315,15 +315,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "ConvInteger") {
-    if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
-      return true;
-    }
-
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
     // only support int8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
@@ -371,20 +362,16 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
       return true;
     }
-  } else if (optype == "MatMulInteger") {
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
+    else if (optype == "MatMulInteger") {
+      // only support int8 type
+      const auto& input_type = node->InputDefs()[0]->TypeAsProto();
+      if (input_type == nullptr) {
+        return true;
+      }
 
-    // only support int8 type
-    const auto& input_type = node->InputDefs()[0]->TypeAsProto();
-    if (input_type == nullptr) {
-      return true;
-    }
-
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-      return true;
+      if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+        return true;
+      }
     }
   } else if (optype == "NonZero") {
     if (!canEvalNodeArgument(graph_viewer, node, {0}, input_nodes)) {
