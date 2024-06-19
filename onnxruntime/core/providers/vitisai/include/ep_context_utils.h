@@ -52,7 +52,7 @@ void RetrieveBackendCacheInfo(const Graph&, std::string&, std::string&);
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph&);
 
-bool GraphHasEPContextNode(const GraphViewer&);
+bool GraphHasEPContextNode(const Graph&);
 
 bool FusedGraphHasEPContextNode(
     const std::vector<IExecutionProvider::FusedNodeAndGraph>&);
