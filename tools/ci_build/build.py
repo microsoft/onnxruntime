@@ -871,13 +871,21 @@ def update_submodules(source_dir):
 
 
 def install_python_deps(numpy_version=""):
-    dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.10")
-    dep_packages.append("packaging")
-    dep_packages.append("cerberus")
-    dep_packages.append("psutil")
-    run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
+    requirements_file = 'requirements-pybind.txt'
+    if numpy_version:
+        # Remove current numpy version from requirements-pybind.txt and add the specified version
+        with open(requirements_file, 'r+') as file:
+            lines = file.readlines()
+            file.seek(0)
+            package_to_exclude = 'numpy'
+            filtered_lines = [line for line in lines if package_to_exclude not in line]
+            filtered_lines.append(f'numpy=={numpy_version}\n')
+            file.writelines(filtered_lines)
+            file.truncate()
+    run_subprocess(
+        [sys.executable, "-m", "pip", "install", "-r", requirements_file],
+        cwd=SCRIPT_DIR,
+    )
 
 
 def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
