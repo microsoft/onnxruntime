@@ -71,7 +71,7 @@ std::vector<T_Perf> GetValidAlgorithms(const T_Perf* perf_results, int n_algo) {
 }
 
 struct ConvParamsHash {
-  // ConvParams must be a trivial because we read out its memory constant as char* when hashing.
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
   static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
   size_t operator()(const ConvParams& conv_params) const {
     auto ptr = reinterpret_cast<const uint8_t*>(&conv_params);
