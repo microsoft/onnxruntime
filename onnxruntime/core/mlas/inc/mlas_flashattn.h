@@ -18,19 +18,6 @@ Abstract:
 
 #pragma once
 
-/*
-    Matrix: MxN
-    Bias: M
-    Output: MxN
-*/
-void MlasMatrixSubtractTensor(
-    const float* Matrix,
-    const float* Bias,
-    float* Output,
-    size_t M,
-    size_t N
-    );
-
 struct FlashAttentionThreadedArgs {
     int batch_size;
     int num_heads;
