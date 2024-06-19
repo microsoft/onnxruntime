@@ -2153,7 +2153,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        install_python_deps('requirements-transformers-test.txt')
+                        install_python_deps('requirements/requirements-transformers-test.txt')
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
@@ -2814,7 +2814,7 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps('requirements-pybind.txt',args.numpy_version)
+            install_python_deps('requirements/requirements-pybind.txt', args.numpy_version)
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
