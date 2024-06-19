@@ -870,8 +870,8 @@ def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 
-def install_python_deps(requirements_file='requirements.txt',numpy_version=""):
-    if numpy_version:
+def install_python_deps(requirements_file='requirements.txt',numpy_version=None):
+    if numpy_version is not None:
         # Remove current numpy version from requirements-pybind.txt and add the specified version
         with open(requirements_file, 'r+') as file:
             lines = file.readlines()
