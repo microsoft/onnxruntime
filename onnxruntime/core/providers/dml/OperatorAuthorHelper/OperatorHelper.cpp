@@ -1384,6 +1384,7 @@ namespace OperatorHelper
         m_recognizedOperatorType = DetermineRecognizedOperatorType();
     }
 
+    // Updates: m_components, m_labelIndices, m_uniqueLabelCount.
     void EinSumHelper::ParseEquationComponents()
     {
         // Parse an equation like 'ij,jk->ik' into components {ij, jk, ik} mapping letters to
@@ -1477,9 +1478,11 @@ namespace OperatorHelper
             currentComponent.labelIndexEnd = static_cast<uint32_t>(m_labelIndices.size());
             m_components.push_back(currentComponent);
         }
+
+        m_uniqueLabelCount = labelMap.size();
     }
 
-    EinSumHelper::RecognizedOperatorType EinSumHelper::DetermineRecognizedOperatorType()
+    EinSumHelper::RecognizedOperatorType EinSumHelper::DetermineRecognizedOperatorType() const
     {
         if (m_components.empty())
         {
@@ -1492,53 +1495,71 @@ namespace OperatorHelper
             return std::equal(a.begin(), a.end(), b.begin(), b.end());
         };
 
-        auto as_span = [](std::initializer_list<uint32_t> il) {
+        auto as_span = [](std::initializer_list<uint32_t> il)
+        {
             return gsl::make_span(il.begin(), il.size());
         };
 
-        std::array<uint32_t, 3> componentRanks;
-        if (m_components.size() > componentRanks.size())
+        // Identify any common patterns that map to existing DirectML operators.
+        // 1 input, 1 output ->
+        //   - identity
+        //   - sum reduction
+        //   - transpose
+        // 2 inputs, 1 output ->
+        //   - elementwise multiplication
+        //   - matrix multiplication
+
+        constexpr size_t maximumSupportedComponentCount = 3; // 2 inputs + 1 output
+        std::array<uint32_t, maximumSupportedComponentCount> componentRanks;
+        // Check for unrecognized patterns with more than 2 inputs.
+        // EinSum itself is generic and can handle any variable number of inputs,
+        // but DML's operators expect fixed counts.
+        if (m_components.size() > maximumSupportedComponentCount)
         {
-            // No recognized operator takes more than 2 inputs and 1 output.
-            // EinSum itself is generic and can handle any variable number of inputs,
-            // but DML's operators expect fixed counts.
             return RecognizedOperatorType::None;
         }
-        else if (m_components.size() == 2)
+        else if (m_components.size() == 2) // 1 input, 1 output
         {
-            auto inputLabels = m_components[0].GetLabels(m_labelIndices);
-            auto outputLabels = m_components[1].GetLabels(m_labelIndices);
-            if (inputLabels.size() == outputLabels.size())
+            auto inputLabels = m_components.front().GetLabels(m_labelIndices);
+            auto outputLabels = m_components.back().GetLabels(m_labelIndices);
+
+            // Check reduction if the output has fewer dimensions than total dimension labels.
+            if (outputLabels.size() <= m_uniqueLabelCount)
             {
-                // Check identity.
-                if (equals(inputLabels, outputLabels))
-                {
-                    // Handles: "->", "i->i", "ij->ij", "ijk->ijk", "ijkl->ijkl" ...
-                    return RecognizedOperatorType::Identity;
-                }
-                else // Transpose since a permutation exists.
-                {
-                    // Handles: "ij->ji", "ijk->kji", "ijkl->lkji", "ijkl->ijkl" ...
-                    return RecognizedOperatorType::Transpose;
-                }
-            }
-            else if (outputLabels.empty()) // Scalar output, with all inputs reduced.
-            {
-                // Handles: "i->", "ij->", "ijk->", "ijkl->" ...
+                // Handles: "ij->i", "i->", "ij->", "ijkl->jl", "ijkl->", "iji->" ...
                 return RecognizedOperatorType::ReduceSum;
             }
+            // Check identity when input and output are identical.
+            else if (equals(inputLabels, outputLabels))
+            {
+                // Handles: "->", "i->i", "ij->ij", "ijk->ijk", "ijkl->ijkl" ...
+                return RecognizedOperatorType::Identity;
+            }
+            // Check for transpose and/or diagonal view slice otherwise.
+            else
+            {
+                // Handles: "ij->ji", "ijk->kji", "ijkl->lkji", "ijkl->ijkl" ...
+                // Handles: "ii->i", "iij->ji"
+                return RecognizedOperatorType::Transpose;
+            }
         }
-        else if (m_components.size() == 3)
+        else if (m_components.size() == 3) // 2 inputs, 1 output
         {
-            // If all components have the same size and label order, then apply elementwise multiplication.
-            auto inputALabels = m_components[0].GetLabels(m_labelIndices);
-            auto inputBLabels = m_components[1].GetLabels(m_labelIndices);
-            auto outputLabels = m_components[2].GetLabels(m_labelIndices);
-            if (equals(inputALabels, outputLabels) && equals(inputBLabels, outputLabels))
+            auto outputLabels = m_components.back().GetLabels(m_labelIndices);
+
+            // Check elementwise multiplication when no reduction occurs.
+            if (outputLabels.size() == m_uniqueLabelCount)
             {
                 // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->ijk", "ijkl,ijkl->ijkl" ...
                 return RecognizedOperatorType::Multiply;
             }
+            // Check matrix multiplication when exactly 1 dimension is being reduced,
+            // supporting up to 4D.
+            else if (outputLabels.size() + 1 == m_uniqueLabelCount && outputLabels.size() <= 4)
+            {
+                return RecognizedOperatorType::MatMulGeneral;
+            }
+            // Otherwise unsupported multiply and reduce combo.
         }
 
         // Otherwise check for special cases of dedicated operators...
@@ -1554,7 +1575,7 @@ namespace OperatorHelper
             {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
             {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
             {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
-            {RecognizedOperatorType::OuterProduct,         {1,1,2},{0, 1, 0,1}}, // i,j->ij
+            {RecognizedOperatorType::MatMulTransposeB,     {1,1,2},{0, 1, 0,1}}, // i,j->ij outer product
             {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
             {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
             {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
@@ -1590,21 +1611,44 @@ namespace OperatorHelper
         return RecognizedOperatorType::None;
     }
 
-    std::vector<EdgeShapes> EinSumHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    // Updates: m_productDimensions.
+    void EinSumHelper::ExtractLabelSizesFromTensors(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    )
     {
+        // Get the dimension for each term label. e.g.
+        //
+        //  equation         = "ijk,jm->im"
+        //  input[0].shape   = [3,2,4]
+        //  input[1].shape   = [2,5]
+        //  output[0].shape  = [3,5]
+        //
+        // Yields:
+        //
+        //  i = 3  // m_productDimensions[0]
+        //  j = 2  // m_productDimensions[1]
+        //  k = 4  // m_productDimensions[2]
+        //  m = 5  // m_productDimensions[3]
+        //
+        // The character labels are already resolved to numeric indices in occurrence order, and so the product
+        // dimensions are simply an array of sizes:
+        //
+        //  label sizes = [3,2,4,5]
+        //
         assert(!m_components.empty()); // Should have already parsed components.
 
-        uint32_t inputCount  = shapeInfo.GetInputCount();
-        uint32_t outputCount = shapeInfo.GetOutputCount();
+        uint32_t inputCount  = kernelInformation.GetInputCount();
+        uint32_t outputCount = kernelInformation.GetOutputCount();
         ML_CHECK_VALID_ARGUMENT(inputCount + 1 == m_components.size(), "Mismatch between input tensor count and string equation component count.");
         ML_CHECK_VALID_ARGUMENT(outputCount == 1, "EinSum expects exactly 1 output tensor.");
 
-        std::vector<uint32_t> labelSizes(m_labelIndices.size(), UINT_MAX);
+        m_productDimensions.resize(m_uniqueLabelCount, UINT_MAX);
 
         // Read every input tensor, comparing labels to ensure consistent sizes from the equation parsed earlier.
         for (uint32_t i = 0; i < inputCount; ++i)
         {
-            auto inputShape = shapeInfo.GetInputTensorShape(i);
+            auto inputShape = shapeInformation.GetInputTensorShape(i);
             auto& component = m_components[i];
             auto labelIndices = component.GetLabels(m_labelIndices);
             uint32_t dimensionCount = component.GetDimensionCount();
@@ -1618,18 +1662,23 @@ namespace OperatorHelper
                 // e.g. Given "ij,ji", both i's and both j's must match dimension sizes.
                 uint32_t dimensionSize = inputShape[j];
                 uint32_t labelIndex = labelIndices[j];
-                assert(labelIndex < labelSizes.size());
+                assert(labelIndex < m_productDimensions.size());
 
-                if (labelSizes[labelIndex] == UINT_MAX)
+                if (m_productDimensions[labelIndex] == UINT_MAX)
                 {
-                    labelSizes[labelIndex] = dimensionSize;
+                    m_productDimensions[labelIndex] = dimensionSize;
                 }
                 else
                 {
-                    ML_CHECK_VALID_ARGUMENT(labelSizes[labelIndex] == dimensionSize, "All labels must have the same dimension sizes.");
+                    ML_CHECK_VALID_ARGUMENT(m_productDimensions[labelIndex] == dimensionSize, "All labels must have the same dimension sizes.");
                 }
             }
         }
+    }
+
+    std::vector<EdgeShapes> EinSumHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        assert(!m_components.empty()); // Should have already parsed components.
 
         // Generate output dimensions from corresponding input tensor labels.
         // e.g. Given ij,jk->ij with [2,3] and [3,5], the output is [2,5].
@@ -1637,7 +1686,7 @@ namespace OperatorHelper
         auto outputLabelIndices = m_components.back().GetLabels(m_labelIndices);
         for (auto labelIndex : outputLabelIndices)
         {
-            outputDimensions.push_back(labelSizes[labelIndex]);
+            outputDimensions.push_back(m_productDimensions[labelIndex]);
         }
 
         return { EdgeShapes(outputDimensions) };
@@ -1645,13 +1694,14 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        return m_recognizedOperatorType == RecognizedOperatorType::OuterProduct ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
+        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(12), "Verify this for any potentially new matrix multiplication operators.");
+        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulGeneral ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
+               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
