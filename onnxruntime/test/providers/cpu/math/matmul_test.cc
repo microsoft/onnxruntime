@@ -294,22 +294,22 @@ TEST(MathOpTest, MatMul_bfloat16) {
 
 #if defined(USE_CUDA)
 TEST(MathOpTest, MatMul_float8E4M3FN) {
-  int min_cuda_architecture = 530; // TODO what version should I use?
+  int min_cuda_architecture = 900;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP8";
     return;
   }
-  OpTester test("MatMul", 14); // TODO what version should I use?
+  OpTester test("MatMul", 13);
 
-  test.AddInput<Float8E4M3FN>("A", {2, 4}, MakeFloat8E4M3FN({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<Float8E4M3FN>("B", {4, 3}, MakeFloat8E4M3FN({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
-  test.AddOutput<Float8E4M3FN>("Y", {2, 3}, MakeFloat8E4M3FN({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+  test.AddInput<MLFloat16>("A", {2, 4}, FloatsToMLFloat16s({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<MLFloat16>("Y", {2, 3}, FloatsToMLFloat16s({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 
   SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasGemmCudaFloat8E4M3FN, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN, "1"));
 
   test.ConfigEps(std::move(execution_providers))
       .Config(std::move(so))

@@ -34,12 +34,6 @@ inline std::vector<BFloat16> MakeBFloat16(const std::initializer_list<float>& in
   return output;
 }
 
-inline std::vector<Float8E4M3FN> MakeFloat8E4M3FN(const std::initializer_list<float>& input) {
-  std::vector<Float8E4M3FN> output;
-  std::transform(input.begin(), input.end(), std::back_inserter(output), [](float f) { return Float8E4M3FN(f); });
-  return output;
-}
-
 inline std::vector<BFloat16> FloatsToBFloat16s(const std::vector<float>& input) {
   std::vector<BFloat16> output;
   std::transform(input.begin(), input.end(), std::back_inserter(output), [](float f) { return BFloat16(f); });
