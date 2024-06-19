@@ -1443,7 +1443,6 @@ SQ4BitGemmM1Kernel_CompInt8(
     const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountN,
-    size_t /*CountK*/,
     size_t BlockCountK,
     const float* Bias
 )
@@ -1476,8 +1475,8 @@ SQ4BitGemmM1Kernel_CompInt8(
 }
 
 template <bool HasZeroPoint>
-void
-SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan32(
+MLAS_FORCEINLINE void
+SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan16(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* QuantBData,
@@ -1492,7 +1491,7 @@ SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan32(
 {
     constexpr size_t BlkBitWidth = 4;
 
-    assert(BlkLen > 32);
+    assert(BlkLen >= 32);
     assert(BlkLen % 32 == 0);
 
     float* CRowPtr = C;
@@ -1539,9 +1538,22 @@ SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan32(
             const float scale11 = Q8BlkScale(QuantABlkRow1) * QuantBScaleCol1;
 
             // load B zero point
-            // TODO handle asymmetric case
-            const int8_t bzp_col0 = 8;
-            const int8_t bzp_col1 = 8;
+            int8_t bzp_col0;
+            int8_t bzp_col1;
+            if constexpr (HasZeroPoint) {
+                const auto QuantBZeroPointByteCol0 = QuantBZeroPointPtr[0];
+                const auto QuantBZeroPointByteCol1 = QuantBZeroPointPtr[StrideQuantBZeroPoint];
+                if ((k_blk_idx & 1) == 0) {
+                    bzp_col0 = std::to_integer<int8_t>(QuantBZeroPointByteCol0 & std::byte{0x0F});
+                    bzp_col1 = std::to_integer<int8_t>(QuantBZeroPointByteCol1 & std::byte{0x0F});
+                } else {
+                    bzp_col0 = std::to_integer<int8_t>(QuantBZeroPointByteCol0 >> 4);
+                    bzp_col1 = std::to_integer<int8_t>(QuantBZeroPointByteCol1 >> 4);
+                }
+            } else {
+                bzp_col0 = 8;
+                bzp_col1 = 8;
+            }
 
             const int8_t* QuantADataPtrRow0 = Q8BlkData(QuantABlkRow0);
             const int8_t* QuantADataPtrRow1 = Q8BlkData(QuantABlkRow1);
@@ -1640,7 +1652,7 @@ SQ4BitGemmKernel_CompInt8(
     float* C,
     size_t CountM,
     size_t CountN,
-    size_t CountK,
+    size_t /*CountK*/,
     size_t BlockCountK,
     size_t ldc,
     const float* Bias
@@ -1650,21 +1662,35 @@ SQ4BitGemmKernel_CompInt8(
 
     if (CountM > 1 &&
         CountN % 2 == 0 &&
-        QuantBZeroPoint == nullptr &&
-        BlkLen > 32) {
+        BlkLen > 16) {
 
-        SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan32<false>(
-            BlkLen,
-            QuantA,
-            QuantBData,
-            QuantBScale,
-            QuantBZeroPoint,
-            C,
-            CountN,
-            BlockCountK,
-            ldc,
-            Bias
-        );
+        if (QuantBZeroPoint != nullptr) {
+            SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan16<true>(
+                BlkLen,
+                QuantA,
+                QuantBData,
+                QuantBScale,
+                QuantBZeroPoint,
+                C,
+                CountN,
+                BlockCountK,
+                ldc,
+                Bias
+            );
+        } else {
+            SQ4BitGemmM2Kernel_CompInt8_Impl_BlkLenGreaterThan16<false>(
+                BlkLen,
+                QuantA,
+                QuantBData,
+                QuantBScale,
+                QuantBZeroPoint,
+                C,
+                CountN,
+                BlockCountK,
+                ldc,
+                Bias
+            );
+        }
 
         return 2;
     }
@@ -1677,7 +1703,6 @@ SQ4BitGemmKernel_CompInt8(
         QuantBZeroPoint,
         C,
         CountN,
-        CountK,
         BlockCountK,
         Bias
     );
