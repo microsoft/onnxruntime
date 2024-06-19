@@ -270,3 +270,9 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
+
+// Gemm fp8 mode provides fp32 gemm acceleration with float8E4M3FN based matmul.
+// Option values:
+// - "0": Gemm fp8 mode is not enabled. [DEFAULT]
+// - "1": Gemm fp8 mode is enabled.
+static const char* const kOrtSessionOptionsMlasGemmCudaFloat8E4M3FN = "mlas.enable_gemm_cuda_float8E4M3FN";

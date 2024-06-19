@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
@@ -287,6 +288,32 @@ TEST(MathOpTest, MatMul_bfloat16) {
   execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif
+
+#if defined(USE_CUDA)
+TEST(MathOpTest, MatMul_float8E4M3FN) {
+  int min_cuda_architecture = 530; // TODO what version should I use?
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP8";
+    return;
+  }
+  OpTester test("MatMul", 14); // TODO what version should I use?
+
+  test.AddInput<Float8E4M3FN>("A", {2, 4}, MakeFloat8E4M3FN({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<Float8E4M3FN>("B", {4, 3}, MakeFloat8E4M3FN({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<Float8E4M3FN>("Y", {2, 3}, MakeFloat8E4M3FN({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasGemmCudaFloat8E4M3FN, "1"));
+
+  test.ConfigEps(std::move(execution_providers))
+      .Config(std::move(so))
+      .Config(run_with_tunable_op)
       .RunWithConfig();
 }
 #endif
