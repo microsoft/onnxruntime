@@ -90,6 +90,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
         }
       } else if (trt_layer->getType() == nvinfer1::LayerType::kCONSTANT) {
         nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(trt_layer);
+        const std::string const_layer_name = const_layer->getName();
         auto trt_weights = const_layer->getWeights();
         double max_weight = std::numeric_limits<double>::min();
         for (int64_t k = 0, end = trt_weights.count; k < end; ++k) {
