@@ -68,7 +68,7 @@ RCTBlobManager *blobManager = nil;
  *
  * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models
  * are loaded.
- * @param options onnrunxtime session options
+ * @param options onnxruntime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
@@ -82,9 +82,9 @@ RCT_EXPORT_METHOD(loadModel
     NSDictionary *resultMap = [self loadModel:modelPath options:options];
     resolve(resultMap);
   } @catch (NSException *exception) {
-    reject(@"onnrunxtime", [NSString stringWithFormat:@"failed to load model: %@", exception.reason], nil);
+    reject(@"onnxruntime", [NSString stringWithFormat:@"failed to load model: %@", exception.reason], nil);
   } @catch (...) {
-    reject(@"onnrunxtime", @"failed to load model", nil);
+    reject(@"onnxruntime", @"failed to load model", nil);
   }
 }
 
@@ -92,7 +92,7 @@ RCT_EXPORT_METHOD(loadModel
  * React native binding API to load a model using blob object that data stored in RCTBlobManager.
  *
  * @param modelDataBlob a model data blob object
- * @param options onnrunxtime session options
+ * @param options onnxruntime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
  * @note when run() is called, the same modelPath must be passed into the first parameter.
@@ -112,9 +112,9 @@ RCT_EXPORT_METHOD(loadModelFromBlob
     [blobManager remove:blobId];
     resolve(resultMap);
   } @catch (NSException *exception) {
-    reject(@"onnrunxtime", [NSString stringWithFormat:@"failed to load model from buffer: %@", exception.reason], nil);
+    reject(@"onnxruntime", [NSString stringWithFormat:@"failed to load model from buffer: %@", exception.reason], nil);
   } @catch (...) {
-    reject(@"onnrunxtime", @"failed to load model from buffer", nil);
+    reject(@"onnxruntime", @"failed to load model from buffer", nil);
   }
 }
 
@@ -133,7 +133,7 @@ RCT_EXPORT_METHOD(dispose
     [self dispose:key];
     resolve(nil);
   } @catch (...) {
-    reject(@"onnrunxtime", @"failed to dispose session", nil);
+    reject(@"onnxruntime", @"failed to dispose session", nil);
   }
 }
 
@@ -143,7 +143,7 @@ RCT_EXPORT_METHOD(dispose
  * @param url a model path location given at loadModel()
  * @param input an input tensor
  * @param output an output names to be returned
- * @param options onnrunxtime run options
+ * @param options onnxruntime run options
  * @param resolve callback for returning an inference result back to react native js
  * @param reject callback for returning an error back to react native js
  */
@@ -278,7 +278,7 @@ RCT_EXPORT_METHOD(run
  * @param output an output names to be returned
  * @param options onnxruntime run options
  */
-- (NSDictionary *)(NSString *)url
+- (NSDictionary *)run:(NSString *)url
                 input:(NSDictionary *)input
                output:(NSArray *)output
               options:(NSDictionary *)options {
