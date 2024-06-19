@@ -193,7 +193,7 @@ stages:
             msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-        - task: RoslynAnalyzers@2
+        - task: RoslynAnalyzers@3
           displayName: 'Run Roslyn Analyzers'
           inputs:
             userProvideBuildInfo: msBuildInfo

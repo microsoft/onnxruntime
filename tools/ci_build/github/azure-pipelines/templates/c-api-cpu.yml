@@ -478,7 +478,7 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: RoslynAnalyzers@2
+    - task: RoslynAnalyzers@3
       displayName: 'Run Roslyn Analyzers'
       inputs:
         userProvideBuildInfo: msBuildInfo
