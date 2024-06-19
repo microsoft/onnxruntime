@@ -68,10 +68,10 @@ RCTBlobManager *blobManager = nil;
  *
  * @param modelPath a model file location. it's used as a key when multiple sessions are created, i.e. multiple models
  * are loaded.
- * @param options onnxruntime session options
+ * @param options onnxtime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
- * @note when run() is called, the same modelPath must be passed into the first parameter.
+ * @note when () is called, the same modelPath must be passed into the first parameter.
  */
 RCT_EXPORT_METHOD(loadModel
                   : (NSString *)modelPath options
@@ -81,8 +81,10 @@ RCT_EXPORT_METHOD(loadModel
   @try {
     NSDictionary *resultMap = [self loadModel:modelPath options:options];
     resolve(resultMap);
+  } @catch (NSException *exception) {
+    reject(@"onnxtime", [NSString stringWithFormat:@"failed to load model: %@", exception.reason], nil);
   } @catch (...) {
-    reject(@"onnxruntime", @"failed to load model", nil);
+    reject(@"onnxtime", @"failed to load model", nil);
   }
 }
 
@@ -90,10 +92,10 @@ RCT_EXPORT_METHOD(loadModel
  * React native binding API to load a model using blob object that data stored in RCTBlobManager.
  *
  * @param modelDataBlob a model data blob object
- * @param options onnxruntime session options
+ * @param options onnxtime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js
- * @note when run() is called, the same modelPath must be passed into the first parameter.
+ * @note when () is called, the same modelPath must be passed into the first parameter.
  */
 RCT_EXPORT_METHOD(loadModelFromBlob
                   : (NSDictionary *)modelDataBlob options
@@ -109,8 +111,10 @@ RCT_EXPORT_METHOD(loadModelFromBlob
     NSDictionary *resultMap = [self loadModelFromBuffer:modelData options:options];
     [blobManager remove:blobId];
     resolve(resultMap);
+  } @catch (NSException *exception) {
+    reject(@"onnxtime", [NSString stringWithFormat:@"failed to load model from buffer: %@", exception.reason], nil);
   } @catch (...) {
-    reject(@"onnxruntime", @"failed to load model from buffer", nil);
+    reject(@"onnxtime", @"failed to load model from buffer", nil);
   }
 }
 
@@ -129,17 +133,17 @@ RCT_EXPORT_METHOD(dispose
     [self dispose:key];
     resolve(nil);
   } @catch (...) {
-    reject(@"onnxruntime", @"failed to dispose session", nil);
+    reject(@"onnxtime", @"failed to dispose session", nil);
   }
 }
 
 /**
- * React native binding API to run a model using given uri.
+ * React native binding API to  a model using given uri.
  *
  * @param url a model path location given at loadModel()
  * @param input an input tensor
  * @param output an output names to be returned
- * @param options onnxruntime run options
+ * @param options onnxtime  options
  * @param resolve callback for returning an inference result back to react native js
  * @param reject callback for returning an error back to react native js
  */
@@ -154,9 +158,9 @@ RCT_EXPORT_METHOD(run
     NSDictionary *resultMap = [self run:url input:input output:output options:options];
     resolve(resultMap);
   } @catch (NSException *exception) {
-    reject(@"onnxruntime", exception.reason, nil);
+    reject(@"onnxruntime", [NSString stringWithFormat:@"failed to run model: %@", exception.reason], nil);
   } @catch (...) {
-    reject(@"onnxruntime", @"failed to run model, unknown error", nil);
+    reject(@"onnxruntime", @"failed to run model", nil);
   }
 }
 
@@ -274,7 +278,7 @@ RCT_EXPORT_METHOD(run
  * @param output an output names to be returned
  * @param options onnxruntime run options
  */
-- (NSDictionary *)run:(NSString *)url
+- (NSDictionary *)(NSString *)url
                 input:(NSDictionary *)input
                output:(NSArray *)output
               options:(NSDictionary *)options {
@@ -313,13 +317,18 @@ RCT_EXPORT_METHOD(run
   }
   Ort::RunOptions runOptions = [self parseRunOptions:options];
 
-  auto result =
-      sessionInfo->session->Run(runOptions, sessionInfo->inputNames.data(), feeds.data(),
-                                sessionInfo->inputNames.size(), requestedOutputs.data(), requestedOutputs.size());
+  try {
+    auto result =
+        sessionInfo->session->Run(runOptions, sessionInfo->inputNames.data(), feeds.data(),
+                                  sessionInfo->inputNames.size(), requestedOutputs.data(), requestedOutputs.size());
 
-  NSDictionary *resultMap = [TensorHelper createOutputTensor:blobManager outputNames:requestedOutputs values:result];
-
-  return resultMap;
+    NSDictionary *resultMap = [TensorHelper createOutputTensor:blobManager outputNames:requestedOutputs values:result];
+    return resultMap;
+  } catch (std::exception &e) {
+    NSString *reason = [NSString stringWithUTF8String:e.what()];
+    NSException *exception = [NSException exceptionWithName:@"onnxruntime" reason:reason userInfo:nil];
+    @throw exception;
+  }
 }
 
 static NSDictionary *graphOptimizationLevelTable = @{
