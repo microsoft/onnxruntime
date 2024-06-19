@@ -174,10 +174,11 @@ stages:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
-    timeoutInMinutes: 120
+    timeoutInMinutes: 240
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
       RocmVersion: '5.6'
+      RocmVersionPatchSuffix: ''
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
       submodules: recursive
@@ -194,7 +195,7 @@ stages:
           --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
           --build-arg BUILD_UID=$(id -u)
           --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
-          --build-arg ROCM_VERSION=$(RocmVersion)
+          --build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)
           --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
           --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
           --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
@@ -244,8 +245,8 @@ stages:
   - job: NuGet_Packaging_ROCm
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
-    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
+    # we need to use a 2022 pool to create the nuget package with MAUI targets.
+    # VS2019 has no support for net6/MAUI and we need to use msbuild (from the VS install) to do the packing
     pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -310,45 +311,22 @@ stages:
       inputs:
         versionSpec: 6.2.1
 
-    - task: PowerShell@2
-      displayName: Build .NET 6 targets using dotnet
-      inputs:
-        targetType: 'inline'
-        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net6 targets
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
-        # and makes it harder to do the packing
-        #
-        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
-        script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj `
-            -p:SelectedTargets=Net6 `
-            /p:Net6Targets=net6.0 `
-            -p:Configuration=RelWithDebInfo `
-            -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" `
-            -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm" `
-            -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} `
-            -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net6 targets'
+      displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        configuration: RelWithDebInfo
         platform: 'Any CPU'
+        configuration: RelWithDebInfo
         msbuildArguments: >
-          -p:SelectedTargets=PreNet6
           -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
@@ -365,21 +343,19 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: MSBuild@1
-      displayName: Update projects.assets.json with combined list of all target frameworks
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
       displayName: 'Build Nuget Packages'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)'
+        msbuildArguments: >
+          -t:CreatePackage
+          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+          -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm
+          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:CurrentTime=$(BuildTime)
+          -p:CurrentDate=$(BuildDate)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -681,13 +657,13 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-        
+
           $x64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-x64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
           $nuget_package_name = $x64_nupkgs[0].Name
           $x64_nuget_package = $x64_nupkgs[0].FullName
 
           $nupkg_unzipped_directory = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget_unzip_merged', [System.IO.Path]::GetFileNameWithoutExtension($nuget_package_name))
-                    
+
           $x64_unzip_cmd = "7z.exe x $x64_nuget_package -y -o$nupkg_unzipped_directory"
           Invoke-Expression -Command $x64_unzip_cmd
 
@@ -703,9 +679,9 @@ stages:
           }
 
           $merged_zip = [System.IO.Path]::Combine($merged_nuget_path, 'qnn_nuget.zip')
-          $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*" 
+          $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*"
           Invoke-Expression -Command $zip_cmd
-          
+
           $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $nuget_package_name)
           move $merged_zip $merged_nuget
         workingDirectory: $(Build.BinariesDirectory)

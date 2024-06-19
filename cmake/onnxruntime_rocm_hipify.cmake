@@ -5,6 +5,10 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # GLOB pattern of file to be excluded
 set(contrib_ops_excluded_files
+  "bert/cutlass_fmha/*"
+  "bert/fastertransformer_decoder_attention/*"
+  "bert/flash_attention/*"
+  "bert/tensorrt_fused_multihead_attention/*"
   "bert/attention.cc"
   "bert/attention.h"
   "bert/attention_impl.cu"
@@ -17,7 +21,6 @@ set(contrib_ops_excluded_files
   "bert/decoder_masked_multihead_attention.cc"
   "bert/decoder_masked_self_attention.h"
   "bert/decoder_masked_self_attention.cc"
-  "bert/fastertransformer_decoder_attention/*"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
   "bert/relative_attn_bias.cc"
@@ -28,8 +31,6 @@ set(contrib_ops_excluded_files
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"
   "bert/skip_layer_norm_impl.h"
-  "bert/cutlass_fmha/*"
-  "bert/tensorrt_fused_multihead_attention/*"
   "bert/transformer_common.h"
   "bert/transformer_common.cc"
   "bert/packed_attention.h"
@@ -92,7 +93,9 @@ set(contrib_ops_excluded_files
   "bert/group_query_attention.cc"
   "bert/group_query_attention_impl.h"
   "bert/group_query_attention_impl.cu"
+  "collective/custom_*"
   "collective/distributed_*"
+  "collective/ipc_*"
   "collective/shard*"
 )
 

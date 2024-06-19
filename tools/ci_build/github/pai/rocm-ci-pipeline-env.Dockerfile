@@ -74,7 +74,10 @@ SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
 # Install Pytorch
-RUN pip install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
+RUN export MAJOR=$(cut -d '.' -f 1 <<< "$ROCM_VERSION") && \
+    export MINOR=$(cut -d '.' -f 2 <<< "$ROCM_VERSION") && \
+    export PATCH=$(cut -d '.' -f 3 <<< "$ROCM_VERSION") && \
+    pip install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${MAJOR}.${MINOR}/ && \
     pip install torch-ort --no-dependencies
 
 ##### Install Cupy to decrease CPU utilization
