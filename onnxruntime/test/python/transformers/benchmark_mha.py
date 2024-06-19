@@ -10,9 +10,10 @@ sh benchmark_mha.sh
 
 import math
 import os
+import platform
 import statistics
 import time
-from typing import List
+from typing import List, Optional
 
 import torch
 from onnx import TensorProto, helper
@@ -54,8 +55,10 @@ class MultiHeadAttentionConfig:
         kv_sequence_length=None,
         max_cache_sequence_length=None,
         softmax_scale: float = 0.0,
-        device="cuda",
-        dtype=torch.float16,
+        provider="CPUExecutionProvider",
+        device: Optional[torch.device] = None,
+        enable_cuda_graph: bool = False,
+        dtype=torch.float,
         use_kv_cache: bool = False,
         share_past_present_buffer: bool = False,
         input_format: int = InputFormats.Q_K_V_BSNH_BSNH_BSNH,
@@ -74,6 +77,8 @@ class MultiHeadAttentionConfig:
         self.use_kv_cache = use_kv_cache
         if not use_kv_cache:
             assert past_sequence_length == 0
+        else:
+            assert self.kv_sequence_length == self.sequence_length
 
         if input_format == InputFormats.Q_K_V_BSNH_BNSH_BNSH:
             # cross attention does not have past state
@@ -86,12 +91,27 @@ class MultiHeadAttentionConfig:
             self.max_cache_sequence_length if share_past_present_buffer else self.total_sequence_length
         )
 
+        self.provider = provider
         self.device = device
+        self.enable_cuda_graph = enable_cuda_graph
+        self.dtype = dtype
+
         self.share_past_present_buffer = share_past_present_buffer
         self.input_format = input_format
         self.is_packed_qkv = input_format == InputFormats.QKV_BSN3H
         self.is_packed_kv = input_format == InputFormats.Q_KV_BSNH_BSN2H
-        self.dtype = dtype
+
+    def __repr__(self):
+        return (
+            f"MultiHeadAttentionConfig(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
+            f"num_heads={self.num_heads}, head_size={self.head_size}, "
+            f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
+            f"max_cache_sequence_length={self.max_cache_sequence_length},"
+            f"causal={self.causal}), softmax_scale={self.softmax_scale}, use_kv_cache={self.use_kv_cache}, "
+            f"share_past_present_buffer={self.share_past_present_buffer}, "
+            f"provider={self.provider}, device={self.device}, enable_cuda_graph={self.enable_cuda_graph}, "
+            f"dtype={self.dtype}, input_format={InputFormats.input_format_str(self.input_format)}"
+        )
 
     def shape_dict(self, input_format=None):
         input_format = input_format or self.input_format
@@ -205,21 +225,28 @@ class MultiHeadAttentionConfig:
             inputs, outputs = ["query", "key", "value"], ["output"]
 
         if self.use_kv_cache:
-            return [*input, "past_key", "past_value"], [*outputs, "present_key", "present_value"]
+            return [*inputs, "past_key", "past_value"], [*outputs, "present_key", "present_value"]
         else:
             return inputs, outputs
 
 
+def fill_optional_mha_inputs(input_names):
+    inputs = ["query", "key", "value", "bias", "key_padding_mask", "relative_position_bias", "past_key", "past_value"]
+    return input_names[:-2] + [""] * (len(inputs) - len(input_names)) + input_names[-2:]
+
+
 def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig):
     input_names, output_names = config.get_input_output_names()
+
     float_type = TensorProto.FLOAT16 if config.dtype == torch.float16 else TensorProto.FLOAT
     nodes = [
         helper.make_node(
             "MultiHeadAttention",
-            input_names,
+            fill_optional_mha_inputs(input_names) if config.use_kv_cache else input_names,
             output_names,
             "MultiHeadAttention_0",
             num_heads=config.num_heads,
+            unidirectional=int(config.causal),
             scale=config.softmax_scale,
             domain="com.microsoft",
         ),
@@ -230,6 +257,7 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig):
         helper.make_tensor_value_info(input_name, float_type, list(shape_dict[input_name]))
         for input_name in input_names
     ]
+
     outputs = [
         helper.make_tensor_value_info(output_name, float_type, list(shape_dict[output_name]))
         for output_name in output_names
@@ -243,27 +271,24 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig):
     )
 
     model = helper.make_model(graph)
+
     return model.SerializeToString()
 
 
 def create_session(
     config: MultiHeadAttentionConfig,
-    provider: str = "CUDAExecutionProvider",
-    enable_cuda_graph: bool = False,
-    device_id: int = 0,
 ) -> CudaSession:
     onnx_model_str = create_multi_head_attention_onnx_model(config)
 
-    if provider == "CUDAExecutionProvider":
-        provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
-        providers = [(provider, provider_options), "CPUExecutionProvider"]
-        device = torch.device("cuda", device_id)
+    if config.provider == "CUDAExecutionProvider":
+        device_id = torch.cuda.current_device() if isinstance(config.device, str) else config.device.index
+        provider_options = CudaSession.get_cuda_provider_options(device_id, config.enable_cuda_graph)
+        providers = [(config.provider, provider_options), "CPUExecutionProvider"]
     else:
         providers = ["CPUExecutionProvider"]
-        device = torch.device("cpu")
 
     ort_session = InferenceSession(onnx_model_str, providers=providers)
-    cuda_session = CudaSession(ort_session, device, enable_cuda_graph)
+    cuda_session = CudaSession(ort_session, config.device, config.enable_cuda_graph)
     shape_dict = config.shape_dict()
     cuda_session.allocate_buffers(shape_dict)
     return cuda_session
@@ -275,11 +300,8 @@ class OrtMultiHeadAttention:
     def __init__(
         self,
         config: MultiHeadAttentionConfig,
-        provider: str = "CUDAExecutionProvider",
-        enable_cuda_graph: bool = False,
-        device_id: int = 0,
     ):
-        self.ort_session = create_session(config, provider, enable_cuda_graph=enable_cuda_graph, device_id=device_id)
+        self.ort_session = create_session(config)
         self.feed_dict = config.random_inputs()
 
     def infer(self):
@@ -424,15 +446,15 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
                     past_sequence_length=past_sequence_length,
                     max_cache_sequence_length=None,
                     kv_sequence_length=None,
+                    provider=provider,
+                    enable_cuda_graph=enable_cuda_graph,
                     device=device,
                     dtype=torch.float16 if use_gpu else torch.float,
                     share_past_present_buffer=False,
                     input_format=input_format,
                 )
 
-                session = create_session(
-                    config, provider=provider, enable_cuda_graph=enable_cuda_graph, device_id=device_id
-                )
+                session = create_session(config)
 
                 if use_gpu:
                     kernel = get_gpu_kernel_name(config)
@@ -530,12 +552,14 @@ def plot_prompt_performance(
             past_sequence_length=0,
             kv_sequence_length=sequence_length if input_format == InputFormats.get_name_list()[-1] else None,
             max_cache_sequence_length=max_seq_len,
+            provider="CUDAExecutionProvider",
+            enable_cuda_graph=False,
             device=device,
             use_kv_cache=False,
             input_format=InputFormats.convert(input_format),
         )
 
-        obj = OrtMultiHeadAttention(config, enable_cuda_graph=False)
+        obj = OrtMultiHeadAttention(config)
         ms = triton.testing.do_bench(obj.infer, warmup=warmup, rep=repeat)
         return ms
 
@@ -572,9 +596,11 @@ if __name__ == "__main__":
         # Test CUDA provider
         major, minor = torch.cuda.get_device_capability()
         sm = major * 10 + minor
-        s = torch.cuda.Stream()
-        with torch.cuda.stream(s), torch.no_grad():
-            run_performance_test(sm)
+
+        if platform.system() == "Linux":
+            s = torch.cuda.Stream()
+            with torch.cuda.stream(s), torch.no_grad():
+                run_performance_test(sm)
 
         run_tflops_test(use_gpu=True, enable_cuda_graph=True)
 

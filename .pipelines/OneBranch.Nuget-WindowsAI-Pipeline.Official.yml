@@ -303,7 +303,7 @@ extends:
             AuthCertName: '53d54d02-SSL-AutoRotate'
             AuthSignCertName: '53d54d02-978d-4305-8572-583cf6711c4f'
 
-            FolderPath: ${{ parameters.FolderPath }}
+            FolderPath: $(Build.ArtifactStagingDirectory)
             Pattern: '*.nupkg'
             SessionTimeout: 90
             ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
