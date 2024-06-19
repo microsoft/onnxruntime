@@ -1226,7 +1226,6 @@ def generate_build_tree(
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
-        print(" @@@@@@@@@@ Use openvino set in build ")
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
             "-Donnxruntime_NPU_NO_FALLBACK=" + ("ON" if args.use_openvino == "NPU_NO_CPU_FALLBACK" else "OFF"),

@@ -109,7 +109,8 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
+  SessionOptions session_options;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options)->CreateProvider();
 #else
   return nullptr;
 #endif
