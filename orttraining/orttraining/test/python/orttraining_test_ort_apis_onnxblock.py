@@ -1121,6 +1121,8 @@ def test_generate_artifacts_path():
             artifact_directory=temp_dir,
         )
 
+        # generate_artifacts should have thrown if it didn't complete successfully.
+        # Below is a sanity check to validate that all the expected files were created.
         assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
         assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
         assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
@@ -1149,6 +1151,8 @@ def test_generate_artifacts_external_data_one_file():
             artifact_directory=temp_dir,
         )
 
+        # generate_artifacts should have thrown if it didn't complete successfully.
+        # Below is a sanity check to validate that all the expected files were created.
         assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
         assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
         assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
