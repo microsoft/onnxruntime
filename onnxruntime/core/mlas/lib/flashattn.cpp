@@ -23,7 +23,7 @@ void FlashAttentionThreaded(
     const float* key = args->key;
     const float* value = args->value;
     float* output = args->output;
-    const float alpha = 1.0f / sqrt(static_cast<float>(qk_head_size));
+    const float scale = args->scale;
 
     auto&& mlas_platform = GetMlasPlatform();
 
@@ -79,7 +79,7 @@ void FlashAttentionThreaded(
 
             auto row_size_q_capped = std::min(row_size_q, q_sequence_length - il);
             auto row_size_kv_capped = std::min(row_size_kv, kv_sequence_length - ir);
-            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, row_size_q_capped, row_size_kv_capped, qk_head_size, alpha, inputQ, qk_head_size, inputK, qk_head_size, 0.0f, intermediate, row_size_kv_capped, nullptr);
+            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, row_size_q_capped, row_size_kv_capped, qk_head_size, scale, inputQ, qk_head_size, inputK, qk_head_size, 0.0f, intermediate, row_size_kv_capped, nullptr);
 
             for(int irow = 0; irow < row_size_q_capped; ++irow) {
                 float rowmax = mlas_platform.ReduceMaximumF32Kernel(intermediate + irow * row_size_kv_capped, row_size_kv_capped);

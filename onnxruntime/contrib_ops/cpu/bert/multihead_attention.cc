@@ -144,7 +144,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
 
-  if (std::is_same_v<T, float> && !disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr) {
+  if (std::is_same_v<T, float> && !disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr && present_k == nullptr && present_v == nullptr) {
     FlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
     args.num_heads = num_heads_;
@@ -152,6 +152,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.kv_sequence_length = kv_sequence_length;
     args.qk_head_size = qk_head_size;
     args.v_head_size = v_head_size;
+    args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
     const auto& env = Env::Default();
     int l2_cache_size = env.GetL2CacheSize();
