@@ -61,7 +61,7 @@ Status Sample(AllocatorPtr& allocator,
               transformers::ISamplingState<T>* sampling_state,
               transformers::IGreedySearchState<T>* greedy_state,
               const transformers::IGenerationParameters* parameters,
-              const transformers::IConsoleDumper* dumper) {
+              const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
 
   gsl::span<T>& sorted_scores = sampling_state->sorted_scores;

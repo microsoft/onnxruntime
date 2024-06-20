@@ -283,6 +283,7 @@ ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target
 void NodeUnit::InitForSingleNode() {
   const auto& input_defs = target_node_.InputDefs();
   const auto& output_defs = target_node_.OutputDefs();
+  const auto& node_attrs = target_node_.GetAttributes();
   auto qlinear_type = GetQLinearOpType(target_node_);
   if (qlinear_type == QLinearOpType::Unknown || IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
     // Not a Qlinear op, add all inputs / outputs
@@ -321,19 +322,35 @@ void NodeUnit::InitForSingleNode() {
     // DequantizeLinear has 3 inputs
     // x, x_scale, x_zp
     // output is not quantized
-    inputs_.push_back(NodeUnitIODef{*input_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
-                                                                                                  ? input_defs[2]
-                                                                                                  : nullptr}});
+
+    // Get the DQ axis attribute if available.
+    std::optional<int64_t> axis;
+    if (auto entry = node_attrs.find("axis"); entry != node_attrs.end()) {
+      axis = entry->second.i();
+    }
+
+    inputs_.push_back(NodeUnitIODef{*input_defs[0],
+                                    NodeUnitIODef::QuantParam{*input_defs[1],
+                                                              input_defs.size() == 3 ? input_defs[2] : nullptr,
+                                                              axis}});
     outputs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
 
   } else if (qlinear_type == QLinearOpType::QuantizeLinear) {
     // QuantizeLinear the input is not quantized and has 3 inputs
     // x, y_scale, y_zp (optional)
     // The output is quantized
+
+    // Get the Q axis attribute if available.
+    std::optional<int64_t> axis;
+    if (auto entry = node_attrs.find("axis"); entry != node_attrs.end()) {
+      axis = entry->second.i();
+    }
+
     inputs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
-    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
-                                                                                                    ? input_defs[2]
-                                                                                                    : nullptr}});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0],
+                                     NodeUnitIODef::QuantParam{*input_defs[1],
+                                                               input_defs.size() == 3 ? input_defs[2] : nullptr,
+                                                               axis}});
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }
