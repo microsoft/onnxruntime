@@ -1347,6 +1347,7 @@
       "concat_zero-sized.jsonc",
       "cast.jsonc",
       "conv.jsonc",
+      "conv3dncdhw.jsonc",
       "cos.jsonc",
       "div.jsonc",
       "div_int32.jsonc",
