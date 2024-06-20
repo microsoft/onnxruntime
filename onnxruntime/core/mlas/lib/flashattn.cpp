@@ -26,7 +26,9 @@ FlashAttentionThreaded(
     float* output = args->output;
     const float alpha = args->scale == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : args->scale;
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
     auto&& mlas_platform = GetMlasPlatform();
+#endif
 
     int q_chunk_count = (q_sequence_length + (row_size_q - 1)) / row_size_q;
 

@@ -303,7 +303,7 @@ class PosixEnv : public Env {
   }
 
   int GetL2CacheSize() const override {
-    return sysconf(_SC_LEVEL2_CACHE_SIZE);
+    return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
