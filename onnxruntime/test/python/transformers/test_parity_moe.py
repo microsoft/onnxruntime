@@ -10,9 +10,9 @@
 # license information.
 # -------------------------------------------------------------------------
 
+import platform
 import time
 import unittest
-import platform
 
 import numpy
 import pytest

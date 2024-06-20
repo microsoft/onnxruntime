@@ -99,15 +99,17 @@ void run_flash_splitkv_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   BOOL_SWITCH(params.is_causal, Is_causal, [&] {
     BOOL_SWITCH(is_even_MN, IsEvenMNConst, [&] {
       EVENK_SWITCH(is_even_K, IsEvenKConst, [&] {
-        LOCAL_SWITCH((params.window_size_left >= 0 || params.window_size_right >= 0) && !Is_causal, Is_local, [&] {
-          BOOL_SWITCH(params.num_splits > 1, Split, [&] {
-            BOOL_SWITCH(params.knew_ptr != nullptr, Append_KV, [&] {
+        LOCAL_SWITCH((params.window_size_left >= 0 || params.window_size_right >= 0) && !Is_causal, Is_Local_Const, [&] {
+          BOOL_SWITCH(params.num_splits > 1, SplitConst, [&] {
+            BOOL_SWITCH(params.knew_ptr != nullptr, Append_KV_Const, [&] {
               ALIBI_SWITCH(params.alibi_slopes_ptr != nullptr, Has_alibi, [&] {
-                // If Append_KV, then we must have seqlen_offsets, which means cu_seqlens_k != nullptr.
+                // If Append_KV_Const, then we must have seqlen_offsets, which means cu_seqlens_k != nullptr.
                 // If not IsEvenKConst, we also set IsEvenMNConst to false to reduce number of templates.
-                // If Is_local, set Is_causal to false
-                auto kernel = &flash_fwd_splitkv_kernel < Kernel_traits, Is_causal, Is_local && !Is_causal, Has_alibi, IsEvenMNConst && !Append_KV && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, Split, Append_KV > ;
-                // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, true, Split, Append_KV>;
+                // If Is_Local_Const, set Is_causal to false
+                auto kernel = &flash_fwd_splitkv_kernel < Kernel_traits, Is_causal, Is_Local_Const && !Is_causal, Has_alibi,
+                IsEvenMNConst && !Append_KV_Const && IsEvenKConst && !Is_Local_Const && Kernel_traits::kHeadDim <= 128,
+                IsEvenKConst, SplitConst, Append_KV_Const >;
+                // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, true, Split, Append_KV_Const>;
                 // auto kernel = &flash_fwd_splitkv_kernel<Kernel_traits, Is_causal, false, IsEvenKConst>;
                 if (smem_size >= 48 * 1024) {
                   cudaFuncSetAttribute(
