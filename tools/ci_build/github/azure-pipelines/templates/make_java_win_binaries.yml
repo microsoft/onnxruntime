@@ -9,11 +9,15 @@ parameters:
 steps:
     - task: CmdLine@2
       displayName: 'Gradle cmakeCheck'
-      continueOnError:  ${{ parameters.buildOnly }}
       inputs:
         script: |
           @echo on
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
+          if ${{ parameters.buildOnly }} == true (
+            set SkipTest= "-x test"
+          ) else (
+            set SKipTest= ""
+          )
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo %SkipTest% --warning-mode all
         workingDirectory: $(Build.SourcesDirectory)\java
 
     - task: CmdLine@2
