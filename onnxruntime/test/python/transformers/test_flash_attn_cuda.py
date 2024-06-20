@@ -1895,6 +1895,7 @@ def has_memory_efficient():
     major, minor = torch.cuda.get_device_capability()
     if major < 5 or (major == 5 and minor < 3):
         return False
+    return True
 
 
 def packed_mha_test_cases():

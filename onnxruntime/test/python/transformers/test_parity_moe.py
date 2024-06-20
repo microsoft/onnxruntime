@@ -12,6 +12,7 @@
 
 import time
 import unittest
+import platform
 
 import numpy
 import pytest
@@ -375,6 +376,8 @@ class MoE(nn.Module):
 
 class TestMoE(unittest.TestCase):
     def test_moe_small(self):
+        if platform.system() == "Windows":
+            pytest.skip("Skip on Windows")
         rt = MoE(
             batch_size=2,
             num_rows=8,

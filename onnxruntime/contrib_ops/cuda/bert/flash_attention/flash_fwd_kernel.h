@@ -55,7 +55,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   const BlockInfo</*Varlen=*/!Is_even_MN> binfo(params, bidb);
   if (m_block * kBlockM >= binfo.actual_seqlen_q) return;
 
-  const int n_block_min = !Is_local ? 0 : std::max(0, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);
+  const int n_block_min = !Is_local
+                              ? 0
+                              : std::max(0, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);
   int n_block_max = cute::ceil_div(binfo.actual_seqlen_k, kBlockN);
   if (Is_causal || Is_local) {
     n_block_max = std::min(n_block_max,
@@ -236,8 +238,11 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   clear(acc_o);
   flash::Softmax<2 * size<1>(acc_o)> softmax;
 
-  const float alibi_slope = !Has_alibi || params.alibi_slopes_ptr == nullptr ? 0.0f : reinterpret_cast<float*>(params.alibi_slopes_ptr)[bidb * params.alibi_slopes_batch_stride + bidh] / params.scale_softmax;
-  flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q, params.window_size_left, params.window_size_right, alibi_slope);
+  const float alibi_slope = !Has_alibi || params.alibi_slopes_ptr == nullptr
+                                ? 0.0f
+                                : reinterpret_cast<float*>(params.alibi_slopes_ptr)[bidb * params.alibi_slopes_batch_stride + bidh] / params.scale_softmax;
+  flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q,
+                                                   params.window_size_left, params.window_size_right, alibi_slope);
 
   // For performance reason, we separate out two kinds of iterations:
   // those that need masking on S, and those that don't.
@@ -249,7 +254,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   // mask 2 blocks (e.g. when kBlockM == kBlockN), not just 1.
   constexpr int n_masking_steps = (!Is_causal && !Is_local)
                                       ? 1
-                                      : ((Is_even_MN && Is_causal) ? cute::ceil_div(kBlockM, kBlockN) : cute::ceil_div(kBlockM, kBlockN) + 1);
+                                      : ((Is_even_MN && Is_causal)
+                                             ? cute::ceil_div(kBlockM, kBlockN)
+                                             : cute::ceil_div(kBlockM, kBlockN) + 1);
 #pragma unroll
   for (int masking_step = 0; masking_step < n_masking_steps; ++masking_step, --n_block) {
     Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{});  // (MMA=4, MMA_M, MMA_N)
@@ -412,7 +419,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Split, bool Append_KV, typename Params>
-inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, const int bidb, const int bidh, const int m_block, const int n_split_idx, const int num_n_splits) {
+inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, const int bidb, const int bidh,
+                                                      const int m_block, const int n_split_idx,
+                                                      const int num_n_splits) {
   using Element = typename Kernel_traits::Element;
   using ElementAccum = typename Kernel_traits::ElementAccum;
   using index_t = typename Kernel_traits::index_t;
@@ -496,9 +505,15 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
   // We move K and V to the last block.
   const int bidb_cache = params.cache_batch_idx == nullptr ? bidb : params.cache_batch_idx[bidb];
-  const int* block_table = params.block_table == nullptr ? nullptr : params.block_table + bidb * params.block_table_batch_stride;
-  const int block_table_idx = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN / params.page_block_size;
-  const int block_table_offset = block_table == nullptr ? 0 : (n_block_max - 1) * kBlockN - block_table_idx * params.page_block_size;
+  const int* block_table = params.block_table == nullptr
+                               ? nullptr
+                               : params.block_table + bidb * params.block_table_batch_stride;
+  const int block_table_idx = block_table == nullptr
+                                  ? 0
+                                  : (n_block_max - 1) * kBlockN / params.page_block_size;
+  const int block_table_offset = block_table == nullptr
+                                     ? 0
+                                     : (n_block_max - 1) * kBlockN - block_table_idx * params.page_block_size;
   const index_t row_offset_k = block_table == nullptr
                                    ? binfo.k_offset(params.k_batch_stride, params.k_row_stride, bidb_cache) + (n_block_max - 1) * kBlockN * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride
                                    : block_table[block_table_idx] * params.k_batch_stride + block_table_offset * params.k_row_stride + (bidh / params.h_h_k_ratio) * params.k_head_stride;
@@ -739,7 +754,8 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
   flash::Softmax<2 * size<1>(acc_o)> softmax;
 
-  const float alibi_slope = !Has_alibi ? 0.0f : reinterpret_cast<float*>(params.alibi_slopes_ptr)[bidb * params.alibi_slopes_batch_stride + bidh] / params.scale_softmax;
+  const float alibi_slope = !Has_alibi ? 0.0f
+                                       : reinterpret_cast<float*>(params.alibi_slopes_ptr)[bidb * params.alibi_slopes_batch_stride + bidh] / params.scale_softmax;
   flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q, params.window_size_left, params.window_size_right, alibi_slope);
 
   // For performance reason, we separate out two kinds of iterations:

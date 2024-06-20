@@ -1,11 +1,11 @@
-#include <cmath>
+#include "utils.h"
 
 #include <cute/tensor.hpp>
 
 #include <cutlass/cutlass.h>
 #include <cutlass/array.h>
 
-#include "utils.h"
+#include <cmath>
 
 namespace onnxruntime {
 namespace flash {
