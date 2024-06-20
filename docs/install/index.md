@@ -65,7 +65,7 @@ For ROCm, please follow instructions to install it at the [AMD ROCm install docs
 
 To build on Linux, use the following instructions: 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home
+./build.sh --config <Release|RelWithDebInfo> --use_rocm --rocm_home <path_to_ROCm_home>
 ```
 
 See more information about the ROCm Execution Provider [here](https://onnxruntime.ai/docs/execution-providers/ROCm-ExecutionProvider.html).
