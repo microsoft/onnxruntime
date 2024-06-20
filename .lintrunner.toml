@@ -46,6 +46,7 @@ exclude_patterns = [
     # ignore generated flatbuffers code
     'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
     'orttraining/orttraining/python/training/optim/_ds_code_store.py',
+    'onnxruntime/contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h',
 ]
 command = [
     'python',
