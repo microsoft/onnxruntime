@@ -207,29 +207,21 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
   auto p_temp_model = graph_viewer.CreateModel(*p_logger);
   auto& ep_ctx_graph = p_temp_model->MainGraph();
 
+  const auto& graph_inputs = graph_viewer.GetInputs();
   std::vector<NodeArg*> input_node_arg_ptrs;
+  input_node_arg_ptrs.reserve(graph_inputs.size());
   // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
-  for (const auto* p_node_arg : graph_viewer.GetInputs()) {
+  for (const auto* p_node_arg : graph_inputs()) {
     auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(
         p_node_arg->Name(), p_node_arg->TypeAsProto());
     input_node_arg_ptrs.push_back(&temp_node_arg);
   }
+  const auto& graph_outputs = graph_viewer.GetOutputs();
   std::vector<NodeArg*> output_node_arg_ptrs;
-  for (const auto* p_node_arg : graph_viewer.GetOutputs()) {
+  output_node_arg_ptrs.reserve(graph_outputs.size());
+  for (const auto* p_node_arg : graph_outputs()) {
     auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
     output_node_arg_ptrs.push_back(&temp_node_arg);
-  }
-  ep_ctx_graph.SetInputs(input_node_arg_ptrs);
-  ep_ctx_graph.SetOutputs(output_node_arg_ptrs);
-
-  for (const Node* p_node : graph_viewer.GetGraph().Nodes()) {
-    ep_ctx_graph.AddNode(*p_node);
-  }
-
-  for (const auto& initialized_tensor : graph_viewer.GetAllInitializedTensors()) {
-    if (ep_ctx_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_ctx_graph.AddInitializedTensor(*initialized_tensor.second);
-    }
   }
 
   // Attr "embed_mode".
@@ -284,7 +276,11 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
   p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
   p_node_attrs->emplace(kNotesAttr, *p_attr_4);
 
-  ep_ctx_graph.AddNode(kEPContextOp, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
+  // Since we don't implement `IExecutionProvider::GetEpContextNodes()` and
+  // thus don't leverage `CreateEpContextModel()` in the file "graph_partitioner.cc",
+  // we specify a brand-new node name here.
+  ep_ctx_graph.AddNode(kEPContextOpName, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
+
   auto res_status = ep_ctx_graph.Resolve();
   ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
   LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
@@ -306,7 +302,7 @@ void DumpEPContextModel(
   LOGS_DEFAULT(VERBOSE) << "[VitisAI EP] Dumped " << ep_ctx_model_file_loc;
 }
 
-const Node* GetEPContextNode(const Graph& graph) {
+const Node* GetEPContextNodePtr(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
   LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes().size();
   for (const auto* p_node : graph.Nodes()) {
@@ -319,7 +315,7 @@ const Node* GetEPContextNode(const Graph& graph) {
 
 bool ValidateEPContextNode(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
-  const auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNodePtr(graph);
   assert(p_node != nullptr);
   auto& attrs = p_node->GetAttributes();
   assert(attrs.count(kEmbedModeAttr) > 0);
@@ -340,7 +336,7 @@ bool ValidateEPContextNode(const Graph& graph) {
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
   // TODO: Support for multi-node EP context model.
-  const auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNodePtr(graph);
   const auto& attrs = p_node->GetAttributes();
   int64_t embed_mode = attrs.at(kEmbedModeAttr).i();
   const std::string& ep_ctx_cache = attrs.at(kEPCacheContextAttr).s();
@@ -378,7 +374,7 @@ std::string RetrieveEPContextCache(
 
 void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::string& cache_key) {
   // TODO: Support for multi-node EP context model.
-  const auto* p_node = GetEPContextNode(graph);
+  const auto* p_node = GetEPContextNodePtr(graph);
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
@@ -394,7 +390,7 @@ void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::s
 
 std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   // TODO: Support for multi-node EP context model.
-  const auto* p_node = GetEPContextNode(ep_ctx_graph);
+  const auto* p_node = GetEPContextNodePtr(ep_ctx_graph);
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);

@@ -22,6 +22,7 @@ static constexpr const char* kEPSDKVersionAttr = "ep_sdk_version";
 static constexpr const char* kONNXModelFileNameAttr = "onnx_model_filename";
 static constexpr const char* kNotesAttr = "notes";
 static constexpr const char* kEPContextOpDomain = "com.microsoft";
+static constexpr const char* kEPContextOpName = "VitisAIEPContextOp";
 
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto>
 ConvertIndexedSubGraphToFunctionProto(const IndexedSubGraph&, const Graph&);
@@ -44,7 +45,7 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(const GraphViewer&, const std::s
 // Ref.: `static common::Status Save(Model& model, int fd)` in the file "model.h".
 void DumpEPContextModel(const std::unique_ptr<ONNX_NAMESPACE::ModelProto>&, const std::string&);
 
-const Node* GetEPContextNode(const Graph&);
+const Node* GetEPContextNodePtr(const Graph&);
 
 bool ValidateEPContextNode(const Graph&);
 
