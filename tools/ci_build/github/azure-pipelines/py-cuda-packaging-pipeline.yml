@@ -31,14 +31,6 @@ parameters:
     type: string
     default: '0'
 
-resources:
-  repositories:
-    - repository: manylinux
-      type: Github
-      endpoint: Microsoft
-      name: pypa/manylinux
-      ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 stages:
   - template: stages/py-cuda-packaging-stage.yml
     parameters:

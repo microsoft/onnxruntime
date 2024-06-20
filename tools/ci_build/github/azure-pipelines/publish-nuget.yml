@@ -11,7 +11,7 @@ resources:
 stages:
 - stage: Publish_NuGet_Package_And_Report
   jobs:
-  - job:
+  - job: Publish_NuGet_Package_And_Report
     workspace:
       clean: all
     variables:
