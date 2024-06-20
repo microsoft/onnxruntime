@@ -17,6 +17,7 @@ constexpr const char* kVitisAI = "vitisai";
 
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionProto(
     const IndexedSubGraph& sub_graph, const Graph& parent_graph) {
+  LOGS_DEFAULT(VERBOSE) << "Function-proto-ing compute capabilities";
   auto p_func_proto = ONNX_NAMESPACE::FunctionProto::Create();
   auto* p_meta_def = const_cast<IndexedSubGraph_MetaDef*>(sub_graph.GetMetaDef());
   if (p_meta_def) {
@@ -148,6 +149,7 @@ std::string SerializeCapabilities(
   if (!ss.good()) {
     ORT_THROW("Serialization stream bad");
   }
+  LOGS_DEFAULT(VERBOSE) << "Done serializing compute capabilites";
   return ss.str();
 }
 
@@ -357,10 +359,13 @@ std::string RetrieveEPContextCache(
     ORT_THROW("Exception opening EP context cache file");
   }
   ifs.seekg(0, ifs.end);
-  size_t cache_len = ifs.tellg();
-  // std::streampos cache_len = ifs.tellg();
+  std::streampos cache_len = ifs.tellg();
+  if (cache_len == -1) {
+    ifs.close();
+    ORT_THROW("Error when operating EP context cache file");
+  }
   ifs.seekg(0, ifs.beg);
-  char* buf = new char[cache_len];
+  char* buf = new char[static_cast<size_t>(cache_len)];
   ifs.read(buf, cache_len);
   if (!ifs.good()) {
     ifs.close();

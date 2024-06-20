@@ -101,6 +101,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
+  LOGS_DEFAULT(VERBOSE) << "Done serialized capabilities: " << ep_ctx_payload.length();
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
