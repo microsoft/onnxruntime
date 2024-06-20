@@ -16,6 +16,8 @@ env:
 
 jobs:
   Onnxruntime-SCA-training-CUDA:
+    permissions:
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +59,8 @@ jobs:
 
   # No python
   Onnxruntime-SCA-win32-WINML-x64:
+    permissions:
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
@@ -95,6 +99,8 @@ jobs:
 
   # No java, No python
   Onnxruntime-SCA-win32-WINML-x86:
+    permissions:
+      security-events: write
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
