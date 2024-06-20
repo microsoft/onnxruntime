@@ -131,6 +131,8 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto cache_dir = GetBackendCompileCacheDir();
   auto cache_key = GetBackendCompileCacheKey(graph_viewer);
   LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+  info_["cacheDir"] = cache_dir;
+  info_["cacheKey"] = cache_key;
   fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
   auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
@@ -226,6 +228,8 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       std::string cache_dir, cache_key;
       RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
       LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+      info_["cacheDir"] = cache_dir;
+      info_["cacheKey"] = cache_key;
       fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
@@ -241,6 +245,8 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         auto cache_dir = GetBackendCompileCacheDir();
         auto cache_key = GetBackendCompileCacheKey(graph_viewer);
         LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+        info_["cacheDir"] = cache_dir;
+        info_["cacheKey"] = cache_key;
         fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
         LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
