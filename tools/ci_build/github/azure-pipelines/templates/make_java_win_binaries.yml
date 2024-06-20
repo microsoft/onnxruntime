@@ -4,7 +4,7 @@ parameters:
   - name: java_artifact_id
     type: string
   - name: buildOnly
-    type: boolean
+    type: string
 
 steps:
     - task: CmdLine@2
@@ -12,10 +12,10 @@ steps:
       inputs:
         script: |
           @echo on
-          if ${{ parameters.buildOnly }} == "True" (
-            set SkipTest= "-x test"
+          if "${{ parameters.buildOnly }}"=="True" (
+            set SkipTest= -x test
           ) else (
-            set SKipTest= ""
+            set SKipTest=
           )
           call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo %SkipTest% --warning-mode all
         workingDirectory: $(Build.SourcesDirectory)\java
