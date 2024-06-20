@@ -68,6 +68,17 @@ namespace OperatorHelper
         originalValues = std::move(expanded);
     }
 
+    uint32_t GetBitMaskFromIndices(gsl::span<const uint32_t> indices) noexcept
+    {
+        uint32_t bitMask = 0;
+        for (auto i : indices)
+        {
+            assert(i < 32);
+            bitMask |= (1 << i);
+        }
+        return bitMask;
+    }
+
     float CastFloat16ToFloat32(uint16_t input)
     {
         // Promote float16m10e5s1 to float32m23e8s1.
@@ -1490,9 +1501,14 @@ namespace OperatorHelper
         }
 
         // std::ranges::equal is not supported yet.
-        auto equals = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b)
+        auto equals = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b) -> bool
         {
             return std::equal(a.begin(), a.end(), b.begin(), b.end());
+        };
+
+        auto areIdenticalAxes = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b) -> bool
+        {
+            return GetBitMaskFromIndices(a) == GetBitMaskFromIndices(b);
         };
 
         auto as_span = [](std::initializer_list<uint32_t> il)
@@ -1500,111 +1516,60 @@ namespace OperatorHelper
             return gsl::make_span(il.begin(), il.size());
         };
 
-        // Identify any common patterns that map to existing DirectML operators.
-        // 1 input, 1 output ->
-        //   - identity
-        //   - sum reduction
-        //   - transpose
-        // 2 inputs, 1 output ->
-        //   - elementwise multiplication
-        //   - matrix multiplication
+        // Identify any common patterns that map to existing DirectML operators
+        // (identity, transpose, sum reduction, matmul, multiplication...).
 
         constexpr size_t maximumSupportedComponentCount = 3; // 2 inputs + 1 output
-        std::array<uint32_t, maximumSupportedComponentCount> componentRanks;
-        // Check for unrecognized patterns with more than 2 inputs.
-        // EinSum itself is generic and can handle any variable number of inputs,
-        // but DML's operators expect fixed counts.
+        // Bail if more than 2 inputs. EinSum is generic and can handle any variable number of inputs,
+        // but 3-input models have yet to be seen.
         if (m_components.size() > maximumSupportedComponentCount)
         {
             return RecognizedOperatorType::None;
         }
         else if (m_components.size() == 2) // 1 input, 1 output
         {
-            auto inputLabels = m_components.front().GetLabels(m_labelIndices);
             auto outputLabels = m_components.back().GetLabels(m_labelIndices);
 
-            // Check reduction if the output has fewer dimensions than total dimension labels.
+            // Use reduction if the output has fewer dimensions than total dimension labels.
             if (outputLabels.size() <= m_uniqueLabelCount)
             {
                 // Handles: "ij->i", "i->", "ij->", "ijkl->jl", "ijkl->", "iji->" ...
                 return RecognizedOperatorType::ReduceSum;
             }
-            // Check identity when input and output are identical.
-            else if (equals(inputLabels, outputLabels))
-            {
-                // Handles: "->", "i->i", "ij->ij", "ijk->ijk", "ijkl->ijkl" ...
-                return RecognizedOperatorType::Identity;
-            }
-            // Check for transpose and/or diagonal view slice otherwise.
             else
             {
-                // Handles: "ij->ji", "ijk->kji", "ijkl->lkji", "ijkl->ijkl" ...
-                // Handles: "ii->i", "iij->ji"
+                // Handles identity:  "->", "i->i", "ij->ij", "ijk->ijk", "ijkl->ijkl" ...
+                // Handles transpose: "ij->ji", "ijk->kji", "ijkl->lkji", "ijkl->ijkl" ...
+                // Handles diagional: "ii->i", "iij->ji"
                 return RecognizedOperatorType::Transpose;
             }
         }
         else if (m_components.size() == 3) // 2 inputs, 1 output
         {
-            auto outputLabels = m_components.back().GetLabels(m_labelIndices);
+            auto input0Labels = m_components[0].GetLabels(m_labelIndices);
+            auto input1Labels = m_components[1].GetLabels(m_labelIndices);
+            auto outputLabels = m_components[2].GetLabels(m_labelIndices);
 
-            // Check elementwise multiplication when no reduction occurs.
+            // Use elementwise multiplication when no reduction occurs.
             if (outputLabels.size() == m_uniqueLabelCount)
             {
-                // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->ijk", "ijkl,ijkl->ijkl" ...
+                // Handles: "i,i->i", "ij,ij->ij", "ijk,ijk->kji", "ijkl,klij->jilk" ...
                 return RecognizedOperatorType::Multiply;
             }
-            // Check matrix multiplication when exactly 1 dimension is being reduced,
-            // supporting up to 4D.
-            else if (outputLabels.size() + 1 == m_uniqueLabelCount && outputLabels.size() <= 4)
+            // Use matrix multiplication when exactly 1 dimension is being reduced,
+            // the output is up to 4D (DML limit), and the inputs have distinct axes.
+            else if (outputLabels.size() + 1 == m_uniqueLabelCount
+                && outputLabels.size() <= 4
+                && !areIdenticalAxes(input0Labels, input1Labels))
             {
-                return RecognizedOperatorType::MatMulGeneral;
+                return RecognizedOperatorType::MatMul;
             }
-            // Otherwise unsupported multiply and reduce combo.
-        }
-
-        // Otherwise check for special cases of dedicated operators...
-
-        struct RecognizedOperatorInfo
-        {
-            RecognizedOperatorType recognizedOperatorType;
-            std::initializer_list<uint32_t> componentRanks;
-            std::initializer_list<uint32_t> labelIndices;
-        };
-
-        const RecognizedOperatorInfo recognizedOperators[] = {
-            {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
-            {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
-            {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeB,     {1,1,2},{0, 1, 0,1}}, // i,j->ij outer product
-            {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
-            {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
-            {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeB,     {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
-            {RecognizedOperatorType::MatMulTransposeB,     {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
-            {RecognizedOperatorType::MatMulTransposeB,     {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
-            {RecognizedOperatorType::MatMulTransposeB,     {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
-            {RecognizedOperatorType::MatMulNhcw,           {4,4,4},{0,1,2,3, 0,3,2,4, 0,1,2,4}}, // aibj,ajbk->aibk
-            {RecognizedOperatorType::MatMulNhcwTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,3,2,4}}, // ajbi,ajbk->aibk
-            {RecognizedOperatorType::MatMulNhcwTransposeB, {4,4,4},{0,1,2,3, 0,4,2,3, 0,1,2,4}}, // aibj,akbj->aibk
-            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 0}}, // ij->i
-            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 1}}, // ij->j
-        };
-
-        // For each recognized operator, compare the labels-per-component and label indices.
-        for (auto& recognizedOperator : recognizedOperators)
-        {
-            if (equals(m_labelIndices, as_span(recognizedOperator.labelIndices))
-            &&  m_components.size() == recognizedOperator.componentRanks.size())
+            // Otherwise use an elementwise multiplication and sum reduction combo.
+            // This is the most generic, but it also uses more intermediate memory.
+            else
             {
-                for (size_t i = 0; i < m_components.size(); ++i)
-                {
-                    componentRanks[i] = m_components[i].GetDimensionCount();
-                }
-
-                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), as_span(recognizedOperator.componentRanks)))
-                {
-                    return recognizedOperator.recognizedOperatorType;
-                }
+                // Handles: "ij,ji->", "ijkl,abij->ab", ...
+                return RecognizedOperatorType::MultiplyReduceSum;
             }
         }
 
@@ -1617,7 +1582,7 @@ namespace OperatorHelper
         const IShapeInformationAdapter& shapeInformation
     )
     {
-        // Get the dimension for each term label. e.g.
+        // Get the dimension length for each term label. e.g.
         //
         //  equation         = "ijk,jm->im"
         //  input[0].shape   = [3,2,4]
@@ -1694,14 +1659,8 @@ namespace OperatorHelper
 
     bool EinSumHelper::IsMatMulOperatorType() const noexcept
     {
-        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(12), "Verify this for any potentially new matrix multiplication operators.");
-        return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulGeneral ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
-               m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
+        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(6), "Verify this for any potentially new matrix multiplication operators.");
+        return m_recognizedOperatorType == RecognizedOperatorType::MatMul;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

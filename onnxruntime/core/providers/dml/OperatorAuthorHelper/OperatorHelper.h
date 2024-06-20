@@ -786,17 +786,11 @@ public:
     enum class RecognizedOperatorType
     {
         None,
-        Identity,
-        Multiply,
-        MatMul,
-        MatMulTransposeA,
-        MatMulTransposeB,
-        MatMulGeneral,
-        MatMulNhcw,
-        MatMulNhcwTransposeA,
-        MatMulNhcwTransposeB,
-        ReduceSum,
-        Transpose,
+        Transpose,          // 1 input, rearrangement or diagonal slice, no reduction
+        ReduceSum,          // 1 input, no multiplication, just sum reduction
+        Multiply,           // 2 inputs, elementwise multiplication, no sum reduction
+        MatMul,             // 2 inputs, elementwise multiplication, sum reduction on 1 axis.
+        MultiplyReduceSum,  // 2 inputs, elementwise multiplication, sum reduction on multiple axes
         Total,
     };
 

@@ -348,6 +348,8 @@ void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, c
     SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
 
     // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping.
+    // Note using MaximumDimensionCount instead of oldRank is intentional here, because the old rank could
+    // be smaller or larger than the new rank, but it will never be larger than MaximumDimensionCount.
     std::vector<uint32_t> oldSizes{m_sizes, m_sizes + MaximumDimensionCount};
     std::vector<uint32_t> oldStrides{m_strides, m_strides + MaximumDimensionCount};
 

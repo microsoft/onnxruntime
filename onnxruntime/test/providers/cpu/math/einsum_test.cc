@@ -561,6 +561,15 @@ TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeLeft) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsTensorContractionSameInput) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "nchw,nchw->nch");
+  test.AddInput<float>("x", {1, 3, 2, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddInput<float>("y", {1, 3, 2, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddOutput<float>("o", {1, 3, 2}, {30.f, 174.f, 54.f, 230.f, 86.f, 294.f});
+  test.Run();
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsTensorContraction) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);

@@ -47,14 +47,15 @@
 // 2. Project each input tensor as needed to the internal product shape (transposing and/or broadcasting).
 //    So an input of shape [b,i] with product shape of [b,j,i,k] would insert broadcasted j and k dimensions.
 //    An input of shape [a,b,c] with product shape of [b,c,a] would require a transpose.
-// 3. Multiply elementwise every input tensor into the internal product.
-// 4. Sum reduce the product tensor to the final output shape, reducing along the missing dimensions.
+//    The input shape [a,b,a] with product shape of [a,b] would collapse the first two input 'a' dimensions.
+// 3. Multiply elementwise every input tensor to compute the internal product.
+// 4. Sum reduce the product tensor to the final output shape, reducing along any missing dimensions.
 //    So a product shape of [b,j,i,k] and output shape of [b,i,k] reduces along j.
 // 
 //  ReduceSum(
 //      Mul(
-//          ExpandAndTransposeAsNeeded(A, aAxesToProductAxes),
-//          ExpandAndTransposeAsNeeded(B, bAxesToProductAxes),
+//          ExpandTransposeCollapseAsNeeded(A, aAxesToProductAxes),
+//          ExpandTransposeCollapseAsNeeded(B, bAxesToProductAxes),
 //      ),
 //      reductionAxes,
 //      keepdims=false
@@ -82,7 +83,7 @@ public:
             static_cast<uint64_t>(kernelCreationContext.GetInputCount()) + 1 == m_components.size(),
             "EinSum input tensor count is inconsistent with the equation component count."
         );
-        assert(m_recognizedOperatorType != RecognizedOperatorType::None); // Should not have reached here because fallback to CPU happened.
+        assert(m_recognizedOperatorType != RecognizedOperatorType::None && "Unrecognized EinSum operators should have fallen back to CPU");
 
         std::vector<std::optional<uint32_t>> inputIndices = {0,1,2};
         std::vector<std::optional<uint32_t>> outputIndices = {0};
@@ -99,7 +100,7 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(12), "Update this switch.");
+        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(6), "Update this switch statement.");
         switch (m_recognizedOperatorType)
         {
         case RecognizedOperatorType::Multiply:
@@ -116,15 +117,9 @@ public:
             break;
 
         case RecognizedOperatorType::MatMul:
-        case RecognizedOperatorType::MatMulTransposeA:
-        case RecognizedOperatorType::MatMulTransposeB:
-        case RecognizedOperatorType::MatMulNhcw:
-        case RecognizedOperatorType::MatMulNhcwTransposeA:
-        case RecognizedOperatorType::MatMulNhcwTransposeB:
-        case RecognizedOperatorType::MatMulGeneral:
             {
-                assert(m_components.size() == 3); // 2 inputs, 1 output
-                assert(m_productDimensions.size() - 1 <= 4); // Up to 4D, as MatMul reduces 1 dimension from the internal product.
+                assert(m_components.size() == 3 && "EinSum matmul expects 2 inputs and 1 output");
+                assert(m_productDimensions.size() - 1 <= 4 && "DML Einsum matmul handles up to 4D");
 
                 // Generate bitmasks for each of the active axes per tensor using their labels.
                 const auto input0Labels = m_components[0].GetLabels(m_labelIndices);
@@ -178,24 +173,8 @@ public:
             {
                 ReprojectTensorDescsToProductTensor();
 
-                // Determine which axes are reduced by looking for any output dimensions of size 1.
-                // Note this could include dimensions that are not actually being reduced and simply
-                // already had size 1 from the input, but such cases harmless nops either way.
-                // DML expects the input rank to match output rank (as if ONNX ReduceSum keepdims=1)
-                // with reduced output dimensions having size 1, which is handled naturally in the
-                // projection call.
-
-                auto outputSizes = m_outputTensorDescs.front().GetSizes();
-                std::vector<uint32_t> reducedAxes;
-                for (uint32_t axis = 0, axisCount = static_cast<uint32_t>(outputSizes.size()); axis < axisCount; ++axis)
-                {
-                    if (outputSizes[axis] == 1)
-                    {
-                        reducedAxes.push_back(axis);
-                    }
-                }
-
                 DML_REDUCE_OPERATOR_DESC operatorDesc = {};
+                std::vector<uint32_t> reducedAxes = GetReductionAxes();
                 operatorDesc.InputTensor = inputDescs.data();
                 operatorDesc.OutputTensor = outputDescs.data();
                 operatorDesc.Function = DML_REDUCE_FUNCTION_SUM;
@@ -207,13 +186,8 @@ public:
             break;
 
         case RecognizedOperatorType::Transpose:
-        case RecognizedOperatorType::Identity:
             {
-                if (m_recognizedOperatorType == RecognizedOperatorType::Transpose)
-                {
-                    // Needed if transposing but not if identity.
-                    ReprojectTensorDescsToProductTensor();
-                }
+                ReprojectTensorDescsToProductTensor();
 
                 DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC operatorDesc = {};
                 operatorDesc.InputTensor = inputDescs.data();
@@ -223,29 +197,111 @@ public:
             }
             break;
 
+        case RecognizedOperatorType::MultiplyReduceSum:
+            {
+                // DML has no generic DML_OPERATOR_DOT_PRODUCT. So construct one via a graph of mul+sumReduce.
+
+                ReprojectTensorDescsToProductTensor();
+                TensorDesc productTensorDesc(m_outputTensorDescs.front().GetDmlDataType(), m_productDimensions);
+                auto dmlProductTensorDesc = productTensorDesc.GetDmlDesc();
+
+                DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC multiplyOperatorDesc = {};
+                multiplyOperatorDesc.ATensor = &inputDescs[0];
+                multiplyOperatorDesc.BTensor = &inputDescs[1];
+                multiplyOperatorDesc.OutputTensor = &dmlProductTensorDesc;
+                DML_OPERATOR_DESC multiplyOperatorDescWithEnum = { DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &multiplyOperatorDesc };
+
+                DML_REDUCE_OPERATOR_DESC reduceSumOperatorDesc = {};
+                std::vector<uint32_t> reducedAxes = GetReductionAxes();
+                reduceSumOperatorDesc.Function = DML_REDUCE_FUNCTION_SUM;
+                reduceSumOperatorDesc.InputTensor = &dmlProductTensorDesc;
+                reduceSumOperatorDesc.OutputTensor = &outputDescs[0];
+                reduceSumOperatorDesc.Axes = reducedAxes.data();
+                reduceSumOperatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(reducedAxes.size());
+                DML_OPERATOR_DESC reduceSumOperatorDescWithEnum = { DML_OPERATOR_REDUCE, &reduceSumOperatorDesc };
+
+                enum NodeIndex
+                {
+                    NodeIndexMultiply,
+                    NodeIndexReduceSum,
+                    NodeIndexTotal,
+                };
+
+                const DML_OPERATOR_DESC* operatorDescPointers[2] =
+                {
+                    &multiplyOperatorDescWithEnum,  // NodeIndexMultiply
+                    &reduceSumOperatorDescWithEnum, // NodeIndexReduceSum
+                };
+
+                DML_INPUT_GRAPH_EDGE_DESC inputEdges[2];
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdges[1];
+                DML_OUTPUT_GRAPH_EDGE_DESC outputEdges[1];
+
+                DML_INPUT_GRAPH_EDGE_DESC& input0ToMultiplyEdge = inputEdges[0];
+                input0ToMultiplyEdge.GraphInputIndex = 0;
+                input0ToMultiplyEdge.ToNodeIndex = NodeIndexMultiply;
+                input0ToMultiplyEdge.ToNodeInputIndex = 0;
+
+                DML_INPUT_GRAPH_EDGE_DESC& input1ToMultiplyEdge = inputEdges[1];
+                input1ToMultiplyEdge.GraphInputIndex = 1;
+                input1ToMultiplyEdge.ToNodeIndex = NodeIndexMultiply;
+                input1ToMultiplyEdge.ToNodeInputIndex = 1;
+
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC& multiplyToReduceSumEdge = intermediateEdges[0];
+                multiplyToReduceSumEdge.FromNodeIndex = NodeIndexMultiply;
+                multiplyToReduceSumEdge.FromNodeOutputIndex = 0;
+                multiplyToReduceSumEdge.ToNodeIndex = NodeIndexReduceSum;
+                multiplyToReduceSumEdge.ToNodeInputIndex = 0;
+
+                DML_OUTPUT_GRAPH_EDGE_DESC& reduceSumToOutputEdge = outputEdges[0];
+                reduceSumToOutputEdge.FromNodeIndex = NodeIndexReduceSum;
+                reduceSumToOutputEdge.FromNodeOutputIndex = 0;
+                reduceSumToOutputEdge.GraphOutputIndex = 0;
+
+                MLOperatorGraphDesc operatorGraphDesc = {};
+                operatorGraphDesc.inputEdgeCount = uint32_t(std::size(inputEdges));
+                operatorGraphDesc.inputEdges = std::data(inputEdges);
+                operatorGraphDesc.intermediateEdgeCount = uint32_t(std::size(intermediateEdges));
+                operatorGraphDesc.intermediateEdges = std::data(intermediateEdges);
+                operatorGraphDesc.outputEdgeCount = uint32_t(std::size(outputEdges));
+                operatorGraphDesc.outputEdges = std::data(outputEdges);
+                operatorGraphDesc.nodeCount = uint32_t(std::size(operatorDescPointers));
+                operatorGraphDesc.nodes = std::data(operatorDescPointers);
+                SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
+            }
+            break;
+
         default:
             return;
         }
     }
 
-    // Reproject all inputs and output to the intermediate product tensor.
+    // Reproject all inputs and the output to the intermediate product tensor.
     // e.g.
     // 
-    //      Equation: i,j->ij
+    //      Equation: i,j->ji
     // 
-    //      [1,2,3] [4]    [4, 8,12]
-    //              [5] -> [5,10,15]
-    //              [6]    [6,12,18]
+    //      [1] [4,5,6,7]     [4, 8,12]
+    //      [2]           ->  [5,10,15]
+    //      [3]               [6,12,18]
+    //                        [7,14,21]
     //
-    //      Inputs 0 and 1 are expanded to be directly broadcast-compatible.
+    //      Expand inputs 0 and 1 to 2D via strides to be directly broadcast-compatible.
     //
-    //      [1,2,3] [4,4,4]    [4, 8,12]
-    //      [1,2,3] [5,5,5] -> [5,10,15]
-    //      [1,2,3] [6,6,6]    [6,12,18]
+    //      [1,1,1,1] [4,5,6,7]    [4, 8,12]
+    //      [2,2,2,2] [4,5,6,7] -> [5,10,15]
+    //      [3,3,3,3] [4,5,6,7]    [6,12,18]
+    //                             [7,14,21]
+    //
+    //      Transpose the output to be shape-compatible:
+    //
+    //      [1,1,1,1] [4,5,6,7]    [ 4, 5, 6, 7]
+    //      [2,2,2,2] [4,5,6,7] -> [ 8,10,12,14]
+    //      [3,3,3,3] [4,5,6,7]    [12,15,18,21]
     //
     void ReprojectTensorDescsToProductTensor()
     {
-        assert(!m_components.empty());
+        assert(!m_components.empty() && "Equation components should have already been parsed.");
         assert(m_inputTensorDescs.size() + m_outputTensorDescs.size() == m_components.size());
 
         for (size_t i = 0, count = m_inputTensorDescs.size(); i < count; ++i)
@@ -257,14 +313,18 @@ public:
         ReprojectTensorDescToProductTensor(/*inout*/ m_outputTensorDescs.front(), outputLabels, /*isReduced*/ true);
     }
 
-    // Transpose/broadcast the given tensor for shape compatibility to the internal product tensor.
+    // Project the given tensor for shape compatibility to the internal product tensor, which may include broadcasting,
+    // transposition, and collapsing repeated terms (e.g. iji,i->j with 2 i's in the first term with strides summed).
+    //
     // e.g.
     //
+    //      Axis labels:             3,0,2          // the 2 in the inputShape[0] corresponds to productDimensions[3].
     //      Original tensor shape:   [2,3,4]
-    //      Original tensor strides: [12,4,1]    // packed strides right-to-left
-    //      Product tensor shape:    [3,5,4,2]   // transposed, with 1 additional axis not in input tensor
-    //      Reprojected shape:       [3,5,4,2]   or [3,1,4,2] when isReduced is true
-    //      Reprojected strides:     [4,0,1,12]
+    //      Original tensor strides: [12,4,1]       // packed strides right-to-left
+    //      Product tensor shape:    [3,5,4,2]      // transposed relative to input, with 1 more axis not in input tensor
+    //      Reprojected shape:       [3,5,4,2]      // identical to product shape
+    //          (or when isReduced)  [3,1,4,2]      // inserted dimension is 1
+    //      Reprojected strides:     [4,0,1,12]     // the newly inserted tensor has 0 stride for broadcasting
     //
     void ReprojectTensorDescToProductTensor(
         /*inout*/ TensorDesc& tensorDesc,
@@ -272,7 +332,7 @@ public:
         bool isReduced // Return 1's for any missing dimensions not in axisLabels.
     )
     {
-        assert(m_productDimensions.size() == m_uniqueLabelCount);
+        assert(m_productDimensions.size() == m_uniqueLabelCount && "Product dimensions were not computed yet");
         const size_t newRank = m_productDimensions.size();
 
         // Compute the default strides of the tensor (non-transposed).
@@ -288,7 +348,7 @@ public:
         std::vector<uint32_t> newStrides(newRank, 0u); // Default to 0 to broadcast missing entries.
         if (isReduced)
         {
-            newSizes.resize(newRank, 1u); // Fill with 1's initially for any missing dimensions (reduced).
+            newSizes.resize(newRank, 1u); // Fill with 1's initially for any missing (reduced) dimensions.
         }
         else
         {
@@ -302,7 +362,7 @@ public:
             if (productAxis < newRank)
             {
                 newSizes[productAxis] = originalSizes[i];
-                newStrides[productAxis] += originalStrides[i]; // Add to handle diagonal cases like i,j,i->i,j
+                newStrides[productAxis] += originalStrides[i]; // Add to combine diagonal cases like i,j,i->i,j
             }
         }
         tensorDesc.SetDimensionsAndStrides(newSizes, newStrides);
@@ -327,6 +387,18 @@ public:
         ReprojectTensorDescToProductTensor(/*inout*/ tensorDesc, axisLabels, /*isReduced*/ false);
         tensorDesc.PermuteDimensions(newAxes, TensorAxis::LeftAligned);
     }
+
+    std::vector<uint32_t> GetReductionAxes() const
+    {
+        // Determine which axes are reduced by looking for any output dimensions of size 1.
+        // Note this could include dimensions that are not actually being reduced and simply
+        // already had size 1 from the input, but such cases harmless nops either way.
+
+        auto outputSizes = m_outputTensorDescs.front().GetSizes();
+        std::vector<uint32_t> reducedAxes;
+        FindValueIndices<uint32_t>(outputSizes, 1u, /*out*/ reducedAxes);
+        return reducedAxes;
+    }
 };
 
 void CALLBACK QueryEinSum(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
@@ -337,7 +409,7 @@ void CALLBACK QueryEinSum(IMLOperatorSupportQueryContextPrivate* context, bool* 
     EinSumHelper helper(attributes);
     auto recognizedOperatorType = helper.GetRecognizedOperatorType();
 
-    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(12), "Update this function.");
+    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(6), "Verify if this function needs updating.");
     *isSupported = (recognizedOperatorType != EinSumHelper::RecognizedOperatorType::None);
 }
 
