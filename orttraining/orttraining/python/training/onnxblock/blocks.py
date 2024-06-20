@@ -30,7 +30,7 @@ class Block(ABC):
     """
 
     def __init__(self, temp_file_name="temp.onnx"):
-        if (os.path.isabs(temp_file_name)):
+        if os.path.isabs(temp_file_name):
             raise RuntimeError("Please pass in a relative path for the temp_file_name.")
         self.base = None
         self.temp_onnx_file_path = os.path.join(os.getcwd(), temp_file_name)
@@ -99,7 +99,9 @@ class Block(ABC):
         if os.path.exists(self.temp_onnx_file_path):
             os.remove(self.temp_onnx_file_path)
             # get absolute path for the external data file
-            external_data_file_path = os.path.join(os.path.dirname(self.temp_onnx_file_path), self.temp_external_data_file_name)
+            external_data_file_path = os.path.join(
+                os.path.dirname(self.temp_onnx_file_path), self.temp_external_data_file_name
+            )
             if os.path.exists(external_data_file_path):
                 os.remove(external_data_file_path)
 
