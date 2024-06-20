@@ -91,22 +91,22 @@ def create_moe_onnx_graph(
             "fc1_experts_weights",
             ORT_DTYPE,
             fc1_shape,
-            fc1_experts_weights.to(torch_type).flatten().tolist(),
-            raw=False,
+            fc1_experts_weights.to(torch_type).detach().numpy().tobytes(),
+            raw=True,
         ),
         helper.make_tensor(
             "fc2_experts_weights",
             ORT_DTYPE,
             fc2_shape,
-            fc2_experts_weights.to(torch_type).flatten().tolist(),
-            raw=False,
+            fc2_experts_weights.to(torch_type).detach().numpy().tobytes(),
+            raw=True,
         ),
         helper.make_tensor(
             "fc3_experts_weights",
             ORT_DTYPE,
             fc3_shape,
-            fc3_experts_weights.to(torch_type).flatten().tolist(),
-            raw=False,
+            fc3_experts_weights.to(torch_type).detach().numpy().tobytes(),
+            raw=True,
         ),
     ]
     print(f"fc1_experts_weights dtype after conversion: {fc1_experts_weights.dtype}")
@@ -144,7 +144,12 @@ def create_moe_onnx_graph(
     print(f"Test 12")
 
     model = helper.make_model(graph)
-    return model.SerializeToString()
+    
+    import onnx
+    model_path = "mixtral_moe.onnx"
+    onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
+    
+    return model_path
 
 
 class ClassInstantier(OrderedDict):
