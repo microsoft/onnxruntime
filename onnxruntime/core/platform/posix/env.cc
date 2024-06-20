@@ -303,7 +303,17 @@ class PosixEnv : public Env {
   }
 
   int GetL2CacheSize() const override {
+#ifdef _SC_LEVEL2_CACHE_SIZE
     return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
+// #elif defined(HW_L2CACHESIZE)
+//     int mib[2] = {CTL_HW, HW_L2CACHESIZE};
+//     int val = -1;  // unknown
+//     size_t len = sizeof(val);
+//     sysctl(mib, 2, &val, &len, NULL, 0);
+//     return val;
+#else
+    return -1;  // unknown
+#endif
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
