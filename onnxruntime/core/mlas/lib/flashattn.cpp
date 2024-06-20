@@ -92,7 +92,12 @@ FlashAttentionThreaded(
                 negmax = -m[irow];
                 m_diff -= m[irow];  // old - new (less than 0)
 
-                float rowsum = mlas_platform.ComputeSumExpF32Kernel(intermediate + irow * row_size_kv_capped, intermediate + irow * row_size_kv_capped, row_size_kv_capped, &negmax);
+
+#if defined(MLAS_TARGET_AMD64)
+            float rowsum = mlas_platform.ComputeSumExpF32Kernel(intermediate + irow * row_size_kv_capped, intermediate + irow * row_size_kv_capped, row_size_kv_capped, &negmax);
+#else
+            float rowsum = MlasComputeSumExpF32Kernel(intermediate + irow * row_size_kv_capped, intermediate + irow * row_size_kv_capped, row_size_kv_capped, &negmax);
+#endif
 
                 // Note: for ir == 0, there is actually no need to calculate exp_diff
                 if (ir != 0) {
