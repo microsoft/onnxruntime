@@ -165,6 +165,8 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=int4), numpy.array(7, dtype=int4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-4, dtype=int4), numpy.array(3, dtype=int4)),
 }
 
 

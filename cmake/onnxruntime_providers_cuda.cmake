@@ -175,6 +175,10 @@
       endif()
     endif()
 
+    if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
+    endif()
+
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
     if (onnxruntime_ENABLE_TRAINING_OPS)
       onnxruntime_add_include_to_target(${target} onnxruntime_training)
