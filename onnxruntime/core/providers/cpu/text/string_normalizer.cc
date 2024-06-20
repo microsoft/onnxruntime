@@ -220,7 +220,14 @@ class Utf8ConverterGeneric {
   }
 
  private:
+#if defined(__GNUC__) && __cplusplus >= 202002L
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   std::codecvt_utf8<wchar_t> converter_;
+#if defined(__GNUC__) && __cplusplus >= 202002L
+#pragma GCC diagnostic pop
+#endif
 };
 
 // We need to specialize for MS as there is
