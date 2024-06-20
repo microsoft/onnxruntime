@@ -1036,10 +1036,10 @@ def generate_files(line_list, args):
 
             os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net8.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
             )
 
     # README
