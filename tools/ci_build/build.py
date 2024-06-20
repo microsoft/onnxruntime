@@ -870,15 +870,15 @@ def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 
-def install_python_deps(requirements_file='requirements.txt',numpy_version=None):
+def install_python_deps(requirements_file="requirements.txt", numpy_version=None):
     if numpy_version is not None and numpy_version != "":
         # Remove current numpy version from requirements-pybind.txt and add the specified version
-        with open(requirements_file, 'r+') as file:
+        with open(requirements_file, "r+") as file:
             lines = file.readlines()
             file.seek(0)
-            package_to_exclude = 'numpy'
+            package_to_exclude = "numpy"
             filtered_lines = [line for line in lines if package_to_exclude not in line]
-            filtered_lines.append(f'numpy=={numpy_version}\n')
+            filtered_lines.append(f"numpy=={numpy_version}\n")
             file.writelines(filtered_lines)
             file.truncate()
     run_subprocess(
@@ -2153,7 +2153,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        install_python_deps('requirements/requirements-transformers-test.txt')
+                        install_python_deps("requirements/requirements-transformers-test.txt")
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
@@ -2814,7 +2814,7 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps('requirements/requirements-pybind.txt', args.numpy_version)
+            install_python_deps("requirements/requirements-pybind.txt", args.numpy_version)
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
