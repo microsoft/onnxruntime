@@ -169,6 +169,7 @@ void DeserializeCapabilities(const std::string& ser_capabilities,
 }
 
 std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
+  LOGS_DEFAULT(VERBOSE) << "Opset import size of original graph: " << graph_viewer.DomainToVersionMap().size();
   // XXX: Will Steps 1/2/3 suffice for restoring a model/graph later?
   // Any information loss or mismatch?
   // Step 1
@@ -408,7 +409,9 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
 
   auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
   p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"]);
+  LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
   auto p_model = Model::Create(std::move(*p_model_proto), j_obj["orig_model_path"], nullptr, logger);
+  LOGS_DEFAULT(VERBOSE) << "Done creating model from model proto";
   auto& graph = p_model->MainGraph();
   // XXX: maybe ineffective.
   graph.ToGraphProto()->set_name(j_obj["orig_graph_name"]);
