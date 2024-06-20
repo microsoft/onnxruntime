@@ -148,6 +148,7 @@ std::once_flag GroupQueryAttention<BFloat16>::arch_checking_{};
 
 template <typename T>
 Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
+#if USE_COMPOSABLE_KERNEL_CK_TILE
   auto hip_stream = static_cast<hipStream_t>(ctx->GetComputeStream()->GetHandle());
   const Tensor* query = ctx->Input<Tensor>(0);
   const Tensor* key = ctx->Input<Tensor>(1);
@@ -512,6 +513,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   HIP_RETURN_IF_ERROR(hipGetLastError());
 
   return Status::OK();
+#else
+  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "GroupQueryAttention requires ck_tiles to be enabled");
+#endif
 }
 
 }  // namespace rocm
