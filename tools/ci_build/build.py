@@ -260,9 +260,6 @@ def parse_arguments():
         "--wheel_name_suffix",
         help="Suffix to append to created wheel names. This value is currently only used for nightly builds.",
     )
-    parser.add_argument(
-        "--numpy_version", help="Installs a specific version of numpy before building the python binding."
-    )
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
@@ -868,23 +865,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def install_python_deps(requirements_file="requirements.txt", numpy_version=None):
-    if numpy_version is not None and numpy_version != "":
-        # Remove current numpy version from requirements-pybind.txt and add the specified version
-        with open(requirements_file, "r+") as file:
-            lines = file.readlines()
-            file.seek(0)
-            package_to_exclude = "numpy"
-            filtered_lines = [line for line in lines if package_to_exclude not in line]
-            filtered_lines.append(f"numpy=={numpy_version}\n")
-            file.writelines(filtered_lines)
-            file.truncate()
-    run_subprocess(
-        [sys.executable, "-m", "pip", "install", "-r", requirements_file],
-        cwd=SCRIPT_DIR,
-    )
 
 
 def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
@@ -2153,7 +2133,17 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
-                        install_python_deps("requirements/requirements-transformers-test.txt")
+                        run_subprocess(
+                            [
+                                sys.executable,
+                                "-m",
+                                "pip",
+                                "install",
+                                "-r",
+                                "requirements/requirements-transformers-test.txt",
+                            ],
+                            cwd=SCRIPT_DIR,
+                        )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, "-m", "pip", "install", "numpy==" + numpy_init_version])
@@ -2814,7 +2804,10 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps("requirements/requirements-pybind.txt", args.numpy_version)
+            run_subprocess(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements-pybind.txt"],
+                cwd=SCRIPT_DIR,
+            )
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
