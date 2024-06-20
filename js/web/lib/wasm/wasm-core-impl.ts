@@ -273,9 +273,9 @@ export const createSession = async(
           const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
           if (context) {
             wasm.currentContext = context as MLContext;
-          } else if (gpuDevice)
+          } else if (gpuDevice) {
             wasm.currentContext = await navigator.ml.createContext(gpuDevice);
-          else {
+          } else {
             wasm.currentContext = await navigator.ml.createContext({ deviceType, numThreads, powerPreference });
           }
         } else {
