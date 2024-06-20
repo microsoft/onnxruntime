@@ -166,6 +166,7 @@ if (cmakeBuildDir != null) {
 	}
 
 	tasks.register('cmakeCheck', Copy) {
+		group = 'verification'
 		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
