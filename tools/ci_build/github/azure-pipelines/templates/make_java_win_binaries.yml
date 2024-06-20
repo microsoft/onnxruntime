@@ -12,7 +12,7 @@ steps:
       inputs:
         script: |
           @echo on
-          if ${{ parameters.buildOnly }} == true (
+          if ${{ parameters.buildOnly }} == "True" (
             set SkipTest= "-x test"
           ) else (
             set SKipTest= ""
