@@ -6927,7 +6927,8 @@ def test_layerwise_recompute_pythonop_determinstic():
         if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
 
-def test_aten_upsample_bicubic():
+
+def test_aten_attention():
     class _NeuralNetAttention(torch.nn.Module):
         def __init__(self):
             super().__init__()
