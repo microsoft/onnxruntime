@@ -133,6 +133,8 @@ public:
                 // - the reduced axis is the term missing from the output.
                 // - height and width are the unique axes respectively found in only input A or input B.
                 // - the batch (if present) is the first axis shared by both inputs, and the channel is the subsequent common one.
+                // If any axis is not found (say it's a 2D GEMM), then the axis value will be beyond the rank, which is
+                // safely handled correctly during projection as an inserted axis.
 
                 auto findAndClearAxis = [](uint32_t& currentAxesMask, uint32_t contraintAxesMask) -> uint32_t
                 {
