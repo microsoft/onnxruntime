@@ -18,7 +18,7 @@ from typing import List, Optional
 import torch
 from onnx import TensorProto, helper
 
-from onnxruntime import InferenceSession, get_available_providers
+from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 
@@ -275,9 +275,7 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig):
     return model.SerializeToString()
 
 
-def create_session(
-    config: MultiHeadAttentionConfig,
-) -> CudaSession:
+def create_session(config: MultiHeadAttentionConfig, session_options=None) -> CudaSession:
     onnx_model_str = create_multi_head_attention_onnx_model(config)
 
     if config.provider == "CUDAExecutionProvider":
@@ -287,7 +285,7 @@ def create_session(
     else:
         providers = ["CPUExecutionProvider"]
 
-    ort_session = InferenceSession(onnx_model_str, providers=providers)
+    ort_session = InferenceSession(onnx_model_str, session_options, providers=providers)
     cuda_session = CudaSession(ort_session, config.device, config.enable_cuda_graph)
     shape_dict = config.shape_dict()
     cuda_session.allocate_buffers(shape_dict)
@@ -297,11 +295,8 @@ def create_session(
 class OrtMultiHeadAttention:
     """A wrapper of ORT MultiHeadAttention to test relevance and performance."""
 
-    def __init__(
-        self,
-        config: MultiHeadAttentionConfig,
-    ):
-        self.ort_session = create_session(config)
+    def __init__(self, config: MultiHeadAttentionConfig, session_options=None):
+        self.ort_session = create_session(config, session_options)
         self.feed_dict = config.random_inputs()
 
     def infer(self):
@@ -353,7 +348,9 @@ def get_cpu_kernel_name() -> str:
     return "CPU:Unfused"
 
 
-def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repeats: int = 100):
+def run_tflops_test(
+    use_gpu: bool = True, enable_cuda_graph: bool = False, intra_op_num_threads: int = 0, repeats: int = 100
+):
     if use_gpu:
         device_id = torch.cuda.current_device()
         device = torch.device("cuda", device_id)
@@ -407,11 +404,26 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
         ]
     else:
         configs = [
+            # TNLGv4
             (1, 128, 0, 32, 128, True),
             (1, 256, 0, 32, 128, True),
             (1, 512, 0, 32, 128, True),
             (1, 1024, 0, 32, 128, True),
             (1, 2048, 0, 32, 128, True),
+            # bert-base
+            (1, 128, 0, 12, 64, True),
+            (1, 384, 0, 12, 64, True),
+            (1, 512, 0, 12, 64, True),
+            (4, 128, 0, 12, 64, True),
+            (4, 384, 0, 12, 64, True),
+            (4, 512, 0, 12, 64, True),
+            # bert-large
+            (1, 128, 0, 16, 64, True),
+            (1, 384, 0, 16, 64, True),
+            (1, 512, 0, 16, 64, True),
+            (4, 128, 0, 16, 64, True),
+            (4, 384, 0, 16, 64, True),
+            (4, 512, 0, 16, 64, True),
         ]
 
     # List of environment variables to enable/disable attention kernels
@@ -430,7 +442,7 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
         if value is not None:
             print(f"{name}={value}")
 
-    print("\nformat\tcausal\tbatch\tseqlen\theads\th_dim\tms\tTFLOPS\tkernel")
+    print("\nformat\tcausal\tbatch\tseqlen\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
     causal = False
 
     for input_format in formats:
@@ -454,7 +466,9 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
                     input_format=input_format,
                 )
 
-                session = create_session(config)
+                sess_options = SessionOptions()
+                sess_options.intra_op_num_threads = intra_op_num_threads
+                session = create_session(config, sess_options)
 
                 if use_gpu:
                     kernel = get_gpu_kernel_name(config)
@@ -490,7 +504,8 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
 
                 format = InputFormats.input_format_str(input_format)
                 print(
-                    f"{format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t{average_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
+                    f"{format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
+                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
                 )
 
 
@@ -605,4 +620,5 @@ if __name__ == "__main__":
         run_tflops_test(use_gpu=True, enable_cuda_graph=True)
 
     # Test CPU provider
-    run_tflops_test(use_gpu=False, enable_cuda_graph=False)
+    for intra_op_num_threads in [1, 2, 4, 8, 16]:
+        run_tflops_test(use_gpu=False, enable_cuda_graph=False, intra_op_num_threads=intra_op_num_threads)
