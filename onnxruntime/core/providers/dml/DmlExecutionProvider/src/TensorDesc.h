@@ -52,7 +52,7 @@ namespace Dml
 
         // Rearranges existing m_sizes and m_strides by gathering axes from dimensionMapping.
         // It IS legal to change the number of dimensions by adding filler, dropping entire dimensions for a new view,
-        // and even duplicate logical dimensions. Axes beyond the original rank will be filled by size 1 and stride 0.
+        // and even duplicating logical dimensions. Axes beyond the original rank will be filled by size 1 and stride 0.
         // e.g. Existing sizes [2,3,4] with [2,0] yields [4,2].
         void PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment);
 

@@ -51,7 +51,7 @@
 // 3. Multiply elementwise every input tensor to compute the internal product.
 // 4. Sum reduce the product tensor to the final output shape, reducing along any missing dimensions.
 //    So a product shape of [b,j,i,k] and output shape of [b,i,k] reduces along j.
-// 
+//
 //  ReduceSum(
 //      Mul(
 //          ExpandTransposeCollapseAsNeeded(A, aAxesToProductAxes),
@@ -90,7 +90,7 @@ public:
         uint32_t bindableInputCount = kernelCreationContext.GetInputCount();
         if (IsMatMulOperatorType())
         {
-            ++bindableInputCount; // Account for the optional C tensor.
+            ++bindableInputCount;  // Account for the optional C tensor.
         }
         inputIndices.resize(bindableInputCount);
 
@@ -231,8 +231,8 @@ public:
 
                 const DML_OPERATOR_DESC* operatorDescPointers[2] =
                 {
-                    &multiplyOperatorDescWithEnum,  // NodeIndexMultiply
-                    &reduceSumOperatorDescWithEnum, // NodeIndexReduceSum
+                    &multiplyOperatorDescWithEnum,   // NodeIndexMultiply
+                    &reduceSumOperatorDescWithEnum,  // NodeIndexReduceSum
                 };
 
                 DML_INPUT_GRAPH_EDGE_DESC inputEdges[2];
@@ -280,9 +280,9 @@ public:
 
     // Reproject all inputs and the output to the intermediate product tensor.
     // e.g.
-    // 
+    //
     //      Equation: i,j->ji
-    // 
+    //
     //      [1] [4,5,6,7]     [4, 8,12]
     //      [2]           ->  [5,10,15]
     //      [3]               [6,12,18]
@@ -347,14 +347,14 @@ public:
         // Set default sizes for shape compatibility with the product tensor, and
         // set strides to 0's initially to broadcast any missing dimensions.
         std::vector<uint32_t> newSizes;
-        std::vector<uint32_t> newStrides(newRank, 0u); // Default to 0 to broadcast missing entries.
+        std::vector<uint32_t> newStrides(newRank, 0u);  // Default to 0 to broadcast missing entries.
         if (isReduced)
         {
-            newSizes.resize(newRank, 1u); // Fill with 1's initially for any missing (reduced) dimensions.
+            newSizes.resize(newRank, 1u);  // Fill with 1's initially for any missing (reduced) dimensions.
         }
         else
         {
-            newSizes = m_productDimensions; // Use the product tensor shape directly. Missing axes will be broadcasted.
+            newSizes = m_productDimensions;  // Use the product tensor shape directly. Missing axes will be broadcasted.
         }
 
         // Scatter the original sizes and strides into the corresponding product tensor axis.
@@ -364,7 +364,7 @@ public:
             if (productAxis < newRank)
             {
                 newSizes[productAxis] = originalSizes[i];
-                newStrides[productAxis] += originalStrides[i]; // Add to combine diagonal cases like i,j,i->i,j
+                newStrides[productAxis] += originalStrides[i];  // Add to combine diagonal cases like i,j,i->i,j
             }
         }
         tensorDesc.SetDimensionsAndStrides(newSizes, newStrides);
