@@ -438,8 +438,10 @@ void GetQuantizationScaleAndZeroPoint(
     bool is_i8_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT8;
     // some qdq conv bias is int32 quantized
     bool is_int32_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT32;
-    zero_point = is_i8_zp ? static_cast<int32_t>(unpacked_tensor.DataAsSpan<int8_t>()[0]) : is_int32_zp ? static_cast<int32_t>(unpacked_tensor.DataAsSpan<int32_t>()[0])
-                                                                                                        : static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
+    zero_point = is_i8_zp
+                     ? static_cast<int32_t>(unpacked_tensor.DataAsSpan<int8_t>()[0])
+                 : is_int32_zp ? static_cast<int32_t>(unpacked_tensor.DataAsSpan<int32_t>()[0])
+                               : static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
 
     // per channel quantized handling
     if (!unpacked_tensor.dims().empty() && unpacked_tensor.dims()[0] != 0 && unpacked_tensor.dims()[0] != 1) {
@@ -482,7 +484,8 @@ static bool IsInternalQuantizedNodeUnit(const NodeUnit& node_unit) {
   int32_t input_type;
   ORT_ENFORCE(GetType(*node.InputDefs()[0], input_type));
 
-  return input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 || input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8;
+  return input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8;
 }
 
 bool GetType(const NodeArg& node_arg, int32_t& type) {

@@ -21,8 +21,7 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
-#ifndef ONNXRUNTIME_CORE_PROVIDERS_VSINPU_BUILDERS_IMPL_DROPOUT_OP_BUILDER_H_
-#define ONNXRUNTIME_CORE_PROVIDERS_VSINPU_BUILDERS_IMPL_DROPOUT_OP_BUILDER_H_
+#pragma once
 #include <memory>
 #include <vector>
 #include <utility>
@@ -80,4 +79,3 @@ class DropoutOpBuilder : public BaseOpBuilder {
 
 }  // namespace vsi
 }  // namespace onnxruntime
-#endif  // ONNXRUNTIME_CORE_PROVIDERS_VSINPU_BUILDERS_IMPL_DROPOUT_OP_BUILDER_H_
