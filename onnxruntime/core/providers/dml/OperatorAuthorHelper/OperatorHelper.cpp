@@ -1497,14 +1497,8 @@ namespace OperatorHelper
     {
         if (m_components.empty())
         {
-            return RecognizedOperatorType::None; // Parsing may have found unsupported components - treating as unknown.
+            return RecognizedOperatorType::None;  // Parsing may have found unsupported components - treating as unknown.
         }
-
-        // std::ranges::equal is not supported yet.
-        auto equals = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b) -> bool
-        {
-            return std::equal(a.begin(), a.end(), b.begin(), b.end());
-        };
 
         auto areIdenticalAxes = [](gsl::span<const uint32_t> a, gsl::span<const uint32_t> b) -> bool
         {
@@ -1519,14 +1513,14 @@ namespace OperatorHelper
         // Identify any common patterns that map to existing DirectML operators
         // (identity, transpose, sum reduction, matmul, multiplication...).
 
-        constexpr size_t maximumSupportedComponentCount = 3; // 2 inputs + 1 output
+        constexpr size_t maximumSupportedComponentCount = 3;  // 2 inputs + 1 output
         // Bail if more than 2 inputs. EinSum is generic and can handle any variable number of inputs,
         // but 3-input models have yet to be seen.
         if (m_components.size() > maximumSupportedComponentCount)
         {
             return RecognizedOperatorType::None;
         }
-        else if (m_components.size() == 2) // 1 input, 1 output
+        else if (m_components.size() == 2)  // 1 input, 1 output
         {
             auto outputLabels = m_components.back().GetLabels(m_labelIndices);
 
@@ -1544,7 +1538,7 @@ namespace OperatorHelper
                 return RecognizedOperatorType::Transpose;
             }
         }
-        else if (m_components.size() == 3) // 2 inputs, 1 output
+        else if (m_components.size() == 3)  // 2 inputs, 1 output
         {
             auto input0Labels = m_components[0].GetLabels(m_labelIndices);
             auto input1Labels = m_components[1].GetLabels(m_labelIndices);
@@ -1601,7 +1595,7 @@ namespace OperatorHelper
         //
         //  label sizes = [3,2,4,5]
         //
-        assert(!m_components.empty()); // Should have already parsed components.
+        assert(!m_components.empty());  // Should have already parsed components.
 
         uint32_t inputCount  = kernelInformation.GetInputCount();
         uint32_t outputCount = kernelInformation.GetOutputCount();
@@ -1643,7 +1637,7 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> EinSumHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        assert(!m_components.empty()); // Should have already parsed components.
+        assert(!m_components.empty());  // Should have already parsed components.
 
         // Generate output dimensions from corresponding input tensor labels.
         // e.g. Given ij,jk->ij with [2,3] and [3,5], the output is [2,5].

@@ -823,10 +823,10 @@ protected:
     };
 
     std::string m_equation;
-    size_t m_uniqueLabelCount = 0; // e.g. ij,jk->ij has 3 unique labels.
-    std::vector<uint32_t> m_labelIndices; // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
-    std::vector<Component> m_components; // All components in order, including inputs and output.
-    std::vector<uint32_t> m_productDimensions; // Dimensions of each unique label (size() == m_uniqueLabelCount).
+    size_t m_uniqueLabelCount = 0;  // e.g. ij,jk->ij has 3 unique labels.
+    std::vector<uint32_t> m_labelIndices;  // Concatenation of all labels as rebased indices ("ij,ai" -> 0,1,2,0).
+    std::vector<Component> m_components;  // All components in order, including inputs and output.
+    std::vector<uint32_t> m_productDimensions;  // Dimensions of each unique label (size() == m_uniqueLabelCount).
     RecognizedOperatorType m_recognizedOperatorType = RecognizedOperatorType::None;
 };
 
