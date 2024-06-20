@@ -149,7 +149,7 @@ std::string SerializeCapabilities(
   if (!ss.good()) {
     ORT_THROW("Serialization stream bad");
   }
-  LOGS_DEFAULT(VERBOSE) << "Done serializing compute capabilites";
+  LOGS_DEFAULT(VERBOSE) << "Done serializing compute capabilites: " << capability_ptrs.size();
   return ss.str();
 }
 
@@ -363,6 +363,10 @@ std::string RetrieveEPContextCache(
   if (cache_len == -1) {
     ifs.close();
     ORT_THROW("Error when operating EP context cache file");
+  } else if (cache_len == 0) {
+    ifs.close();
+    LOGS_DEFAULT(WARNING) << "Empty EP context cache file: " << ep_ctx_fs_path.string();
+    return "";
   }
   ifs.seekg(0, ifs.beg);
   char* buf = new char[static_cast<size_t>(cache_len)];
@@ -414,7 +418,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
 
 bool GraphHasEPContextNode(const Graph& graph) {
   size_t vitisai_len = std::strlen(kVitisAI);
-  LOGS_DEFAULT(WARNING) << "Checking graph with EP context nodes: " << graph.Nodes().size();
+  LOGS_DEFAULT(VERBOSE) << "Checking graph with EP context nodes: " << graph.Nodes().size();
   for (const auto* p_node : graph.Nodes()) {
     if (p_node->OpType() != kEPContextOp) {
       continue;

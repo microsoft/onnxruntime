@@ -101,7 +101,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
-  LOGS_DEFAULT(VERBOSE) << "Done serialized capabilities: " << ep_ctx_payload.length();
+  LOGS_DEFAULT(VERBOSE) << "Done serialized capabilities with byte length: " << ep_ctx_payload.length();
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
@@ -185,19 +185,24 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       LOGS_DEFAULT(VERBOSE) << "An EP context model passed in";
       ValidateEPContextNode(graph_viewer.GetGraph());
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_);
-      std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
-      DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
-      // FIXME
-      // 1) `execution_providers_` is used by `Compiler()` as well, so, even in this case, we need to make it ready.
-      // 2) Computing (using cache) `execution_providers_` needs the original model/graph for signature match.
-      // 3) The closed-source backend of VitisAI EP has compilation cache, so no real overhead.
-      // 4) A con of this approach is it is not "compile once, run everywhere".
-      if (!execution_providers_) {
-        auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
-        execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+      LOGS_DEFAULT(VERBOSE) << "Retrieved cache with length " << ep_ctx_payload.length();
+      if (!ep_ctx_payload.empty()) {
+        std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
+        DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
+        // FIXME
+        // 1) `execution_providers_` is used by `Compiler()` as well, so, even in this case, we need to make it ready.
+        // 2) Computing (using cache) `execution_providers_` needs the original model/graph for signature match.
+        // 3) The closed-source backend of VitisAI EP has compilation cache, so no real overhead.
+        // 4) A con of this approach is it is not "compile once, run everywhere".
+        if (!execution_providers_) {
+          auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
+          execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        }
+        LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
+        return capability_ptrs;
+      } else {
+        LOGS_DEFAULT(WARNING) << "Zero cache retrieved";
       }
-      LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
-      return capability_ptrs;
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
         std::string warning = "The inference session was created with a normal ONNX model but a model file with EP context cache exists at " + PathToUTF8String(ep_ctx_model_file_loc_) + ". Please remove the EP context model manually if you want to re-generate it.";
