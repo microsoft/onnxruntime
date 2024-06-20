@@ -35,6 +35,10 @@
 #include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
 #endif
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/platform/windows/telemetry.h"
+#endif
 
 namespace ONNX_NAMESPACE {
 class ModelProto;
@@ -124,6 +128,8 @@ class InferenceSession {
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
 
  public:

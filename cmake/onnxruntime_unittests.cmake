@@ -583,10 +583,6 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
 set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
@@ -916,10 +912,6 @@ endif()
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
 if (onnxruntime_USE_ROCM)
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
     target_compile_definitions(onnxruntime_test_all PRIVATE USE_COMPOSABLE_KERNEL)
@@ -1056,10 +1048,6 @@ set(onnx_test_libs
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto
   ${onnxruntime_EXTERNAL_LIBRARIES})
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
-endif()
 
 if (NOT IOS)
     onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
@@ -1240,10 +1228,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-    endif()
 
     if (onnxruntime_USE_TVM)
       if (WIN32)
@@ -1473,10 +1457,6 @@ endif()
       onnxruntime_common
       onnxruntime_flatbuffers
     )
-
-    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-      list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_language_interop onnxruntime_pyop)
-    endif()
 
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
