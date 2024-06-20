@@ -44,11 +44,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
   const auto& env = Env::Default();
-
   l2_cache_size_ = env.GetL2CacheSize();
-  if (l2_cache_size_ <= 0) {
-    l2_cache_size_ = 256 * 1024;  // L2 cache size range from 256 KB to 32 MB. If unknown, default to 256 KB.
-  }
 
   disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 }
@@ -110,8 +106,14 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int v_bias_offset = 2 * qk_hidden_size;
 
   // If optional outputs aren't needed, present_k and present_v will be null
-  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
-  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
+  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
+                                        static_cast<int64_t>(num_heads_),
+                                        static_cast<int64_t>(total_kv_sequence_length),
+                                        static_cast<int64_t>(qk_head_size)});
+  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size),
+                                        static_cast<int64_t>(num_heads_),
+                                        static_cast<int64_t>(total_kv_sequence_length),
+                                        static_cast<int64_t>(v_head_size)});
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
@@ -157,7 +159,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       past_key == nullptr &&
       past_value == nullptr &&
       present_k == nullptr &&
-      present_v == nullptr) {
+      present_v == nullptr &&
+      l2_cache_size_ > 0) {
     int row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
     if (row_size_kv > 0) {
       FlashAttentionThreadedArgs args;
@@ -167,15 +170,17 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       args.kv_sequence_length = kv_sequence_length;
       args.qk_head_size = qk_head_size;
       args.v_head_size = v_head_size;
-      args.scale = scale_;
+      args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
       args.row_size_kv = row_size_kv;
       args.row_size_q = std::min(row_size_kv, qk_head_size + v_head_size);
 
       auto* tp = context->GetOperatorThreadPool();
       args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
 
-      args.buffer_size_per_thread = args.row_size_q * 2 + args.row_size_q * args.row_size_kv + args.row_size_q * args.v_head_size;
-      args.buffer = static_cast<float*>(allocator->AllocArray(args.buffer_size_per_thread * args.thread_count, sizeof(T)));
+      args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) *
+                                    static_cast<size_t>(2 + args.row_size_kv + args.v_head_size);
+      args.buffer = static_cast<float*>(allocator->AllocArray(args.buffer_size_per_thread * args.thread_count,
+                                                              sizeof(T)));
       args.buffer_size_per_thread *= sizeof(float);
 
       args.query = Q.Get<Tensor>().Data<float>();
