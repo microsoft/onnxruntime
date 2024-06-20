@@ -144,7 +144,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, kv_sequence_length, v_head_size, value, bias, v_bias_offset, V));
 
-  if (std::is_same_v<T, float> && !disable_flash_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr && present_k == nullptr && present_v == nullptr) {
+  if (std::is_same_v<T, float> && !disable_flash_ && !is_unidirectional_ && key_padding_mask == nullptr && extra_add_qk == nullptr && past_key == nullptr && past_value == nullptr && present_k == nullptr && present_v == nullptr) {
     FlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
     args.num_heads = num_heads_;
