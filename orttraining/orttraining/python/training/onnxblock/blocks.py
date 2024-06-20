@@ -30,10 +30,12 @@ class Block(ABC):
     """
 
     def __init__(self, temp_file_name="temp.onnx"):
+        if (os.path.isabs(temp_file_name)):
+            raise RuntimeError("Please pass in a relative path for the temp_file_name.")
         self.base = None
         self.temp_onnx_file_path = os.path.join(os.getcwd(), temp_file_name)
         # onnx.save location parameter requires a relative path to the model path
-        self.temp_external_data_relative_path = temp_file_name + ".data"
+        self.temp_external_data_file_name = temp_file_name + ".data"
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -57,7 +59,7 @@ class Block(ABC):
                 self.temp_onnx_file_path,
                 save_as_external_data=True,
                 all_tensors_to_one_file=True,
-                location=self.temp_external_data_relative_path,
+                location=self.temp_external_data_file_name,
             )
 
             onnx.checker.check_model(self.temp_onnx_file_path, True)
@@ -79,7 +81,7 @@ class Block(ABC):
                 self.temp_onnx_file_path,
                 save_as_external_data=True,
                 all_tensors_to_one_file=True,
-                location=self.temp_external_data_relative_path,
+                location=self.temp_external_data_file_name,
             )
 
             onnx.shape_inference.infer_shapes_path(self.temp_onnx_file_path)
@@ -96,8 +98,10 @@ class Block(ABC):
         # calls until the Block no longer needs to be used.
         if os.path.exists(self.temp_onnx_file_path):
             os.remove(self.temp_onnx_file_path)
-        if os.path.exists(self.temp_external_data_relative_path):
-            os.remove(self.temp_external_data_relative_path)
+            # get absolute path for the external data file
+            external_data_file_path = os.path.join(os.path.dirname(self.temp_onnx_file_path), self.temp_external_data_file_name)
+            if os.path.exists(external_data_file_path):
+                os.remove(external_data_file_path)
 
 
 class _BinaryOp(Block):
