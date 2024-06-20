@@ -12,11 +12,12 @@ index 04cb3303a..c023001de 100644
      /wd4305 # 'identifier' : truncation from 'type1' to 'type2'
      /wd4307 # 'operator' : integral constant overflow
      /wd4309 # 'conversion' : truncation of constant value
-@@ -259,7 +257,6 @@ if (MSVC)
+@@ -259,7 +257,7 @@ if (MSVC)
      /wd4355 # 'this' : used in base member initializer list
      /wd4506 # no definition for inline function 'function'
      /wd4800 # 'type' : forcing value to bool 'true' or 'false' (performance warning)
 -    /wd4996 # The compiler encountered a deprecated declaration.
++    ${onnxruntime_PROTOBUF_EXTRA_WARNING_DISABLEMENT}
    )
    # Allow big object
    add_definitions(/bigobj)
