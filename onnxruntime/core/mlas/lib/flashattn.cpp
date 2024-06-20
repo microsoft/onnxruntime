@@ -6,7 +6,7 @@
 void
 FlashAttentionThreaded(
     std::ptrdiff_t thread_id,
-    struct FlashAttentionThreadedArgs* args
+    const FlashAttentionThreadedArgs* args
 )
 {
     int row_size_q = args->row_size_q;
@@ -82,7 +82,11 @@ FlashAttentionThreaded(
             MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, row_size_q_capped, row_size_kv_capped, qk_head_size, alpha, inputQ, qk_head_size, inputK, qk_head_size, 0.0f, intermediate, row_size_kv_capped, nullptr);
 
             for (int irow = 0; irow < row_size_q_capped; ++irow) {
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
                 float rowmax = mlas_platform.ReduceMaximumF32Kernel(intermediate + irow * row_size_kv_capped, row_size_kv_capped);
+#else
+                float rowmax = MlasReduceMaximumF32Kernel(intermediate + irow * row_size_kv_capped, row_size_kv_capped);
+#endif
                 float m_diff = m[irow];
                 m[irow] = std::max(m[irow], rowmax);  // new m
                 negmax = -m[irow];

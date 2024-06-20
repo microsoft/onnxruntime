@@ -15,8 +15,9 @@ class SparseAttention final : public OpKernel, public GQAAttentionBase {
  public:
   SparseAttention(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
+
  private:
-    int sparse_block_size_;
+  int sparse_block_size_;
 };
 
 }  // namespace contrib
