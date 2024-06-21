@@ -2298,8 +2298,8 @@ def build_nuget_package(
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
 
-    # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
-    # mobile workloads must be installed on the machine.
+    # in most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
+    # must be installed on the machine.
     # they are only included in the Microsoft.ML.OnnxRuntime nuget package
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options
