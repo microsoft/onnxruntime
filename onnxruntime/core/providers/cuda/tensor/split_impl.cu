@@ -158,6 +158,62 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
 }
 
 template <typename T>
+__device__ __forceinline__ void _vec_copy_data(
+    void* output_ptr,
+    const void* input_ptr,
+    const int64_t size_in_byte) {
+  auto output_ptr_vec = reinterpret_cast<T*>(output_ptr);
+  auto input_ptr_vec = reinterpret_cast<const T*>(input_ptr);
+  auto new_size = size_in_byte / sizeof(T);
+  for (int i = threadIdx.x; i < new_size; i += blockDim.x) {
+    output_ptr_vec[i] = input_ptr_vec[i];
+  }
+  auto remain = size_in_byte % sizeof(T);
+  auto output_ptr_r = reinterpret_cast<char*>(output_ptr_vec + new_size);
+  auto input_ptr_r = reinterpret_cast<const char*>(input_ptr_vec + new_size);
+  for (int i = threadIdx.x; i < remain; i += blockDim.x) {
+    output_ptr_r[i] = input_ptr_r[i];
+  }
+}
+
+template <typename T>
+__device__ __forceinline__ void _block_copy_data(T* out, const T* input, int size) {
+  auto copy_size_in_byte = size * sizeof(T);
+
+  auto select = [](int value) {
+    if (value % 16 == 0) {
+      return 16;
+    } else if (value % 8 == 0) {
+      return 8;
+    } else if (value % 4 == 0) {
+      return 4;
+    } else if (value % 2 == 0) {
+      return 2;
+    } else {
+      return 1;
+    }
+  };
+  // cast the input and output ptr into long value, and check the alignment size of there pointers.
+  auto input_v = reinterpret_cast<size_t>(input);
+  auto out_v = reinterpret_cast<size_t>(out);
+  // select the min alignment of input and output pointer
+  auto vec_size = std::min(select(input_v), select(out_v));
+
+  if (vec_size == 16) {
+    _vec_copy_data<int4>(out, input, copy_size_in_byte);
+  } else if (vec_size == 8) {
+    _vec_copy_data<int2>(out, input, copy_size_in_byte);
+  } else if (vec_size == 4) {
+    _vec_copy_data<int32_t>(out, input, copy_size_in_byte);
+  } else if (vec_size == 2) {
+    _vec_copy_data<int16_t>(out, input, copy_size_in_byte);
+  } else {
+    _vec_copy_data<char>(out, input, copy_size_in_byte);
+  }
+}
+
+
+template <typename T>
 __global__ void _Split3InnerKernel(const int64_t size0,
                                    const int64_t size1,
                                    const int64_t size2,
@@ -167,20 +223,23 @@ __global__ void _Split3InnerKernel(const int64_t size0,
                                    T* output_data2,
                                    const int64_t outer_size,
                                    const int64_t inner_size) {
-  int64_t data_id = blockIdx.x * blockDim.x + threadIdx.x;
-  int64_t row_id = data_id / inner_size;
-  int64_t col_id = data_id % inner_size;
+  // each block copy a slice row of input data
+  int64_t row_id = blockIdx.x / 3;
+  int64_t slice_id = blockIdx.x % 3;
+#define _SELECT_1_in_3(slice_id, s1, s2, s3) \
+  ((slice_id == 0) ? (s1) : ((slice_id == 1) ? (s2) : (s3)))
 
-  if (row_id >= outer_size || col_id >= inner_size) {
-    return;
-  }
-  if (col_id < size0) {
-    output_data0[row_id * size0 + col_id] = input_data[data_id];
-  } else if (col_id < size0 + size1) {
-    output_data1[row_id * size1 + col_id - size0] = input_data[data_id];
-  } else {
-    output_data2[row_id * size2 + col_id - size0 - size1] = input_data[data_id];
-  }
+  // move input pointer to the corresponding row, and based on the slice_id, move to the begin of the slice
+  auto input_ptr = input_data + row_id * inner_size + _SELECT_1_in_3(slice_id, 0, size0, size0+size1);
+
+  auto output_ptr = _SELECT_1_in_3(slice_id,
+                                  output_data0 + row_id * size0,
+                                  output_data1 + row_id * size1,
+                                  output_data2 + row_id * size2);
+  auto copy_size = _SELECT_1_in_3(slice_id, size0, size1, size2);
+
+  _block_copy_data(output_ptr, input_ptr, copy_size);
+#undef _SELECT_1_in_3
 }
 
 Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
@@ -192,8 +251,7 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
   }
   CUDA_LONG inner_size = static_cast<CUDA_LONG>(input_shape[input_shape.size() - 1]);
 
-  CUDA_LONG N = outer_size * inner_size;
-  int blocksPerGrid = CeilDiv(N, kNumThreadsPerBlock);
+  int blocksPerGrid = outer_size * 3;
 
   switch (element_size) {
 #define CASE_ELEMENT_TYPE(type)                                                                 \
