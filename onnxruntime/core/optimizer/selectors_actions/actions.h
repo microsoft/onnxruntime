@@ -187,5 +187,4 @@ struct ReplaceWithNewFixed : public ReplaceWithNew {
   const NodeAttributes extra_attrs_;
   const std::vector<NodeAndMoveInfo> value_moves_;
 };
-
 }  // namespace onnxruntime
