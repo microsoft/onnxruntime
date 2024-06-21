@@ -157,8 +157,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                 super().__init__()
 
             def forward(self, input):
-                test_op = torch.softmax
-                out = test_op(input, dim=-1)
+                out = torch.softmax(input, dim=-1)
                 return out
 
         device = "cuda:0"
