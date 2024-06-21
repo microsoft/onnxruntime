@@ -228,6 +228,11 @@ stages:
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
 
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: 3.8
+
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
       inputs:

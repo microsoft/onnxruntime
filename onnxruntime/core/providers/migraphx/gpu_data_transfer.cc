@@ -60,17 +60,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
-#ifndef MIGRAPHX_STREAM_SYNC
-    if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::HIP_PINNED) {
-      // copying from GPU to pinned memory, this is non-blocking
-      HIP_CALL_THROW(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost, static_cast<hipStream_t>(stream.GetHandle())));
-    } else {
-      // copying from GPU to CPU memory, this is blocking
-      HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
-    }
-#else
     HIP_CALL_THROW(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost, static_cast<hipStream_t>(stream.GetHandle())));
-#endif
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
