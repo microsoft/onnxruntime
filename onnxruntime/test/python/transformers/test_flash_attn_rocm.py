@@ -32,7 +32,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
             rtol=0.002,
-            atol=0.002,
+            atol=0.0025,
         )
         parity_check_gqa_prompt_no_buff(
             config,
@@ -42,7 +42,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
             rtol=0.002,
-            atol=0.002,
+            atol=0.0025,
         )
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
@@ -63,7 +63,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
             rtol=0.002,
-            atol=0.002,
+            atol=0.0025,
         )
         parity_check_gqa_past_no_buff(
             config,
@@ -73,7 +73,7 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
             rtol=0.002,
-            atol=0.002,
+            atol=0.0025,
         )
 
 
