@@ -100,10 +100,9 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "openvino"* ]]; then
-        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
+        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.9  --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION}"
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION}"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
