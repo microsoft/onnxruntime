@@ -50,8 +50,8 @@ FlashAttentionThreaded(
         ptrdiff_t ih = ib % num_heads;
         ib /= num_heads;
 
-        char* buffer_current_thread = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
-        float* l = reinterpret_cast<float*>(buffer_current_thread);
+        float* buffer_current_thread = buffer + thread_id * buffer_size_per_thread;
+        float* l = buffer_current_thread;
 
         memset(l, 0, row_size_q * sizeof(float));
         float* m = l + row_size_q;

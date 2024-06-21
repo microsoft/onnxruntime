@@ -166,6 +166,9 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 
+// Environment variable for tuning attention algorithm
+constexpr const char* kAttentionAlgo = "ORT_ATTENTION_ALGO";
+
 // Minimum sequence length to enable memory efficient attention in FP32.
 constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 

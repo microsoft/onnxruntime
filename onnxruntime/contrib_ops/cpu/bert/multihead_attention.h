@@ -21,6 +21,7 @@ class MultiHeadAttention final : public OpKernel, public AttentionCPUBase {
   bool is_unidirectional_;
   bool disable_flash_;
   int l2_cache_size_;
+  int algo_;
 };
 
 }  // namespace contrib

@@ -47,6 +47,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   l2_cache_size_ = env.GetL2CacheSize();
 
   disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+  algo_ = ParseEnvironmentVariableWithDefault<int>(attention::kAttentionAlgo, 0);
 }
 
 template <typename T>
@@ -161,9 +162,19 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       present_k == nullptr &&
       present_v == nullptr &&
       l2_cache_size_ > 0) {
-    int row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
-    if (row_size_kv > 0) {
-      FlashAttentionThreadedArgs args;
+
+    FlashAttentionThreadedArgs args;
+    if (algo_ == 1) {
+      int q_split_size = q_sequence_length >= 768 ? 256 : (q_sequence_length >= 192 ? 64 : 32);
+      int kv_split_size = 512;
+      args.row_size_q = q_split_size > q_sequence_length ? q_sequence_length : q_split_size;
+      args.row_size_kv = kv_split_size > kv_sequence_length ? kv_sequence_length : kv_split_size;
+    } else {
+      args.row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
+      args.row_size_q = std::min(args.row_size_kv, qk_head_size + v_head_size);
+    }
+
+    if (args.row_size_kv > 0) {
       args.batch_size = batch_size;
       args.num_heads = num_heads_;
       args.q_sequence_length = q_sequence_length;
@@ -171,17 +182,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       args.qk_head_size = qk_head_size;
       args.v_head_size = v_head_size;
       args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
-      args.row_size_kv = row_size_kv;
-      args.row_size_q = std::min(row_size_kv, qk_head_size + v_head_size);
 
       auto* tp = context->GetOperatorThreadPool();
       args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
-      args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) *
-                                    static_cast<size_t>(2 + args.row_size_kv + args.v_head_size) * sizeof(float);
-      size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
-      IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
 
-      args.buffer = reinterpret_cast<float*>(buffer.get());
+      int s = args.row_size_kv + 2 + args.v_head_size; // qk + qk_max + qk_sum + dst
+      args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) * static_cast<size_t>(s);
+
+      size_t total_buffer_size = args.buffer_size_per_thread * static_cast<size_t>(args.thread_count);
+      IAllocatorUniquePtr<float> buffer = IAllocator::MakeUniquePtr<float>(allocator, total_buffer_size);
+      args.buffer = buffer.get();
 
       args.query = Q.Get<Tensor>().Data<float>();
       args.key = K.Get<Tensor>().Data<float>();

@@ -429,6 +429,7 @@ def run_tflops_test(
     # List of environment variables to enable/disable attention kernels
     print("Environment Variables:")
     env_names = [
+        "ORT_ATTENTION_ALGO",
         "ORT_DISABLE_FLASH_ATTENTION",
         "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV",
         "ORT_DISABLE_FUSED_ATTENTION",
