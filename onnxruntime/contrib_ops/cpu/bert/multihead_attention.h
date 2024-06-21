@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -21,6 +22,7 @@ class MultiHeadAttention final : public OpKernel, public AttentionCPUBase {
   bool is_unidirectional_;
   bool disable_flash_;
   int l2_cache_size_;
+  int algo_;
 };
 
 }  // namespace contrib

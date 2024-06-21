@@ -8,8 +8,8 @@ FlashAttentionThreaded(
     const FlashAttentionThreadedArgs* args
 )
 {
-    ptrdiff_t row_size_q = static_cast<ptrdiff_t>(args->row_size_q);
-    ptrdiff_t row_size_kv = static_cast<ptrdiff_t>(args->row_size_kv);
+    ptrdiff_t q_block_size = static_cast<ptrdiff_t>(args->q_block_size);
+    ptrdiff_t kv_block_size = static_cast<ptrdiff_t>(args->kv_block_size);
     ptrdiff_t batch_size = static_cast<ptrdiff_t>(args->batch_size);
     ptrdiff_t num_heads = static_cast<ptrdiff_t>(args->num_heads);
     ptrdiff_t q_sequence_length = static_cast<ptrdiff_t>(args->q_sequence_length);
@@ -28,11 +28,11 @@ FlashAttentionThreaded(
     auto&& mlas_platform = GetMlasPlatform();
 #endif
 
-    ptrdiff_t q_chunk_count = (q_sequence_length + (row_size_q - 1)) / row_size_q;
+    ptrdiff_t q_block_count = (q_sequence_length + (q_block_size - 1)) / q_block_size;
 
     ptrdiff_t task_start = 0;
     ptrdiff_t task_end = 0;
-    ptrdiff_t total_task_count = batch_size * num_heads * q_chunk_count;
+    ptrdiff_t total_task_count = batch_size * num_heads * q_block_count;
     ptrdiff_t quotient = total_task_count / thread_count;
     ptrdiff_t remainder = total_task_count % thread_count;
     if (thread_id < remainder) {
@@ -45,32 +45,32 @@ FlashAttentionThreaded(
 
     for (ptrdiff_t task_index = task_start; task_index < task_end; ++task_index) {
         ptrdiff_t ib = task_index;
-        ptrdiff_t il = (ib % q_chunk_count) * row_size_q;
-        ib /= q_chunk_count;
+        ptrdiff_t il = (ib % q_block_count) * q_block_size;
+        ib /= q_block_count;
         ptrdiff_t ih = ib % num_heads;
         ib /= num_heads;
 
-        char* buffer_current_thread = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
-        float* l = reinterpret_cast<float*>(buffer_current_thread);
+        float* buffer_current_thread = buffer + thread_id * buffer_size_per_thread;
+        float* l = buffer_current_thread;
 
-        memset(l, 0, row_size_q * sizeof(float));
-        float* m = l + row_size_q;
-        for (ptrdiff_t t = 0; t < row_size_q; ++t) {
+        memset(l, 0, q_block_size * sizeof(float));
+        float* m = l + q_block_size;
+        for (ptrdiff_t t = 0; t < q_block_size; ++t) {
             m[t] = std::numeric_limits<float>::lowest();
         }
-        float* intermediate = m + row_size_q;
-        float* temp_output = intermediate + row_size_q * row_size_kv;
+        float* intermediate = m + q_block_size;
+        float* temp_output = intermediate + q_block_size * kv_block_size;
         float negmax = 0;
 
-        for (ptrdiff_t ir = 0; ir < kv_sequence_length; ir += row_size_kv) {
+        for (ptrdiff_t ir = 0; ir < kv_sequence_length; ir += kv_block_size) {
             /*
-                S = Q[ib, ih, il:il+row_size_q, :] * (K[ib, ih, ir:ir+row_size_kv, :]).T
+                S = Q[ib, ih, il:il+q_block_size, :] * (K[ib, ih, ir:ir+kv_block_size, :]).T
                 old_m = m
                 m = max(m, rowmax(S))
                 diff = old_m - m
                 S = exp(S - m)
                 l = exp(diff) * l + rowsum(S)
-                O = diag(exp(diff)) * O + S * V[ib, ih, ir:ir+row_size_kv, :]
+                O = diag(exp(diff)) * O + S * V[ib, ih, ir:ir+kv_block_size, :]
             */
             // TODO: Need to concat if past_k is present
             ptrdiff_t h = ib * num_heads + ih;
@@ -78,13 +78,13 @@ FlashAttentionThreaded(
             const float* inputK = key + (h * kv_sequence_length + ir) * qk_head_size;
             const float* inputV = value + (h * kv_sequence_length + ir) * v_head_size;
 
-            size_t row_size_q_capped = static_cast<size_t>(std::min(row_size_q, q_sequence_length - il));
-            size_t row_size_kv_capped = static_cast<size_t>(std::min(row_size_kv, kv_sequence_length - ir));
+            size_t q_block_size_capped = static_cast<size_t>(std::min(q_block_size, q_sequence_length - il));
+            size_t kv_block_size_capped = static_cast<size_t>(std::min(kv_block_size, kv_sequence_length - ir));
 
             MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
                      CBLAS_TRANSPOSE::CblasTrans,
-                     row_size_q_capped,
-                     row_size_kv_capped,
+                     q_block_size_capped,
+                     kv_block_size_capped,
                      static_cast<size_t>(qk_head_size),
                      args->scale,
                      inputQ,
@@ -93,16 +93,16 @@ FlashAttentionThreaded(
                      static_cast<size_t>(qk_head_size),
                      0.0f,
                      intermediate,
-                     row_size_kv_capped,
+                     kv_block_size_capped,
                      nullptr);
 
-            for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q_capped); ++irow) {
-                float* p = intermediate + irow * row_size_kv_capped;
+            for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(q_block_size_capped); ++irow) {
+                float* p = intermediate + irow * kv_block_size_capped;
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-                float rowmax = mlas_platform.ReduceMaximumF32Kernel(p, row_size_kv_capped);
+                float rowmax = mlas_platform.ReduceMaximumF32Kernel(p, kv_block_size_capped);
 #else
-                float rowmax = MlasReduceMaximumF32Kernel(p, row_size_kv_capped);
+                float rowmax = MlasReduceMaximumF32Kernel(p, kv_block_size_capped);
 #endif
                 float m_diff = m[irow];
                 m[irow] = std::max(m[irow], rowmax);  // new m
@@ -110,9 +110,9 @@ FlashAttentionThreaded(
                 m_diff -= m[irow];  // old - new (less than 0)
 
 #if defined(MLAS_TARGET_AMD64)
-                float rowsum = mlas_platform.ComputeSumExpF32Kernel(p, p, row_size_kv_capped, &negmax);
+                float rowsum = mlas_platform.ComputeSumExpF32Kernel(p, p, kv_block_size_capped, &negmax);
 #else
-                float rowsum = MlasComputeSumExpF32Kernel(p, p, row_size_kv_capped, &negmax);
+                float rowsum = MlasComputeSumExpF32Kernel(p, p, kv_block_size_capped, &negmax);
 #endif
 
                 // Note: for ir == 0, there is actually no need to calculate exp_diff
@@ -130,12 +130,12 @@ FlashAttentionThreaded(
             }
             MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
                      CBLAS_TRANSPOSE::CblasNoTrans,
-                     row_size_q_capped,
+                     q_block_size_capped,
                      static_cast<size_t>(v_head_size),
-                     row_size_kv_capped,
+                     kv_block_size_capped,
                      1.0f,
                      intermediate,
-                     row_size_kv_capped,
+                     kv_block_size_capped,
                      inputV,
                      static_cast<size_t>(v_head_size),
                      ir == 0 ? 0.0f : 1.0f,
@@ -145,9 +145,9 @@ FlashAttentionThreaded(
         }
 
         float* output_row = output + ((ib * q_sequence_length + il) * num_heads + ih) * v_head_size;
-        ptrdiff_t row_size_q_valid = std::min(row_size_q, q_sequence_length - il);
+        ptrdiff_t q_block_size_valid = std::min(q_block_size, q_sequence_length - il);
         // TODO: leverage advanced instruction sets
-        for (ptrdiff_t irow = 0; irow < row_size_q_valid; ++irow) {
+        for (ptrdiff_t irow = 0; irow < q_block_size_valid; ++irow) {
             for (ptrdiff_t icol = 0; icol < v_head_size; ++icol) {
                 output_row[icol] = temp_output[irow * v_head_size + icol] / l[irow];
             }
