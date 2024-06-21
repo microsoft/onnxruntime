@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
-
 #include "core/optimizer/qdq_transformer/qdq_util.h"
+#include "core/optimizer/initializer.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/mlas/inc/mlas_q4.h"
+
 namespace onnxruntime {
 namespace QDQ {
 
@@ -289,7 +291,7 @@ NodeAttributes DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, con
   NodeAttributes extra_attributes;
 
   const auto* dq_node = selected_nodes.Input(0);
-  auto attrs = dq_node->GetAttributes();
+  auto& attrs = dq_node->GetAttributes();
   const auto* weight_shape = dq_node->InputDefs()[0]->Shape();
 
   ORT_ENFORCE(weight_shape->dim(0).has_dim_value() && weight_shape->dim(1).has_dim_value(),
@@ -302,21 +304,127 @@ NodeAttributes DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, con
   }
   // currently only 4bits is supported. In the future, derive bits from DQ's weight type.
   utils::SetNodeAttribute(utils::MakeAttribute("bits", static_cast<int64_t>(4)), extra_attributes);
-  utils::SetNodeAttribute(utils::MakeAttribute("block_size", attrs["block_size"].i()), extra_attributes);
+  utils::SetNodeAttribute(utils::MakeAttribute("block_size", attrs.at("block_size").i()), extra_attributes);
 
   return extra_attributes;
 }
 
+void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
+                                                               const NodesToOptimize& selected_nodes,
+                                                               Node& replacement_node) const {
+  const auto* dq_node = selected_nodes.Input(0);
+  const auto* weight_arg = dq_node->InputDefs()[0];
+  const auto* scale_arg = dq_node->InputDefs()[1];
+  const auto* zp_arg = dq_node->InputDefs().size() > 2 ? dq_node->InputDefs()[2] : nullptr;
+  const auto& attrs = dq_node->GetAttributes();
+
+  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
+  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
+  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
+  graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto);
+  graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto);
+  if (zp_arg) {
+    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
+  }
+
+  auto K = weight_arg->Shape()->dim(0).dim_value();
+  auto N = weight_arg->Shape()->dim(1).dim_value();
+  auto block_size = attrs.at("block_size").i();
+  auto quant_num = (K + block_size - 1) / block_size;
+  auto blob_bytes = (block_size + 1) / 2;
+
+  // Unfortunately iterating the source data is complicated, the data maybe in
+  // external file, a raw buffer, or a repeated field depending on the data
+  // type.  UnpackTensor() already contains some of these logic and is closest
+  // to what we need. But it does not handle external data.
+  Initializer weight_src(*weight_tensor_proto, graph.ModelPath());
+  Initializer scale_src(*scale_tensor_proto, graph.ModelPath());
+  std::unique_ptr<Initializer> zp_src_ptr = nullptr;
+  Initializer weight_dst(ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                         weight_arg->Name() + "_T",
+                         std::vector<int64_t>{N, quant_num, blob_bytes});
+  Initializer scale_dst(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(scale_src.data_type()),
+                        scale_arg->Name() + "_T",
+                        std::vector<int64_t>{N * quant_num});
+  std::unique_ptr<Initializer> zp_dst_ptr = nullptr;
+
+  if (zp_tensor_proto) {
+    zp_src_ptr = std::make_unique<Initializer>(*zp_tensor_proto, graph.ModelPath());
+    zp_dst_ptr = std::make_unique<Initializer>(ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                                               zp_arg->Name() + "_T",
+                                               std::vector<int64_t>{N * ((quant_num + 1) / 2)});
+  }
+
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    MlasQDQTransposeBlockwiseQuantized<float, 4>(weight_src.data<uint8_t>(),
+                                                 scale_src.data<float>(),
+                                                 zp_src_ptr ? zp_src_ptr->data<uint8_t>() : nullptr,
+                                                 weight_dst.data<uint8_t>(),
+                                                 scale_dst.data<float>(),
+                                                 zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+                                                 true,
+                                                 K, N, block_size,
+                                                 tp.get());  
+  } else {
+    MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4>(weight_src.data<uint8_t>(),
+                                                     scale_src.data<MLFloat16>(),
+                                                     zp_src_ptr ? zp_src_ptr->data<uint8_t>() : nullptr,
+                                                     weight_dst.data<uint8_t>(),
+                                                     scale_dst.data<MLFloat16>(),
+                                                     zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+                                                     true,
+                                                     K, N, block_size,
+                                                     tp.get());
+
+  }
+
+  ONNX_NAMESPACE::TensorProto weight_T_tp;
+  ONNX_NAMESPACE::TensorProto scale_T_tp;
+  std::unique_ptr<ONNX_NAMESPACE::TensorProto> zp_T_tp_ptr = nullptr;
+
+  weight_dst.ToProto(weight_T_tp);
+  scale_dst.ToProto(scale_T_tp);
+  if (zp_dst_ptr) {
+    zp_T_tp_ptr = std::make_unique<ONNX_NAMESPACE::TensorProto>();
+    zp_dst_ptr->ToProto(*zp_T_tp_ptr);
+  }
+
+  auto& input_defs = replacement_node.MutableInputDefs();
+  input_defs.push_back(&graph_utils::AddInitializer(graph, weight_T_tp));
+  replacement_node.MutableInputArgsCount().push_back(1);
+  input_defs.push_back(&graph_utils::AddInitializer(graph, scale_T_tp));
+  replacement_node.MutableInputArgsCount().push_back(1);
+
+  if (zp_T_tp_ptr) {
+    input_defs.push_back(&graph_utils::AddInitializer(graph, *zp_T_tp_ptr));
+    replacement_node.MutableInputArgsCount().push_back(1);
+  }
+}
+
 Status DQMatMulReplaceWithMatMulNBits::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  // create new node, move existing node args
-  // transpose constant args, and insert to the new node
-  // remove selected nodes
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
-                                            OpType(runtime_state),
-                                            Domain(runtime_state),
-                                            ExtraAttributes(runtime_state),
-                                            ValueMoves(runtime_state),
-                                            /* only_update_dest_definitions */ false, nullptr));
+  const auto attributes = ExtraAttributes(graph, selected_nodes);
+  const auto& target = selected_nodes.Target();
+
+  // create node. we'll populate the input and output defs via moves
+  auto& replacement = graph.AddNode(target.Name(),
+                                    op_type_,
+                                    target.Description(),
+                                    {},  // input defs
+                                    {},  // output defs
+                                    &attributes,
+                                    domain_);
+
+  const auto& target_provider = target.GetExecutionProviderType();
+  replacement.SetExecutionProviderType(target_provider.empty() ? kCpuExecutionProvider : target_provider);
+
+  ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves_, false));
+
+  AddTransposedInitializers(graph, selected_nodes, replacement);
+
   return node_remover_.Run(graph, selected_nodes);
 }
 
