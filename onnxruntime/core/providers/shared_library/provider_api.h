@@ -108,6 +108,7 @@ struct NodeProto;
 struct SparseTensorProto;
 struct StringStringEntryProto;
 struct StringStringEntryProtos;  // RepeatedPtrField
+struct OperatorSetIdProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
