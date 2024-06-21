@@ -1472,6 +1472,9 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
+  if (WIN32)
+    message(FATAL_ERROR "MIGraphX does not support build in Windows!")
+  endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
 endif()
 

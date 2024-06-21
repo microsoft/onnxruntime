@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <miopen/miopen.h>
+#include <rocblas/rocblas.h>
+
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
@@ -11,6 +14,8 @@
 
 #include <map>
 #include <unordered_map>
+// TODO: find a better way to share this
+// #include "core/providers/cuda/rocm_stream_handle.h"
 
 namespace onnxruntime {
 
@@ -57,11 +62,13 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider();
 
+#ifdef MIGRAPHX_STREAM_SYNC
   Status Sync() const override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+#endif
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -78,13 +85,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
-  int GetDeviceId() const override { return info_.device_id; }
-  ProviderOptions GetProviderOptions() const override {
-    return MIGraphXExecutionProviderInfo::ToProviderOptions(info_);
-  }
-
  private:
-  MIGraphXExecutionProviderInfo info_;
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
   std::string int8_calibration_cache_name_;
@@ -97,6 +98,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool load_compiled_model_ = false;
   std::string load_compiled_path_;
   bool dump_model_ops_ = false;
+  int device_id_;
   migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
@@ -107,6 +109,8 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
+  miopenHandle_t external_miopen_handle_ = nullptr;
+  rocblas_handle external_rocblas_handle_ = nullptr;
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 

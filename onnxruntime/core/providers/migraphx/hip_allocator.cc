@@ -3,7 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "migraphx_call.h"
-#include "migraphx_allocator.h"
+#include "hip_allocator.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/common/status.h"
@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-void MIGraphXAllocator::CheckDevice() const {
+void HIPAllocator::CheckDevice() const {
 #ifndef NDEBUG
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
@@ -23,7 +23,7 @@ void MIGraphXAllocator::CheckDevice() const {
 #endif
 }
 
-void* MIGraphXAllocator::Alloc(size_t size) {
+void* HIPAllocator::Alloc(size_t size) {
   CheckDevice();
   void* p = nullptr;
   if (size > 0) {
@@ -32,12 +32,12 @@ void* MIGraphXAllocator::Alloc(size_t size) {
   return p;
 }
 
-void MIGraphXAllocator::Free(void* p) {
+void HIPAllocator::Free(void* p) {
   CheckDevice();
   (void)hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-void* MIGraphXExternalAllocator::Alloc(size_t size) {
+void* HIPExternalAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     p = alloc_(size);
@@ -49,7 +49,7 @@ void* MIGraphXExternalAllocator::Alloc(size_t size) {
   return p;
 }
 
-void MIGraphXExternalAllocator::Free(void* p) {
+void HIPExternalAllocator::Free(void* p) {
   free_(p);
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_.find(p);
@@ -59,7 +59,7 @@ void MIGraphXExternalAllocator::Free(void* p) {
   }
 }
 
-void* MIGraphXExternalAllocator::Reserve(size_t size) {
+void* HIPExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
   std::lock_guard<OrtMutex> lock(lock_);
