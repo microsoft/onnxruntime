@@ -17,6 +17,7 @@ Abstract:
 --*/
 
 #pragma once
+#include <cstddef>
 
 struct FlashAttentionThreadedArgs {
     int batch_size;
@@ -39,5 +40,5 @@ struct FlashAttentionThreadedArgs {
 
 void FlashAttentionThreaded(
     std::ptrdiff_t thread_id,
-    struct FlashAttentionThreadedArgs* args
+    const FlashAttentionThreadedArgs* args
 );

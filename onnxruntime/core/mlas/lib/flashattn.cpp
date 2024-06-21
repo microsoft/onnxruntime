@@ -1,68 +1,69 @@
-#include "mlasi.h"
-#include "mlas_flashattn.h"
-
 #include <numeric>
 
-void FlashAttentionThreaded(
+#include "mlas_flashattn.h"
+#include "mlasi.h"
+
+void
+FlashAttentionThreaded(
     std::ptrdiff_t thread_id,
-    struct FlashAttentionThreadedArgs* args
-    )
+    const FlashAttentionThreadedArgs* args
+)
 {
-    int row_size_q = args->row_size_q;
-    int row_size_kv = args->row_size_kv;
-    int batch_size = args->batch_size;
-    int num_heads = args->num_heads;
-    int q_sequence_length = args->q_sequence_length;
-    int kv_sequence_length = args->kv_sequence_length;
-    int qk_head_size = args->qk_head_size;
-    int v_head_size = args->v_head_size;
+    ptrdiff_t row_size_q = static_cast<ptrdiff_t>(args->row_size_q);
+    ptrdiff_t row_size_kv = static_cast<ptrdiff_t>(args->row_size_kv);
+    ptrdiff_t batch_size = static_cast<ptrdiff_t>(args->batch_size);
+    ptrdiff_t num_heads = static_cast<ptrdiff_t>(args->num_heads);
+    ptrdiff_t q_sequence_length = static_cast<ptrdiff_t>(args->q_sequence_length);
+    ptrdiff_t kv_sequence_length = static_cast<ptrdiff_t>(args->kv_sequence_length);
+    ptrdiff_t qk_head_size = static_cast<ptrdiff_t>(args->qk_head_size);
+    ptrdiff_t v_head_size = static_cast<ptrdiff_t>(args->v_head_size);
     float* buffer = args->buffer;
-    size_t buffer_size_per_thread = args->buffer_size_per_thread;
-    int thread_count = args->thread_count;
+    ptrdiff_t buffer_size_per_thread = static_cast<ptrdiff_t>(args->buffer_size_per_thread);
+    ptrdiff_t thread_count = static_cast<ptrdiff_t>(args->thread_count);
     const float* query = args->query;
     const float* key = args->key;
     const float* value = args->value;
     float* output = args->output;
-    const float scale = args->scale;
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
     auto&& mlas_platform = GetMlasPlatform();
+#endif
 
-    int q_chunk_count = (q_sequence_length + (row_size_q - 1))/ row_size_q;
+    ptrdiff_t q_chunk_count = (q_sequence_length + (row_size_q - 1)) / row_size_q;
 
-    int task_start = 0;
-    int task_end = 0;
-    int total_task_count = batch_size * num_heads * q_chunk_count;
-    int quotient = total_task_count / thread_count;
-    int remainder = total_task_count % thread_count;
-    if(thread_id < remainder){
-        task_start = (quotient + 1) * static_cast<int>(thread_id);
+    ptrdiff_t task_start = 0;
+    ptrdiff_t task_end = 0;
+    ptrdiff_t total_task_count = batch_size * num_heads * q_chunk_count;
+    ptrdiff_t quotient = total_task_count / thread_count;
+    ptrdiff_t remainder = total_task_count % thread_count;
+    if (thread_id < remainder) {
+        task_start = (quotient + 1) * thread_id;
         task_end = task_start + quotient + 1;
-    }
-    else{
-        task_start = quotient * static_cast<int>(thread_id) + remainder;
+    } else {
+        task_start = quotient * thread_id + remainder;
         task_end = task_start + quotient;
     }
 
-    for(auto task_index = task_start; task_index < task_end; ++task_index){
-        int ib = static_cast<int>(task_index);
-        int il = (ib % q_chunk_count) * row_size_q;
+    for (ptrdiff_t task_index = task_start; task_index < task_end; ++task_index) {
+        ptrdiff_t ib = task_index;
+        ptrdiff_t il = (ib % q_chunk_count) * row_size_q;
         ib /= q_chunk_count;
-        int ih = ib % num_heads;
+        ptrdiff_t ih = ib % num_heads;
         ib /= num_heads;
 
-        float* buffer_current_thread = reinterpret_cast<float*>(reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread);
+        char* buffer_current_thread = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
+        float* l = reinterpret_cast<float*>(buffer_current_thread);
 
-        float* l = buffer_current_thread;
         memset(l, 0, row_size_q * sizeof(float));
         float* m = l + row_size_q;
-        for (int t = 0; t < row_size_q; ++t) {
+        for (ptrdiff_t t = 0; t < row_size_q; ++t) {
             m[t] = std::numeric_limits<float>::lowest();
         }
         float* intermediate = m + row_size_q;
         float* temp_output = intermediate + row_size_q * row_size_kv;
         float negmax = 0;
 
-        for(int ir = 0; ir < kv_sequence_length; ir += row_size_kv) {
+        for (ptrdiff_t ir = 0; ir < kv_sequence_length; ir += row_size_kv) {
             /*
                 S = Q[ib, ih, il:il+row_size_q, :] * (K[ib, ih, ir:ir+row_size_kv, :]).T
                 old_m = m
@@ -73,45 +74,82 @@ void FlashAttentionThreaded(
                 O = diag(exp(diff)) * O + S * V[ib, ih, ir:ir+row_size_kv, :]
             */
             // TODO: Need to concat if past_k is present
-            const float* inputQ = query + ((ib * num_heads + ih) * q_sequence_length + il) * qk_head_size;
-            const float* inputK = key + ((ib * num_heads + ih) * kv_sequence_length + ir) * qk_head_size;
-            const float* inputV = value + ((ib * num_heads + ih) * kv_sequence_length + ir) * v_head_size;
+            ptrdiff_t h = ib * num_heads + ih;
+            const float* inputQ = query + (h * q_sequence_length + il) * qk_head_size;
+            const float* inputK = key + (h * kv_sequence_length + ir) * qk_head_size;
+            const float* inputV = value + (h * kv_sequence_length + ir) * v_head_size;
 
-            auto row_size_q_capped = std::min(row_size_q, q_sequence_length - il);
-            auto row_size_kv_capped = std::min(row_size_kv, kv_sequence_length - ir);
-            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans, row_size_q_capped, row_size_kv_capped, qk_head_size, scale, inputQ, qk_head_size, inputK, qk_head_size, 0.0f, intermediate, row_size_kv_capped, nullptr);
+            size_t row_size_q_capped = static_cast<size_t>(std::min(row_size_q, q_sequence_length - il));
+            size_t row_size_kv_capped = static_cast<size_t>(std::min(row_size_kv, kv_sequence_length - ir));
 
-            for(int irow = 0; irow < row_size_q_capped; ++irow) {
-                float rowmax = mlas_platform.ReduceMaximumF32Kernel(intermediate + irow * row_size_kv_capped, row_size_kv_capped);
+            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
+                     CBLAS_TRANSPOSE::CblasTrans,
+                     row_size_q_capped,
+                     row_size_kv_capped,
+                     static_cast<size_t>(qk_head_size),
+                     args->scale,
+                     inputQ,
+                     static_cast<size_t>(qk_head_size),
+                     inputK,
+                     static_cast<size_t>(qk_head_size),
+                     0.0f,
+                     intermediate,
+                     row_size_kv_capped,
+                     nullptr);
+
+            for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q_capped); ++irow) {
+                float* p = intermediate + irow * row_size_kv_capped;
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+                float rowmax = mlas_platform.ReduceMaximumF32Kernel(p, row_size_kv_capped);
+#else
+                float rowmax = MlasReduceMaximumF32Kernel(p, row_size_kv_capped);
+#endif
                 float m_diff = m[irow];
                 m[irow] = std::max(m[irow], rowmax);  // new m
                 negmax = -m[irow];
-                m_diff -= m[irow]; // old - new (less than 0)
+                m_diff -= m[irow];  // old - new (less than 0)
 
-                float rowsum = mlas_platform.ComputeSumExpF32Kernel(intermediate + irow * row_size_kv_capped, intermediate + irow * row_size_kv_capped, row_size_kv_capped, &negmax);
+#if defined(MLAS_TARGET_AMD64)
+                float rowsum = mlas_platform.ComputeSumExpF32Kernel(p, p, row_size_kv_capped, &negmax);
+#else
+                float rowsum = MlasComputeSumExpF32Kernel(p, p, row_size_kv_capped, &negmax);
+#endif
 
                 // Note: for ir == 0, there is actually no need to calculate exp_diff
                 if (ir != 0) {
                     float exp_diff = std::exp(m_diff);
                     l[irow] = exp_diff * l[irow] + rowsum;
 
-                    for (int icol = 0; icol < v_head_size; ++icol) {
+                    for (ptrdiff_t icol = 0; icol < v_head_size; ++icol) {
                         temp_output[irow * v_head_size + icol] = exp_diff * temp_output[irow * v_head_size + icol];
                     }
-                }
-                else {
+                } else {
                     l[irow] = rowsum;
                     // When ir == 0, there is no need to scale the old result because it is zero.
                 }
             }
-            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasNoTrans, row_size_q_capped, v_head_size, row_size_kv_capped, 1.0f, intermediate, row_size_kv_capped, inputV, v_head_size, ir == 0 ? 0.0f : 1.0f, temp_output, v_head_size, nullptr);
+            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
+                     CBLAS_TRANSPOSE::CblasNoTrans,
+                     row_size_q_capped,
+                     static_cast<size_t>(v_head_size),
+                     row_size_kv_capped,
+                     1.0f,
+                     intermediate,
+                     row_size_kv_capped,
+                     inputV,
+                     static_cast<size_t>(v_head_size),
+                     ir == 0 ? 0.0f : 1.0f,
+                     temp_output,
+                     static_cast<size_t>(v_head_size),
+                     nullptr);
         }
 
         float* output_row = output + ((ib * q_sequence_length + il) * num_heads + ih) * v_head_size;
-        auto row_size_q_valid = std::min(row_size_q, q_sequence_length - il);
+        ptrdiff_t row_size_q_valid = std::min(row_size_q, q_sequence_length - il);
         // TODO: leverage advanced instruction sets
-        for (int irow = 0; irow < row_size_q_valid; ++irow) {
-            for (int icol = 0; icol < v_head_size; ++icol) {
+        for (ptrdiff_t irow = 0; irow < row_size_q_valid; ++irow) {
+            for (ptrdiff_t icol = 0; icol < v_head_size; ++icol) {
                 output_row[icol] = temp_output[irow * v_head_size + icol] / l[irow];
             }
             output_row += num_heads * v_head_size;
