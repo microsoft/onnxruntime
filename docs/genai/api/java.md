@@ -17,7 +17,7 @@ _Note: this API is in preview and is subject to change._
 {:toc}
 
 ## Install and import
-//add later
+//ADD LATER
 The Java API is delivered by the onnxruntime-genai Java package.
 
 ```bash
@@ -36,7 +36,7 @@ import onnxruntime_genai
 Model(String modelPath)
 ```
 
-### createTokenizer
+### Create Tokenizer Method
 
 Creates a Tokenizer instance for this model. The model contains the configuration information that determines the tokenizer to use.
 
@@ -45,11 +45,15 @@ public Tokenizer createTokenizer()
                           throws GenAIException
 ```
 
+#### Throws
+
+`GenAIException` - If the call to the GenAI native API fails
+
 #### Returns
 
 `onnxruntime_genai.Model`
 
-### Generate method
+### Generate Method
 
 ```java
 public Sequences generate(GeneratorParams generatorParams)
@@ -57,123 +61,166 @@ public Sequences generate(GeneratorParams generatorParams)
 ```
 
 #### Parameters
+
 - `generatorParams`: the generator parameters.
+
+#### Throws
+
+`GenAIException` - If the call to the GenAI native API fails.
 
 #### Returns
 
 The generated sequences.
 
+### Generate Parameters Method
+
+Creates a GeneratorParams instance for executing the model. NOTE: GeneratorParams internally uses the Model, so the Model instance must remain valid.
+
+```java
+public GeneratorParams createGeneratorParams()
+                                      throws GenAIException
+```
+
+#### Throws
+
+`GenAIException` - If the call to the GenAI native API fails.
+
+#### Returns
+
+The GeneratorParams instance.
+
 
 ## Tokenizer class
 
-### Create tokenizer object
-
-```java
-onnxruntime_genai.Model.Tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
-```
-
-#### Parameters
-
-- `model`: (Required) The model that was loaded by the `Model()`
-
-#### Returns
-
-- `Tokenizer`: The tokenizer object
-
 ### Encode
 
+Encodes a string into a sequence of token ids.
+
 ```java
-onnxruntime_genai.Tokenizer.encode(text: str) -> numpy.ndarray[numpy.int32]
+public Sequences encode(String string)
+                 throws GenAIException
 ```
 
 #### Parameters
 
-- `text`: (Required)
+- `string`: Text to encode as token ids.
+
+#### Throws
+
+`GenAIException` - If the call to the GenAI native API fails.
 
 #### Returns
 
-`numpy.ndarray[numpy.int32]`: an array of tokens representing the prompt
+A Sequences object with a single sequence in it.
+
 
 ### Decode
 
+Decodes a sequence of token ids into text.
+
 ```java
-onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[int]) -> str 
+public String decode(int[] sequence)
+              throws GenAIException
 ```
 
 #### Parameters
 
-- `numpy.ndarray[numpy.int32]`: (Required) a sequence of generated tokens
+- `sequence`: Collection of token ids to decode to text
 
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
 
 #### Returns
 
-`str`: the decoded generated tokens
+The text representation of the sequence.
 
 
 ### Encode batch
 
+Encodes an array of strings into a sequence of token ids for each input.
+
 ```java
-onnxruntime_genai.Tokenizer.encode_batch(texts: list[str]) -> numpy.ndarray[int, int]
+public Sequences encodeBatch(String[] strings)
+                      throws GenAIException
 ```
 
 #### Parameters
 
-- `texts`: A list of inputs
+- `strings`: Collection of strings to encode as token ids.
+
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
 
 #### Returns
 
-`numpy.ndarray[int, int]`: The batch of tokenized strings
+A Sequences object with one sequence per input string.
 
 ### Decode batch
 
+Decodes a batch of sequences of token ids into text.
+
 ```java
-onnxruntime_genai.Tokenize.decode_batch(tokens: [[numpy.int32]]) -> list[str]
+public String[] decodeBatch(Sequences sequences)
+                     throws GenAIException
 ```
 
 #### Parameters
 
-- tokens
+- `sequences`: A Sequences object with one or more sequences of token ids.
+
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
 
 #### Returns
 
-`texts`: a batch of decoded text
+An array of strings with the text representation of each sequence.
 
 
 ### Create tokenizer decoding stream
 
+Creates a TokenizerStream object for streaming tokenization. This is used with Generator class to provide each token as it is generated.
 
 ```java
-onnxruntime_genai.Tokenizer.create_stream() -> TokenizerStream
+public TokenizerStream createStream()
+                             throws GenAIException
 ```
 
 #### Parameters
 
 None
 
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
+
 #### Returns
 
-`onnxruntime_genai.TokenizerStream` The tokenizer stream object
+The new TokenizerStream instance.
+
 
 ## TokenizerStream class
 
-This class accumulates the next displayable string (according to the tokenizer's vocabulary).
+This class is used to convert individual tokens when using Generator.generateNextToken.
 
 ### Decode method
 
  
 ```java
-onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
+public String decode(int token)
+              throws GenAIException
 ```
-  
-#### Parameters
 
-- `token`: (Required) A token to decode
+#### Throws
 
-#### Returns
+`GenAIException`
 
-`str`: If a displayable string has accumulated, this method returns it. If not, this method returns the empty string.
 
 ## GeneratorParams class
+
+The `GeneratorParams` class represents the parameters used for generating sequences with a model. Set the prompt using setInput, and any other search options using setSearchOption.
 
 ### Create a Generator Params object
 
@@ -189,6 +236,11 @@ public void setSearchOption(String optionName,
                      throws GenAIException
 ```
 
+#### Throws
+
+`GenAIException`
+
+
 ### setSearchOption
 
 ```java
@@ -196,25 +248,36 @@ public void setSearchOption(String optionName, boolean value)
                      throws GenAIException
 ```
 
+#### Throws
+
+`GenAIException`
+
+
 ### setInput
 
 Sets the prompt/s for model execution. The `sequences` are created by using Tokenizer.Encode or EncodeBatch.
-
-#### Parameters
-- `sequences`: Sequences containing the encoded prompt.
-
-#### Throws
-GenAIException - If the call to the GenAI native API fails.
-
 
 ```java
 public void setInput(Sequences sequences)
               throws GenAIException
 ```
 
+
+#### Parameters
+- `sequences`: Sequences containing the encoded prompt.
+
+#### Throws
+`GenAIException`- If the call to the GenAI native API fails.
+
+
 ### setInput
 
-Sets the prompt/s token ids for model execution. The 'tokenIds' are the encoded parameters.
+Sets the prompt/s token ids for model execution. The `tokenIds` are the encoded parameters.
+
+```java
+public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
+              throws GenAIException
+```
 
 #### Parameters
 
@@ -224,17 +287,21 @@ Sets the prompt/s token ids for model execution. The 'tokenIds' are the encoded 
 
 #### Throws
 
-GenAIException - If the call to the GenAI native API fails. (Note: all sequences in the batch must be the same length)
-
-```java
-public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
-              throws GenAIException
-```
+`GenAIException`- If the call to the GenAI native API fails. NOTE: all sequences in the batch must be the same length.
 
 
 ## Generator class
 
+The Generator class generates output using a model and generator parameters.
+The expected usage is to loop until isDone returns false. Within the loop, call computeLogits followed by generateNextToken.
+
+The newly generated token can be retrieved with getLastTokenInSequence and decoded with TokenizerStream.Decode.
+
+After the generation process is done, GetSequence can be used to retrieve the complete generated sequence if needed.
+
 ### Create a Generator
+
+Constructs a Generator object with the given model and generator parameters.
 
 ```java
 Generator(Model model, GeneratorParams generatorParams)
@@ -242,15 +309,17 @@ Generator(Model model, GeneratorParams generatorParams)
 
 #### Parameters
 
-- `model`: (Required) The model to use for generation
-- `params`: (Required) The set of parameters that control the generation
+- `model`: The model.
+- `params`: The generator parameters.
 
-#### Returns
+#### Throws
 
-`onnxruntime_genai.Generator` The Generator object
+`GenAIException`- If the call to the GenAI native API fails.
 
 
 ### Is generation done
+
+Checks if the generation process is done.
 
 ```java
 public boolean isDone()
@@ -270,51 +339,125 @@ public void computeLogits()
                    throws GenAIException
 ```
 
-### Get output
+#### Throws
 
-Returns an output of the model.
+`GenAIException`- If the call to the GenAI native API fails.
+
+
+### Get sequence
+
+Retrieves a sequence of token ids for the specified sequence index.
 
 ```java
-onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray
+public int[] getSequence(long sequenceIndex)
+                  throws GenAIException
 ```
 
 #### Parameters
-- `name`: the name of the model output
+- `sequenceIndex`: The index of the sequence.
+
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
 
 #### Returns
-- `numpy.ndarray`: a multi dimensional array of the model outputs. The shape of the array is shape of the output.
 
-#### Example
-
-The following code returns the output logits of a model.
-
-```java
-logits = generator.get_output("logits")
-```
+An array of integers with the sequence of token ids.
 
 
 ### Generate next token
 
-Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top P sampling.
+Generates the next token in the sequence.
 
 ```java
-onnxruntime_genai.Generator.generate_next_token()
+public void generateNextToken()
+                       throws GenAIException
 ```
 
-### Get next tokens
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
+
+### Get last token in sequence
+
+Retrieves the last token in the sequence for the specified sequence index.
 
 ```java
-onnxruntime_genai.Generator.get_next_tokens() -> numpy.ndarray[numpy.int32]
+public int getLastTokenInSequence(long sequenceIndex)
+                           throws GenAIException
 ```
 
-Returns
+#### Parameters
 
-`numpy.ndarray[numpy.int32]`: The most recently generated tokens
+- `sequenceIndex`: The index of the sequence.
 
-### Get sequence
+#### Throws
+
+`GenAIException`- If the call to the GenAI native API fails.
+
+#### Returns
+
+The last token in the sequence.
+
+
+## Sequence Class
+
+Represents a collection of encoded prompts/responses.
+
+### numSequences Method
+
+Gets the number of sequences in the collection. This is equivalent to the batch size.
 
 ```java
-onnxruntime_genai.Generator.get_sequence(index: int) -> numpy.ndarray[numpy.int32] 
+public long numSequences()
 ```
 
-- `index`: (Required) The index of the sequence in the batch to return
+### Returns
+
+The number of sequences.
+
+
+## SimpleGenAI Class
+
+The `SimpleGenAI` class provides a simple usage example of the GenAI API. It works with a model that generates text based on a prompt, processing a single prompt at a time.
+Usage:
+
+Create an instance of the class with the path to the model. The path should also contain the GenAI configuration files.
+Call createGeneratorParams with the prompt text.
+Set any other search options via the GeneratorParams object as needed using `setSearchOption`.
+Call generate with the GeneratorParams object and an optional listener.
+The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the TokenUpdateListener interface and provide an instance of that class as the `listener` argument.
+
+### Constructor
+
+```java
+public SimpleGenAI(String modelPath)
+            throws GenAIException
+```
+
+#### Throws
+
+`GenAIException`
+
+### Generate
+
+Generate text based on the prompt and settings in GeneratorParams. NOTE: This only handles a single sequence of input (i.e. a single prompt which equates to batch size of 1).
+
+```java
+public String generate(GeneratorParams generatorParams,
+ Consumer<String> listener)
+                throws GenAIException
+```
+
+#### Parameters
+
+- `generatorParams`: The prompt and settings to run the model with.
+- `listener`: Optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
+
+#### Throws
+
+`GenAIException`- On failure.
+
+#### Returns
+
+The generated text.
