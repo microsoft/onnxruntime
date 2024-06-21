@@ -32,6 +32,8 @@ constexpr bool Is4BitIntType(int32_t data_type) {
 }
 
 FORCEINLINE bool IsPowerOfTwo(int64_t val) {
+  if (val < 0) return false;
+
   bool seen_one = val & 1;
   val >>= 1;
 

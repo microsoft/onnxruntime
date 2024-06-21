@@ -273,10 +273,51 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
   }
 }
 
+DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level)
+    : accuracy_level_{accuracy_level},
+      domain_{kMSDomain},
+      op_type_{"MatMulNBits"},
+      value_moves_{[]() {
+        NTO::NodeLocation target{NTO::NodeType::kTarget, 0};
+        return std::vector<NodeAndMoveInfo>{
+            MoveAndAppend(target, ArgType::kInput, 0, ArgType::kInput),
+            MoveAll(target, ArgType::kOutput)};
+      }()} {
+}
+
+NodeAttributes DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const {
+  NodeAttributes extra_attributes;
+
+  const auto* dq_node = selected_nodes.Input(0);
+  auto attrs = dq_node->GetAttributes();
+  const auto* weight_shape = dq_node->InputDefs()[0]->Shape();
+
+  ORT_ENFORCE(weight_shape->dim(0).has_dim_value() && weight_shape->dim(1).has_dim_value(),
+              "Input x of DQ node must have rank 2 shape dimensions");
+ 
+  utils::SetNodeAttribute(utils::MakeAttribute("K", weight_shape->dim(0).dim_value()), extra_attributes);
+  utils::SetNodeAttribute(utils::MakeAttribute("N", weight_shape->dim(1).dim_value()), extra_attributes);
+  if (accuracy_level_ > -1) {
+    utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", accuracy_level_), extra_attributes);
+  }
+  // currently only 4bits is supported. In the future, derive bits from DQ's weight type.
+  utils::SetNodeAttribute(utils::MakeAttribute("bits", static_cast<int64_t>(4)), extra_attributes);
+  utils::SetNodeAttribute(utils::MakeAttribute("block_size", attrs["block_size"].i()), extra_attributes);
+
+  return extra_attributes;
+}
+
 Status DQMatMulReplaceWithMatMulNBits::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   // create new node, move existing node args
   // transpose constant args, and insert to the new node
   // remove selected nodes
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
+                                            OpType(runtime_state),
+                                            Domain(runtime_state),
+                                            ExtraAttributes(runtime_state),
+                                            ValueMoves(runtime_state),
+                                            /* only_update_dest_definitions */ false, nullptr));
+  return node_remover_.Run(graph, selected_nodes);
 }
 
 static std::vector<NodeAndMoveInfo> GetGemmMoveInfo(bool does_q_node_exist) {

@@ -76,8 +76,20 @@ struct MatMulReplaceWithQLinear : public Action {
   BinaryReplaceWithQLinear qlinear_matmul_replacer_;
 };
 
+// used together with DQMatMulNodeGroupSelector, which does the sanity check
 struct DQMatMulReplaceWithMatMulNBits : public Action {
+  DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level = -1);
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+
+ private:
+  NodeAttributes ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const;
+
+  // -1 means not set
+  const int64_t accuracy_level_;
+  const std::string domain_;
+  const std::string op_type_;
+  const std::vector<NodeAndMoveInfo> value_moves_;
+  RemoveNodes node_remover_;
 };
 
 struct GemmReplaceWithQuant : public Action {
