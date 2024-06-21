@@ -238,6 +238,7 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
     }
     else
     {
+      // Big endian platform require byte swapping.
       auto raw_data = std::make_unique<char[]>(input_num_bytes);
       char  *raw_data_ptr = raw_data.get();
       while (input != input_end) {
