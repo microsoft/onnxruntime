@@ -46,7 +46,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   const auto& env = Env::Default();
   l2_cache_size_ = env.GetL2CacheSize();
 
-  disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+  disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, true);
 }
 
 template <typename T>
