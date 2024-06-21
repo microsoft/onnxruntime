@@ -12,7 +12,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "core/platform/threadpool.h"
-#include "core/mlas/inc/mlas_flashattn.h"
+#include "core/mlas/inc/mlas.h"
 
 #include <type_traits>
 #include <unsupported/Eigen/SpecialFunctions>
@@ -163,7 +163,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       l2_cache_size_ > 0) {
     int row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
     if (row_size_kv > 0) {
-      FlashAttentionThreadedArgs args;
+      MlasFlashAttentionThreadedArgs args;
       args.batch_size = batch_size;
       args.num_heads = num_heads_;
       args.q_sequence_length = q_sequence_length;
@@ -189,7 +189,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       args.output = output->MutableData<float>();
 
       concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
-        FlashAttentionThreaded(thread_id, &args);
+        MlasFlashAttentionThreaded(thread_id, &args);
       });
 
       return Status::OK();

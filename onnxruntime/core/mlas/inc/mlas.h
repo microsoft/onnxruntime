@@ -1825,3 +1825,27 @@ MlasNhwcAvgPool(
     );
 
 #endif
+
+struct MlasFlashAttentionThreadedArgs {
+    int batch_size;
+    int num_heads;
+    int q_sequence_length;
+    int kv_sequence_length;
+    int qk_head_size;
+    int v_head_size;
+    int row_size_q;
+    int row_size_kv;
+    float scale;
+    int thread_count;
+    float* buffer;
+    size_t buffer_size_per_thread;
+    const float* query;
+    const float* key;
+    const float* value;
+    float* output;
+};
+
+void MlasFlashAttentionThreaded(
+    std::ptrdiff_t thread_id,
+    const MlasFlashAttentionThreadedArgs* args
+);

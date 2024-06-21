@@ -1,12 +1,11 @@
 #include <numeric>
 
-#include "mlas_flashattn.h"
 #include "mlasi.h"
 
 void
-FlashAttentionThreaded(
+MlasFlashAttentionThreaded(
     std::ptrdiff_t thread_id,
-    const FlashAttentionThreadedArgs* args
+    const MlasFlashAttentionThreadedArgs* args
 )
 {
     ptrdiff_t row_size_q = static_cast<ptrdiff_t>(args->row_size_q);
