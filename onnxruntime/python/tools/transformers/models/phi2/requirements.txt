@@ -1,3 +1,4 @@
+numpy>=1.21.6,<2.0
 onnx==1.16.0
 transformers>=4.36.2
 onnxscript>=0.1.0.dev20240126
