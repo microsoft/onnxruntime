@@ -221,6 +221,8 @@ class OpKernelContext {
   int node_output_start_index_{-1};
 
   Stream* stream_;
+
+  mutable std::unordered_map<int, std::variant<Tensor, SparseTensor>> _default_temp_inputs_for_strided_compat;
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists
@@ -229,6 +231,60 @@ inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   OrtValue* p_ml_value = GetOutputMLValue(index);
   ORT_ENFORCE(p_ml_value, "Please fetch output tensor with specified shape.");
   return p_ml_value->GetMutable<Tensor>();
+}
+
+template <>
+inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
+  const OrtValue* p_ml_value = GetInputMLValue(index);
+  // std::cout << "Running node " << kernel_->Node().Name() << " on its input @ " << index << std::endl;
+  if (p_ml_value && p_ml_value->IsTensor() && !p_ml_value->Get<Tensor>().IsContiguous()) {
+    const std::vector<int>& may_strided_input = kernel_->KernelDef().MayStridedInput();
+    const bool input_can_be_strided =
+        std::find(may_strided_input.begin(), may_strided_input.end(), index) != may_strided_input.end();
+
+    if (!input_can_be_strided) {
+      // If input cannot be strided, but the input is non-contiguous, we should throw.
+      // ORT_THROW("Kernel input for node ", kernel_->Node().Name(),
+      //           " does not expect strided input, but input tensor at index ", index, " (e.g. ",
+      //           kernel_->Node().InputDefs()[index]->Name(), ") is not contiguous.");
+      // Get the element bytes count of the input tensor
+      if (_default_temp_inputs_for_strided_compat.find(index) == _default_temp_inputs_for_strided_compat.end()) {
+        // Get the element bytes count of the input tensor
+        const Tensor& input_tensor = p_ml_value->Get<Tensor>();
+        const size_t element_bytes = input_tensor.DataType()->Size();
+        // Allocate a contiguous buffer restored from strided input tensor
+        IAllocatorUniquePtr<void> contiguous_buffer = IAllocator::MakeUniquePtr<void>(
+            kernel_->Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
+            element_bytes * input_tensor.Shape().Size(), false, GetComputeStream());
+
+        Tensor contiguous_input_tensor = Tensor(input_tensor.DataType(),
+                                                input_tensor.Shape(),
+                                                contiguous_buffer.get(),
+                                                input_tensor.Location());
+
+        _default_temp_inputs_for_strided_compat[index] = std::move(contiguous_input_tensor);
+
+        ORT_ENFORCE(kernel_->Info().GetExecutionProvider()->GetDataTransfer()->CopyTensorAsync(
+                                                                                 input_tensor,
+                                                                                 std::get<Tensor>(_default_temp_inputs_for_strided_compat[index]),
+                                                                                 *GetComputeStream())
+                        .IsOK());
+
+        std::cout << "Strided input tensor at index " << index << " has been restored to a contiguous tensor." << std::endl;
+      }
+
+      // const T* input_ptr = reinterpret_cast<const T*>(_default_temp_inputs_for_strided_compat[index].get());
+      // std::cout << "before return" << std::endl;
+      return &std::get<Tensor>(_default_temp_inputs_for_strided_compat[index]);
+    }
+  }
+
+  ORT_TRY {
+    return p_ml_value ? &(p_ml_value->Get<Tensor>()) : nullptr;
+  }
+  ORT_CATCH(const std::exception& /*e*/) {
+    ORT_THROW("Missing Input: " + kernel_->Node().InputDefs()[index]->Name());
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

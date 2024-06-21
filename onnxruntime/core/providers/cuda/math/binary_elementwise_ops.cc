@@ -64,7 +64,9 @@ Status BinaryElementwiseBroadcastPrepare(
   p->output_tensor = output_tensor;
   const auto& output_shape = output_tensor->Shape();
 
-  ORT_RETURN_IF_ERROR(p->BinaryElementwiseBroadcastPrepareHelper(lhs_shape, rhs_shape, output_shape));
+  ORT_RETURN_IF_ERROR(p->BinaryElementwiseBroadcastPrepareHelper(lhs_shape, lhs_tensor->Strides(), lhs_tensor->IsContiguous(),
+                                                                 rhs_shape, rhs_tensor->Strides(), rhs_tensor->IsContiguous(),
+                                                                 output_shape));
 
   return Status::OK();
 }

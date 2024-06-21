@@ -27,11 +27,61 @@ struct BinaryElementwisePreparation {
   BinaryElementwisePreparation() {}
 
   Status BinaryElementwiseBroadcastPrepareHelper(const TensorShape& lhs_shape,
+                                                 gsl::span<const int64_t> lhs_strides,
+                                                 const std::optional<bool> lhs_is_contiguous,
                                                  const TensorShape& rhs_shape,
+                                                 gsl::span<const int64_t> rhs_strides,
+                                                 const std::optional<bool> rhs_is_contiguous,
                                                  const TensorShape& output_shape) {
     int32_t lhs_rank = gsl::narrow_cast<int32_t>(lhs_shape.NumDimensions());
     int32_t rhs_rank = gsl::narrow_cast<int32_t>(rhs_shape.NumDimensions());
     int32_t out_rank = std::max(lhs_rank, rhs_rank);
+    const bool lhs_is_contiguous_ = lhs_is_contiguous.has_value() && *lhs_is_contiguous;
+    const bool rhs_is_contiguous_ = rhs_is_contiguous.has_value() && *rhs_is_contiguous;
+    if (!lhs_is_contiguous_ || !rhs_is_contiguous_) {
+      output_rank_or_simple_broadcast = out_rank;
+      if (!lhs_is_contiguous_) {
+        lhs_padded_strides.SetSize(out_rank);
+        if (lhs_shape == output_shape) {
+          for (size_t i = 0; i < lhs_strides.size(); ++i) {
+            lhs_padded_strides[i] = lhs_strides[i];
+          }
+        } else {
+          auto offset = out_rank - lhs_rank;
+          for (auto i = offset; i < out_rank; ++i) {
+            // the stride for broadcast dimension is kept as 0
+            if (lhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
+              lhs_padded_strides[i] = lhs_strides[i];
+            }
+          }
+        }
+      }
+
+      if (!rhs_is_contiguous_) {
+        rhs_padded_strides.SetSize(out_rank);
+        if (rhs_shape == output_shape) {
+          for (size_t i = 0; i < rhs_strides.size(); ++i) {
+            rhs_padded_strides[i] = rhs_strides[i];
+          }
+        } else {
+          auto offset = out_rank - rhs_rank;
+          for (auto i = offset; i < out_rank; ++i) {
+            // the stride for broadcast dimension is kept as 0
+            if (rhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
+              rhs_padded_strides[i] = rhs_strides[i];
+            }
+          }
+        }
+      }
+
+      TensorPitches original_output_strides(output_shape.GetDims());
+      fdm_output_strides.SetSize(out_rank);
+      for (auto i = 0; i < out_rank; ++i) {
+        fdm_output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+      }
+
+      return Status::OK();
+    }
 
     // early return when shapes match
     if (lhs_shape == rhs_shape) {

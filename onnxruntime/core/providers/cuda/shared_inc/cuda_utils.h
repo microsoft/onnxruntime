@@ -205,5 +205,14 @@ constexpr T divUp(T a, T b) { return (a + b - (T)1) / b; }
 template <typename T>
 constexpr T roundUp(T a, T b) { return divUp<T>(a, b) * b; }
 
+Status StridedTensorCopyImpl(
+    cudaStream_t stream,
+    const size_t element_byte_size,
+    const size_t total_element_count,
+    const void* input_data,
+    void* output_data,
+    const std::vector<int64_t>& output_strides,
+    const std::vector<int64_t>& input_strides);
+
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -260,7 +260,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       auto log_sum_result_buffer = GetScratchBuffer<T>(output_count, stream);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
-      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, {}, std::nullopt, rhs_shape, {}, std::nullopt, input_shape));
       Impl_Sub<HipT>(hip_stream,
                      prepare.output_rank_or_simple_broadcast,
                      &prepare.lhs_padded_strides,
@@ -603,7 +603,7 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const Tensor& input,
       auto log_sum_result_buffer = output_count == 0 ? nullptr : IAllocator::MakeUniquePtr<T>(gpu_allocator, output_count, false, ort_stream, WaitRocmNotificationOnDevice);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
-      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, output_shape, input_shape));
+      ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, {}, std::nullopt, output_shape, {}, std::nullopt, input_shape));
       Impl_Sub<HipT>(stream,
                      prepare.output_rank_or_simple_broadcast,
                      &prepare.lhs_padded_strides,

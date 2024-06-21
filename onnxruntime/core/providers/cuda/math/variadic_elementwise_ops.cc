@@ -72,10 +72,10 @@ template <typename T>
 Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::
     BinaryImplDispatchTarget<T>::operator()(cudaStream_t stream, const Tensor& lhs, const Tensor& rhs, Tensor& output) const {
   using CudaT = typename ToCudaType<T>::MappedType;
-
+  std::cout << "b1111111111111111111111" << std::endl;
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&lhs, &rhs, &output, &prepare));
-
+  std::cout << "b2222222222222222222" << std::endl;
   Impl_General<CudaT, VariadicElementwiseOpTag>(
       stream,
       prepare.output_rank_or_simple_broadcast,
@@ -88,7 +88,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
       prepare.fdm_C,
       reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
       prepare.output_tensor->Shape().Size());
-
+  std::cout << "b33333333333333" << std::endl;
   return Status::OK();
 }
 
@@ -165,13 +165,19 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
         InputTensorVector result{};
         result.reserve(input_count);
         for (int i = 0; i < input_count; ++i) {
+          std::cout << "start i: " << i << std::endl;
           const auto& tensor = context->RequiredInput<Tensor>(i);
+          std::cout << "end i: " << i << std::endl;
           result.push_back(std::cref(tensor));
         }
         return result;
       }();
 
+  std::cout << "input_tensors.size(): " << input_tensors.size() << std::endl;
+
   const auto& first_input_tensor = input_tensors[0].get();
+
+  std::cout << "first_input_tensor.Shape(): " << first_input_tensor.Shape() << std::endl;
 
   // special case for 1 input
   if (input_count == 1) {
@@ -187,7 +193,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
   const auto element_type = first_input_tensor.GetElementType();
   utils::MLTypeCallDispatcher<SupportedElementTypes...> dispatcher(element_type);
-
+  std::cout << "9999999999999999" << std::endl;
   // Special case for no broadcasting.
   if (std::all_of(input_tensors.begin() + 1, input_tensors.end(),
                   [&first_input_tensor](InputTensorVector::value_type t) {
@@ -197,6 +203,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
+      std::cout << "b000000000000000000000" << std::endl;
       return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(context), input_tensors[0],
                                                                              input_tensors[1], output_tensor);
     }
@@ -204,6 +211,8 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(context), input_tensors,
                                                                                      output_tensor);
   }
+
+  std::cout << "888888888888888888888" << std::endl;
 
   // compute output shape first, using broadcast rule
   TensorShape output_shape;
@@ -217,6 +226,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
   // special case for 2 inputs
   if (input_count == 2) {
+    std::cout << "b" << std::endl;
     return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(
         Stream(context), input_tensors[0], input_tensors[1], output_tensor);
   }
@@ -239,10 +249,17 @@ using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uin
 
 // kernel registration
 
-#define REGISTER_KERNEL(name, impl_class, version, datatypes)                                                        \
-  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider,                                        \
-                          (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), \
+#define REGISTER_KERNEL(name, impl_class, version, datatypes)                              \
+  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider,              \
+                          (*KernelDefBuilder::Create())                                    \
+                              .TypeConstraint("T", BuildKernelDefConstraints<datatypes>()) \
+                              .MayStridedInput(0)                                          \
+                              .MayStridedInput(1),                                         \
                           impl_class)
+
+// .MayStridedInput(0)
+// .MayStridedInput(1)
+// .MayStridedInput(2),
 
 #define REGISTER_VERSIONED_KERNEL(name, impl_class, start_version, end_version, datatypes) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \

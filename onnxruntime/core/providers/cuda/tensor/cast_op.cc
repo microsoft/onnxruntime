@@ -44,7 +44,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+          .TypeConstraint("T2", CastOpTypeConstraints())          \
+          .MayStridedInput(0),                                    \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
@@ -54,7 +55,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+          .TypeConstraint("T2", CastOpTypeConstraints())          \
+          .MayStridedInput(0),                                    \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
@@ -64,7 +66,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+          .TypeConstraint("T2", CastOpTypeConstraints())          \
+          .MayStridedInput(0),                                    \
       Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
@@ -74,7 +77,8 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+          .TypeConstraint("T2", CastOpTypeConstraints())          \
+          .MayStridedInput(0),                                    \
       Cast<T>);
 
 #define CASE(TP_TYPE, DstT)                                                                 \
@@ -116,6 +120,20 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
 
 #endif
 
+namespace {
+int64_t GetElementCountForStrideTensor(const TensorShape& shape, gsl::span<const int64_t> strides) {
+  SafeInt<int64_t> size = 1;
+  for (size_t dim = 0; dim < shape.NumDimensions(); ++dim) {
+    if (shape[dim] == 0) {
+      size = 0;
+      break;
+    }
+    size += strides[dim] * (shape[dim] - 1);
+  }
+  return size;
+}
+}  // namespace
+
 template <typename SrcT>
 Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<SrcT>::MappedType CudaSrcT;
@@ -124,6 +142,18 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, shape);
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
   size_t count = shape.Size();
+
+  if (!X->IsContiguous()) {
+    std::cout << "Cast<<IsContiguous-->0000" << std::endl;
+#ifdef ENABLE_STRIDED_TENSORS
+    gsl::span<const int64_t> input_strides = X->Strides();
+    // Out tensor should have the same shape as input tensor
+    Y->SetShapeAndStrides(shape, input_strides);
+    count = GetElementCountForStrideTensor(shape, input_strides);
+#else
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Strided tensors are not supported in this build.");
+#endif
+  }
 
   switch (to_) {
     CASE(TensorProto_DataType_FLOAT16, MLFloat16)
@@ -165,6 +195,12 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     Tensor* Y = context->Output(0, shape);                                                              \
     const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<FLOAT_TYPE>());                      \
     size_t count = shape.Size();                                                                        \
+    if (!X->IsContiguous()) {                                                                           \
+      std::cout << "Cast<<IsContiguous-->11111" << std::endl;                                           \
+      gsl::span<const int64_t> input_strides = X->Strides();                                            \
+      Y->SetShapeAndStrides(shape, input_strides);                                                      \
+      count = GetElementCountForStrideTensor(shape, input_strides);                                     \
+    }                                                                                                   \
     switch (to_) {                                                                                      \
       CASE(TensorProto_DataType_FLOAT16, MLFloat16)                                                     \
       CASE(TensorProto_DataType_BFLOAT16, BFloat16)                                                     \
@@ -202,6 +238,12 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     Tensor* Y = context->Output(0, shape);                                                              \
     const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<FLOAT_TYPE>());                      \
     size_t count = shape.Size();                                                                        \
+    if (!X->IsContiguous()) {                                                                           \
+      std::cout << "Cast<<IsContiguous-->22222" << std::endl;                                           \
+      gsl::span<const int64_t> input_strides = X->Strides();                                            \
+      Y->SetShapeAndStrides(shape, input_strides);                                                      \
+      count = GetElementCountForStrideTensor(shape, input_strides);                                     \
+    }                                                                                                   \
     switch (to_) {                                                                                      \
       CASE(TensorProto_DataType_FLOAT16, MLFloat16)                                                     \
       CASE(TensorProto_DataType_BFLOAT16, BFloat16)                                                     \
@@ -249,6 +291,12 @@ COMPUTE_INTERNAL_FL16_32(BFloat16)
     Tensor* Y = context->Output(0, shape);                                                  \
     const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<FLOAT_TYPE>());          \
     size_t count = shape.Size();                                                            \
+    if (!X->IsContiguous()) {                                                               \
+      std::cout << "Cast<<IsContiguous-->33333" << std::endl;                               \
+      gsl::span<const int64_t> input_strides = X->Strides();                                \
+      Y->SetShapeAndStrides(shape, input_strides);                                          \
+      count = GetElementCountForStrideTensor(shape, input_strides);                         \
+    }                                                                                       \
     switch (to_) {                                                                          \
       case TensorProto_DataType_FLOAT16:                                                    \
         if (count > 0) {                                                                    \

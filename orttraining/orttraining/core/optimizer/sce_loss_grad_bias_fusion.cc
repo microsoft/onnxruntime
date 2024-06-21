@@ -92,8 +92,9 @@ Status SceLossGradBiasFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       new_scegrad_node_outputs.emplace_back(p_reshape->MutableInputDefs()[0]);
     }
     Node& new_scegrad_node =
-        graph.AddNode(graph.GenerateNodeName("FusedSoftmaxCrossEntropyLossInternalGrad"),
-                      "SoftmaxCrossEntropyLossInternalGrad", "FusedSoftmaxCrossEntropyLossInternalGrad",
+        graph.AddNode(graph.GenerateNodeName(node.Name() + "/SceLossGradBiasFusion/"),
+                      "SoftmaxCrossEntropyLossInternalGrad",
+                      "FusedSoftmaxCrossEntropyLossInternalGrad",
                       new_scegrad_node_inputs, new_scegrad_node_outputs, &node.GetAttributes(), kMSDomain);
     new_scegrad_node.SetExecutionProviderType(node.GetExecutionProviderType());
 

@@ -988,6 +988,9 @@ struct OpKernelContext final {
 
   template <typename T>
   const T* Input(int index) const;
+
+  const Tensor* Input(int index) const { return g_host->OpKernelContext__Input_Tensor(this, index); }
+
   int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
   MLDataType InputType(int index) const { return g_host->OpKernelContext__InputType(this, index); }
@@ -996,6 +999,7 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); }
 #endif

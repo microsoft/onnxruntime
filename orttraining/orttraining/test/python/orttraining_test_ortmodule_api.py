@@ -6925,3 +6925,53 @@ def test_layerwise_recompute_pythonop_determinstic():
     else:
         if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+def test_backward_all_zeros_stride_inputs():
+    num_embeddings, embedding_dim = 32, 128
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, labels):
+            """
+                input: [batch_size, sequence_length]
+                labels: [batch_size, sequence_length]
+            """
+            logits = self.embedding(input) # output: batch_size, sequence_length, embedding_dim
+            logits = logits.float()
+
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            # Flatten the tokens
+            shift_logits = shift_logits.view(-1, embedding_dim)
+            shift_labels = shift_labels.view(-1)
+            # Ensure tensors are on the same device
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss_fct = torch.nn.CrossEntropyLoss()
+            loss = loss_fct(shift_logits, shift_labels)
+            return loss, logits
+
+    device = "cuda"
+
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).half().to(device)
+
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="20240617"))
+
+    def run_step(model, input, positions):
+        loss, logits = model(input, positions)
+        loss.backward()
+        return loss
+
+    batch_size = 4
+    sequence_length = 16
+    input = torch.randint(high=num_embeddings, size=(batch_size, sequence_length), dtype=torch.int64, device=device)
+    labels = torch.randint(high=num_embeddings, size=(batch_size, sequence_length), dtype=torch.int64, device=device)
+    loss_ort = run_step(ort_model, input, labels)
+    loss_pt = run_step(pt_model, input, labels)
+
+    _test_helpers.assert_values_are_close(loss_ort, loss_pt)
+
+    # Compare the gradients
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
