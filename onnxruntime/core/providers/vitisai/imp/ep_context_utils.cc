@@ -191,9 +191,8 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   if (p_orig_model_proto->opset_import_size() > 0) {
     LOGS_DEFAULT(VERBOSE) << "Adding op domain version mapping to JSON";
     for (int i = 0, n = p_orig_model_proto->opset_import_size(); i < n; ++i) {
-      const auto& op_set_id_proto = p_orig_model_proto->opset_import(i);
-      j_obj[*const_cast<ONNX_NAMESPACE::OperatorSetIdProto&>(op_set_id_proto).mutable_domain()] =
-          std::to_string(op_set_id_proto.version());
+      auto& op_set_id_proto = const_cast<ONNX_NAMESPACE::OperatorSetIdProto&>(p_orig_model_proto->opset_import(i));
+      j_obj[*op_set_id_proto.mutable_domain()] = std::to_string(op_set_id_proto.version());
     }
   }
   j_obj["orig_graph_name"] = graph_viewer.Name();
@@ -444,7 +443,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
         }
         auto* p_op_set_id_proto = p_model_proto->add_opset_import();
         *(p_op_set_id_proto->mutable_domain()) = elem.key();
-        p_op_set_id_proto->set_version(std::stol(elem.value()));
+        p_op_set_id_proto->set_version(std::stol(nlohmann::to_string(elem.value())));
       }
     }
   }
