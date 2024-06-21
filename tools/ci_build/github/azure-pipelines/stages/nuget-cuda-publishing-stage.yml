@@ -6,7 +6,7 @@ parameters:
 stages:
   - stage: NuGet_Publishing_GPU
     jobs:
-      - job:
+      - job: NuGet_Publishing_GPU
         workspace:
           clean: all
         variables:
@@ -64,7 +64,7 @@ stages:
             inputs:
               command: push
               packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
-              publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/d3daa2b0-aa56-45ac-8145-2c3dc0661c87'
+              publishVstsFeed: 'PublicPackages/${{ parameters.artifact_feed }}'
               allowPackageConflicts: true
 
 

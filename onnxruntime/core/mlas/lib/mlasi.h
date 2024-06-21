@@ -680,6 +680,24 @@ void
     float Scale,
     int16_t ZeroPoint);
 
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_U4_KERNEL)(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint);
+
+typedef
+void
+(MLASCALL MLAS_QUANTIZE_LINEAR_S4_KERNEL)(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -826,6 +844,8 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL MlasQuantizeLinearS16Kernel;
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
+    MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
+    MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelFma3;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelFma3;
@@ -1083,6 +1103,8 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
+    MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
+    MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
@@ -1112,6 +1134,8 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     MLAS_QUANTIZE_LINEAR_S16_KERNEL* QuantizeLinearS16Kernel;
     MLAS_QUANTIZE_LINEAR_U16_KERNEL* QuantizeLinearU16Kernel;
+    MLAS_QUANTIZE_LINEAR_S4_KERNEL* QuantizeLinearS4Kernel;
+    MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
     uint32_t NchwcBlockSize;
     uint32_t PreferredBufferAlignment;
     int32_t MaximumThreadCount;
@@ -2497,3 +2521,51 @@ MlasThreadedBufAlloc(size_t size)
         ThreadedBufSize = size;
     }
 }
+
+//
+// Utilities for INT4 quantization.
+//
+
+template<bool Signed>
+struct Int4Traits;
+
+template<>
+struct Int4Traits<true> {
+    using UnpackedType = int8_t;
+    static constexpr int8_t Min = -8;
+    static constexpr int8_t Max = 7;
+};
+
+template<>
+struct Int4Traits<false> {
+    using UnpackedType = uint8_t;
+    static constexpr int8_t Min = 0;
+    static constexpr int8_t Max = 15;
+};
+
+template<typename UnpackedType>
+MLAS_FORCEINLINE
+void
+MlasSetInt4Element(uint8_t* Output, size_t ElemIndex, UnpackedType Value)
+{
+    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
+
+    const size_t OutputIndex = ElemIndex >> 1;  // which byte
+    const size_t NibbleIndex = ElemIndex & 0x1; // which 4-bit elem in the byte
+    const uint8_t Shift = static_cast<uint8_t>(NibbleIndex << 2); // Either 0 or 4
+    const uint8_t Mask = static_cast<uint8_t>(0xF0 >> Shift);
+    uint8_t* Dst = &Output[OutputIndex];
+
+    *Dst &= Mask; // Clear 4-bit lane
+    *Dst |= static_cast<uint8_t>((Value & 0xF) << Shift); // Set 4-bit lane
+}
+
+template<typename UnpackedType>
+MLAS_FORCEINLINE
+void
+MlasPackInt4Elements(uint8_t* Output, UnpackedType ValueLow, UnpackedType ValueHigh)
+{
+    static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
+    *Output = static_cast<uint8_t>(((ValueHigh & 0xF) << 4) | (ValueLow & 0xF));
+}
+

@@ -107,6 +107,7 @@ struct AttributeProto final {
   void set_s(const ::std::string& value) { return g_host->AttributeProto__set_s(this, value); }
   void set_f(const float& value) { return g_host->AttributeProto__set_f(this, value); }
   void set_i(int64_t value) { return g_host->AttributeProto__set_i(this, value); }
+  void set_t(const TensorProto& value) { return g_host->AttributeProto__set_t(this, value); }
   const ::std::string& s() const { return g_host->AttributeProto__s(this); }
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
@@ -150,10 +151,14 @@ struct GraphProto final {
 
   ValueInfoProtos* mutable_value_info() { return g_host->GraphProto__mutable_value_info(this); }
   TensorProtos* mutable_initializer() { return g_host->GraphProto__mutable_initializer(this); }
+  TensorProto* add_initializer() { return g_host->GraphProto__add_initializer(this); }
   NodeProto* add_node() { return g_host->GraphProto__add_node(this); }
   NodeProto* mutable_node(int index) { return g_host->GraphProto__mutable_node(this, index); }
 
   std::string* mutable_name() { return g_host->GraphProto__mutable_name(this); }
+
+  void set_name(const std::string& name) { g_host->GraphProto__set_name(this, name); }
+  void set_doc_string(const std::string& doc_str) { g_host->GraphProto__set_doc_string(this, doc_str); }
 
   GraphProto() = delete;
   GraphProto(const GraphProto&) = delete;
@@ -584,6 +589,14 @@ struct KernelRegistry final {
 struct PrimitiveDataTypeBase final {
   int32_t GetDataType() const { return g_host->PrimitiveDataTypeBase__GetDataType(this); }
 
+  int32_t GetNumSubElems() const {
+    return g_host->PrimitiveDataTypeBase__GetNumSubElems(this);
+  }
+
+  bool HasSubElems() const {
+    return g_host->PrimitiveDataTypeBase__HasSubElems(this);
+  }
+
   PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
 };
 
@@ -769,6 +782,53 @@ struct NodeAttributes final {
   NodeAttributes(const NodeAttributes&) = delete;
 };
 
+struct NodeUnitIODef final {
+  // The quantization parameter. Scale is mandatory. Zero-point and axis are optional.
+  struct QuantParam {
+    const NodeArg& scale;
+    const NodeArg* zero_point{nullptr};
+    std::optional<int64_t> axis{std::nullopt};
+  };
+
+  const NodeArg& node_arg;
+  const std::optional<QuantParam> quant_param;
+};
+
+struct NodeUnit final {
+  // NodeUnit type
+  enum class Type : uint8_t {
+    SingleNode,  // The NodeUnit contains a single node
+    QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
+  };
+
+  Type UnitType() const noexcept { return static_cast<Type>(g_host->NodeUnit__UnitType(this)); }
+
+  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return g_host->NodeUnit__Inputs(this); }
+  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return g_host->NodeUnit__Outputs(this); }
+
+  const std::string& Domain() const noexcept { return g_host->NodeUnit__Domain(this); }
+  const std::string& OpType() const noexcept { return g_host->NodeUnit__OpType(this); }
+  const std::string& Name() const noexcept { return g_host->NodeUnit__Name(this); }
+  int SinceVersion() const noexcept { return g_host->NodeUnit__SinceVersion(this); }
+  NodeIndex Index() const noexcept { return g_host->NodeUnit__Index(this); }
+  const Path& ModelPath() const noexcept { return g_host->NodeUnit__ModelPath(this); }
+  ProviderType GetExecutionProviderType() const noexcept { return g_host->NodeUnit__GetExecutionProviderType(this); }
+
+  const Node& GetNode() const noexcept { return g_host->NodeUnit__GetNode(this); }
+  const std::vector<const Node*>& GetDQNodes() const noexcept { return g_host->NodeUnit__GetDQNodes(this); }
+  const std::vector<const Node*>& GetQNodes() const noexcept { return g_host->NodeUnit__GetQNodes(this); }
+  std::vector<const Node*> GetAllNodesInGroup() const noexcept { return g_host->NodeUnit__GetAllNodesInGroup(this); }
+
+  /// Number of input edges to the logical node. For a QDQ node this is the count of input edges to the DQ nodes
+  /// plus any other edges to the target node for inputs that are not via a DQ node.
+  size_t InputEdgeCount() const { return g_host->NodeUnit__InputEdgeCount(this); }
+
+  // output edges. src index is for outputs of the target node. dest index and node is for consumer of node unit
+  // output. any Q nodes are hidden.
+  Node::EdgeConstIterator OutputEdgesBegin() const { return g_host->NodeUnit__OutputEdgesBegin(this); }
+  Node::EdgeConstIterator OutputEdgesEnd() const { return g_host->NodeUnit__OutputEdgesEnd(this); }
+};
+
 struct Model final {
   static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
@@ -799,6 +859,7 @@ struct Graph final {
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
+  Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
 
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->Graph__GetOutputs(this); }
   void SetOutputs(gsl::span<const NodeArg* const> outputs) { return g_host->Graph__SetOutputs(this, outputs); }
@@ -870,6 +931,10 @@ class GraphViewer final {
   bool IsSubgraph() const { return g_host->GraphViewer__IsSubgraph(this); }
   const Graph& GetGraph() const { return g_host->GraphViewer__GetGraph(this); }
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const { return g_host->GraphViewer__IsConstantInitializer(this, name, check_outer_scope); }
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name,
+                                                            bool check_outer_scope = true) const {
+    return g_host->GraphViewer__GetConstantInitializer(this, name, check_outer_scope);
+  }
   const Node* ParentNode() const { return g_host->GraphViewer__ParentNode(this); }
 
   int NumberOfNodes() const noexcept { return g_host->GraphViewer__NumberOfNodes(this); }
@@ -886,6 +951,9 @@ class GraphViewer final {
 
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder(int execution_order = 0) const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this, execution_order); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
+    return g_host->GraphViewer__GetOuterScopeNodeArgNames(this);
+  }
 
   void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto,
                bool include_initializers,

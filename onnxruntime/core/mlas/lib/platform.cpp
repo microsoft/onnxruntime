@@ -274,6 +274,8 @@ Return Value:
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
     this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -545,6 +547,8 @@ Return Value:
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
     this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 
 #if defined(__linux__)
     unsigned long hwcap2 = getauxval(AT_HWCAP2);

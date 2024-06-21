@@ -93,7 +93,10 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          flags: --linelength=120 --exclude=java/src/main/native/*.c
+          flags: --linelength=120
+            --exclude=java/src/main/native/*.c
+            --exclude=onnxruntime/core/mlas/inc/*
+            --exclude=onnxruntime/core/mlas/lib/*
           filter: "-runtime/references"
 
   lint-js:

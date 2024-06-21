@@ -17,6 +17,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cfloat>
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <math.h>

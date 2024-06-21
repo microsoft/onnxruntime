@@ -10,14 +10,16 @@
  * No flags in this file should present in production build.
  */
 interface BuildDefinitions {
+  // #region Build definitions for Tree Shaking
+
   /**
    * defines whether to disable the whole WebGL backend in the build.
    */
   readonly DISABLE_WEBGL: boolean;
   /**
-   * defines whether to disable the whole WebGpu backend in the build.
+   * defines whether to disable the whole WebGpu/WebNN backend in the build.
    */
-  readonly DISABLE_WEBGPU: boolean;
+  readonly DISABLE_JSEP: boolean;
   /**
    * defines whether to disable the whole WebNN backend in the build.
    */
@@ -27,13 +29,28 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WASM_PROXY: boolean;
   /**
-   * defines whether to disable multi-threading feature in WebAssembly backend in the build.
-   */
-  readonly DISABLE_WASM_THREAD: boolean;
-  /**
    * defines whether to disable training APIs in WebAssembly backend.
    */
   readonly DISABLE_TRAINING: boolean;
+  /**
+   * defines whether to disable dynamic importing WASM module in the build.
+   */
+  readonly DISABLE_DYNAMIC_IMPORT: boolean;
+
+  // #endregion
+
+  // #region Build definitions for ESM
+
+  /**
+   * defines whether the build is ESM.
+   */
+  readonly IS_ESM: boolean;
+  /**
+   * placeholder for the import.meta.url in ESM. in CJS, this is undefined.
+   */
+  readonly ESM_IMPORT_META_URL: string|undefined;
+
+  // #endregion
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

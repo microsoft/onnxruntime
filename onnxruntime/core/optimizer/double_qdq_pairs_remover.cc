@@ -2,12 +2,45 @@
 // Licensed under the MIT License.
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include <cassert>
+#include <string>
 
+#include "core/common/span_utils.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
+
+/// <summary>
+/// Returns the zero-point type from the given QuantizeLinear node.
+/// </summary>
+/// <param name="graph">Graph</param>
+/// <param name="q_node">QuantizeLinear node</param>
+/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
+/// <returns>True if successfully extracted the zero-point data type</returns>
+static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
+                                  /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type) {
+  assert(q_node.OpType() == "QuantizeLinear");
+  const auto input_defs = q_node.InputDefs();
+
+  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
+    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
+    // The "output_dtype" attribute was added in ONNX opset 21.
+    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
+    zp_data_type = attr != nullptr ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(attr->i())
+                                   : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    return true;
+  }
+
+  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
+  if (zp_proto == nullptr) {
+    return false;
+  }
+
+  zp_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(zp_proto->data_type());
+  return true;
+}
 
 // Applies a new zero point or scale as the input for a Q/DQ node.
 template <typename T>
@@ -81,38 +114,64 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
   return true;
 }
 
-// Recomputes the zero point and scale of the outer Q/DQ nodes (i.e., Q1 and DQ2). This is necessary because
-// the original two QDQ pairs may have different zero-points and scales. Ex: Q1 -> DQ1 -> Q2 -> DQ2, where
+// Recomputes the zero point and scale of the outer Q/DQ nodes (i.e., Q1 and DQ2(s)). This is necessary because
+// the original two QDQ pairs may have different zero-points and scales. Ex: Q1 -> DQ1 -> Q2 -> DQ2*, where
 // the first pair has (zp1, scale1) and the second pair has (zp2, scale2).
 // After removing the middle two nodes, the zero point and scale of the final (outer) ops must be recomputed
 // for correctness.
 template <typename ZeroPointType>
-static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2, Node& dq2) {
-  bool skip_reset = false;
-  float new_scale = 0.0f;
-  ZeroPointType new_zero_point = 0;
-  if (!FindNewZeroPointAndScale(graph, dq1, q2, new_scale, new_zero_point, skip_reset)) {
+static bool RecomputeOuterQDQZeroPointAndScale(Graph& graph, Node& q1, const Node& dq1, const Node& q2,
+                                               gsl::span<gsl::not_null<Node*>> dq2s) {
+  if (dq2s.empty()) {
     return false;
   }
-  if (skip_reset) {
+
+  bool no_change_needed = false;
+  float new_scale = 0.0f;
+  ZeroPointType new_zero_point = 0;
+  if (!FindNewZeroPointAndScale(graph, dq1, q2, new_scale, new_zero_point, no_change_needed)) {
+    return false;
+  }
+  if (no_change_needed) {
     return true;
   }
-  ApplyNewInputValue(graph, dq2, QDQ::InputIndex::SCALE_ID, new_scale);
+
   ApplyNewInputValue(graph, q1, QDQ::InputIndex::SCALE_ID, new_scale);
-  ApplyNewInputValue(graph, dq2, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
   ApplyNewInputValue(graph, q1, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
+
+  for (gsl::not_null<Node*> dq2 : dq2s) {
+    ApplyNewInputValue(graph, *dq2, QDQ::InputIndex::SCALE_ID, new_scale);
+    ApplyNewInputValue(graph, *dq2, QDQ::InputIndex::ZERO_POINT_ID, new_zero_point);
+  }
 
   return true;
 }
 
-// Checks if the provided node index (dq1_index) is a part of a valid double QDQ pair sequence
-// (i.e., Q1 -> DQ1 -> Q2 -> DQ2) that can be reduced to the outer Q/DQ nodes (i.e., Q1 -> DQ2).
-// If so, the zero point and scale of the outer Q/DQ nodes are recomputed and the node indices of the other nodes
-// in the sequence (i.e., Q1, Q2, and DQ2) are returned via output parameters.
-static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex& q1_index, NodeIndex dq1_index,
-                                         NodeIndex& q2_index, NodeIndex& dq2_index) {
+/// <summary>
+/// Tries to reduce a double QDQ sequence (Q1 -> DQ1 -> Q2 -> DQ2*) beginning with the provided Q1 node index.
+/// The scale/zero-point values of the outer Q1 and DQ2* nodes may need to be recomputed.
+/// Supports multiple identical DQ2 nodes.
+/// </summary>
+/// <param name="graph">Graph to modify</param>
+/// <param name="q1_index">Index of potential Q1 node</param>
+/// <returns>True if the double QDQ sequence was reduced</returns>
+static bool TryReduceDoubleQDQSequence(Graph& graph, NodeIndex q1_index) {
+  const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
+    return graph.GetConstantInitializer(initializer_name, true);
+  };
+
+  // Ensure that q1 is a Q operator, has only one output, and is not a graph output
+  Node* q1 = graph.GetNode(q1_index);
+  if (q1 == nullptr ||
+      q1->OpType() != "QuantizeLinear" ||
+      q1->GetOutputEdgesCount() != 1 ||
+      graph.NodeProducesGraphOutput(*q1)) {
+    return false;
+  }
+
   // Ensure that dq1 is a DQ operator, has one parent and one child, and is not a graph output
-  Node* dq1 = graph.GetNode(dq1_index);
+  NodeIndex dq1_index = q1->OutputEdgesBegin()->GetNode().Index();
+  const Node* dq1 = graph.GetNode(dq1_index);
   if (dq1 == nullptr ||
       dq1->OpType() != "DequantizeLinear" ||
       dq1->GetInputEdgesCount() != 1 ||
@@ -121,75 +180,80 @@ static bool IsReducibleDoubleQDQSequence(Graph& graph, NodeIndex& q1_index, Node
     return false;
   }
 
-  // Ensure that q2 is a Q operator, has only one child, and is not a graph output
-  q2_index = dq1->OutputEdgesBegin()->GetNode().Index();
+  // The Q1 and DQ1 nodes must have equal zero-point and scale values (scalar/constant).
+  if (!QDQ::IsQDQPairSupported(*q1, *dq1, get_constant_initializer, graph.ModelPath())) {
+    return false;
+  }
+
+  auto q1_quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (!GetQNodeZeroPointType(graph, *q1, q1_quant_type)) {
+    return false;
+  }
+
+  // Ensure that q2 is a Q operator, its output is not a graph output, and that its zero-point quantization type
+  // is equal to q1's.
+  NodeIndex q2_index = dq1->OutputEdgesBegin()->GetNode().Index();
   const Node* q2 = graph.GetNode(q2_index);
+  auto q2_quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+
   if (q2 == nullptr ||
       q2->OpType() != "QuantizeLinear" ||
-      q2->GetOutputEdgesCount() != 1 ||
-      graph.NodeProducesGraphOutput(*q2)) {
+      graph.NodeProducesGraphOutput(*q2) ||
+      !GetQNodeZeroPointType(graph, *q2, q2_quant_type) ||
+      q1_quant_type != q2_quant_type) {
     return false;
   }
 
-  // Ensure that q1 is a Q operator, has only one output, and is not a graph output
-  q1_index = dq1->InputEdgesBegin()->GetNode().Index();
-  Node* q1 = graph.GetNode(q1_index);
-  if (q1 == nullptr ||
-      q1->GetOutputEdgesCount() != 1 ||
-      q1->OpType() != "QuantizeLinear" ||
-      graph.NodeProducesGraphOutput(*q1)) {
+  // All of q2's children should be DQ nodes with zero-point and scale values equal to those of q2.
+  InlinedVector<gsl::not_null<Node*>> dq2_nodes;
+  dq2_nodes.reserve(q2->GetOutputEdgesCount());
+
+  for (auto it = q2->OutputEdgesBegin(); it != q2->OutputEdgesEnd(); it++) {
+    NodeIndex dq2_index = it->GetNode().Index();
+    Node* dq2 = graph.GetNode(dq2_index);
+
+    if (dq2 == nullptr || dq2->OpType() != "DequantizeLinear") {
+      // Child is not a DQ op.
+      return false;
+    }
+
+    // The Q2 and DQ2 nodes must have equal zero-point and scale values (scalar/constant).
+    if (!QDQ::IsQDQPairSupported(*q2, *dq2, get_constant_initializer, graph.ModelPath())) {
+      return false;
+    }
+
+    dq2_nodes.push_back(dq2);
+  }
+
+  bool can_recompute = false;
+  if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+    can_recompute = RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *q1, *dq1, *q2, dq2_nodes);
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+    can_recompute = RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *q1, *dq1, *q2, dq2_nodes);
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+    can_recompute = RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *q1, *dq1, *q2, dq2_nodes);
+  } else if (q1_quant_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
+    can_recompute = RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *q1, *dq1, *q2, dq2_nodes);
+  }
+
+  if (!can_recompute) {
     return false;
   }
 
-  // Ensure the dq2 is a DQ operator.
-  dq2_index = q2->OutputEdgesBegin()->GetNode().Index();
-  Node* dq2 = graph.GetNode(dq2_index);
-  if (dq2 == nullptr ||
-      dq2->OpType() != "DequantizeLinear") {
-    return false;
+  graph.RemoveEdge(q1_index, dq1_index, 0, 0);  // Disconnect Q1 -> DQ1
+  graph.RemoveEdge(dq1_index, q2_index, 0, 0);  // Disconnect DQ1 -> Q2
+
+  // Disconnect Q2 --> DQ2(s)
+  // Connect Q1 -> DQ2(s)
+  for (gsl::not_null<Node*> dq2 : dq2_nodes) {
+    graph.RemoveEdge(q2_index, dq2->Index(), 0, 0);
+    graph.AddEdge(q1_index, dq2->Index(), 0, 0);
   }
 
-  const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
-    return graph.GetConstantInitializer(initializer_name, true);
-  };
+  graph.RemoveNode(q2_index);
+  graph.RemoveNode(dq1_index);
 
-  // Each QDQ pair (i.e., q1 -> dq1, q2 -> dq2) has to meet the following additional requirements:
-  // - Scalar/constant zero-point and scale.
-  // - The DQ and Q ops within a pair must have the same scale and zero-point.
-  //   However, each pair is allowed to have different scales and zero-points.
-  //
-  // TODO: IsQDQPairSupported() requires an explicit zero-point input, but technically a default
-  // value of 0 could be fine.
-  if (!QDQ::IsQDQPairSupported(*q1, *dq1, get_constant_initializer, graph.ModelPath()) ||
-      !QDQ::IsQDQPairSupported(*q2, *dq2, get_constant_initializer, graph.ModelPath())) {
-    return false;
-  }
-
-  const auto& dq1_input_defs = dq1->InputDefs();
-  const ONNX_NAMESPACE::TensorProto* dq1_zp_tensor_proto = graph.GetConstantInitializer(
-      dq1_input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
-
-  assert(dq1_zp_tensor_proto != nullptr);  // IsQDQPairSupported should have checked that this exists.
-
-  auto dq1_zp_type = dq1_zp_tensor_proto->data_type();
-
-  if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    return RecomputeOuterQDQZeroPointAndScale<uint8_t>(graph, *q1, *dq1, *q2, *dq2);
-  }
-
-  if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    return RecomputeOuterQDQZeroPointAndScale<int8_t>(graph, *q1, *dq1, *q2, *dq2);
-  }
-
-  if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
-    return RecomputeOuterQDQZeroPointAndScale<uint16_t>(graph, *q1, *dq1, *q2, *dq2);
-  }
-
-  if (dq1_zp_type == ONNX_NAMESPACE::TensorProto_DataType_INT16) {
-    return RecomputeOuterQDQZeroPointAndScale<int16_t>(graph, *q1, *dq1, *q2, *dq2);
-  }
-
-  return false;  // Unsupported zero-point type
+  return true;
 }
 
 Status DoubleQDQPairsRemover::ApplyImpl(
@@ -200,18 +264,8 @@ Status DoubleQDQPairsRemover::ApplyImpl(
   const GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
-  for (const auto& dq1_index : node_topology_list) {
-    NodeIndex q1_index = 0;
-    NodeIndex q2_index = 0;
-    NodeIndex dq2_index = 0;
-    if (IsReducibleDoubleQDQSequence(graph, q1_index, dq1_index, q2_index, dq2_index)) {
-      graph.RemoveEdge(q1_index, dq1_index, 0, 0);
-      graph.RemoveEdge(dq1_index, q2_index, 0, 0);
-      graph.RemoveEdge(q2_index, dq2_index, 0, 0);
-      graph_utils::ReplaceNodeInput(*graph.GetNode(dq2_index), 0, *graph.GetNode(dq1_index)->MutableInputDefs()[0]);
-      graph.AddEdge(q1_index, dq2_index, 0, 0);
-      graph.RemoveNode(q2_index);
-      graph.RemoveNode(dq1_index);
+  for (NodeIndex node_index : node_topology_list) {
+    if (TryReduceDoubleQDQSequence(graph, node_index)) {
       modified = true;
     }
   }

@@ -3300,6 +3300,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
+          "onnx_model_filename",
+          "(Optional) Filename of the original ONNX model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
           "hardware_architecture",
           "(Optional) Hardware architecture.",
           AttributeProto::STRING,
@@ -3446,6 +3451,7 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
       .Input(2, "scales", "quantization scale", "T1")
       .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx", "T4", OpSchema::Optional)
+      .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)", "tensor(int32)"}, "Constrain quantized weight types to uint8/int32.")
@@ -3458,6 +3464,20 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
         int64_t in_features = getAttribute(ctx, "K", -1);
         int64_t out_features = getAttribute(ctx, "N", -1);
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+
+        // validate bias shape
+        if (ctx.hasInput(5)) {
+          if (!hasInputShape(ctx, 5)) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, 5);
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != out_features) {
+            fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
       });
 
   static const char* MatMulBnb4_ver1_doc = R"DOC(

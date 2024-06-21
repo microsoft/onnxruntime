@@ -1,7 +1,7 @@
 parameters:
 
 - name: PostToDashboard
-  displayName: Post to Dashboard
+  displayName: Post EP Perf results to Dashboard
   type: boolean
   default: true
 
@@ -30,7 +30,7 @@ parameters:
     - "partner-models"
 
 - name: MemTest
-  displayName: Run Memory Test and Concurrency Test
+  displayName: Run Memory and Concurrency Test
   type: boolean
   default: true
 
@@ -147,11 +147,27 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         condition: always()
 
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-        artifactName: 'result-$(Build.BuildNumber)'
-        
+      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
+        displayName: 'Install dashboard dependencies'
+
+      - script: |
+          az --version || {
+              echo "Azure CLI not found, installing..."
+              curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          }
+        displayName: 'Check and Install Azure CLI'
+      
+      - task: AzureCLI@2
+        displayName: 'Parse Memory & Concurrency Test Records and Sync'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptLocation: inlineScript
+          scriptType: bash
+          inlineScript: |
+            short_hash=$(git rev-parse --short HEAD) &&
+            commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/parse_mem_concurrency_test.py -r $(Build.SourcesDirectory)/Artifact/result_mem_test -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+
     - ${{ if eq(parameters.PostToDashboard, true) }}:
 
       - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
@@ -165,7 +181,7 @@ jobs:
         displayName: 'Check and Install Azure CLI'
 
       - task: AzureCLI@2
-        displayName: 'Post EP Perf Results to Dashboard'
+        displayName: 'Azure CLI Post to Dashboard'
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
@@ -173,7 +189,12 @@ jobs:
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=iso-strict --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t $(trtVersion) -b $(branchName) --kusto_conn $(kustoConn) --database $(database) $(parser)
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result-$(Build.BuildNumber)'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :

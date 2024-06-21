@@ -30,6 +30,8 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
+    -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
+    -e DEFAULT_TRAINING_PACKAGE_DEVICE \
     $ADDITIONAL_DOCKER_PARAMETER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
 

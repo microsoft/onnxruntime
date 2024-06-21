@@ -29,6 +29,8 @@ class ConvOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -138,11 +140,6 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
     options.set("bias", model_builder.GetOperand(input_defs[2]->Name()));
   }
 
-  emscripten::val activation = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  if (emscripten::val::null() != activation) {
-    options.set("activation", activation);
-  }
-
   return Status::OK();
 }
 
@@ -153,11 +150,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                  bool is_conv1d) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   auto data_type = tensor.data_type();
-  if (!IsSupportedDataType(data_type, model_builder.GetWebnnDeviceType())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The initializer of graph has unsupported type, name: ",
-                           tensor.name(), " type: ", data_type);
-  }
 
   const auto& shape = tensor.dims();
   std::vector<uint32_t> dims = GetVecUint32FromVecInt64(std::vector<int64_t>(std::begin(shape), std::end(shape)));
@@ -182,7 +174,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   size_t element_size{0};
   switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       element_size = sizeof(uint8_t);
       break;
@@ -195,17 +186,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       element_size = sizeof(float);
       break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      element_size = sizeof(int32_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      element_size = sizeof(int64_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      element_size = sizeof(uint32_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      element_size = sizeof(uint64_t);
       break;
     default:
       break;
@@ -395,6 +375,55 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   // https://github.com/google/XNNPACK/blob/master/src/subgraph/convolution-2d.c#L739
   if (device_type == WebnnDeviceType::CPU && !Contains(initializers, input_defs[1]->Name())) {
     LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
+    return false;
+  }
+
+  return true;
+}
+
+bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                           const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // input data type
+  int32_t input1_type;  // weight data type
+  int32_t input2_type;  // bias or x_zero_point data type
+  int32_t input3_type;  // w_zero_point data type
+  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
+    return false;
+  }
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  if (op_type == "Conv" || op_type == "ConvTranspose") {
+    // WebNN conv2d and convTranspose2d only support float32 and float16 input data types.
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    };
+  } else if (op_type == "ConvInteger") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+    };
+  }
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type ||
+      (has_input2 && input0_type != input2_type) ||
+      (has_input3 && input0_type != input3_type)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 

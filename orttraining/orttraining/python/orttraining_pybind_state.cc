@@ -423,27 +423,33 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
-      .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
-        Status status = agent->RunForward(feeds, fetches, *state, cache);
+      .def("run_forward", [](TrainingAgent* agent, std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
+        // Feed is passed in mutable way, to allow the internal logic to release the feeds as long as it is not needed.
+        // Otherwise, the feeds will be released after the forward pass, which hold some unnecessary memory.
+        Status status = agent->RunForward(mutable_feeds, fetches, *state, cache);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in forward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("run_backward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
-        Status status = agent->RunBackward(feeds, fetches, *state);
+      .def("run_backward", [](TrainingAgent* agent, std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
+        // Feed is passed in mutable way, to allow the internal logic to release the feeds as long as it is not needed.
+        // Otherwise, the feeds will be released after the forward pass, which hold some unnecessary memory.
+        Status status = agent->RunBackward(mutable_feeds, fetches, *state);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("get_serialized_ortmodule_memory_stat",            // for memory optimization
-           [](TrainingAgent* agent,                           // agent
-              const std::string& memory_optimization_config,  // user config string
-              const std::string& recompute_probe_level        // user config string for probe level
+      .def("get_serialized_ortmodule_memory_stat",                      // for memory optimization
+           [](TrainingAgent* agent,                                     // agent
+              const std::string& memory_optimization_config_file_path,  // user config file path
+              const std::string& recompute_probe_level,                 // user config string for probe level
+              const bool return_opportunity_table                       //  return detailed opportunity_table or not.
               ) -> std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>> {
              std::map<std::string, std::pair<std::string, int>> cluster_id_combinations_to_saved_symbolic_byte_map;
              std::string opportunity_table =
-                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config,
+                 agent->GetSerializedORTModuleMemoryStat(memory_optimization_config_file_path,
                                                          recompute_probe_level,
+                                                         return_opportunity_table,
                                                          cluster_id_combinations_to_saved_symbolic_byte_map);
              return std::tuple<std::string, std::map<std::string, std::pair<std::string, int>>>(
                  opportunity_table, cluster_id_combinations_to_saved_symbolic_byte_map);

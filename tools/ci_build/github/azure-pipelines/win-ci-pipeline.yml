@@ -234,7 +234,7 @@ stages:
 - stage: x64_release_azure
   dependsOn: []
   jobs:
-    - job:
+    - job: x64_release_azure
       steps:
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Build.BinariesDirectory)\RelWithDebInfo\_deps\vcpkg-src\installed\x86-windows\bin"

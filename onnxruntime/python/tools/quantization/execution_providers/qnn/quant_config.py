@@ -21,6 +21,7 @@ from .mixed_precision_overrides_utils import MixedPrecisionTensorQuantOverridesF
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
+Q4_TYPES = {QuantType.QInt4, QuantType.QUInt4}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
 MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
@@ -51,6 +52,7 @@ def get_qnn_qdq_config(
     activation_symmetric: bool = False,
     weight_symmetric: bool | None = None,
     keep_removable_activations: bool = False,
+    stride: int | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -170,14 +172,16 @@ def get_qnn_qdq_config(
         "TensorQuantOverrides": overrides_helper.get_dict(),
         "ActivationSymmetric": activation_symmetric,
         "WeightSymmetric": weight_symmetric,
+        "CalibStridedMinMax": stride,
     }
 
     # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
-    # on Q/DQ operators if using 16-bit quantization.
+    # on Q/DQ operators if using 16-bit or 4-bit quantization.
     onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
     if onnx_opset.version < 21:
-        overrides_have_int16 = any(t in Q16_TYPES for t in overrides_helper.get_quant_types())
-        if activation_type in Q16_TYPES or weight_type in Q16_TYPES or overrides_have_int16:
+        opset21_types = Q16_TYPES.union(Q4_TYPES)
+        overrides_have_opset21_types = any(t in opset21_types for t in overrides_helper.get_quant_types())
+        if activation_type in opset21_types or weight_type in opset21_types or overrides_have_opset21_types:
             extra_options["UseQDQContribOps"] = True
 
     return StaticQuantConfig(

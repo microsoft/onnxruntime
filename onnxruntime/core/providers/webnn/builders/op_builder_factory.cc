@@ -182,6 +182,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Trilu
+    CreateTriangularOpBuilder("Trilu", op_registrations);
+  }
   return op_registrations;
 }
 
