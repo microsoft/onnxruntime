@@ -469,7 +469,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
-  const auto dq_attrs = dq_nodes[0]->GetAttributes();
+  const auto& dq_attrs = dq_nodes[0]->GetAttributes();
   if (const auto a_iter = dq_attrs.find("axis");
       a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
     return false;
@@ -511,7 +511,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // check weight, scale and zero points (if exists) shapes
-  if ((weight_tensor_proto->dims()[0] + block_size) / block_size != scale_tensor_proto->dims()[0] ||
+  if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
       weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
       (zp_tensor_proto &&
        (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||

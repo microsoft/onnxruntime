@@ -440,7 +440,6 @@ class DefaultWeightOnlyQuantizer:
 
         block_size = self.config.block_size
         k_blocks = (rows + block_size - 1) // block_size
-        scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
 
         if self.config.quant_format == QuantFormat.QOperator:
             blob_size = block_size // 2
@@ -452,12 +451,14 @@ class DefaultWeightOnlyQuantizer:
             # block wise quantization, each block comes from a single column
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
             zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
+            scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
             quantize_matmul_4bits(
                 packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
             )
         else:
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
+            scales = np.zeros((k_blocks, cols), dtype=fp32weight.dtype)
             quantize_qdq_matmul_4bits(
                 packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
             )
@@ -489,18 +490,17 @@ class DefaultWeightOnlyQuantizer:
         packed, scales, zero_points = self.int4_block_quant(B_array)
 
         if self.config.quant_format == QuantFormat.QOperator:
-            B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
-            B_quant.name = B.name + "_Q4"
+            B_quant = onnx.numpy_helper.from_array(packed, B.name + "_Q4")  # noqa: N806
+            scales_tensor = onnx.numpy_helper.from_array(scales, B.name + "_scales")
         else:
             B_quant = onnx.helper.make_tensor(B.name + "_DQ_Q4", qtype, B_array.shape, packed, True)
+            scales_tensor = onnx.numpy_helper.from_array(scales, B.name + "_DQ_scales")
 
         for input in Bs_graph.input:
             if input.name == inputB:
                 Bs_graph.input.remove(input)
                 break
 
-        scales_tensor = onnx.numpy_helper.from_array(scales)
-        scales_tensor.name = B.name + "_scales"
         Bs_graph.initializer.extend([B_quant, scales_tensor])
 
         output_nodes = []
@@ -508,8 +508,7 @@ class DefaultWeightOnlyQuantizer:
         if self.config.quant_format == QuantFormat.QOperator:
             input_names = [node.input[0], B_quant.name, scales_tensor.name]
             if not self.config.is_symmetric:
-                zp_tensor = onnx.numpy_helper.from_array(zero_points)
-                zp_tensor.name = B.name + "_zero_points"
+                zp_tensor = onnx.numpy_helper.from_array(zero_points, B.name + "_zero_points")
                 input_names.append(zp_tensor.name)
                 Bs_graph.initializer.extend([zp_tensor])
             kwargs = {}

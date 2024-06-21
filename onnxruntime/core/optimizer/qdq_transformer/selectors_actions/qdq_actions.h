@@ -84,6 +84,9 @@ struct DQMatMulReplaceWithMatMulNBits : public Action {
  private:
   NodeAttributes ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const;
 
+  // transpose initializers, and add to the MatMulNBits inputs
+  void AddTransposedInitializers(Graph&, const NodesToOptimize& selected_nodes, Node& replacement_node) const;
+
   // -1 means not set
   const int64_t accuracy_level_;
   const std::string domain_;
