@@ -341,17 +341,17 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
   Initializer scale_src(*scale_tensor_proto, graph.ModelPath());
   std::unique_ptr<Initializer> zp_src_ptr = nullptr;
   Initializer weight_dst(ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                         weight_arg->Name() + "_T",
+                         graph.GenerateNodeArgName(weight_arg->Name() + "_T"),
                          std::vector<int64_t>{N, quant_num, blob_bytes});
   Initializer scale_dst(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(scale_src.data_type()),
-                        scale_arg->Name() + "_T",
+                        graph.GenerateNodeArgName(scale_arg->Name() + "_T"),
                         std::vector<int64_t>{N * quant_num});
   std::unique_ptr<Initializer> zp_dst_ptr = nullptr;
 
   if (zp_tensor_proto) {
     zp_src_ptr = std::make_unique<Initializer>(*zp_tensor_proto, graph.ModelPath());
     zp_dst_ptr = std::make_unique<Initializer>(ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                                               zp_arg->Name() + "_T",
+                                               graph.GenerateNodeArgName(zp_arg->Name() + "_T"),
                                                std::vector<int64_t>{N * ((quant_num + 1) / 2)});
   }
 
