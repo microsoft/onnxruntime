@@ -2568,3 +2568,4 @@ MlasPackInt4Elements(uint8_t* Output, UnpackedType ValueLow, UnpackedType ValueH
     static_assert(std::is_same_v<UnpackedType, uint8_t> || std::is_same_v<UnpackedType, int8_t>);
     *Output = static_cast<uint8_t>(((ValueHigh & 0xF) << 4) | (ValueLow & 0xF));
 }
+
