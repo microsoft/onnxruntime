@@ -62,7 +62,11 @@ if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
     GET_DOCKER_IMAGE_CMD="${GET_DOCKER_IMAGE_CMD} --container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 fi
 DOCKER_CMD="docker"
-
+UBUNTU_VERSION="22.04"
+# If BUILD_OS is ubuntu, then UBUNTU_VERSION is set to the version string after ubuntu
+if [[ $BUILD_OS == ubuntu* ]]; then
+    UBUNTU_VERSION=${BUILD_OS#ubuntu}
+fi
 
 NEED_BUILD_SHARED_LIB=true
 cd $SCRIPT_DIR/docker
@@ -99,7 +103,7 @@ elif [[ $BUILD_DEVICE = "openvino"* ]]; then
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
-        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
+        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} UBUNTU_VERSION=${UBUNTU_VERSION}"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
