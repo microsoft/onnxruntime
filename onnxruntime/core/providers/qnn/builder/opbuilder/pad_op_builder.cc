@@ -227,10 +227,10 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   param_tensor_names.push_back(mode_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
 
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
+  QnnParamWrapper pad_amount_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
                                   std::move(pad_amount_dim), std::move(pad_amount));
-  param_tensor_names.push_back(multiples_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
+  param_tensor_names.push_back(pad_amount_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_param));
 
   // Process optional input constant_value
   if (node_unit.Inputs().size() > 2) {
