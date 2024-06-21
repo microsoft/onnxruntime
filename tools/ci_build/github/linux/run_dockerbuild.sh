@@ -64,7 +64,6 @@ if [[ -n "${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}" ]]; then
     GET_DOCKER_IMAGE_CMD="${GET_DOCKER_IMAGE_CMD} --container-registry ${IMAGE_CACHE_CONTAINER_REGISTRY_NAME}"
 fi
 DOCKER_CMD="docker"
-UBUNTU_VERSION="22.04"
 # If BUILD_OS is ubuntu, then UBUNTU_VERSION is set to the version string after ubuntu
 if [[ $BUILD_OS == ubuntu* ]]; then
     UBUNTU_VERSION=${BUILD_OS#ubuntu}

@@ -1,7 +1,7 @@
 parameters:
   AgentPool : 'onnxruntime-Ubuntu2204-AMD-CPU'
   StageName : 'Linux_CI_Dev'
-  RunDockerBuildArgs: '-o ubuntu22.04 -d cpu -x "--build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu20.04 -d cpu -x "--build_wheel"'
   NuPackScript: ''
   RunInjectedPipeline: 'false'
   InjectedPipeline: ''
