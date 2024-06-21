@@ -418,9 +418,9 @@ struct ProviderHost {
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProtos* ModelProto__mutable_metadata_props(ONNX_NAMESPACE::ModelProto* p) = 0;
 
-  virtual const ONNX_NAMESPACE::OperatorSetIdProto& ModelProto__opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
+  virtual const ONNX_NAMESPACE::OperatorSetIdProto& ModelProto__opset_import(const ONNX_NAMESPACE::ModelProto* p, int index) = 0;
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
-  virtual int ModelProto__opset_import_size(ONNX_NAMESPACE::ModelProto* p) = 0;
+  virtual int ModelProto__opset_import_size(const ONNX_NAMESPACE::ModelProto* p) = 0;
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   // NodeProto
