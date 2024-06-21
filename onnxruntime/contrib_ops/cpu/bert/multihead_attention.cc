@@ -161,39 +161,58 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       present_k == nullptr &&
       present_v == nullptr &&
       l2_cache_size_ > 0) {
-    int row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
-    if (row_size_kv > 0) {
-      MlasFlashAttentionThreadedArgs args;
-      args.batch_size = batch_size;
-      args.num_heads = num_heads_;
-      args.q_sequence_length = q_sequence_length;
-      args.kv_sequence_length = kv_sequence_length;
-      args.qk_head_size = qk_head_size;
-      args.v_head_size = v_head_size;
-      args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
-      args.row_size_kv = row_size_kv;
-      args.row_size_q = std::min(row_size_kv, qk_head_size + v_head_size);
+    MlasFlashAttentionThreadedArgs args;
+    args.batch_size = batch_size;
+    args.num_heads = num_heads_;
+    args.q_sequence_length = q_sequence_length;
+    args.kv_sequence_length = kv_sequence_length;
+    args.qk_head_size = qk_head_size;
+    args.v_head_size = v_head_size;
+    args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
+    /*
+      row_size_q, row_size_kv correspond to Br, Bc in the FlashAttention paper.
+      Let M = l2_cache_size / sizeof(float)
+      In the FlashAttention kernel, there are 5 big matrices that we need to keep in L2 cache:
+        slice of Q -- [Br, head_size]
+        slice of K -- [Bc, head_size]
+        slice of V -- [Bc, v_head_size]
+        result of QK -- [Br, Bc]
+        temporary output (same shape as QKV) -- [Br, v_head_size]
+      The total size of these matrices is (Br + Bc) * (head_size + v_head_size) + Br * Bc
+      By taking Bc = M / (4 * (head_size + v_head_size)), and Br = min(Bc, qk_head_size + v_head_size), we have
+        (Br + Bc) * (head_size + v_head_size) + Br * Bc
+        <= 2 * Bc * (head_size + v_head_size) + Br * Bc
+        <= 2 * Bc * (head_size + v_head_size) + M/4
+        <= 2 * M/4 + M/4 = M * (3/4)
 
-      auto* tp = context->GetOperatorThreadPool();
-      args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
-      args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) *
-                                    static_cast<size_t>(2 + args.row_size_kv + args.v_head_size) * sizeof(float);
-      size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
-      IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
+      We leave 1/4 of the L2 cache for
+        1. storing small tensors l and m
+        2. instruction (code)
+    */
+    args.row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
+    args.row_size_kv = std::max(args.row_size_kv, 1); // avoid row_size_kv = 0
+    args.row_size_kv = std::min(args.row_size_kv, kv_sequence_length);  // No point to have row_size_kv > kv_sequence_length
+    args.row_size_q = std::min(args.row_size_kv, qk_head_size + v_head_size);
+    args.row_size_q = std::min(args.row_size_q, q_sequence_length);  // No point to have row_size_q > q_sequence_length
 
-      args.buffer = reinterpret_cast<float*>(buffer.get());
+    auto* tp = context->GetOperatorThreadPool();
+    args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
+    args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) *
+                                  static_cast<size_t>(2 + args.row_size_kv + args.v_head_size) * sizeof(float);
+    size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
+    IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
 
-      args.query = Q.Get<Tensor>().Data<float>();
-      args.key = K.Get<Tensor>().Data<float>();
-      args.value = V.Get<Tensor>().Data<float>();
-      args.output = output->MutableData<float>();
+    args.buffer = reinterpret_cast<float*>(buffer.get());
 
-      concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
-        MlasFlashAttentionThreaded(thread_id, &args);
-      });
+    args.query = Q.Get<Tensor>().Data<float>();
+    args.key = K.Get<Tensor>().Data<float>();
+    args.value = V.Get<Tensor>().Data<float>();
+    args.output = output->MutableData<float>();
 
-      return Status::OK();
-    }
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
+      MlasFlashAttentionThreaded(thread_id, &args);
+    });
+    return Status::OK();
   }
 
   // Compute the attention score and apply the score to V
