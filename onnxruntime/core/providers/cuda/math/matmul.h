@@ -21,7 +21,18 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
-        use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)) {}
+        use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)) {
+          std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
+          if (activation == "NONE") {
+            epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
+          } else if (activation == "RELU") {
+            epilogue_ = CUBLASLT_EPILOGUE_RELU;
+          } else if (activation == "GELU") {
+            epilogue_ = CUBLASLT_EPILOGUE_GELU;
+          } else {
+            ORT_THROW("Unexpected value for activation: '", activation, "'.");
+          }
+        }
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
@@ -33,6 +44,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   const bool use_fp8_;
+  cublasLtEpilogue_t epilogue_;
 };
 
 template <typename T>

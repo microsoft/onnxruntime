@@ -294,9 +294,9 @@ TEST(MathOpTest, MatMul_bfloat16) {
 
 #if defined(USE_CUDA)
 TEST(MathOpTest, MatMul_float8E4M3FN) {
-  int min_cuda_architecture = 900;
+  int min_cuda_architecture = 11060;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP8";
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Float8E4M3FN";
     return;
   }
   OpTester test("MatMul", 13);

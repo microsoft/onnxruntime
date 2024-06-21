@@ -305,17 +305,288 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   const int lda = helper.Lda(transa);
   const int ldb = helper.Ldb(transb);
   const int ldc = helper.Ldc();
-  int64_t stride_A, stride_B, stride_C, batch_count;
+  const int M = static_cast<int>(helper.M());
+  const int N = static_cast<int>(helper.N());
+  const int K = static_cast<int>(helper.K());
   auto& device_prop = GetDeviceProp();
+
+  if (use_fp8_)
+  {
+      cudaStream_t stream = Stream(ctx);
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+      cublasLtHandle_t cublasLt;
+      CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublasLt));
+
+      const void* p_input_a = left_X->DataRaw();
+      const void* p_input_b = right_X->DataRaw();
+      void* p_output_y = Y->MutableDataRaw();
+      // TODO create a C matrix (bias) with the right dimensions and values that can be used in cublasLtMatmul as if it didn't exist (zero for addition)
+      std::unique_ptr<Tensor> C = Tensor::CreateDefault();
+
+      // Create matrix descriptors. Not setting any extra attributes.
+      int32_t dtype_A = left_X->GetElementType();
+      int32_t dtype_B = right_X->GetElementType();
+      int32_t dtype_Y = Y->GetElementType();
+      int32_t dtype_C = C->GetElementType();
+      cudaDataType_t a_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_A);
+      cudaDataType_t b_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_B);
+      cudaDataType_t d_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_Y);
+      cudaDataType_t scale_cuda_type = onnxruntime::cuda::ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+      cudaDataType_t bias_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_C);
+
+      cublasComputeType_t compute_type;
+      switch (d_cuda_type) {
+        case CUDA_R_16F:
+          switch (a_cuda_type) {
+// TODO - do we want to use DISABLE_FLOAT8_TYPES?
+#if !defined(DISABLE_FLOAT8_TYPES)
+#if CUDA_VERSION < 11080
+#error CUDA_R_8F_E4M3 (float 8 types) is defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES.
+#endif
+            case CUDA_R_8F_E4M3:
+            case CUDA_R_8F_E5M2:
+              compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+              break;
+#endif
+            default:
+              compute_type = CUBLAS_COMPUTE_32F_FAST_16F;
+              break;
+          }
+          break;
+        case CUDA_R_16BF:
+          compute_type = CUBLAS_COMPUTE_32F_FAST_16BF;
+          break;
+        case CUDA_R_32F:
+          compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+          break;
+        default:
+          ORT_THROW("Unable to determine computeType in operator GemmFloat8.");
+      }
+
+      cublasLtMatmulDesc_t operationDesc = nullptr;
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&operationDesc, compute_type, scale_cuda_type));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+          operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transA, sizeof(transA)));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+          operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transB, sizeof(transB)));
+
+      cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ddesc = nullptr;
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, transa ? K : M, transa ? M : K, lda));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, transb ? N : K, transb ? K : N, ldb));
+
+      const int ldd = 0; // TODO where can I get this from?
+                         // maybe ldd is actually helper.Ldc and ldc is whatever the value would be for the bias?
+                         // in that case should this be renamed to ldbias or something more descriptive?
+                         // double check the usage of ldc and ldd everywhere.
+      // TODO should we use ldc here since that corresponds to Y, which is the output?
+      CUBLAS_RETURN_IF_ERROR( cublasLtMatrixLayoutCreate(&Ddesc, d_cuda_type, M, N, ldd));
+
+
+      // TODO looks like this can be deleted since it's not row major?
+      //
+      // https://github.com/microsoft/onnxruntime/blob/3ae5df1d185fe79b487ca0e6c12d891378d48af7/onnxruntime/contrib_ops/cuda/math/gemm_float8.cu#L101
+      //   bool is_float8 = first_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN
+      //   we use FLOAT8E4M3FN, in which case ComputeColMajor is used
+      //
+      // bool row_major_compute = false;
+      // if (row_major_compute) {
+      //   cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
+      //   CUBLAS_RETURN_IF_ERROR(
+      //       cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
+      //   CUBLAS_RETURN_IF_ERROR(
+      //       cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
+      // }
+
+
+      int64_t sm_count_ = device_prop.multiProcessorCount;
+#if CUDA_VERSION >= 11060
+      // CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET exists from https://docs.nvidia.com/cuda/archive/11.6.0/pdf/CUBLAS_Library.pdf
+      if (sm_count_ != 0) {
+        int math_sm_count = static_cast<int>(sm_count_);
+        CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+            operationDesc, CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET, &math_sm_count,
+            sizeof(math_sm_count)));
+      }
+#endif
+
+      int n_inputs = ctx->InputCount();
+      // TODO looks like the else branch is not needed, since we don't have more than 3 inputs?
+      //
+//       bool has_scales = n_inputs > 3; // always false here
+//       if (!has_scales) {
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
+//       } else {
+//         // gemm float 8
+// #if CUDA_VERSION >= 11080
+//         // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+//         // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
+//         const int8_t ifast_accumulation_mode = 1;
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//             operationDesc,
+//             cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+//             &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//             operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &p_scale_a,
+//             sizeof(p_scale_a)));
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//             operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &p_scale_b,
+//             sizeof(p_scale_b)));
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//             operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &p_scale_y,
+//             sizeof(p_scale_b)));
+// #endif
+//       // float 8
+//       // TODO - do we want to use DISABLE_FLOAT8_TYPES?
+// #if !defined(DISABLE_FLOAT8_TYPES)
+//       if (dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
+//           dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2) {
+//         // For FP8 output, cuBLAS requires C_type to be same as bias_type
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, bias_cuda_type, M, N, ldd));
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+//             operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &bias_cuda_type, sizeof(bias_cuda_type)));
+//       } else {
+//         CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
+//       }
+// #else
+//       CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
+// #endif
+
+
+      // TODO looks like this can be deleted since it's not row major?
+      //
+      // https://github.com/microsoft/onnxruntime/blob/3ae5df1d185fe79b487ca0e6c12d891378d48af7/onnxruntime/contrib_ops/cuda/math/gemm_float8.cu#L101
+      //   bool is_float8 = first_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN
+      //   we use FLOAT8E4M3FN, in which case ComputeColMajor is used
+      //
+      // bool row_major_compute = false;
+      // if (row_major_compute) {
+      //   cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
+      //   CUBLAS_RETURN_IF_ERROR(
+      //       cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
+      //   CUBLAS_RETURN_IF_ERROR(
+      //       cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
+      // }
+
+      cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue_, sizeof(epilogue_));
+
+      // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulPreferenceAttributes_t#cublasltmatmulpreferenceattributes-t
+      // The workspace should be allocated once from OpKernelContext assuming only one cuda function
+      // is running at a time (which is not necessarily true with H100).
+      size_t workspaceSize = static_cast<size_t>(1 << 25);  // suggested fixed value 32Mb
+      cublasLtMatmulPreference_t preference = nullptr;
+      cublasLtMatmulPreferenceCreate(&preference);
+      cublasLtMatmulPreferenceSetAttribute(
+        preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
+
+      // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic
+      cublasLtMatmulHeuristicResult_t heuristicResult = {};
+      int returnedResults = 0;
+      cublasStatus_t cuda_status = cublasLtMatmulAlgoGetHeuristic(
+          cublasLt, operationDesc, Adesc, Bdesc, Cdesc, Ddesc, preference, 1,
+          &heuristicResult, &returnedResults);
+
+      // TODO can we assume beta is 0 because we are not using C at all in this formula?
+      //   D = alpha*(A*B) + beta*(C)
+      // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
+      float beta_ = 0;
+
+      const TensorShape& shape_A = left_X->Shape();
+      const TensorShape& shape_B = right_X->Shape();
+      const TensorShape& shape_C = Y->Shape(); // TODO should this be renamed to shape_Y?
+      ORT_ENFORCE(
+          returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
+          " Unable to find any suitable algorithm due to ", onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
+          ", returnedResults=", returnedResults, ", alpha=", alpha_, ", beta=", beta_, ", n_inputs=", n_inputs,
+          ", A_type=", onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
+          ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
+          ", C_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+          ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
+          ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+          ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
+          ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
+          ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+          ", fastAccumulationMode=", 1,
+          ", shape_A=", shape_A[0], "x", shape_A[1],
+          ", shape_B=", shape_B[0], "x", shape_B[1],
+          ", shape_C=", (shape_C.NumDimensions() > 0 ? shape_C[0] : 0), "x", (shape_C.NumDimensions() > 1 ? shape_C[1] : 0),
+          ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd, ", workspaceSize=", workspaceSize,
+          // ", rowMajorCompute=", (row_major_compute ? 1 : 0), // TODO uncomment if row_major_compute is defined
+          ". Check NVIDIA documentation to see what combination is valid: ",
+          "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic"
+          ". CUDA>=11.8 is required to use float 8 types.");
+
+      void* workspace = nullptr;
+      if (workspaceSize > 0) {
+        CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
+      }
+
+      // TODO validate this logic
+      // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
+      bool has_bias = ctx->InputCount() < 3;
+      const void* bias = has_bias ? C.get() : p_output_y;
+
+      // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
+      cuda_status = cublasLtMatmul(
+          cublasLt,
+          operationDesc,
+          static_cast<const void*>(&alpha_),        /* alpha */
+          p_input_a,                                /* A */
+          Adesc,
+          p_input_b,                                /* B */
+          Bdesc,
+          static_cast<const void*>(&beta_),         /* beta */
+          bias,                                     /* C */
+          Cdesc,
+          p_output_y,                               /* Y */
+          Ddesc,
+          &heuristicResult.algo,                    /* algo */
+          workspace,                                /* workspace */
+          workspaceSize,
+          stream);                                  /* stream */
+
+      ORT_ENFORCE(
+          cuda_status == CUBLAS_STATUS_SUCCESS,
+          " Unable to run cublasLtMatmul due to ", onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
+          ", returnedResults=", returnedResults, ", alpha=", alpha_, ", n_inputs=", n_inputs,
+          ", A_type=", onnxruntime::cuda::CudaDataTypeToString(a_cuda_type),
+          ", B_type=", onnxruntime::cuda::CudaDataTypeToString(b_cuda_type),
+          ", result_type=", onnxruntime::cuda::CudaDataTypeToString(d_cuda_type),
+          ", bias_type=", onnxruntime::cuda::CudaDataTypeToString(bias_cuda_type),
+          ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
+          ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
+          ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+          ", fastAccumulationMode=", 1,
+          ", shape_A=", shape_A[0], "x", shape_A[1],
+          ", shape_B=", shape_B[0], "x", shape_B[1],
+          ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd, ", workspaceSize=", workspaceSize,
+          // ", rowMajorCompute=", (row_major_compute ? 1 : 0), // TODO uncomment if row_major_compute is defined
+          ". CUDA>=11.8 is required to use float 8 types.");
+
+      if (workspaceSize > 0) {
+        CUDA_RETURN_IF_ERROR(cudaFree(workspace));
+      }
+
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceDestroy(preference));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Ddesc));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Cdesc));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Bdesc));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Adesc));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescDestroy(operationDesc));
+      CUBLAS_RETURN_IF_ERROR(cublasLtDestroy(cublasLt));
+      return Status::OK();
+  }
+
+  int64_t stride_A, stride_B, stride_C, batch_count;
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         GetCublasHandle(ctx),
         transB,
         transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
+        N,
+        M,
+        K,
         &alpha,
         reinterpret_cast<const CudaT*>(right_X->Data<T>()),
         ldb,
@@ -332,9 +603,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(GetCublasHandle(ctx),
                                                           transB,
                                                           transA,
-                                                          static_cast<int>(helper.N()),
-                                                          static_cast<int>(helper.M()),
-                                                          static_cast<int>(helper.K()),
+                                                          N,
+                                                          M,
+                                                          K,
                                                           &alpha,
                                                           reinterpret_cast<const CudaT*>(right_X->Data<T>()),
                                                           ldb,
@@ -349,7 +620,6 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
                                                           static_cast<int>(batch_count),
                                                           device_prop,
                                                           UseTF32()));
-
     return Status::OK();
   }
 
@@ -379,9 +649,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
       GetCublasHandle(ctx),
       transB,
       transA,
-      static_cast<int>(helper.N()),
-      static_cast<int>(helper.M()),
-      static_cast<int>(helper.K()),
+      N,
+      M,
+      K,
       &alpha,
       right_arrays.GpuPtr(),
       ldb,
