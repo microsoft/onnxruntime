@@ -1845,7 +1845,15 @@ struct MlasFlashAttentionThreadedArgs {
     float* output;
 };
 
-void MlasFlashAttentionThreaded(
+/**
+ * @brief Per-thread worker function for fp32 Flash Attention
+ * @param thread_id    Thread index
+ * @param args         Arguments
+ * @return
+*/
+void
+MLASCALL
+MlasFlashAttentionThreaded(
     std::ptrdiff_t thread_id,
     const MlasFlashAttentionThreadedArgs* args
 );
