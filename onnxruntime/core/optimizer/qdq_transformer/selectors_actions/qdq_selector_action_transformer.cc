@@ -228,6 +228,28 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 #endif
 }
 
+void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
+  // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
+  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
+  const std::string action_name{"DQMatMul"};
+
+  std::unique_ptr<Action> action = std::make_unique<QDQ::MatMulReplaceWithQLinear>();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // TODO: Enable 16-bit types in selector when QLinearMatMul and MatMulInteger support 16-bit.
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"MatMul", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+
+#else
+  ORT_UNUSED_PARAMETER(is_int8_allowed);
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 to 5 nodes. 0=DQ A, 1=DQ B, 2=DQ C(optional), 3=Gemm, 4=Q Y(optional)
   // Replace with QGemm

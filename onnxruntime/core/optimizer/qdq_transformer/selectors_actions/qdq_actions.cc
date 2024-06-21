@@ -273,6 +273,12 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
   }
 }
 
+Status DQMatMulReplaceWithMatMulNBits::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  // create new node, move existing node args
+  // transpose constant args, and insert to the new node
+  // remove selected nodes
+}
+
 static std::vector<NodeAndMoveInfo> GetGemmMoveInfo(bool does_q_node_exist) {
   NTO::NodeLocation dq_A{NTO::NodeType::kInput, 0};
   NTO::NodeLocation dq_B{NTO::NodeType::kInput, 1};

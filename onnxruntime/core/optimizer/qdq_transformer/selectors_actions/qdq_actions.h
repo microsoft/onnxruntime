@@ -76,6 +76,10 @@ struct MatMulReplaceWithQLinear : public Action {
   BinaryReplaceWithQLinear qlinear_matmul_replacer_;
 };
 
+struct DQMatMulReplaceWithMatMulNBits : public Action {
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+};
+
 struct GemmReplaceWithQuant : public Action {
   GemmReplaceWithQuant();
 
