@@ -180,7 +180,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   if (p_orig_model_proto->opset_import_size() == 0) {
     LOGS_DEFAULT(VERBOSE) << "Adding op domain version mapping: " << graph_viewer.DomainToVersionMap().size();
-    for (const auto it : graph_viewer.DomainToVersionMap()) {
+    for (const auto& it : graph_viewer.DomainToVersionMap()) {
       auto* p_opset_import = p_orig_model_proto->add_opset_import();
       *(p_opset_import->mutable_domain()) = it.first;
       p_opset_import->set_version(it.second);
@@ -192,7 +192,8 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
     LOGS_DEFAULT(VERBOSE) << "Adding op domain version mapping to JSON";
     for (int i = 0, n = p_orig_model_proto->opset_import_size(); i < n; ++i) {
       const auto& op_set_id_proto = p_orig_model_proto->opset_import(i);
-      j_obj[*op_set_id_proto.mutable_domain()] = std::to_string(op_set_id_proto.version());
+      j_obj[*const_cast<ONNX_NAMESPACE::OperatorSetIdProto&>(op_set_id_proto).mutable_domain()] =
+          std::to_string(op_set_id_proto.version());
     }
   }
   j_obj["orig_graph_name"] = graph_viewer.Name();
@@ -200,6 +201,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
 
   // XXX: `ModelProto::SerializeToString` will lose some info,
   // e.g., ModelProto.opset_import.
+  std::string ser_buf;
   p_orig_model_proto->SerializeToString(ser_buf);
   LOGS_DEFAULT(VERBOSE) << "Done serializing original model";
   j_obj["orig_model_proto_ser_str"] = ser_buf;
@@ -436,13 +438,13 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
     LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
     if (p_model_proto->opset_import_size() == 0) {
       LOGS_DEFAULT(VERBOSE) << "Recoverying ModelProto.opset_import";
-      for (const auto it = j_obj.begin(); it != j_obj.end(); ++it) {
-        if (it.key() == "orig_model_path" || it.key() == "orig_graph_name" || it.key() == "orig_model_proto_ser_str") {
+      for (auto& elem : j_obj.items()) {
+        if (elem.key() == "orig_model_path" || elem.key() == "orig_graph_name" || elem.key() == "orig_model_proto_ser_str") {
           continue;
         }
         auto* p_op_set_id_proto = p_model_proto->add_opset_import();
-        *(p_op_set_id_proto->mutable_domain()) = it.key();
-        p_op_set_id_proto->set_version(std::stol(it.value()));
+        *(p_op_set_id_proto->mutable_domain()) = elem.key();
+        p_op_set_id_proto->set_version(std::stol(elem.value()));
       }
     }
   }
