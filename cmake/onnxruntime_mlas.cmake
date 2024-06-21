@@ -48,7 +48,6 @@ target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_q4.h
   ${MLAS_INC_DIR}/mlas_qnbit.h
   ${MLAS_INC_DIR}/mlas.h
-  ${MLAS_INC_DIR}/mlas_flashattn.h
 )
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
