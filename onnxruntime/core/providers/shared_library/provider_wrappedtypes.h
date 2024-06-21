@@ -84,6 +84,7 @@ struct StringStringEntryProtos final {
 struct OperatorSetIdProto final {
   std::string* mutable_domain() { return g_host->OperatorSetIdProto__mutable_domain(this); }
   void set_version(int64_t version) { return g_host->OperatorSetIdProto__set_version(this, version); }
+  int64_t version() { return g_host->OperatorSetIdProto__version(this); }
 
   PROVIDER_DISALLOW_ALL(OperatorSetIdProto)
 };

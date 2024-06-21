@@ -301,6 +301,7 @@ struct ProviderHost {
   // OperatorSetIdProto
   virtual std::string* OperatorSetIdProto__mutable_domain(ONNX_NAMESPACE::OperatorSetIdProto* p) = 0;
   virtual void OperatorSetIdProto__set_version(ONNX_NAMESPACE::OperatorSetIdProto* p, int64_t version) = 0;
+  virtual int64_t OperatorSetIdProto__version(const ONNX_NAMESPACE::OperatorSetIdProto* p) == 0;
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional
