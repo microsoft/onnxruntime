@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "core/platform/windows/env.h"
 
+#include <memory>
 #include <iostream>
 #include <fstream>
 #include <optional>

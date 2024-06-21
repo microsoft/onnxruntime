@@ -1,6 +1,5 @@
-#include <numeric>
-
 #include "mlas_flashattn.h"
+#include <numeric>
 #include "mlasi.h"
 
 void

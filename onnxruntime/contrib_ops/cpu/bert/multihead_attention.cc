@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "contrib_ops/cpu/bert/multihead_attention.h"
+#include <type_traits>
+#include <vector>
+#include <algorithm>
 
-#include "attention_cpu_base.h"
-#include "multihead_attention.h"
-#include "multihead_attention_helper.h"
-#include "attention_utils.h"
-
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_utils.h"
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -14,9 +16,7 @@
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas_flashattn.h"
 
-#include <type_traits>
 #include <unsupported/Eigen/SpecialFunctions>
-#include <vector>
 
 using onnxruntime::concurrency::ThreadPool;
 

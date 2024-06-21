@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "attention_base.h"
-#include "attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/attention_helper.h"
 
 #include "core/common/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -14,11 +14,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class GQAAttentionBase /*: public AttentionBase*/ {
+class GQAAttentionBase {
  protected:
-  GQAAttentionBase(const OpKernelInfo& info, bool has_local)
-  //: AttentionBase(info, false /*This flag has no impact since GQA implements its CheckInputs*/)
-  {
+  GQAAttentionBase(const OpKernelInfo& info, bool has_local) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
     num_heads_ = static_cast<int>(num_heads);
