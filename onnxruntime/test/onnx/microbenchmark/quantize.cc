@@ -82,12 +82,11 @@ BENCHMARK(BM_Quantize)
 static void BM_BlockedQuantize_NotLastAxis(benchmark::State& state) {
   using Int4 = onnxruntime::Int4x2;
   using UnpackedType = Int4::UnpackedType;
-  const std::ptrdiff_t M[] = {96, 192, 192};
-  const std::ptrdiff_t N[] = {2048, 2048, 4096};
-  const int64_t size_idx = state.range(0);
-  const int64_t threads = state.range(1);
+  const int64_t M = state.range(0);
+  const int64_t N = state.range(1);
   const int64_t block_size = state.range(2);
-  size_t batch_size = M[size_idx] * N[size_idx];
+  const int64_t threads = state.range(3);
+  size_t batch_size = M * N;
   size_t quant_block_size = 64;
   size_t scale_size = batch_size / quant_block_size;
 
@@ -108,7 +107,7 @@ static void BM_BlockedQuantize_NotLastAxis(benchmark::State& state) {
     benchmark::DoNotOptimize(a_data_quant);
     onnxruntime::BlockedQuantizeLinear<float, Int4, 2>::opNotLastAxis(
         tp.get(), a_data, scale, reinterpret_cast<Int4*>(zero_point), reinterpret_cast<Int4*>(a_data_quant),
-        1, M[size_idx], N[size_idx], static_cast<std::ptrdiff_t>(quant_block_size),
+        1, M, N, static_cast<std::ptrdiff_t>(quant_block_size),
         static_cast<std::ptrdiff_t>(block_size), true);
     benchmark::ClobberMemory();
   }
@@ -121,12 +120,11 @@ static void BM_BlockedQuantize_NotLastAxis(benchmark::State& state) {
 static void BM_BlockedQuantize_LastAxis(benchmark::State& state) {
   using Int4 = onnxruntime::Int4x2;
   using UnpackedType = Int4::UnpackedType;
-  const std::ptrdiff_t M[] = {96, 192, 192};
-  const std::ptrdiff_t N[] = {2048, 2048, 4096};
-  const int64_t size_idx = state.range(0);
-  const int64_t threads = state.range(1);
+  const int64_t M = state.range(0);
+  const int64_t N = state.range(1);
   const int64_t quant_block_size = state.range(2);
-  size_t batch_size = M[size_idx] * N[size_idx];
+  const int64_t threads = state.range(3);
+  size_t batch_size = M * N;
   size_t scale_size = batch_size / quant_block_size;
 
   float* a_data = GenerateArrayWithRandomValue<float>(batch_size, -16, 14);
@@ -146,7 +144,7 @@ static void BM_BlockedQuantize_LastAxis(benchmark::State& state) {
     benchmark::DoNotOptimize(a_data_quant);
     onnxruntime::BlockedQuantizeLinear<float, Int4, 2>::opLastAxis(
         tp.get(), a_data, scale, reinterpret_cast<Int4*>(zero_point), reinterpret_cast<Int4*>(a_data_quant),
-        M[size_idx], N[size_idx], static_cast<std::ptrdiff_t>(quant_block_size), true);
+        M, N, static_cast<std::ptrdiff_t>(quant_block_size), true);
     benchmark::ClobberMemory();
   }
   aligned_free(a_data_quant);
@@ -159,24 +157,14 @@ BENCHMARK(BM_BlockedQuantize_NotLastAxis)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
     ->Apply([](benchmark::internal::Benchmark* b) {
-      for (int size_idx : {0, 1, 2}) {
-        for (int thread : {2, 4, 8}) {
-          for (int block_size : {64, 128}) {
-            b->Args({size_idx, thread, block_size});
-          }
-        }
-      }
+      b->ArgNames({"M", "N", "block_size", "threads"});
+      b->ArgsProduct({{1024, 4096}, {4096}, {128}, {2, 8}});
     });
 
 BENCHMARK(BM_BlockedQuantize_LastAxis)
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
     ->Apply([](benchmark::internal::Benchmark* b) {
-      for (int size_idx : {0, 1, 2}) {
-        for (int thread : {2, 4, 8}) {
-          for (int quant_block_size : {16, 64, 256}) {
-            b->Args({size_idx, thread, quant_block_size});
-          }
-        }
-      }
+      b->ArgNames({"M", "N", "quant_block_size", "threads"});
+      b->ArgsProduct({{1024, 4096}, {4096}, {64, 128}, {2, 8}});
     });
