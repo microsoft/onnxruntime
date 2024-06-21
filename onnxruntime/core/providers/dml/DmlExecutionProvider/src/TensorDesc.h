@@ -32,21 +32,21 @@ namespace Dml
             uint32_t guaranteedBaseOffsetAlignment
             );
 
-        DML_TENSOR_DESC GetDmlDesc();
+        DML_TENSOR_DESC GetDmlDesc() noexcept;
 
-        inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
-        inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
+        inline DML_TENSOR_DATA_TYPE GetDmlDataType() const noexcept { return m_bufferTensorDesc.DataType; }
+        inline MLOperatorTensorDataType GetMlOperatorDataType() const noexcept { return m_mlOperatorTensorDataType; }
         void ForceUnsignedDataType();
 
-        inline bool IsValid() const { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
+        inline bool IsValid() const noexcept { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         void EnsureDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
 
-        gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
-        gsl::span<const uint32_t> GetStrides() const;
+        gsl::span<const uint32_t> GetSizes() const noexcept { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
+        gsl::span<const uint32_t> GetStrides() const noexcept;
         void SetStrides(gsl::span<const uint32_t> strides);
-        void EnsureStridesExist();
+        void EnsureStridesExist() noexcept;
 
         void SetDimensionsAndStrides(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides);
 

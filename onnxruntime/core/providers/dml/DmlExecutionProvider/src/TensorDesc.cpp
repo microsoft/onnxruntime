@@ -201,7 +201,7 @@ TensorDesc::TensorDesc(
     assert(m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType));
 }
 
-gsl::span<const uint32_t> TensorDesc::GetStrides() const
+gsl::span<const uint32_t> TensorDesc::GetStrides() const noexcept
 {
     if (m_bufferTensorDesc.Strides == nullptr)
     {
@@ -228,7 +228,7 @@ void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
         strides.empty() ? nullptr : m_strides);
 }
 
-DML_TENSOR_DESC TensorDesc::GetDmlDesc()
+DML_TENSOR_DESC TensorDesc::GetDmlDesc() noexcept
 {
     if (m_tensorType == DML_TENSOR_TYPE_INVALID)
     {
@@ -364,7 +364,7 @@ void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, c
     m_bufferTensorDesc.Strides = m_strides;
 }
 
-void TensorDesc::EnsureStridesExist()
+void TensorDesc::EnsureStridesExist() noexcept
 {
     if (m_bufferTensorDesc.Strides != nullptr)
     {

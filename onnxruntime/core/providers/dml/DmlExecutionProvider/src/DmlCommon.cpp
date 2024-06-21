@@ -166,7 +166,7 @@ uint32_t CountLeastSignificantZeros(uint32_t value) noexcept
     return count;
 }
 
-void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides)
+void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides) noexcept
 {
     assert(sizes.size() == strides.size());
 

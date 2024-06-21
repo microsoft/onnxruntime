@@ -25,7 +25,7 @@ namespace Dml
     uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice);
     uint32_t GetBitMaskFromIndices(gsl::span<const uint32_t> indices) noexcept;
     uint32_t CountLeastSignificantZeros(uint32_t value) noexcept;
-    void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides);
+    void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides) noexcept;
 
     bool IsSigned(DML_TENSOR_DATA_TYPE dataType) noexcept;
 
