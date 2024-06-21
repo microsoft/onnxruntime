@@ -394,6 +394,10 @@ struct ProviderHostImpl : ProviderHost {
   int StringStringEntryProtos__size(ONNX_NAMESPACE::StringStringEntryProtos* p) override { return p->size(); }
   ONNX_NAMESPACE::StringStringEntryProto& StringStringEntryProtos__at(ONNX_NAMESPACE::StringStringEntryProtos* p, int index) override { return p->at(index); };
 
+  // OperatorSetIdProto
+  std::string* OperatorSetIdProto__mutable_domain(ONNX_NAMESPACE::OperatorSetIdProto* p) override { return p->mutable_domain(); }
+  void OperatorSetIdProto__set_version(ONNX_NAMESPACE::OperatorSetIdProto* p, int64_t version) override { return p->set_version(version); }
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional (wrapped)
   const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) override { return p->elem_type(); }
@@ -521,6 +525,11 @@ struct ProviderHostImpl : ProviderHost {
 
   void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) override { p->set_ir_version(value); }
   ONNX_NAMESPACE::StringStringEntryProtos* ModelProto__mutable_metadata_props(ONNX_NAMESPACE::ModelProto* p) override { return p->mutable_metadata_props(); };
+
+  const OperatorSetIdProto& ModelProto__opset_import(ONNX_NAMESPACE::ModelProto* p, int index) override { return p->opset_import(index); }
+  OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) override { return p->mutable_opset_import(index); }
+  int ModelProto__opset_import_size(ONNX_NAMESPACE::ModelProto* p) override { return p->opset_import_size(); }
+  OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) override { return p->add_opset_import(); }
 
   // NodeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::NodeProto>(); }

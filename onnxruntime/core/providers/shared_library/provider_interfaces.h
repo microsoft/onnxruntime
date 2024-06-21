@@ -298,6 +298,10 @@ struct ProviderHost {
   virtual int StringStringEntryProtos__size(ONNX_NAMESPACE::StringStringEntryProtos* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto& StringStringEntryProtos__at(ONNX_NAMESPACE::StringStringEntryProtos* p, int index) = 0;
 
+  // OperatorSetIdProto
+  virtual std::string* OperatorSetIdProto__mutable_domain(ONNX_NAMESPACE::OperatorSetIdProto* p) = 0;
+  virtual void OperatorSetIdProto__set_version(ONNX_NAMESPACE::OperatorSetIdProto* p, int64_t version) = 0;
+
 #if !defined(DISABLE_OPTIONAL_TYPE)
   // TypeProto_Optional
   virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
@@ -413,6 +417,11 @@ struct ProviderHost {
 
   virtual void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProtos* ModelProto__mutable_metadata_props(ONNX_NAMESPACE::ModelProto* p) = 0;
+
+  virtual const OperatorSetIdProto& ModelProto__opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
+  virtual OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
+  virtual int ModelProto__opset_import_size(ONNX_NAMESPACE::ModelProto* p) = 0;
+  virtual OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) = 0;
 
   // NodeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;

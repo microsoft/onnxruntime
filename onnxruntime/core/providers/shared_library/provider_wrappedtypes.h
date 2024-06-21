@@ -80,6 +80,14 @@ struct StringStringEntryProtos final {
 
   PROVIDER_DISALLOW_ALL(StringStringEntryProtos)
 };
+
+struct OperatorSetIdProto final {
+  std::string* mutable_domain() { return g_host->OperatorSetIdProto__mutable_domain(this); }
+  void set_version(int64_t version) { return g_host->OperatorSetIdProto__set_version(this, version); }
+
+  PROVIDER_DISALLOW_ALL(OperatorSetIdProto)
+};
+
 struct AttributeProto final {
   static std::unique_ptr<AttributeProto> Create() { return g_host->AttributeProto__construct(); }
   void operator=(const AttributeProto& v) { g_host->AttributeProto__operator_assign(this, v); }
@@ -177,6 +185,11 @@ struct ModelProto final {
   GraphProto* mutable_graph() { return g_host->ModelProto__mutable_graph(this); }
 
   void set_ir_version(int64_t value) { return g_host->ModelProto__set_ir_version(this, value); }
+
+  const OperatorSetIdProto& opset_import(int index) const { return g_host->ModelProto__opset_import(this, index); }
+  OperatorSetIdProto* mutable_opset_import(int index) { return g_host->ModelProto__mutable_opset_import(this, index); }
+  int opset_import_size() const { return g_host->ModelProto__opset_import_size(this); }
+  OperatorSetIdProto* add_opset_import() { return g_host->ModelProto__add_opset_import(this); }
 
   ModelProto() = delete;
   ModelProto(const ModelProto&) = delete;

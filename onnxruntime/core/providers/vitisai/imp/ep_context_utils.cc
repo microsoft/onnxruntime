@@ -178,6 +178,14 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   const Model& orig_model = orig_graph.GetModel();
   // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
+  if (p_orig_model_proto->opset_import_size() == 0) {
+    LOGS_DEFAULT(VERBOSE) << "Adding op domain version mappping: " << graph_viewer.DomainToVersionMap.size();
+    for (const auto& it : graph_viewer.DomainToVersionMap()) {
+      auto* p_opset_import = p_orig_model_proto->add_opset_import();
+      *(p_opset_import->mutable_domain()) = it.first;
+      p_opset_import->set_version(it.second);
+    }
+  }
   std::string ser_buf;
   p_orig_model_proto->SerializeToString(ser_buf);
   LOGS_DEFAULT(VERBOSE) << "Done serializing original model";
@@ -405,15 +413,22 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
 
-  auto& logger = logging::LoggingManager::DefaultLogger();
-
+  const auto& orig_model_path = j_obj["orig_model_path"];
+  bool model_loaded = false;
   auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
-  p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"]);
-  LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
-  auto p_model = Model::Create(std::move(*p_model_proto), j_obj["orig_model_path"], nullptr, logger);
+  if (!orig_model_path.empty() && fs::exists(orig_model_path) && fs::is_regular_file(orig_model_path)) {
+    auto load_status = Model::Load(ToPathString(orig_model_path), *p_model_proto);
+    model_loaded = load_status.IsOK();
+    LOGS_DEFAULT(VERBOSE) << "Done loading model proto from file";
+  }
+  if (!model_loaded) {
+    p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"]);
+    LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
+  }
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto p_model = Model::Create(std::move(*p_model_proto), orig_model_path, nullptr, logger);
   LOGS_DEFAULT(VERBOSE) << "Done creating model from model proto";
   auto& graph = p_model->MainGraph();
-  // XXX: maybe ineffective.
   graph.ToGraphProto()->set_name(j_obj["orig_graph_name"]);
 
   return graph.CreateGraphViewer();
