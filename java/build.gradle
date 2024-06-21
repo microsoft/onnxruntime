@@ -172,6 +172,8 @@ if (cmakeBuildDir != null) {
 		into cmakeBuildOutputDir
 		dependsOn(check)
 	}
+} else {
+	println "cmakeBuildDir is not set. Skipping cmake tasks."
 }
 
 dependencies {
