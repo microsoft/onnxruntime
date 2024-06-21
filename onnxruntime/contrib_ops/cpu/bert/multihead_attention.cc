@@ -191,8 +191,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     */
     args.row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
     args.row_size_kv = std::max(args.row_size_kv, 1); // avoid row_size_kv = 0
-    args.row_size_kv = std::min(args.row_size_kv, kv_sequence_length);  // No point to have row_size_kv > kv_sequence_length
     args.row_size_q = std::min(args.row_size_kv, qk_head_size + v_head_size);
+    args.row_size_kv = std::min(args.row_size_kv, kv_sequence_length);  // No point to have row_size_kv > kv_sequence_length
     args.row_size_q = std::min(args.row_size_q, q_sequence_length);  // No point to have row_size_q > q_sequence_length
 
     auto* tp = context->GetOperatorThreadPool();
