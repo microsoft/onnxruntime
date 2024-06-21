@@ -179,7 +179,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   if (p_orig_model_proto->opset_import_size() == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Adding op domain version mappping: " << graph_viewer.DomainToVersionMap.size();
+    LOGS_DEFAULT(VERBOSE) << "Adding op domain version mappping: " << graph_viewer.DomainToVersionMap().size();
     for (const auto& it : graph_viewer.DomainToVersionMap()) {
       auto* p_opset_import = p_orig_model_proto->add_opset_import();
       *(p_opset_import->mutable_domain()) = it.first;
