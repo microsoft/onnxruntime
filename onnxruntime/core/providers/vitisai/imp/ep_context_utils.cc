@@ -637,20 +637,20 @@ bool GetEPContextModelFileLocation(
       ep_ctx_model_file_loc = model_path_str;
     } else {
       // Two alternatives for this case.
-      // Alternative #1:
+      // Alternative 1:
       // 1) Implement/override the method `IExecutionProvider::GetEpContextNodes()`.
       // 2) And follow how the default path is implemented in `CreateEpContextModel()`
       // in the file "graph_partitioner.cc".
       // 3) Model dump is not required.
-      // Alternative #2:
+      // Alternative 2:
       // 1) Do NOT implement/override `IExecutionProvider::GetEpContextNodes()`.
       // 2) No need to follow `CreateEpContextModel()` in the file "graph_partitioner.cc",
       // freely implement what the default path is like.
       // 3) Model dump is required.
-#if 0
+#if 1
       ep_ctx_model_file_loc = model_path_str + ToPathString("_ctx.onnx");
 #endif
-#if 1
+#if 0
       fs::path model_fs_path(model_path_str);
       fs::path ep_ctx_model_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
       ep_ctx_model_fs_path += fs::path("_ctx.onnx");
