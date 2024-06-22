@@ -80,8 +80,8 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   InlinedVector<const Node*> ep_context_node_ptrs;
   // All preconditions are supposed to have happened.
   if (p_ep_ctx_model_) {
-    LOGS_DEFAULT(VERBOSE) << "Collecting EP context nodes: " << graph.Nodes().size();
     auto& graph = p_ep_ctx_model_->MainGraph();
+    LOGS_DEFAULT(VERBOSE) << "Collecting EP context nodes: " << graph.Nodes().size();
     for (const auto* p_node : graph.Nodes()) {
       ep_context_node_ptrs.push_back(p_node);
     }
@@ -94,14 +94,14 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) const {
-  auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
-  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str_, false, ep_ctx_model_file_loc_)) {
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
   auto ep_ctx_payload = SerializeCapabilities(capability_ptrs, graph_viewer.GetGraph());
   LOGS_DEFAULT(VERBOSE) << "Done serialized capabilities with byte length: " << ep_ctx_payload.length();
   if (!ep_ctx_embed_mode_) {
-    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
+    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str_);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
       ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
@@ -132,12 +132,12 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   info_["cacheKey"] = cache_key;
   fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
   auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
-  auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
-  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str, false, ep_ctx_model_file_loc_)) {
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str_, false, ep_ctx_model_file_loc_)) {
     ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
   }
   if (!ep_ctx_embed_mode_) {
-    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str);
+    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str_);
     std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
     if (!ep_ctx_cache_ofs.is_open()) {
       ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
@@ -186,7 +186,31 @@ void VitisAIExecutionProvider::PrepareEPContextEnablement(
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs) {
   auto& ep_ctx_graph = p_ep_ctx_model_->MainGraph();
-  CreateEPContexNodes(&ep_ctx_graph, fused_nodes_and_graphs);
+  fs::path backend_cache_file_loc(info_["cacheDir"] + '/' + info_["cacheKey"] + "/context.json");
+  auto backend_cache_str = GetBackendCompileCache(backend_cache_file_loc);
+  if (!ep_ctx_embed_mode_) {
+    auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str_);
+    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
+    if (!ep_ctx_cache_ofs.is_open()) {
+      ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
+    }
+    ep_ctx_cache_ofs.write(backend_cache_str.c_str(), backend_cache_str.length());
+    if (!ep_ctx_cache_ofs.good()) {
+      ep_ctx_cache_ofs.close();
+      ORT_THROW("Exception writing EP context cache file: ", ep_ctx_cache_path_str.c_str());
+    }
+    ep_ctx_cache_ofs.close();
+    CreateEPContexNodes(&ep_ctx_graph, fused_nodes_and_graphs, "", PathToUTF8String(ep_ctx_cache_path_str), 0, info_["cacheDir"], info_["cacheKey"], false, GetLogger());
+    if (GraphHasEPContextNode(ep_ctx_graph)) {
+      LOGS_DEFAULT(VERBOSE) << "Created model has EP context nodes";
+    }
+  } else {
+    CreateEPContexNodes(&ep_ctx_graph, fused_nodes_and_graphs, backend_cache_str, "", 1, info_["cacheDir"], info_["cacheKey"], false, GetLogger());
+    if (GraphHasEPContextNode(ep_ctx_graph)) {
+      LOGS_DEFAULT(VERBOSE) << "Created model has EP context nodes";
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "EP context model created";
 }
 
 #if 0
@@ -476,7 +500,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
   }
 #if 1
   // Only uncommented this piece of code for the "Approach 3" mentioned above.
-  if (ep_ctx_enabled_ && !is_ep_ctx_model) {
+  if (ep_ctx_enabled_ && p_ep_ctx_model_) {
     FulfillEPContextEnablement(fused_nodes_and_graphs);
   }
 #endif
