@@ -359,7 +359,7 @@ bool ValidateEPContextNode(const Graph& graph) {
 // Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
 void CreateEPContexNodes(
     Graph* p_ep_ctx_graph,
-    const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+    const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
     const std::string& serialized_ctx_cache,
     const std::string& ctx_cache_file_loc,
     const int64_t embed_mode,

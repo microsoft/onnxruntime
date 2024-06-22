@@ -49,7 +49,7 @@ const Node* GetEPContextNodePtr(const Graph&);
 
 bool ValidateEPContextNode(const Graph&);
 
-void CreateEPContexNodes(Graph*, const std::vector<FusedNodeAndGraph>&, const std::string&, const std::string&,
+void CreateEPContexNodes(Graph*, const std::vector<IExecutionProvider::FusedNodeAndGraph>&, const std::string&, const std::string&,
                          const int64_t, const std::string&, const std::string&, bool, const logging::Logger*);
 
 std::string RetrieveEPContextCache(const Graph&, const PathString&, bool binary_mode = true);
