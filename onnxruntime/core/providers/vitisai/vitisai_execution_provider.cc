@@ -189,6 +189,9 @@ void VitisAIExecutionProvider::PrepareEPContextEnablement(
   // Create a new model, reusing the graph name, the op-domain-to-opset-version map,
   // the op schema registry of the current graph, etc.
   p_ep_ctx_model_ = graph_viewer.CreateModel(*GetLogger());
+  if (!p_ep_ctx_model_) {
+    LOGS_DEFAULT(WARNING) << "Failed to create a raw EP context model";
+  }
   if (ep_ctx_model_file_loc_.empty()) {
     if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str_, false, ep_ctx_model_file_loc_)) {
       ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
@@ -517,6 +520,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
   // Only uncomment this piece of code for the "Approach 3" mentioned above.
   if (ep_ctx_enabled_ && p_ep_ctx_model_) {
     FulfillEPContextEnablement(fused_nodes_and_graphs);
+  } else if (!p_ep_ctx_model_) {
+    LOGS_DEFAULT(WARNING) << "Invalied raw EP context model to fulfill";
   }
 #endif
   return Status::OK();
