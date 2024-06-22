@@ -66,13 +66,15 @@ class WindowsTelemetry : public Telemetry {
 
   static void RegisterInternalCallback(const EtwInternalCallback& callback);
 
+  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
+
  private:
   static OrtMutex mutex_;
   static uint32_t global_register_count_;
   static bool enabled_;
   static uint32_t projection_;
 
-  static std::vector<EtwInternalCallback> callbacks_;
+  static std::vector<const EtwInternalCallback*> callbacks_;
   static OrtMutex callbacks_mutex_;
   static OrtMutex provider_change_mutex_;
   static UCHAR level_;

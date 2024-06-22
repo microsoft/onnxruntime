@@ -37,6 +37,8 @@ variables:
     value: 109
   - name: RocmVersion
     value: 6.0
+  - name: RocmVersionPatchSuffix
+    value: ".3"
 
 jobs:
 - job: Linux_Build
@@ -47,7 +49,7 @@ jobs:
   workspace:
     clean: all
   pool: onnxruntime-Ubuntu2204-AMD-CPU
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
 
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -63,7 +65,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -162,7 +164,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2

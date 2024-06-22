@@ -366,7 +366,11 @@ def parse_arguments():
         default="",
         help="Path to RISC-V qemu. e.g. --riscv_qemu_path=$HOME/qemu-dir/qemu-riscv64",
     )
-    parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
+    # https://gitlab.kitware.com/cmake/cmake/-/issues/25192
+    parser.add_argument(
+        "--msvc_toolset",
+        help="MSVC toolset to use. e.g. 14.11. It doesn't work if the version number is in the range of [14.36, 14.39]",
+    )
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
@@ -600,11 +604,6 @@ def parse_arguments():
 
     parser.add_argument(
         "--enable_msvc_static_runtime", action="store_true", help="Enable static linking of MSVC runtimes."
-    )
-    parser.add_argument(
-        "--enable_language_interop_ops",
-        action="store_true",
-        help="Enable operator implemented in language other than cpp",
     )
     parser.add_argument(
         "--cmake_generator",
@@ -872,6 +871,7 @@ def install_python_deps(numpy_version=""):
     dep_packages.append("sympy>=1.10")
     dep_packages.append("packaging")
     dep_packages.append("cerberus")
+    dep_packages.append("psutil")
     run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
@@ -1048,7 +1048,6 @@ def generate_build_tree(
             else "OFF"
         ),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
@@ -1074,7 +1073,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
-        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
+        "-Donnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
@@ -1158,6 +1157,7 @@ def generate_build_tree(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
                     f"Add '--disable_types float8' to your command line. See option disable_types."
                 )
+        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1534,6 +1534,8 @@ def generate_build_tree(
         cudaflags = []
         if is_windows() and not args.ios and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
+            if args.use_cuda:
+                cudaflags.append("-allow-unsupported-compiler")
             if njobs > 1:
                 if args.parallel == 0:
                     cflags += ["/MP"]
@@ -1589,7 +1591,6 @@ def generate_build_tree(
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
-                    cudaflags.append("-allow-unsupported-compiler")
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
@@ -2304,8 +2305,8 @@ def build_nuget_package(
 
     csharp_build_dir = os.path.join(source_dir, "csharp")
 
-    # in most cases we don't want/need to include the Xamarin mobile targets, as doing so means the Xamarin
-    # mobile workloads must be installed on the machine.
+    # in most cases we don't want/need to include the MAUI mobile targets, as doing so means the mobile workloads
+    # must be installed on the machine.
     # they are only included in the Microsoft.ML.OnnxRuntime nuget package
     sln = "OnnxRuntime.DesktopOnly.CSharp.sln"
     have_exclude_mobile_targets_option = "IncludeMobileTargets=false" in msbuild_extra_options

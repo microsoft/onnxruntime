@@ -70,7 +70,7 @@ class ForwardBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        self._model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        self._model = self.infer_shapes_on_base()
 
         _graph_utils.register_graph_outputs(self._model, output)
 
@@ -187,7 +187,7 @@ class TrainingBlock(blocks.Block):
 
         output = self.build(*args, **kwargs)
 
-        model = onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+        model = self.infer_shapes_on_base()
 
         _graph_utils.register_graph_outputs(model, output)
 
