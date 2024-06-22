@@ -370,7 +370,8 @@ void CreateEPContexNodes(
   LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Creating EP context nodes";
   int fused_index = 0;
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-    const auto& fused_name = fused_node_graph.fused_node.Name();
+    Node& fused_node = fused_node_graph.fused_node;
+    const auto& fused_name = fused_node.Name();
     const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
     // FIXME
     const auto& graph_inputs = graph_viewer.GetInputs();
