@@ -436,8 +436,8 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 }
 
 bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                    const Node& node,
-                                    const std::vector<const Node*>& dq_nodes,
+                                      const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
   const auto& graph = graph_viewer.GetGraph();
 
@@ -445,7 +445,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
     return false;
   }
-  
+
   // DQ must be MatMul's the second input
   auto input_node_iter = node.InputNodesBegin();
   if (++input_node_iter;
