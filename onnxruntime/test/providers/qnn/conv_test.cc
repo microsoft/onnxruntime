@@ -182,7 +182,12 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const s
                                                    static_cast<size_t>(weight_quant_axis), true);
 
     TensorShape weights_shape = weights_def.GetTensorShape();
-    std::vector<WeightQType> quantized_weights(weights_shape.Size());
+    std::vector<WeightQType> quantized_weights;
+    size_t num_weight_storage_elems = weights_shape.Size();
+    if constexpr (std::is_same_v<WeightQType, Int4x2> || std::is_same_v<WeightQType, UInt4x2>) {
+      num_weight_storage_elems = Int4x2::CalcNumInt4Pairs(weights_shape.Size());
+    }
+    quantized_weights.resize(num_weight_storage_elems);
     QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
                                        weight_scales, weight_zero_points, weight_quant_axis);
 
@@ -725,6 +730,34 @@ TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
                                               ExpectedEPNodeAssignment::All,
                                               false,  // use_qdq_contrib_ops
                                               13);    // opset
+}
+
+// Test per-channel QDQ Conv. in0: u8, in1 (weight): s4, in2 (bias): s32, out: u8
+TEST_F(QnnHTPBackendTests, ConvU8S4S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, Int4x2>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              0,             // weight quant axis
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              1,             // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              21);    // opset
 }
 
 // Test per-channel QDQ Conv is rejected with weight axis != 0

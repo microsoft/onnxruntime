@@ -292,6 +292,48 @@ static void GetTestInputQuantParamsPerChannel(const TestInputDef<float>& input_d
   }
 }
 
+template <>
+inline void GetTestInputQuantParamsPerChannel<Int4x2>(const TestInputDef<float>& input_def, std::vector<float>& scales,
+                                                      std::vector<Int4x2>& zero_points, size_t axis, bool symmetric) {
+  using UnpackedType = typename Int4x2::UnpackedType;
+  const auto f32_ranges = input_def.GetRangePerChannel(axis);
+  const size_t num_ranges = f32_ranges.size();
+
+  scales.resize(num_ranges);
+  zero_points.resize(Int4x2::CalcNumInt4Pairs(num_ranges));
+
+  for (size_t i = 0; i < num_ranges; i++) {
+    const auto& range = f32_ranges[i];
+    QuantParams<UnpackedType> params = QuantParams<UnpackedType>::Compute(range.first, range.second, symmetric);
+    scales[i] = params.scale;
+
+    size_t r = i >> 1;
+    size_t c = i & 0x1;
+    zero_points[r].SetElem(c, params.zero_point);
+  }
+}
+
+template <>
+inline void GetTestInputQuantParamsPerChannel<UInt4x2>(const TestInputDef<float>& input_def, std::vector<float>& scales,
+                                                       std::vector<UInt4x2>& zero_points, size_t axis, bool symmetric) {
+  using UnpackedType = typename UInt4x2::UnpackedType;
+  const auto f32_ranges = input_def.GetRangePerChannel(axis);
+  const size_t num_ranges = f32_ranges.size();
+
+  scales.resize(num_ranges);
+  zero_points.resize(UInt4x2::CalcNumInt4Pairs(num_ranges));
+
+  for (size_t i = 0; i < num_ranges; i++) {
+    const auto& range = f32_ranges[i];
+    QuantParams<UnpackedType> params = QuantParams<UnpackedType>::Compute(range.first, range.second, symmetric);
+    scales[i] = params.scale;
+
+    size_t r = i >> 1;
+    size_t c = i & 0x1;
+    zero_points[r].SetElem(c, params.zero_point);
+  }
+}
+
 template <typename FloatType, typename QuantType>
 static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType> output, const TensorShape& shape,
                            gsl::span<const FloatType> scales, gsl::span<const QuantType> zero_points,
@@ -330,6 +372,82 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
       i += block_size;
     }
   }
+}
+
+template <>
+inline void QuantizeValues<float, Int4x2>(gsl::span<const float> input, gsl::span<Int4x2> output, const TensorShape& shape,
+                                          gsl::span<const float> scales, gsl::span<const Int4x2> zero_points,
+                                          std::optional<int64_t> axis) {
+  using UnpackedType = typename Int4x2::UnpackedType;
+  const size_t input_rank = shape.NumDimensions();
+  const size_t num_int4_elems = static_cast<size_t>(shape.Size());
+  ORT_ENFORCE(input.size() == num_int4_elems);
+  ORT_ENFORCE(output.size() == Int4x2::CalcNumInt4Pairs(num_int4_elems));
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_int4_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + input_rank : static_cast<size_t>(*axis);
+    block_count = shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = shape.SizeFromDimension(axis_no_neg + 1);
+  }
+
+  ORT_ENFORCE(scales.size() == broadcast_dim);
+  ORT_ENFORCE(zero_points.empty() || zero_points.size() == Int4x2::CalcNumInt4Pairs(broadcast_dim));
+
+  size_t i = 0;
+
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      size_t bd_i = bd >> 1;   // bd / 2
+      size_t bd_j = bd & 0x1;  // bd % 2
+      UnpackedType zp = !zero_points.empty() ? zero_points[bd_i].GetElem(bd_j) : 0;
+      ParQuantizeLinearStdS4(&input[i], output.data(), i, i + block_size, scales[bd], Int4x2(zp, 0), nullptr);
+      i += block_size;
+    }
+  }
+  assert(i == (block_count * broadcast_dim * block_size));
+}
+
+template <>
+inline void QuantizeValues<float, UInt4x2>(gsl::span<const float> input, gsl::span<UInt4x2> output, const TensorShape& shape,
+                                           gsl::span<const float> scales, gsl::span<const UInt4x2> zero_points,
+                                           std::optional<int64_t> axis) {
+  using UnpackedType = typename UInt4x2::UnpackedType;
+  const size_t input_rank = shape.NumDimensions();
+  const size_t num_int4_elems = static_cast<size_t>(shape.Size());
+  ORT_ENFORCE(input.size() == num_int4_elems);
+  ORT_ENFORCE(output.size() == UInt4x2::CalcNumInt4Pairs(num_int4_elems));
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_int4_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + input_rank : static_cast<size_t>(*axis);
+    block_count = shape.SizeToDimension(axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = shape.SizeFromDimension(axis_no_neg + 1);
+  }
+
+  ORT_ENFORCE(scales.size() == broadcast_dim);
+  ORT_ENFORCE(zero_points.empty() || zero_points.size() == UInt4x2::CalcNumInt4Pairs(broadcast_dim));
+
+  size_t i = 0;
+
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      size_t bd_i = bd >> 1;   // bd / 2
+      size_t bd_j = bd & 0x1;  // bd % 2
+      UnpackedType zp = !zero_points.empty() ? zero_points[bd_i].GetElem(bd_j) : 0;
+      ParQuantizeLinearStdU4(&input[i], output.data(), i, i + block_size, scales[bd], UInt4x2(zp, 0), nullptr);
+      i += block_size;
+    }
+  }
+  assert(i == (block_count * broadcast_dim * block_size));
 }
 
 /**
