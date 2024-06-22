@@ -10,6 +10,7 @@
 
 // 1st-party headers/libs.
 #include "core/platform/env_var_utils.h"
+#include "core/common/exceptions.h"
 
 #include "vaip/capability.h"
 #include "vaip/global_api.h"
@@ -192,7 +193,15 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       if (!execution_providers_) {
         auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
         LOGS_DEFAULT(VERBOSE) << "Creating custom execution providers";
-        execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        try {
+          execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        } catch (const std::exception& ex) {
+          LOGS_DEFAULT(WARNING) << "Backend compilation failed: " << ex.what();
+          throw;
+        } catch (...) {
+          LOGS_DEFAULT(WARNING) << "Backend compilation failed: unknown exception";
+          throw;
+        }
         LOGS_DEFAULT(VERBOSE) << "Created custom execution providers";
       }
       std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;

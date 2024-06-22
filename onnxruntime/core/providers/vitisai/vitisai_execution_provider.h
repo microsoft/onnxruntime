@@ -72,6 +72,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
       const std::vector<std::unique_ptr<ComputeCapability>>&,
       const onnxruntime::GraphViewer&) const;
   void FulfillEPContextEnablement(const onnxruntime::GraphViewer&) const;
+  // void PrepareEPContextEnablement(const onnxruntime::GraphViewer&) const;
+  // void FulfillEPContextEnablement(const std::vector<FusedNodeAndGraph>&);
   std::string GetBackendCompileCacheDir() const;
   std::string GetBackendCompileCacheKey(const GraphViewer&) const;
 };
