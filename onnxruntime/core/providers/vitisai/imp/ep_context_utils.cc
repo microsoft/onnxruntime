@@ -193,6 +193,7 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
     for (int i = 0, n = p_orig_model_proto->opset_import_size(); i < n; ++i) {
       auto& op_set_id_proto = const_cast<ONNX_NAMESPACE::OperatorSetIdProto&>(p_orig_model_proto->opset_import(i));
       j_obj[*op_set_id_proto.mutable_domain()] = std::to_string(op_set_id_proto.version());
+      LOGS_DEFAULT(VERBOSE) << "Added domain: " << *op_set_id_proto.mutable_domain() << ", version: " << op_set_id_proto.version();
     }
   }
   j_obj["orig_graph_name"] = graph_viewer.Name();
@@ -438,12 +439,14 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
     if (p_model_proto->opset_import_size() == 0) {
       LOGS_DEFAULT(VERBOSE) << "Recoverying ModelProto.opset_import";
       for (auto& elem : j_obj.items()) {
+        LOGS_DEFAULT(VERBOSE) << "Iterating at parsed JSON key: " << elem.key();
         if (elem.key() == "orig_model_path" || elem.key() == "orig_graph_name" || elem.key() == "orig_model_proto_ser_str") {
           continue;
         }
+        LOGS_DEFAULT(VERBOSE) << "Accessing parsed JSON op domain: " << elem.key();
         auto* p_op_set_id_proto = p_model_proto->add_opset_import();
         *(p_op_set_id_proto->mutable_domain()) = elem.key();
-        p_op_set_id_proto->set_version(std::stol(nlohmann::to_string(elem.value())));
+        p_op_set_id_proto->set_version(std::stoll(elem.value().get<std::string>()));
       }
     }
   }
