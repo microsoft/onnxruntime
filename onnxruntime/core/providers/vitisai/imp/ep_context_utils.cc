@@ -356,6 +356,116 @@ bool ValidateEPContextNode(const Graph& graph) {
   return true;
 }
 
+// Ref.: `CreateEpContextModel()` in the file "graph_partitioner.cc".
+void CreateEPContexNodes(
+    Graph* p_ep_ctx_graph,
+    const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+    const std::string& serialized_ctx_cache,
+    const std::string& ctx_cache_file_loc,
+    const int64_t embed_mode,
+    const std::string& backend_cache_dir,
+    const std::string& backend_cache_key,
+    bool saving_orig_graph,
+    const logging::Logger* p_logger) {
+  LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Creating EP context nodes";
+  int fused_index = 0;
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const auto& fused_name = fused_node_graph.fused_node.Name();
+    const GraphViewer& graph_viewer = fused_node_graph.filtered_graph;
+    // FIXME
+    const auto& graph_inputs = graph_viewer.GetInputs();
+    std::vector<NodeArg*> input_node_arg_ptrs;
+    input_node_arg_ptrs.reserve(graph_inputs.size());
+    // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
+    for (const auto* p_node_arg : graph_inputs) {
+      auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(
+          p_node_arg->Name(), p_node_arg->TypeAsProto());
+      input_node_arg_ptrs.push_back(&temp_node_arg);
+    }
+    const auto& graph_outputs = graph_viewer.GetOutputs();
+    std::vector<NodeArg*> output_node_arg_ptrs;
+    output_node_arg_ptrs.reserve(graph_outputs.size());
+    for (const auto* p_node_arg : graph_outputs) {
+      auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
+      output_node_arg_ptrs.push_back(&temp_node_arg);
+    }
+
+    auto p_node_attrs = NodeAttributes::Create();
+    if (fused_index == 0) {
+      p_node_attrs->reserve(7);
+      // Attr "ep_cache_context".
+      auto p_attr_1 = ONNX_NAMESPACE::AttributeProto::Create();
+      p_attr_1->set_name(kEPCacheContextAttr);
+      p_attr_1->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+      // Relative to the ONNX model file.
+      p_attr_1->set_s(
+          embed_mode == 0 ? fs::path(ctx_cache_file_loc).filename().string() : serialized_ctx_cache);
+      p_node_attrs->emplace(kEPCacheContextAttr, *p_attr_1);
+      // Attr "notes".
+      auto p_attr_4 = ONNX_NAMESPACE::AttributeProto::Create();
+      p_attr_4->set_name(kNotesAttr);
+      p_attr_4->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+      // FIXME: 2G-limit of ProtoBuf.
+      if (saving_orig_graph) {
+        p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
+        LOGS_DEFAULT(VERBOSE) << "Saved serialized graph to attr proto";
+      } else {
+        nlohmann::json j_obj;
+        j_obj["backend_cache_dir"] = backend_cache_dir;
+        j_obj["backend_cache_key"] = backend_cache_key;
+        p_attr_4->set_s(j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+        LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
+      }
+      p_node_attrs->emplace(kNotesAttr, *p_attr_4);
+      // Attr "main_context".
+      auto p_attr_5 = ONNX_NAMESPACE::AttributeProto::Create();
+      p_attr_5->set_name(kMainContextAttr);
+      p_attr_5->set_type(ONNX_NAMESPACE::AttributeProto::INT);
+      p_attr_5->set_i(1);
+      p_node_attrs->emplace(kMainContextAttr, *p_attr_5);
+    } else {
+      p_node_attrs->reserve(5);
+      // Attr "main_context".
+      auto p_attr_5 = ONNX_NAMESPACE::AttributeProto::Create();
+      p_attr_5->set_name(kMainContextAttr);
+      p_attr_5->set_type(ONNX_NAMESPACE::AttributeProto::INT);
+      p_attr_5->set_i(0);
+      p_node_attrs->emplace(kMainContextAttr, *p_attr_5);
+    }
+    // Attr "embed_mode".
+    auto p_attr_0 = ONNX_NAMESPACE::AttributeProto::Create();
+    p_attr_0->set_name(kEmbedModeAttr);
+    p_attr_0->set_type(ONNX_NAMESPACE::AttributeProto::INT);
+    p_attr_0->set_i(embed_mode);
+    p_node_attrs->emplace(kEmbedModeAttr, *p_attr_0);
+    // Attr "source".
+    auto p_attr_2 = ONNX_NAMESPACE::AttributeProto::Create();
+    p_attr_2->set_name(kSourceAttr);
+    p_attr_2->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    p_attr_2->set_s(kVitisAIExecutionProvider);
+    p_node_attrs->emplace(kSourceAttr, *p_attr_2);
+    // Attr "onnx_model_filename".
+    auto p_attr_3 = ONNX_NAMESPACE::AttributeProto::Create();
+    p_attr_3->set_name(kONNXModelFileNameAttr);
+    p_attr_3->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    p_attr_3->set_s(fs::path(graph_viewer.ModelPath().ToPathString()).filename().string());
+    p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
+    // Attr "partition_name".
+    auto p_attr_6 = ONNX_NAMESPACE::AttributeProto::Create();
+    p_attr_6->set_name(kPartitionNameAttr);
+    p_attr_6->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    p_attr_6->set_s(fused_name);
+    p_node_attrs->emplace(kPartitionNameAttr, *p_attr_6);
+
+    p_ep_ctx_graph->AddNode(fused_name, kEPContextOp, "", input_node_arg_ptrs, output_node_arg_ptrs, p_node_attrs.get(), kEPContextOpDomain);
+
+    ++fused_index;
+  }
+  auto res_status = p_ep_ctx_graph->Resolve();
+  ORT_ENFORCE(res_status.IsOK(), res_status.ErrorMessage());
+  LOGS_DEFAULT(VERBOSE) << "Created EP context model graph resolved";
+}
+
 std::string RetrieveEPContextCache(
     const Graph& graph, const PathString& ep_ctx_model_loc, bool binary_mode) {
   // TODO: Support for multi-node EP context model.

@@ -71,7 +71,8 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
 
-#if 0
+#if 1
+// Only uncommented this method for the "Approach 3" mentioned below.
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
 // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {
@@ -89,11 +90,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
 }
 #endif
 
-// Create EP context model and dump it for future use.
-// This implementation here is only working for non-compilation-based EPs.
-// This version of implementation (vs the overloaded version of implementation below)
-// is more universally applicable and less coupled with the closed-source backend of VitisAI EP.
-// The two vesions have respective pros and cons.
+// For "Approach 1".
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const std::vector<std::unique_ptr<ComputeCapability>>& capability_ptrs,
     const onnxruntime::GraphViewer& graph_viewer) const {
@@ -125,9 +122,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
-// This version of implementation (vs the overloaded version of implementation above)
-// is more VitisAI specific and more tightly coupled with the closed-source backend of VitisAI EP.
-// The two vesions have respective pros and cons.
+// For "Approach 2".
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
     const onnxruntime::GraphViewer& graph_viewer) const {
   auto cache_dir = GetBackendCompileCacheDir();
@@ -169,27 +164,58 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   DumpEPContextModel(p_ep_ctx_model_proto_, PathToUTF8String(ep_ctx_model_file_loc_));
 }
 
+void VitisAIExecutionProvider::PrepareEPContextEnablement(
+    const onnxruntime::GraphViewer& graph_viewer) const {
+  auto cache_dir = GetBackendCompileCacheDir();
+  auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+  LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+  // This way enforces the backend to use this cache dir and cache key.
+  info_["cacheDir"] = cache_dir;
+  info_["cacheKey"] = cache_key;
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  LOGS_DEFAULT(VERBOSE) << "Original model path: " << PathToUTF8String(model_path_str_);
+  // Create a new model, reusing the graph name, the op-domain-to-opset-version map,
+  // the op schema registry of the current graph, etc.
+  p_ep_ctx_model_ = graph_viewer.CreateModel(*GetLogger());
+  if (!GetEPContextModelFileLocation(ep_ctx_model_path_cfg_, model_path_str_, false, ep_ctx_model_file_loc_)) {
+    ORT_THROW("Failed to figure out a path for storing the EP-context ONNX model");
+  }
+}
+
+// For "Approach 3".
+void VitisAIExecutionProvider::FulfillEPContextEnablement(
+    const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs) {
+  auto& ep_ctx_graph = p_ep_ctx_model_->MainGraph();
+  CreateEPContexNodes(&ep_ctx_graph, fused_nodes_and_graphs);
+}
+
+#if 0
+// Approach 1:
+// 1)
+// Directly serializes and caches the list of compute capabilities.
+// This makes sense because VitisAI EP does heavy lifting work in `GetCapability()`.
+// 2)
+// In order for `Compile()` to work, serializes the original model/graph in the EP context node, which will be used for
+// (a) making custom `execution_providers_`, and (b) making signatures used by closed-source backend compilers.
+// 3)
+// Does not touch the VitisAI EP specific backend compilation cache,
+// so this approach is not tightly coupled with VitisAI EP and could universally be applied.
+// 4)
+// Can not achieve "compile once, run everywhere".
+// 5)
+// Creates and dumps the EP context model in `GetCapability()`.
+// 6)
+// Does not (should not) implement/override `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model by itself.
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
-  auto model_path_str = GetTopLevelModelPath(graph_viewer).ToPathString();
-  LOGS_DEFAULT(VERBOSE) << "Loaded model path: " << model_path_str.c_str();
-  // XXX: One of the potential problems is the existing EP-context model file may be stale.
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  LOGS_DEFAULT(VERBOSE) << "Loaded model path: " << model_path_str_.c_str();
   if (GetEPContextModelFileLocation(
-          ep_ctx_model_path_cfg_, model_path_str, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
-#if 1
-    // XXX: For now we are intentionally keeping this part.
-    // This part is corresponding to the 1st version of `FulfillEPContextEnablement()`.
-    // Once we are done with the verification of functionalities and performance
-    // of both implementations, we may eliminate this part.
+          ep_ctx_model_path_cfg_, model_path_str_, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
     if (is_ep_ctx_model) {
       LOGS_DEFAULT(VERBOSE) << "An EP context model passed in";
       ValidateEPContextNode(graph_viewer.GetGraph());
-      // FIXME
-      // 1) `execution_providers_` is used by `Compiler()` as well, so, even in this case, we need to make it ready.
-      // 2) Computing (using cache) `execution_providers_` needs the original model/graph for signature match.
-      // 3) The closed-source backend of VitisAI EP has compilation cache, so no real overhead.
-      // 4) A con of this approach is it is not "compile once, run everywhere".
       if (!execution_providers_) {
         auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
         LOGS_DEFAULT(VERBOSE) << "Creating custom execution providers";
@@ -216,63 +242,26 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       return capability_ptrs;
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
-        std::string warning = "The inference session was created with a normal ONNX model but a model file with EP context cache exists at " + PathToUTF8String(ep_ctx_model_file_loc_) + ". Please remove the EP context model manually if you want to re-generate it.";
-        ORT_THROW(warning);
-        // Disable the flexibility implemented below.
-        // Now the code below is unreachable and DCE will take care of it.
+        ORT_THROW("The inference session was created with a normal ONNX model but a model file with EP context cache exists at ",
+                  PathToUTF8String(ep_ctx_model_file_loc_), ". Please remove the EP context model manually if you want to re-generate it.");
+        // Disable the flexibility implemented below by throwing an exception.
+        // Now the code below is unreachable but DCE will take care of it.
+        // We might want to re-enable it in future, so we keep it as is.
         LoadEPContexModelFromFile();
         ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
+        if (!execution_providers_) {
+          auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
+          execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        }
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_);
         std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
         DeserializeCapabilities(ep_ctx_payload, capability_ptrs);
-        // FIXME: ditto.
-        if (!execution_providers_) {
-          execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
-          // Alternative with some nuance.
-          // auto p_orig_graph_viewer = RetrieveOriginalGraph(p_ep_ctx_model_->MainGraph());
-          // execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
-        }
         LOGS_DEFAULT(VERBOSE) << "Deserialized ComputeCapability";
         return capability_ptrs;
       }
     }
-#endif
-#if 0
-    // This part is corresponding to the 2nd version of `FulfillEPContextEnablement()`.
-    if (is_ep_ctx_model) {
-      LOGS_DEFAULT(VERBOSE) << "An EP context model passed in";
-      ValidateEPContextNode(graph_viewer.GetGraph());
-      std::string cache_dir, cache_key;
-      RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
-      LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
-      info_["cacheDir"] = cache_dir;
-      info_["cacheKey"] = cache_key;
-      fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
-      LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
-      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
-      RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
-    } else {
-      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
-        std::string warning = "The inference session was created with a normal ONNX model but a model file with EP context cache exists at " + PathToUTF8String(ep_ctx_model_file_loc_) + ". Please remove the EP context model manually if you want to re-generate it.";
-        ORT_THROW(warning);
-        // Disable the flexibility implemented below.
-        // Now the code below is unreachable and DCE will take care of it.
-        LoadEPContexModelFromFile();
-        ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
-        auto cache_dir = GetBackendCompileCacheDir();
-        auto cache_key = GetBackendCompileCacheKey(graph_viewer);
-        LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
-        info_["cacheDir"] = cache_dir;
-        info_["cacheKey"] = cache_key;
-        fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
-        LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
-        auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
-        RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
-      }
-    }
-#endif
   } else {
-    LOGS_DEFAULT(WARNING) << "Failed to get EP context model file";
+    LOGS_DEFAULT(WARNING) << "Failed to get EP context model file location";
   }
 
   if (graph_viewer.IsSubgraph()) {
@@ -291,15 +280,175 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     index = index + 1;
   }
   if (ep_ctx_enabled_ && !is_ep_ctx_model) {
-#if 1
     FulfillEPContextEnablement(result, graph_viewer);
-#endif
-#if 0
-    FulfillEPContextEnablement(graph_viewer);
-#endif
   }
   return result;
 }
+#endif
+
+#if 0
+// Approach 2:
+// 1)
+// Can achieve "compile once, run everywhere".
+// 2)
+// Uses exactly the same alorithm and logic to get the cache dir and cache key for closed-source backend compilers.
+// 3)
+// Caches both the backend compilation cache and the aforementioned cache dir/key in the EP context node.
+// 4)
+// Is tightly coupled with VitisAI EP.
+// 5)
+// Creates and dumps the EP context model in `GetCapability()`.
+// 6)
+// Does not (should not) implement/override `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model by itself.
+std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
+    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
+  bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  LOGS_DEFAULT(VERBOSE) << "Loaded model path: " << model_path_str_.c_str();
+  if (GetEPContextModelFileLocation(
+          ep_ctx_model_path_cfg_, model_path_str_, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
+    if (is_ep_ctx_model) {
+      LOGS_DEFAULT(VERBOSE) << "An EP context model passed in";
+      ValidateEPContextNode(graph_viewer.GetGraph());
+      std::string cache_dir, cache_key;
+      RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
+      LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+      // This way enforces the backend to use this cache dir and cache key.
+      info_["cacheDir"] = cache_dir;
+      info_["cacheKey"] = cache_key;
+      fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
+      LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
+      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
+      RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+    } else {
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
+        ORT_THROW("The inference session was created with a normal ONNX model but a model file with EP context cache exists at ",
+                  PathToUTF8String(ep_ctx_model_file_loc_), ". Please remove the EP context model manually if you want to re-generate it.");
+        // Disable the flexibility implemented below by throwing an exception.
+        // Now the code below is unreachable but DCE will take care of it.
+        // We might want to re-enable it in future, so we keep it as is.
+        LoadEPContexModelFromFile();
+        ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
+        auto cache_dir = GetBackendCompileCacheDir();
+        auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+        LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+        // This way enforces the backend to use this cache dir and cache key.
+        info_["cacheDir"] = cache_dir;
+        info_["cacheKey"] = cache_key;
+        fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+        LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
+        auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
+        RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+      }
+    }
+  } else {
+    LOGS_DEFAULT(WARNING) << "Failed to get EP context model file location";
+  }
+
+  if (graph_viewer.IsSubgraph()) {
+    // VITIS AI EP not support sungraph. Assigned to CPU.
+    return {};
+  }
+  if (execution_providers_) {
+    // Only compiling a model once is currently supported
+    return {};
+  }
+  execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
+  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), vitisai_optypes_);
+  size_t index = 0u;
+  for (auto& ep : **execution_providers_) {
+    result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph_viewer, ep.get(), index));
+    index = index + 1;
+  }
+  if (ep_ctx_enabled_ && !is_ep_ctx_model) {
+    FulfillEPContextEnablement(graph_viewer);
+  }
+  return result;
+}
+#endif
+
+#if 1
+// Approach 3:
+// 1)
+// Can achieve "compile once, run everywhere".
+// 2)
+// Uses exactly the same alorithm and logic to get the cache dir and cache key for closed-source backend compilers.
+// 3)
+// Caches both the backend compilation cache and the aforementioned cache dir/key in the EP context node.
+// 4)
+// Is tightly coupled with VitisAI EP.
+// 5)
+// Creates the EP context model in `Compile()` instead of `GetCapability()`.
+// 6)
+// Implements/overrides `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model
+// in `CreateEpContextModel()` in the file "graph_partitioner.cc"
+std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
+    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
+  bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
+  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  LOGS_DEFAULT(VERBOSE) << "Loaded model path: " << model_path_str_.c_str();
+  if (GetEPContextModelFileLocation(
+          ep_ctx_model_path_cfg_, model_path_str_, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
+    if (is_ep_ctx_model) {
+      LOGS_DEFAULT(VERBOSE) << "An EP context model passed in";
+      ValidateEPContextNode(graph_viewer.GetGraph());
+      std::string cache_dir, cache_key;
+      RetrieveBackendCacheInfo(graph_viewer.GetGraph(), cache_dir, cache_key);
+      LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+      // This way enforces the backend to use this cache dir and cache key.
+      info_["cacheDir"] = cache_dir;
+      info_["cacheKey"] = cache_key;
+      fs::path backend_cache_file_loc(cache_dir + "/" + cache_key + "/context.json");
+      LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
+      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
+      RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+    } else {
+      if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
+        ORT_THROW("The inference session was created with a normal ONNX model but a model file with EP context cache exists at ",
+                  PathToUTF8String(ep_ctx_model_file_loc_), ". Please remove the EP context model manually if you want to re-generate it.");
+        // Disable the flexibility implemented below by throwing an exception.
+        // Now the code below is unreachable but DCE will take care of it.
+        // We might want to re-enable it in future, so we keep it as is.
+        LoadEPContexModelFromFile();
+        ValidateEPContextNode(p_ep_ctx_model_->MainGraph());
+        // This way enforces the backend to use this cache dir and cache key.
+        auto cache_dir = GetBackendCompileCacheDir();
+        auto cache_key = GetBackendCompileCacheKey(graph_viewer);
+        LOGS_DEFAULT(VERBOSE) << "Cache dir: " << cache_dir << ". Cache key: " << cache_key;
+        // This way enforces the backend to use this cache dir and cache key.
+        info_["cacheDir"] = cache_dir;
+        info_["cacheKey"] = cache_key;
+        fs::path backend_cache_file_loc(cache_dir + '/' + cache_key + "/context.json");
+        LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << backend_cache_file_loc.string();
+        auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
+        RestoreBackendCompileCache(backend_cache_file_loc, ep_ctx_payload);
+      }
+    }
+  } else {
+    LOGS_DEFAULT(WARNING) << "Failed to get EP context model file location";
+  }
+
+  if (graph_viewer.IsSubgraph()) {
+    // VITIS AI EP not support sungraph. Assigned to CPU.
+    return {};
+  }
+  if (execution_providers_) {
+    // Only compiling a model once is currently supported
+    return {};
+  }
+  execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
+  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), vitisai_optypes_);
+  size_t index = 0u;
+  for (auto& ep : **execution_providers_) {
+    result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph_viewer, ep.get(), index));
+    index = index + 1;
+  }
+  if (ep_ctx_enabled_ && !is_ep_ctx_model) {
+    PrepareEPContextEnablement(graph_viewer);
+  }
+  return result;
+}
+#endif
 
 common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -325,6 +474,12 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     };
     node_compute_funcs.push_back(compute_info);
   }
+#if 1
+  // Only uncommented this piece of code for the "Approach 3" mentioned above.
+  if (ep_ctx_enabled_ && !is_ep_ctx_model) {
+    FulfillEPContextEnablement(fused_nodes_and_graphs);
+  }
+#endif
   return Status::OK();
 }
 

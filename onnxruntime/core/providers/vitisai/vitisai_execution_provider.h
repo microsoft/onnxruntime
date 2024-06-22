@@ -41,9 +41,12 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+#if 1
+  // Only uncommented this method for the "Approach 3" mentioned below.
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
-  // const InlinedVector<const Node*> GetEpContextNodes() const override;
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+#endif
 
  private:
   void CreateKernelRegistry();
@@ -56,6 +59,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> registry_;
   std::set<std::string> vitisai_optypes_;
   // EP context related.
+  mutable PathString model_path_str_{};
   bool ep_ctx_enabled_ = false;
   bool ep_ctx_embed_mode_ = true;
   std::string ep_ctx_model_path_cfg_{""};
@@ -66,14 +70,15 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   // It might need to be called before loading
   // the EP context model that is compiled AOT/offline.
   void LoadEPContexModelFromFile() const;
-  // Create EP context model and dump it for future use.
-  // This implementation here is only working for non-compilation-based EPs.
+  // For "Approach 1".
   void FulfillEPContextEnablement(
       const std::vector<std::unique_ptr<ComputeCapability>>&,
       const onnxruntime::GraphViewer&) const;
+  // For "Approach 2".
   void FulfillEPContextEnablement(const onnxruntime::GraphViewer&) const;
-  // void PrepareEPContextEnablement(const onnxruntime::GraphViewer&) const;
-  // void FulfillEPContextEnablement(const std::vector<FusedNodeAndGraph>&);
+  // For "Approach 3".
+  void PrepareEPContextEnablement(const onnxruntime::GraphViewer&) const;
+  void FulfillEPContextEnablement(const std::vector<FusedNodeAndGraph>&);
   std::string GetBackendCompileCacheDir() const;
   std::string GetBackendCompileCacheKey(const GraphViewer&) const;
 };
