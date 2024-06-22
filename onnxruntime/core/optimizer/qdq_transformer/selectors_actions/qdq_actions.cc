@@ -296,7 +296,7 @@ NodeAttributes DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, con
 
   ORT_ENFORCE(weight_shape->dim(0).has_dim_value() && weight_shape->dim(1).has_dim_value(),
               "Input x of DQ node must have rank 2 shape dimensions");
- 
+
   utils::SetNodeAttribute(utils::MakeAttribute("K", weight_shape->dim(0).dim_value()), extra_attributes);
   utils::SetNodeAttribute(utils::MakeAttribute("N", weight_shape->dim(1).dim_value()), extra_attributes);
   if (accuracy_level_ > -1) {
@@ -368,7 +368,7 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
                                                  zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
                                                  true,
                                                  K, N, block_size,
-                                                 tp.get());  
+                                                 tp.get());
   } else {
     MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4>(weight_src.data<uint8_t>(),
                                                      scale_src.data<MLFloat16>(),
@@ -379,7 +379,6 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
                                                      true,
                                                      K, N, block_size,
                                                      tp.get());
-
   }
 
   ONNX_NAMESPACE::TensorProto weight_T_tp;
