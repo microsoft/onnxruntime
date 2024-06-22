@@ -234,7 +234,7 @@ void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
   const std::string action_name{"DQMatMul"};
 
-  std::unique_ptr<Action> action = std::make_unique<QDQ::MatMulReplaceWithQLinear>();
+  std::unique_ptr<Action> action = std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>();
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearMatMul and MatMulInteger support 16-bit.
@@ -305,6 +305,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
   GemmQDQRules(qdq_selector_action_registry);
   WhereQDQRules(qdq_selector_action_registry);
+  DQMatMulQDQRules(qdq_selector_action_registry);
 
   return qdq_selector_action_registry;
 }
