@@ -379,7 +379,7 @@ void CreateEPContexNodes(
     input_node_arg_ptrs.reserve(graph_inputs.size());
     // XXX: vs `GraphViewer::GetInputsIncludingInitializers()`.
     for (const auto* p_node_arg : graph_inputs) {
-      auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(
+      auto& temp_node_arg = p_ep_ctx_graph->GetOrCreateNodeArg(
           p_node_arg->Name(), p_node_arg->TypeAsProto());
       input_node_arg_ptrs.push_back(&temp_node_arg);
     }
@@ -387,7 +387,7 @@ void CreateEPContexNodes(
     std::vector<NodeArg*> output_node_arg_ptrs;
     output_node_arg_ptrs.reserve(graph_outputs.size());
     for (const auto* p_node_arg : graph_outputs) {
-      auto& temp_node_arg = ep_ctx_graph.GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
+      auto& temp_node_arg = p_ep_ctx_graph->GetOrCreateNodeArg(p_node_arg->Name(), p_node_arg->TypeAsProto());
       output_node_arg_ptrs.push_back(&temp_node_arg);
     }
 
