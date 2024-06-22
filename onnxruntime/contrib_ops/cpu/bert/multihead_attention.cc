@@ -162,46 +162,46 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       present_v == nullptr &&
       l2_cache_size_ > 0) {
     FlashAttentionThreadedArgs args;
+
     if (algo_ == 1) {
-      int q_block_size = q_sequence_length >= 768 ? 256 : (q_sequence_length >= 192 ? 64 : 32);
-      int kv_block_size = 512;
-      args.q_block_size = q_block_size > q_sequence_length ? q_sequence_length : q_block_size;
-      args.kv_block_size = kv_block_size > kv_sequence_length ? kv_sequence_length : kv_block_size;
+      args.q_block_size = q_sequence_length >= 768 ? 256 : (q_sequence_length >= 192 ? 64 : 32);
+      args.kv_block_size = 512;
     } else {
       args.kv_block_size = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
+      args.kv_block_size = std::max(args.kv_block_size, 1);  // avoid row_size_kv = 0
       args.q_block_size = std::min(args.kv_block_size, qk_head_size + v_head_size);
     }
+    args.q_block_size = std::min(args.q_block_size, q_sequence_length);
+    args.kv_block_size = std::min(args.kv_block_size, kv_sequence_length);
 
-    if (args.kv_block_size > 0) {
-      args.batch_size = batch_size;
-      args.num_heads = num_heads_;
-      args.q_sequence_length = q_sequence_length;
-      args.kv_sequence_length = kv_sequence_length;
-      args.qk_head_size = qk_head_size;
-      args.v_head_size = v_head_size;
-      args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
+    args.batch_size = batch_size;
+    args.num_heads = num_heads_;
+    args.q_sequence_length = q_sequence_length;
+    args.kv_sequence_length = kv_sequence_length;
+    args.qk_head_size = qk_head_size;
+    args.v_head_size = v_head_size;
+    args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
 
-      auto* tp = context->GetOperatorThreadPool();
-      args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
+    auto* tp = context->GetOperatorThreadPool();
+    args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
 
-      int columns = args.kv_block_size + 2 + args.v_head_size;  // qk + qk_max + qk_sum + dst
-      args.buffer_size_per_thread = static_cast<size_t>(args.q_block_size) * static_cast<size_t>(columns);
+    int columns = args.kv_block_size + 2 + args.v_head_size;  // columns in qk + qk_max + qk_sum + out
+    args.buffer_size_per_thread = static_cast<size_t>(args.q_block_size) * static_cast<size_t>(columns);
 
-      size_t total_buffer_size = args.buffer_size_per_thread * static_cast<size_t>(args.thread_count);
-      IAllocatorUniquePtr<float> buffer = IAllocator::MakeUniquePtr<float>(allocator, total_buffer_size);
-      args.buffer = buffer.get();
+    size_t total_buffer_size = args.buffer_size_per_thread * static_cast<size_t>(args.thread_count);
+    IAllocatorUniquePtr<float> buffer = IAllocator::MakeUniquePtr<float>(allocator, total_buffer_size);
+    args.buffer = buffer.get();
 
-      args.query = Q.Get<Tensor>().Data<float>();
-      args.key = K.Get<Tensor>().Data<float>();
-      args.value = V.Get<Tensor>().Data<float>();
-      args.output = output->MutableData<float>();
+    args.query = Q.Get<Tensor>().Data<float>();
+    args.key = K.Get<Tensor>().Data<float>();
+    args.value = V.Get<Tensor>().Data<float>();
+    args.output = output->MutableData<float>();
 
-      concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
-        FlashAttentionThreaded(thread_id, &args);
-      });
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
+      FlashAttentionThreaded(thread_id, &args);
+    });
 
-      return Status::OK();
-    }
+    return Status::OK();
   }
 
   // Compute the attention score and apply the score to V

@@ -14,6 +14,8 @@ import platform
 import statistics
 import time
 from typing import List, Optional
+import csv
+from datetime import datetime
 
 import torch
 from onnx import TensorProto, helper
@@ -342,14 +344,22 @@ def get_gpu_kernel_name(config: MultiHeadAttentionConfig) -> str:
     return "Unfused"
 
 
-def get_cpu_kernel_name() -> str:
-    if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-        return "CPU:Flash"
+def get_cpu_kernel_name(config: MultiHeadAttentionConfig) -> str:
+    # CPU Flash Attention does not support causal and kv cache etc.
+    if not (config.causal or config.use_kv_cache or config.past_sequence_length > 0):
+        if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
+            return "CPU:Flash"
+
     return "CPU:Unfused"
 
-
 def run_tflops_test(
-    use_gpu: bool = True, enable_cuda_graph: bool = False, intra_op_num_threads: int = 0, repeats: int = 100
+    csv_writer:csv.DictWriter,
+    use_gpu: bool = True,
+    enable_cuda_graph: bool = False,
+    causal: bool = False,
+    use_kv_cache: bool = False,
+    intra_op_num_threads: int = 0,
+    repeats: int = 100,
 ):
     if use_gpu:
         device_id = torch.cuda.current_device()
@@ -438,76 +448,126 @@ def run_tflops_test(
         "ORT_DISABLE_FUSED_CROSS_ATTENTION",
         "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",
     ]
+
+    env_list = ""
     for name in env_names:
         value = os.getenv(name)
         if value is not None:
             print(f"{name}={value}")
+            if env_list:
+                env_list += ","
+            env_list += f"{name}={value}"
 
     print("\nformat\tcausal\tbatch\tseqlen\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
-    causal = False
 
     for input_format in formats:
         for batch_size, sequence_length, past_sequence_length, num_heads, head_size, enable_unfused in configs:
-            for use_kv_cache in [False]:
-                config = MultiHeadAttentionConfig(
-                    batch_size=batch_size,
-                    sequence_length=sequence_length,
-                    num_heads=num_heads,
-                    head_size=head_size,
-                    causal=True,
-                    use_kv_cache=use_kv_cache,
-                    past_sequence_length=past_sequence_length,
-                    max_cache_sequence_length=None,
-                    kv_sequence_length=None,
-                    provider=provider,
-                    enable_cuda_graph=enable_cuda_graph,
-                    device=device,
-                    dtype=torch.float16 if use_gpu else torch.float,
-                    share_past_present_buffer=False,
-                    input_format=input_format,
-                )
+            config = MultiHeadAttentionConfig(
+                batch_size=batch_size,
+                sequence_length=sequence_length,
+                num_heads=num_heads,
+                head_size=head_size,
+                causal=causal,
+                use_kv_cache=use_kv_cache,
+                past_sequence_length=past_sequence_length,
+                max_cache_sequence_length=None,
+                kv_sequence_length=None,
+                provider=provider,
+                enable_cuda_graph=enable_cuda_graph,
+                device=device,
+                dtype=torch.float16 if use_gpu else torch.float,
+                share_past_present_buffer=False,
+                input_format=input_format,
+            )
 
-                sess_options = SessionOptions()
-                sess_options.intra_op_num_threads = intra_op_num_threads
-                session = create_session(config, sess_options)
+            sess_options = SessionOptions()
+            sess_options.intra_op_num_threads = intra_op_num_threads
+            session = create_session(config, sess_options)
 
-                if use_gpu:
-                    kernel = get_gpu_kernel_name(config)
-                else:
-                    kernel = get_cpu_kernel_name()
+            if use_gpu:
+                kernel = get_gpu_kernel_name(config)
+            else:
+                kernel = get_cpu_kernel_name(config)
 
-                if kernel == "Unfused":
-                    # Skip large sequence length for Unfused kernel to avoid OOM.
-                    if not enable_unfused:
-                        continue
+            if kernel == "Unfused":
+                # Skip large sequence length for Unfused kernel to avoid OOM.
+                if not enable_unfused:
+                    continue
 
-                    # Unfused kernel does not support packed QKV or packed KV formats.
-                    if input_format not in [InputFormats.Q_K_V_BSNH_BSNH_BSNH]:
-                        continue
+                # Unfused kernel does not support packed QKV or packed KV formats.
+                if input_format not in [InputFormats.Q_K_V_BSNH_BSNH_BSNH]:
+                    continue
 
-                input_dict = config.random_inputs()
+            input_dict = config.random_inputs()
 
-                # warm up session
-                _ = measure_latency(session, input_dict)
+            # warm up session
+            _ = measure_latency(session, input_dict)
 
-                latency_list = []
-                for _ in range(repeats):
-                    latency = measure_latency(session, input_dict)
-                    latency_list.append(latency)
-                average_latency = statistics.mean(latency_list)
+            latency_list = []
+            for _ in range(repeats):
+                latency = measure_latency(session, input_dict)
+                latency_list.append(latency)
+            average_latency = statistics.mean(latency_list)
 
-                del session
+            del session
 
-                # compute TFLOPS per second
-                speed = tflops_per_second(
-                    flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
-                )
+            # compute TFLOPS per second
+            speed = tflops_per_second(
+                flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
+            )
 
-                format = InputFormats.input_format_str(input_format)
-                print(
-                    f"{format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
-                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
-                )
+            format = InputFormats.input_format_str(input_format)
+            print(
+                f"{format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
+                f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
+            )
+
+            row = {
+                "use_gpu":use_gpu,
+                "enable_cuda_graph":enable_cuda_graph,
+                "format": format,
+                "causal": causal,
+                "batch_size": batch_size,
+                "sequence_length": sequence_length,
+                "past_sequence_length": past_sequence_length,
+                "num_heads": num_heads,
+                "head_size": head_size,
+                "intra_op_num_threads": intra_op_num_threads,
+                "average_latency": average_latency,
+                "tflops": speed,
+                "kernel": kernel,
+                "environment_variables": env_list,
+            }
+            csv_writer.writerow(row)
+
+def run_tflops_tests(
+    use_gpu: bool = True,
+    enable_cuda_graph: bool = False,
+):
+    csv_filename = "benchmark_mha_{}_{}.csv".format("gpu" if use_gpu else "cpu", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    with open(csv_filename, mode="a", newline="") as csv_file:
+        column_names = [
+            "use_gpu",
+            "enable_cuda_graph",
+            "format",
+            "causal",
+            "batch_size",
+            "sequence_length",
+            "past_sequence_length",
+            "num_heads",
+            "head_size",
+            "intra_op_num_threads",
+            "average_latency",
+            "tflops",
+            "kernel",
+            "environment_variables",
+        ]
+        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
+        csv_writer.writeheader()
+
+        for causal, use_kv_cache in [(False, False)]:
+            for intra_op_num_threads in [1, 2, 4, 8, 16, 0]:  # 0 means using all CPU cores by default.
+                run_tflops_test(csv_writer, use_gpu, enable_cuda_graph, causal, use_kv_cache, intra_op_num_threads)
 
 
 def plot_prompt_performance(
@@ -582,7 +642,7 @@ def plot_prompt_performance(
     benchmark.run(save_path=".", print_data=True)
 
 
-def run_performance_test(sm: int):
+def run_causal_performance_test(sm: int):
     """
     Run performance tests for prompt and token generation.
 
@@ -616,10 +676,9 @@ if __name__ == "__main__":
         if platform.system() == "Linux":
             s = torch.cuda.Stream()
             with torch.cuda.stream(s), torch.no_grad():
-                run_performance_test(sm)
+                run_causal_performance_test(sm)
 
-        run_tflops_test(use_gpu=True, enable_cuda_graph=True)
+        run_tflops_tests(use_gpu=True, enable_cuda_graph=True)
 
     # Test CPU provider
-    for intra_op_num_threads in [1, 2, 4, 8, 16]:
-        run_tflops_test(use_gpu=False, enable_cuda_graph=False, intra_op_num_threads=intra_op_num_threads)
+    run_tflops_tests(use_gpu=False, enable_cuda_graph=False)
