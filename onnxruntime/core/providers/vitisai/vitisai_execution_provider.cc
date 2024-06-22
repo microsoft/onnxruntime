@@ -191,7 +191,9 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       // 4) A con of this approach is it is not "compile once, run everywhere".
       if (!execution_providers_) {
         auto p_orig_graph_viewer = RetrieveOriginalGraph(graph_viewer.GetGraph());
+        LOGS_DEFAULT(VERBOSE) << "Creating custom execution providers";
         execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(*p_orig_graph_viewer, *GetLogger(), info_));
+        LOGS_DEFAULT(VERBOSE) << "Created custom execution providers";
       }
       std::vector<std::unique_ptr<ComputeCapability>> capability_ptrs;
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_);
