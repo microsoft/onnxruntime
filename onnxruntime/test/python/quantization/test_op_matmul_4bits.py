@@ -18,6 +18,7 @@ from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_
 
 from onnxruntime.quantization import quant_utils
 
+
 class TestOpMatMul4Bits(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -115,7 +116,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader: TestDataFeeds,
         block_size: int,
         is_symmetric: bool,
-        quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator
+        quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
     ):
         use_qdq = quant_format == quant_utils.QuantFormat.QDQ
         name_prefix = "DQ_MatMul" if use_qdq else "MatMulNBits"
