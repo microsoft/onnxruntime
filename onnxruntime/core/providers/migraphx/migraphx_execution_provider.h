@@ -77,6 +77,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  std::string GetModelParentPath() const;
 
   int GetDeviceId() const override { return info_.device_id; }
   ProviderOptions GetProviderOptions() const override {
@@ -100,6 +101,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  mutable char model_path_[4096] = {};  // Reserved for max path length
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;

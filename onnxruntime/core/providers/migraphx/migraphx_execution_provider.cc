@@ -5,6 +5,7 @@
 #include <iterator>
 #include <unordered_map>
 #include <set>
+#include <filesystem>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
@@ -32,6 +33,8 @@
 #endif
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))
+
+namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
@@ -990,6 +993,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
+  const auto& path_string = graph_viewer.ModelPath().ToPathString();
+#ifdef _WIN32
+  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+#else
+  strcpy(model_path_, path_string.c_str());
+#endif
 
   // dump onnx file if environment var is set
   if (dump_model_ops_) {
@@ -1297,6 +1306,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       if (!input_shape_match) {
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
           LOGS_DEFAULT(VERBOSE) << "No Input shapes mismatch detected. Recompiling" << std::endl;
+          cmp_options.set_external_data_path(this->GetModelParentPath());
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
 
           // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
@@ -1458,6 +1468,10 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
+}
+
+std::string MIGraphXExecutionProvider::GetModelParentPath() const {
+  return fs::path(model_path_).parent_path().string();
 }
 
 Status MIGraphXExecutionProvider::Sync() const {
