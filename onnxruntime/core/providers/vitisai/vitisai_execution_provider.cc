@@ -228,7 +228,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   LOGS_DEFAULT(VERBOSE) << "EP context model created";
 }
 
-#if 0
+#if 1
 // Approach 1 for making an EP context model:
 // 1)
 // Directly serializes and caches the list of compute capabilities.
@@ -242,9 +242,10 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
 // 4)
 // Can not achieve "compile once, run everywhere".
 // 5)
-// Creates and dumps the EP context model in `GetCapability()`.
+// Creates and dumps the EP context model at the end of `GetCapability()`.
 // 6)
-// Does not (should not) implement/override `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model by itself.
+// Does not (and even should not) implement/override `IExecutionProvider::GetEpContextNodes()`,
+// so dumps the EP context model by itself.
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
@@ -325,20 +326,22 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
 }
 #endif
 
-#if 1
+#if 0
 // Approach 2 for making an EP context model:
 // 1)
 // Can achieve "compile once, run everywhere".
 // 2)
-// Uses exactly the same alorithm and logic to get the cache dir and cache key for closed-source backend compilers.
+// Uses exactly the same alorithm and logic as the closed-source backend to
+// get the cache dir and cache key for closed-source backend compilers.
 // 3)
 // Caches both the backend compilation cache and the aforementioned cache dir/key in the EP context node.
 // 4)
 // Is tightly coupled with VitisAI EP.
 // 5)
-// Creates and dumps the EP context model in `GetCapability()`.
+// Creates and dumps the EP context model at the end of `GetCapability()`.
 // 6)
-// Does not (should not) implement/override `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model by itself.
+// Does not (and even should not) implement/override `IExecutionProvider::GetEpContextNodes()`,
+// so dumps the EP context model by itself.
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
@@ -421,13 +424,14 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
 // 1)
 // Can achieve "compile once, run everywhere".
 // 2)
-// Uses exactly the same alorithm and logic to get the cache dir and cache key for closed-source backend compilers.
+// Uses exactly the same alorithm and logic as the closed-source backend to
+// get the cache dir and cache key for closed-source backend compilers.
 // 3)
 // Caches both the backend compilation cache and the aforementioned cache dir/key in the EP context node.
 // 4)
 // Is tightly coupled with VitisAI EP.
 // 5)
-// Creates the EP context model in `Compile()` instead of `GetCapability()`.
+// Creates the EP context model at the end of `Compile()` instead of `GetCapability()`.
 // 6)
 // Implements/overrides `IExecutionProvider::GetEpContextNodes()`, so dumps the EP context model
 // in `CreateEpContextModel()` in the file "graph_partitioner.cc"
