@@ -519,8 +519,8 @@ void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::s
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
-  cache_dir = j_obj["backend_cache_dir"];
-  cache_key = j_obj["backend_cache_key"];
+  cache_dir = j_obj["backend_cache_dir"].get<std::string>();
+  cache_key = j_obj["backend_cache_key"].get<std::string>();
   if (cache_dir.empty()) {
     LOGS_DEFAULT(WARNING) << "Retrieved backend cache dir empty";
   }
@@ -536,7 +536,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
 
-  const auto& orig_model_path = j_obj["orig_model_path"];
+  const auto& orig_model_path = j_obj["orig_model_path"].get<std::string>();
   bool model_loaded = false;
   auto p_model_proto = ONNX_NAMESPACE::ModelProto::Create();
   if (!orig_model_path.empty() && fs::exists(orig_model_path) && fs::is_regular_file(orig_model_path)) {
@@ -545,7 +545,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
     LOGS_DEFAULT(VERBOSE) << "Done loading model proto from file";
   }
   if (!model_loaded) {
-    p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"]);
+    p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"].get<std::string>());
     LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
     if (p_model_proto->opset_import_size() == 0) {
       LOGS_DEFAULT(VERBOSE) << "Recoverying ModelProto.opset_import";
@@ -565,7 +565,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   auto p_model = Model::Create(std::move(*p_model_proto), orig_model_path, nullptr, logger);
   LOGS_DEFAULT(VERBOSE) << "Done creating model from model proto";
   auto& graph = p_model->MainGraph();
-  graph.ToGraphProto()->set_name(j_obj["orig_graph_name"]);
+  graph.ToGraphProto()->set_name(j_obj["orig_graph_name"].get<std::string>());
 
   return graph.CreateGraphViewer();
 }
