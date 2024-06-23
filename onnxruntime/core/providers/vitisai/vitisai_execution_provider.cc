@@ -71,8 +71,8 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
 
-#if 1
-// Only uncomment this method for the "Approach 3" mentioned below.
+#if 0
+// ONLY uncomment this method for the "Approach 3" mentioned below.
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
 // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {

@@ -647,10 +647,10 @@ bool GetEPContextModelFileLocation(
       // 2) No need to follow `CreateEpContextModel()` in the file "graph_partitioner.cc",
       // freely implement what the default path is like.
       // 3) Model dump is required.
-#if 1
+#if 0
       ep_ctx_model_file_loc = model_path_str + ToPathString("_ctx.onnx");
 #endif
-#if 0
+#if 1
       fs::path model_fs_path(model_path_str);
       fs::path ep_ctx_model_fs_path(model_fs_path.parent_path() / model_fs_path.stem());
       ep_ctx_model_fs_path += fs::path("_ctx.onnx");
