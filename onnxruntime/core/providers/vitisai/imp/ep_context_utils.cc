@@ -562,7 +562,7 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
     }
   }
   auto& logger = logging::LoggingManager::DefaultLogger();
-  auto p_model = Model::Create(std::move(*p_model_proto), orig_model_path, nullptr, logger);
+  auto p_model = Model::Create(std::move(*p_model_proto), ToPathString(orig_model_path), nullptr, logger);
   LOGS_DEFAULT(VERBOSE) << "Done creating model from model proto";
   auto& graph = p_model->MainGraph();
   graph.ToGraphProto()->set_name(j_obj["orig_graph_name"].get<std::string>());
