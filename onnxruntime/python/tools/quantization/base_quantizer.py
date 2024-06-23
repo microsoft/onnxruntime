@@ -9,6 +9,7 @@ from typing import Any, Dict
 import numpy as np
 import onnx
 import onnx.numpy_helper
+import warnings
 
 try:
     from onnx.reference.op_run import to_array_extended
@@ -230,7 +231,14 @@ class BaseQuantizer:
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
 
-            quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('error')
+                    quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+            except RuntimeWarning as e:
+                print(f"The bias_scale might be too small to quantize bias {bias_name} in\
+                      {onnx.helper.tensor_dtype_to_string(self.weight_qType)}.")
+                quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
