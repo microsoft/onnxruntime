@@ -228,7 +228,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   LOGS_DEFAULT(VERBOSE) << "EP context model created";
 }
 
-#if 1
+#if 0
 // Approach 1 for making an EP context model:
 // 1)
 // Directly serializes and caches the list of compute capabilities.
@@ -326,7 +326,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
 }
 #endif
 
-#if 0
+#if 1
 // Approach 2 for making an EP context model:
 // 1)
 // Can achieve "compile once, run everywhere".
