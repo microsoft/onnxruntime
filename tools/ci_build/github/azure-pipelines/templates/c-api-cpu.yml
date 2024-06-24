@@ -90,7 +90,7 @@ stages:
 
     - template: use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3
 
     - template: download-deps.yml
 
