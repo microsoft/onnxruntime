@@ -3,6 +3,7 @@
 #include "mlasi.h"
 
 void
+MLASCALL
 MlasFlashAttentionThreaded(
     std::ptrdiff_t thread_id,
     const MlasFlashAttentionThreadedArgs* args
