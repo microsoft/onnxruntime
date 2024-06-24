@@ -29,11 +29,11 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✓ | ✓ | |
 | Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✗ | ✓ | |
 | Exp | ai.onnx(7-12, 13+) | exp | ✓ | ✓ | |
-| Expand | ai.onnx(8-12, 13+) | expand | ✗ | ✓ | 'shape' input should be a constant |
+| Expand | ai.onnx(8-12, 13+) | expand | ✓ | ✓ | 'shape' input should be a constant |
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Floor | ai.onnx(7-12, 13+) | floor | ✓ | ✓ | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | ✓ | ✓ | |
-| Gelu | ai.onnx(20+) | gelu | ✗ | ✓ | |
+| Gelu | ai.onnx(20+) | gelu | ✓ | ✓ | |
 | Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | ✓ | ✓ | Only supports 1-D 'C' input |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | ✓ | ✓ | Only supports 4-D input |
 | GlobalMaxPool | ai.onnx(7+) | maxPool2d | ✓ | ✓ | Only supports 4-D input |
@@ -60,7 +60,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | ✓ | ✓ | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | ✓ | ✓ | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | ✓ | ✓ | WebNN CPU backend restricts the last dimension of input and slope to be same (Chromium issue: https://issues.chromium.org/issues/335517470) |
-| Reciprocal | ai.onnx(7-12, 13+) | reciprocal | ✗ | ✓ | |
+| Reciprocal | ai.onnx(7-12, 13+) | reciprocal | ✓ | ✓ | |
 | ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | ✗ | ✓ | Input 'axes' if present should be a constant |
 | ReduceL2 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL2 | ✗ | ✓ | Input 'axes' if present should be a constant |
 | ReduceLogSum| ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSum| ✗ | ✓ | Input 'axes' if present should be a constant |
@@ -77,7 +77,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
-| Softsign | ai.onnx(7+) | softsign | ✗ | ✓ | |
+| Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✓ | ✓ | |
 | Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value 1 |
 | Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | |
