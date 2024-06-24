@@ -1,6 +1,6 @@
 coloredlogs
 flatbuffers
-numpy >= 1.19.0
+numpy >= 1.21.6
 packaging
 protobuf
 sympy
