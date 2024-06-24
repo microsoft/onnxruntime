@@ -25,7 +25,7 @@ PACKAGE_LIST="autotools-dev \
 	automake \
 	build-essential \
 	git apt-transport-https apt-utils \
-	ca-certificates \
+	ca-certificates ca-certificates-java\
 	pkg-config \
 	wget \
 	zlib1g \
@@ -50,7 +50,7 @@ PACKAGE_LIST="autotools-dev \
 	zip \
 	rsync libunwind8 libpng-dev libexpat1-dev \
 	python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest \
-	openjdk-17-jdk \
+	openjdk-11-jdk \
 	graphviz"
 
 
