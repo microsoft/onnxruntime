@@ -41,7 +41,7 @@ stages:
 
   - job: Build_Ios_Pod_For_React_Native
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
 
     timeoutInMinutes: 90
 
