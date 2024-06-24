@@ -68,9 +68,9 @@ stages:
         versionSpec: $(pythonVersion)
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 11
+      displayName: Use jdk 17
       inputs:
-        versionSpec: '11'
+        versionSpec: '17'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
@@ -152,9 +152,9 @@ stages:
         versionSpec: $(pythonVersion)
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 11
+      displayName: Use jdk 17
       inputs:
-        versionSpec: '11'
+        versionSpec: '17'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
@@ -247,9 +247,9 @@ stages:
           versionSpec: $(pythonVersion)
 
       - task: JavaToolInstaller@0
-        displayName: Use jdk 11
+        displayName: Use jdk 17
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
@@ -310,9 +310,9 @@ stages:
           versionSpec: $(pythonVersion)
 
       - task: JavaToolInstaller@0
-        displayName: Use jdk 11
+        displayName: Use jdk 17
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
@@ -376,9 +376,9 @@ stages:
           versionSpec: $(pythonVersion)
 
       - task: JavaToolInstaller@0
-        displayName: Use jdk 11
+        displayName: Use jdk 17
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
