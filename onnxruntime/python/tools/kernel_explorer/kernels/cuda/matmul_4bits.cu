@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This file serve as a simple example for adding a tunable op to onnxruntime.
-
 #include <cuda_runtime_api.h>
 #include <cuda_fp16.h>
 #include <pybind11/pybind11.h>
@@ -10,8 +8,8 @@
 #include <string>
 
 #include "core/providers/cuda/tunable/cuda_tunable.h"
+#include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-#include "python/tools/kernel_explorer/kernels/vector_add_kernel.cuh"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 namespace py = pybind11;

@@ -113,6 +113,39 @@ struct GroupQueryAttentionParameters {
   int* zero_ptr;
 };
 
+// Parameters for sparse attention.
+struct SparseAttentionParameters {
+  int batch_size;                  // batch size
+  int sequence_length;             // sequence length of input query, key, value
+  int hidden_size;                 // hidden size of query
+  int num_heads;                   // number of heads of query
+  int head_size;                   // hidden size per head of query, key or value
+  int kv_hidden_size;              // hidden size of key or value
+  int kv_num_heads;                // number of heads of key or value
+  bool do_rotary;                  // whether to use rotary embedding
+  bool rotary_interleaved;         // whether to use interleaved rotary embedding
+  int rotary_dim;                  // rotary embedding dimension
+  int sparse_block_size;           // block size for sparse attention
+  int num_sparse_layout;           // number of sparse layout
+  int stride_col_indices;          // shape of block_col_indices is [num_sparse_layout, stride_col_indices]
+  int stride_row_indices;          // shape of block_row_indices is [num_sparse_layout, stride_row_indices]
+  float scale;                     // scaling factor applied prior to softmax
+  bool is_packed_qkv;              // whether qkv is packed
+  int total_sequence_length;       // maximum total sequence length (past_sequence_length + sequence_length) among keys
+  int max_sequence_length;         // max sequence length for sparse layout
+  int max_rotary_sequence_length;  // max sequence length for rotary cos/sin cache
+  int max_cache_sequence_length;   // max sequence length for kv cache buffer
+  bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value
+};
+
+constexpr bool LAYOUT_BSNH = false;
+constexpr bool LAYOUT_BNSH = true;
+
+namespace sparse_attention {
+// Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).
+constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_V1";
+}  // namespace sparse_attention
+
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";

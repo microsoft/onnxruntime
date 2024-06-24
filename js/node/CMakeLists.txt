@@ -37,6 +37,7 @@ option(USE_DML "Build with DirectML support" OFF)
 option(USE_CUDA "Build with CUDA support" OFF)
 option(USE_TENSORRT "Build with TensorRT support" OFF)
 option(USE_COREML "Build with CoreML support" OFF)
+option(USE_QNN "Build with QNN support" OFF)
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)
@@ -49,6 +50,9 @@ if(USE_TENSORRT)
 endif()
 if(USE_COREML)
   add_compile_definitions(USE_COREML=1)
+endif()
+if(USE_QNN)
+  add_compile_definitions(USE_QNN=1)
 endif()
 
 # source files

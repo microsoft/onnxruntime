@@ -294,6 +294,45 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                    _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* file_names,
+                    _In_reads_(num_external_initializer_files) char* const* buffer_array,
+                    _In_reads_(num_external_initializer_files) const size_t* file_lengths,
+                    size_t num_external_initializer_files) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<onnxruntime::PathString> names;
+  onnxruntime::InlinedVector<std::pair<char*, const size_t>> buffers;
+  onnxruntime::InlinedVector<size_t> lengths;
+  names.reserve(num_external_initializer_files);
+  buffers.reserve(num_external_initializer_files);
+  lengths.reserve(num_external_initializer_files);
+  for (size_t i = 0; i < num_external_initializer_files; ++i) {
+    if (file_names[i] == nullptr || buffer_array[i] == nullptr) {
+      auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+    }
+    names.emplace_back(file_names[i]);
+    buffers.emplace_back(std::make_pair(buffer_array[i], file_lengths[i]));
+  }
+
+  auto st = options->value.AddExternalInitializersFromFilesInMemory(names, buffers);
+  if (!st.IsOK()) {
+    return onnxruntime::ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(file_names);
+  ORT_UNUSED_PARAMETER(buffer_array);
+  ORT_UNUSED_PARAMETER(file_lengths);
+  ORT_UNUSED_PARAMETER(num_external_initializer_files);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "AddExternalInitializersFromFilesInMemory is not supported in this build");
+#endif
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;

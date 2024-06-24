@@ -14,10 +14,16 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kJsExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedFloatTypes())
-        .TypeConstraint("U", JsepSupportedFloatTypes()),
-    SkipLayerNorm);
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    SkipLayerNorm<false>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SkipSimplifiedLayerNormalization,
+    kMSDomain,
+    1,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", JsepSupportedFloatTypes()),
+    SkipLayerNorm<true>);
 
 }  // namespace js
 }  // namespace contrib

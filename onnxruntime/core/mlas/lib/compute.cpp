@@ -850,7 +850,23 @@ Return Value:
     const float* Input = WorkBlock->Input + n * D;
     float* Output = WorkBlock->Output + n * D;
 
+#if defined(MLAS_SSE2_INTRINSICS)
+    // TODO: Use std::hardware_constructive_interference_size
+    constexpr size_t CacheLineSize = 64;
+    constexpr size_t ElementsPerCacheLine = CacheLineSize / sizeof(float);
+#endif
+
     while (CountN > 0) {
+
+#if defined(MLAS_SSE2_INTRINSICS)
+        //
+        // Prefetch the next row of the input buffer.
+        //
+
+        for (size_t i = 0; i * ElementsPerCacheLine < D; i++) {
+            _mm_prefetch((char*)(Input + D) + i * CacheLineSize, _MM_HINT_T0);
+        }
+#endif
 
         //
         // Find the maximum value for the row.

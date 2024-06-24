@@ -239,7 +239,8 @@ def run_check_with_model(
             "on what is supported in the pre-built package."
         )
         logger.info(
-            "A custom build of ONNX Runtime will be required to run the model. Please see "
+            "The 'full' ORT package for Android (onnxruntime-android) or iOS (onnxruntime-{objc|c}) could be used, "
+            "or a custom build of ONNX Runtime will be required if binary size is critical. Please see "
             "https://onnxruntime.ai/docs/build/custom.html for details on performing that."
         )
     else:

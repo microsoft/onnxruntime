@@ -30,7 +30,7 @@
 #include "contrib_ops/cpu/transformers/beam_search.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"

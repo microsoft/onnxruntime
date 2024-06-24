@@ -6,7 +6,7 @@
 namespace Dml
 {
 
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
 
 class DmlOperatorCol2Im : public DmlOperator, public Col2ImHelper
 {
@@ -58,6 +58,6 @@ public:
 
 DML_OP_DEFINE_CREATION_FUNCTION(Col2Im, DmlOperatorCol2Im);
 
-#endif // DML_TARGET_VERSION >= 0x6300
+#endif // DML_TARGET_VERSION >= 0x6400
 
 }  // namespace Dml

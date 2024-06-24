@@ -7,7 +7,6 @@ import copy
 import itertools
 from typing import Dict, List, Set
 
-import numpy as np
 import onnx
 import sympy
 from onnx import GraphProto, ModelProto, NodeProto, TensorProto, helper
@@ -16,7 +15,7 @@ from ._common import SymbolicDSU, TensorInfo, TypeAndShapeInfer
 from ._decompose import DecomposeDispatch
 from ._op_config import is_elementwise_node
 from ._sympy_utils import parse_shape
-from ._utils import get_attribute, to_numpy_array, topological_sort
+from ._utils import get_attribute, to_torch_tensor, topological_sort
 
 
 class SortedGraph:
@@ -58,7 +57,7 @@ class SortedGraph:
         for initializer in self._graph.initializer:
             self._node_arg_infos[initializer.name] = TensorInfo(
                 initializer.data_type,
-                parse_shape(list(to_numpy_array(initializer).shape)),
+                parse_shape(list(initializer.dims)),
             )
 
         # Decompose complex operators.
@@ -97,13 +96,13 @@ class SortedGraph:
 
         constants = []
         for idx, initializer in enumerate(self._sorted_initializers):
-            data_str = np.array2string(to_numpy_array(initializer), separator=",").replace("\n", "").replace(" ", "")
+            data_str = str(to_torch_tensor(initializer).tolist()).replace("\n", "").replace(" ", "")
             constants.append(f"({initializer.data_type},{data_str})")
             name_map[initializer.name] = f"c{idx}"
 
         for idx, node in enumerate(self._const_nodes):
             value_attr = get_attribute(node, "value")
-            data_str = np.array2string(to_numpy_array(value_attr), separator=",").replace("\n", "").replace(" ", "")
+            data_str = str(to_torch_tensor(value_attr).tolist()).replace("\n", "").replace(" ", "")
             constants.append(f"({value_attr.data_type},{data_str})")
             name_map[node.output[0]] = f"c{idx + len(self._sorted_initializers)}"
         constants_str = ",".join(constants)
@@ -181,7 +180,7 @@ class SortedGraph:
                 value_attr = get_attribute(node, "value")
                 self._node_arg_infos[node.output[0]] = TensorInfo(
                     value_attr.data_type,
-                    parse_shape(list(to_numpy_array(value_attr).shape)),
+                    parse_shape(list(value_attr.dims)),
                 )
             else:
                 input_infos = []

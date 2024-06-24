@@ -10,12 +10,16 @@ class Attribute(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsAttribute(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = Attribute()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsAttribute(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def AttributeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -212,23 +216,122 @@ class Attribute(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
         return o == 0
 
-def AttributeStart(builder): builder.StartObject(13)
-def AttributeAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-def AttributeAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
-def AttributeAddType(builder, type): builder.PrependInt32Slot(2, type, 0)
-def AttributeAddF(builder, f): builder.PrependFloat32Slot(3, f, 0.0)
-def AttributeAddI(builder, i): builder.PrependInt64Slot(4, i, 0)
-def AttributeAddS(builder, s): builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(s), 0)
-def AttributeAddT(builder, t): builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(t), 0)
-def AttributeAddG(builder, g): builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(g), 0)
-def AttributeAddFloats(builder, floats): builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(floats), 0)
-def AttributeStartFloatsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def AttributeAddInts(builder, ints): builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(ints), 0)
-def AttributeStartIntsVector(builder, numElems): return builder.StartVector(8, numElems, 8)
-def AttributeAddStrings(builder, strings): builder.PrependUOffsetTRelativeSlot(10, flatbuffers.number_types.UOffsetTFlags.py_type(strings), 0)
-def AttributeStartStringsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def AttributeAddTensors(builder, tensors): builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(tensors), 0)
-def AttributeStartTensorsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def AttributeAddGraphs(builder, graphs): builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(graphs), 0)
-def AttributeStartGraphsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def AttributeEnd(builder): return builder.EndObject()
+def AttributeStart(builder):
+    builder.StartObject(13)
+
+def Start(builder):
+    AttributeStart(builder)
+
+def AttributeAddName(builder, name):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+
+def AddName(builder, name):
+    AttributeAddName(builder, name)
+
+def AttributeAddDocString(builder, docString):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
+
+def AddDocString(builder, docString):
+    AttributeAddDocString(builder, docString)
+
+def AttributeAddType(builder, type):
+    builder.PrependInt32Slot(2, type, 0)
+
+def AddType(builder, type):
+    AttributeAddType(builder, type)
+
+def AttributeAddF(builder, f):
+    builder.PrependFloat32Slot(3, f, 0.0)
+
+def AddF(builder, f):
+    AttributeAddF(builder, f)
+
+def AttributeAddI(builder, i):
+    builder.PrependInt64Slot(4, i, 0)
+
+def AddI(builder, i):
+    AttributeAddI(builder, i)
+
+def AttributeAddS(builder, s):
+    builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(s), 0)
+
+def AddS(builder, s):
+    AttributeAddS(builder, s)
+
+def AttributeAddT(builder, t):
+    builder.PrependUOffsetTRelativeSlot(6, flatbuffers.number_types.UOffsetTFlags.py_type(t), 0)
+
+def AddT(builder, t):
+    AttributeAddT(builder, t)
+
+def AttributeAddG(builder, g):
+    builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(g), 0)
+
+def AddG(builder, g):
+    AttributeAddG(builder, g)
+
+def AttributeAddFloats(builder, floats):
+    builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(floats), 0)
+
+def AddFloats(builder, floats):
+    AttributeAddFloats(builder, floats)
+
+def AttributeStartFloatsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartFloatsVector(builder, numElems: int) -> int:
+    return AttributeStartFloatsVector(builder, numElems)
+
+def AttributeAddInts(builder, ints):
+    builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(ints), 0)
+
+def AddInts(builder, ints):
+    AttributeAddInts(builder, ints)
+
+def AttributeStartIntsVector(builder, numElems):
+    return builder.StartVector(8, numElems, 8)
+
+def StartIntsVector(builder, numElems: int) -> int:
+    return AttributeStartIntsVector(builder, numElems)
+
+def AttributeAddStrings(builder, strings):
+    builder.PrependUOffsetTRelativeSlot(10, flatbuffers.number_types.UOffsetTFlags.py_type(strings), 0)
+
+def AddStrings(builder, strings):
+    AttributeAddStrings(builder, strings)
+
+def AttributeStartStringsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartStringsVector(builder, numElems: int) -> int:
+    return AttributeStartStringsVector(builder, numElems)
+
+def AttributeAddTensors(builder, tensors):
+    builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(tensors), 0)
+
+def AddTensors(builder, tensors):
+    AttributeAddTensors(builder, tensors)
+
+def AttributeStartTensorsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartTensorsVector(builder, numElems: int) -> int:
+    return AttributeStartTensorsVector(builder, numElems)
+
+def AttributeAddGraphs(builder, graphs):
+    builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(graphs), 0)
+
+def AddGraphs(builder, graphs):
+    AttributeAddGraphs(builder, graphs)
+
+def AttributeStartGraphsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartGraphsVector(builder, numElems: int) -> int:
+    return AttributeStartGraphsVector(builder, numElems)
+
+def AttributeEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return AttributeEnd(builder)

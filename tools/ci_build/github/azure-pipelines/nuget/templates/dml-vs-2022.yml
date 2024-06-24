@@ -24,9 +24,9 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: []
+  dependsOn: Setup
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
     strategy:
       maxParallel: 2
@@ -47,6 +47,8 @@ stages:
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
 
@@ -226,15 +228,14 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
-          - task: PublishSymbols@2
-            displayName: 'Publish Build Symbols'
-            inputs:
-              symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-              searchPattern: '**/*.pdb'
-              symbolServerType: teamServices
-
-
+        - task: PublishSymbols@2
+          displayName: 'Publish Build Symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            SearchPattern: 'onnxruntime.pdb'
+            SymbolServerType: teamServices
+            SymbolExpirationInDays: 365
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:

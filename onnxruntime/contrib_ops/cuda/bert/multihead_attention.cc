@@ -166,7 +166,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = num_splits;
+    parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
@@ -235,17 +235,16 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
-  bool use_memory_efficient_attention = !use_flash_attention &&
-                                        fused_runner == nullptr &&
-                                        fused_cross_attention_kernel == nullptr &&
-                                        !disable_memory_efficient_attention_ &&
-                                        (parameters.head_size & 7) == 0 &&
-                                        (parameters.v_head_size & 7) == 0 &&
-                                        is_long_sequence &&
-                                        !past_no_bias &&
-                                        (relative_position_bias == nullptr || is_good_for_rpb) &&
-                                        (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
-                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
+  bool use_memory_efficient_attention =
+      !use_flash_attention &&
+      fused_runner == nullptr &&
+      fused_cross_attention_kernel == nullptr &&
+      !disable_memory_efficient_attention_ &&
+      is_long_sequence &&
+      !past_no_bias &&
+      (relative_position_bias == nullptr || is_good_for_rpb) &&
+      (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
+      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif

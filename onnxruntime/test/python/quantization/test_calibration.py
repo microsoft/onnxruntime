@@ -275,7 +275,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-    def construct_test_compute_data_model(self, test_model_path):
+    def construct_test_compute_data_model(self, test_model_path, opset_version=13):
         #    (input)
         #       |
         #      Relu
@@ -320,7 +320,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         graph.initializer.add().CopyFrom(b3)
         graph.initializer.add().CopyFrom(w5)
         graph.initializer.add().CopyFrom(b5)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset_version)])
         onnx.save(model, test_model_path)
 
     def test_compute_data(self):
@@ -455,6 +455,42 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
+
+    def test_compute_data_per_channel(self):
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_6.onnx")
+        self.construct_test_compute_data_model(test_model_path.as_posix(), opset_version=18)
+
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_6.onnx")
+        calibrater = create_calibrator(
+            test_model_path, augmented_model_path=augmented_model_path.as_posix(), extra_options={"per_channel": True}
+        )
+        data_reader = TestDataReader()
+        calibrater.collect_data(data_reader)
+        tensors_range = calibrater.compute_data()
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        infer_session = onnxruntime.InferenceSession(
+            test_model_path.as_posix(),
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+        data_reader.rewind()
+        rmin = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf], dtype=np.float32)[:, np.newaxis]
+        rmax = -1.0 * rmin
+        while True:
+            input = data_reader.get_next()
+            if not input:
+                break
+            output = np.asarray(infer_session.run(None, input)).reshape((6, 3, -1))
+            rmin = np.minimum(rmin, np.amin(output, axis=-1))
+            rmax = np.maximum(rmax, np.amax(output, axis=-1))
+
+        min_max_pairs = list(zip(rmin, rmax))
+        output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
+        output_min_max_dict = dict(zip(output_names, min_max_pairs))
+        for output_name in output_min_max_dict:
+            np.testing.assert_equal(output_min_max_dict[output_name], tensors_range[output_name].range_value)
 
 
 if __name__ == "__main__":

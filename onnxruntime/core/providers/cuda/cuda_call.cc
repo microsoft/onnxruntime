@@ -103,7 +103,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
       if (gethostname(hostname, HOST_NAME_MAX) != 0)
         strcpy(hostname, "?");
 #endif
-      int currentCudaDevice;
+      int currentCudaDevice = -1;
       cudaGetDevice(&currentCudaDevice);
       cudaGetLastError();  // clear last CUDA error
       static char str[1024];

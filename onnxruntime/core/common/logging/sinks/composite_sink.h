@@ -23,7 +23,17 @@ class CompositeSink : public ISink {
   /// Initializes a new instance of the <see cref="CompositeSink"/> class.
   /// Use AddSink to add sinks.
   /// </summary>
-  CompositeSink() {}
+  CompositeSink() : ISink(SinkType::CompositeSink) {}
+
+  /// <summary>
+  /// Check if the composite sink contains a sink of the specified type.
+  /// </summary>
+  bool HasType(SinkType sink_type) const {
+    return std::any_of(sinks_with_severity_.begin(), sinks_with_severity_.end(),
+                       [&](const auto& sink_pair) {
+                         return sink_pair.first->GetType() == sink_type;
+                       });
+  }
 
   /// <summary>
   /// Adds a sink. Takes ownership of the sink (so pass unique_ptr by value).
@@ -37,11 +47,48 @@ class CompositeSink : public ISink {
   }
 
   /// <summary>
-  /// Gets a const reference to the collection of sinks and min severity for that sink
+  /// Remove a sink of the specified type.
   /// </summary>
-  /// <returns>A const reference to the vector pair of unique_ptr to ISink and severity.</returns>
-  const std::vector<std::pair<std::unique_ptr<ISink>, logging::Severity>>& GetSinks() const {
-    return sinks_with_severity_;
+  /// <param name="sink_type">Sink type to remove</param>
+  /// <returns>Minimum severity of the remaining sinks</returns>
+  logging::Severity RemoveSink(SinkType sink_type) {
+    logging::Severity severity = Severity::kFATAL;  // default if we end up with no sinks
+
+    // find entries to remove and the minimum severity of the remaining sinks
+    auto entries_to_remove = std::remove_if(sinks_with_severity_.begin(), sinks_with_severity_.end(),
+                                            [&](const auto& entry) {
+                                              if (entry.first->GetType() == sink_type) {
+                                                return true;
+                                              } else {
+                                                severity = std::min(severity, entry.second);
+                                                return false;
+                                              }
+                                            });
+
+    sinks_with_severity_.erase(entries_to_remove, sinks_with_severity_.end());
+
+    return severity;
+  }
+
+  /// <summary>
+  /// Check if there's only one sink left
+  /// </summary>
+  /// <returns> True if only 1 sink remaining </returns>
+  bool HasOnlyOneSink() const {
+    return sinks_with_severity_.size() == 1;
+  }
+
+  /// <summary>
+  /// If one sink is remaining then returns it and empties the composite sink
+  /// </summary>
+  /// <returns> If one sink remains then returns the sink, otherwise nullptr </returns>
+  std::unique_ptr<ISink> GetRemoveSingleSink() {
+    if (HasOnlyOneSink()) {
+      auto single_sink = std::move(sinks_with_severity_.begin()->first);
+      sinks_with_severity_.clear();
+      return single_sink;
+    }
+    return nullptr;
   }
 
  private:

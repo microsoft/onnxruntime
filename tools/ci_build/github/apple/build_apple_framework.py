@@ -187,7 +187,7 @@ def parse_args():
         os.path.basename(__file__),
         description="""Create iOS framework and podspec for one or more osx_archs (xcframework)
         and building properties specified in the given build config file, see
-        tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json for details.
+        tools/ci_build/github/apple/default_full_apple_framework_build_settings.json for details.
         The output of the final xcframework and podspec can be found under [build_dir]/framework_out.
         Please note, this building script will only work on macOS.
         """,

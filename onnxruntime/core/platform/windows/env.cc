@@ -110,11 +110,10 @@ class WindowsThread : public EnvThread {
                                       local_param.get(), 0,
                                       &threadID);
       if (th_handle == 0) {
-        auto err = errno;
         auto dos_error = _doserrno;
-        char message_buf[256];
-        strerror_s(message_buf, sizeof(message_buf), err);
-        ORT_THROW("WindowThread:_beginthreadex failed with message: ", message_buf, " doserrno: ", dos_error);
+        auto [err, msg] = GetErrnoInfo();
+        ORT_THROW("WindowThread:_beginthreadex failed with errno:", err, " message:", msg,
+                  " doserrno:", dos_error);
       }
       local_param.release();
       hThread.reset(reinterpret_cast<HANDLE>(th_handle));

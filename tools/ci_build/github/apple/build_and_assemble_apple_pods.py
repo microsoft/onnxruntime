@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument(
         "--variant",
         choices=PackageVariant.release_variant_names(),
-        default=PackageVariant.Mobile.name,
+        default=PackageVariant.Full.name,
         help="Pod package variant.",
     )
 

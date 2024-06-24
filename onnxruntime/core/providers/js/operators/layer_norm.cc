@@ -16,7 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedFloatTypes())
         .TypeConstraint("U", JsepSupportedFloatTypes()),
-    LayerNorm);
+    LayerNorm<false>);
 
 }  // namespace js
 }  // namespace onnxruntime

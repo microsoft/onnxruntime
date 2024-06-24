@@ -1,0 +1,46 @@
+parameters:
+  IsReleaseBuild: false
+  PreReleaseVersionSuffixString: 'none'
+  PreReleaseVersionSuffixNumber: 0
+stages:
+- stage: Setup
+  jobs:
+  - job: Set_Variables
+    pool:
+      name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    steps:
+    - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+    - bash: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
+        if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
+          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          fi
+        else
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
+        fi
+      name: Set_Release_Version_Suffix
+    - script: |
+        # Extracting hours and minutes
+        date=$(date +'%Y%m%d')
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildDate;isOutput=true]$date"
+      displayName: 'Set Start Date as Variable'
+      name: Set_Build_Date
+
+    - script: |
+        # Extracting hours and minutes
+        hhmm=$(date +'%H%M')
+        # Set the hhmm value as a pipeline variable
+        echo "##vso[task.setvariable variable=BuildTime;isOutput=true]$hhmm"
+      displayName: 'Set Start Time as Variable'
+      name: Set_Build_Time
+    - template: ../templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'

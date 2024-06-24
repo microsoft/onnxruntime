@@ -36,7 +36,8 @@ using GetConstantInitializerFn = std::function<const ONNX_NAMESPACE::TensorProto
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path);
+    const Path& model_path,
+    bool check_op_type = true);
 
 // Check if a DQ -> Q sequence represents a conversion in quantization data type.
 // Example of uint8 to uint16:

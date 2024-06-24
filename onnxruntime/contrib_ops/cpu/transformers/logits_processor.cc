@@ -8,7 +8,7 @@
 #include "core/common/span_utils.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include <vector>
 #include <numeric>
 #include <algorithm>

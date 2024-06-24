@@ -11,12 +11,16 @@ class DeprecatedSessionState(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsDeprecatedSessionState(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = DeprecatedSessionState()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsDeprecatedSessionState(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def DeprecatedSessionStateBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -61,8 +65,32 @@ class DeprecatedSessionState(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
-def DeprecatedSessionStateStart(builder): builder.StartObject(2)
-def DeprecatedSessionStateAddKernels(builder, kernels): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(kernels), 0)
-def DeprecatedSessionStateAddSubGraphSessionStates(builder, subGraphSessionStates): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(subGraphSessionStates), 0)
-def DeprecatedSessionStateStartSubGraphSessionStatesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def DeprecatedSessionStateEnd(builder): return builder.EndObject()
+def DeprecatedSessionStateStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    DeprecatedSessionStateStart(builder)
+
+def DeprecatedSessionStateAddKernels(builder, kernels):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(kernels), 0)
+
+def AddKernels(builder, kernels):
+    DeprecatedSessionStateAddKernels(builder, kernels)
+
+def DeprecatedSessionStateAddSubGraphSessionStates(builder, subGraphSessionStates):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(subGraphSessionStates), 0)
+
+def AddSubGraphSessionStates(builder, subGraphSessionStates):
+    DeprecatedSessionStateAddSubGraphSessionStates(builder, subGraphSessionStates)
+
+def DeprecatedSessionStateStartSubGraphSessionStatesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartSubGraphSessionStatesVector(builder, numElems: int) -> int:
+    return DeprecatedSessionStateStartSubGraphSessionStatesVector(builder, numElems)
+
+def DeprecatedSessionStateEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return DeprecatedSessionStateEnd(builder)

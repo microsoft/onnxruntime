@@ -208,8 +208,6 @@ def _combine_input_buffers_initializers(
     _expand_inputs(kwargs, flattened_kwargs_inputs)
     buffer_names_dict = None
     result = []
-    embed_sparsity_results = OrderedDict()
-    label_sparsity_results = OrderedDict()
     onnx_input_to_value_map = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
@@ -245,14 +243,7 @@ def _combine_input_buffers_initializers(
             if PrimitiveType.is_primitive_type(inp):
                 inp = PrimitiveType.get_tensor(inp, device)
 
-            found, embedding_density, label_density = rt_inspector.inspect_input(name, inp)
-            if found:
-                if embedding_density < 100:
-                    embed_sparsity_results[name] = embedding_density
-                if label_density < 100:
-                    label_sparsity_results[name] = label_density
             result.append(inp)
-
             onnx_input_to_value_map[name] = inp
         else:
             raise wrap_exception(
@@ -271,7 +262,7 @@ def _combine_input_buffers_initializers(
         rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
         rt_inspector.memory_ob.symbolic_dim_collecting_completed = True
 
-    return result, embed_sparsity_results, label_sparsity_results
+    return result
 
 
 def deepcopy_model_input(

@@ -6,7 +6,7 @@ stages:
   - Nodejs_Packaging
   condition: succeeded()
   jobs:
-  - job:
+  - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
     workspace:
       clean: all
     timeoutInMinutes:  120

@@ -84,7 +84,7 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async(env: Env, epName: string): Promise<void> => {
-  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+  if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
 
@@ -118,11 +118,6 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
             typeof adapter.requestDevice !== 'function') {
           throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
         }
-      }
-
-      if (!env.wasm.simd) {
-        throw new Error(
-            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
       }
 
       await initJsep('webgpu', getInstance(), env, adapter);
@@ -287,7 +282,7 @@ export const createSession = async(
       const nameString = wasm.UTF8ToString(name);
       outputNames.push(nameString);
 
-      if (!BUILD_DEFS.DISABLE_WEBGPU) {
+      if (!BUILD_DEFS.DISABLE_JSEP) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
           outputPreferredLocations.push('gpu-buffer');
           continue;
@@ -308,7 +303,7 @@ export const createSession = async(
 
     // use IO binding only when at least one output is preffered to be on GPU.
     let bindingState: IOBindingState|null = null;
-    if (!BUILD_DEFS.DISABLE_WEBGPU && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
+    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
         checkLastError('Can\'t create IO binding.');
@@ -511,7 +506,7 @@ export const run = async(
       wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
     }
 
-    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState && !inputOutputBound) {
+    if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState && !inputOutputBound) {
       const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
 
       if (inputNamesUTF8Encoded.length !== inputCount) {
@@ -555,7 +550,7 @@ export const run = async(
 
     wasm.jsepOnRunStart?.(sessionHandle);
     let errorCode: number;
-    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
+    if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
           sessionHandle, ioBindingState.handle, outputCount, outputValuesOffset, runOptionsHandle);
     } else {

@@ -249,6 +249,30 @@ void GetCrossAttentionData_HeadSize16_NoBias(AttentionTestData& data) {
   data.fp16_output_data = data.fp32_output_data;
 }
 
+void GetCrossAttentionData_HeadSize8(AttentionTestData& data) {
+  data.hidden_size = 16;
+  data.v_hidden_size = 16;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_NONE;
+
+  LoadTensor("CrossAttention_Batch1_HeadSize8.query_data", data.query_data);
+  LoadTensor("CrossAttention_Batch1_HeadSize8.key_data", data.key_data);
+  LoadTensor("CrossAttention_Batch1_HeadSize8.value_data", data.value_data);
+  LoadTensor("CrossAttention_Batch1_HeadSize8.bias_data", data.bias_data);
+  LoadTensor("CrossAttention_Batch1_HeadSize8.output", data.fp32_output_data);
+  data.fp16_output_data = data.fp32_output_data;
+}
+
+void GetCrossAttentionData_HeadSize8_NoBias(AttentionTestData& data) {
+  GetCrossAttentionData_HeadSize8(data);
+  data.bias_data.clear();
+  LoadTensor("CrossAttention_Batch1_HeadSize8_NoBias.output", data.fp32_output_data);
+  data.fp16_output_data = data.fp32_output_data;
+}
+
 void GetCrossAttentionDataWithPast(AttentionTestData& data) {
   data.hidden_size = 8;
   data.v_hidden_size = 8;

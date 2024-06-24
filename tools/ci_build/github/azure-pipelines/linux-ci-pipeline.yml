@@ -1,3 +1,4 @@
+
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
 trigger:
   branches:
@@ -27,13 +28,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-resources:
-  repositories:
-  - repository: manylinux # The name used to reference this repository in the checkout step
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
 stages:
 - stage: x64
   dependsOn: []
@@ -58,8 +52,8 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuildcentos8x64
 
@@ -305,10 +299,6 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      base_image: 'arm64v8/almalinux:8'
-      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
-      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
-      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
       with_cache: true
       cmake_build_type: Release
 
@@ -319,7 +309,3 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      base_image: 'arm64v8/almalinux:8'
-      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
-      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
-      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'

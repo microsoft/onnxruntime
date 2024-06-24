@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<!-- TODO: 
+<!-- TODO:
 1. Find and replace "OrtTraceLoggingProvider" with your component name.
 2. See TODO below to update GUID for your event provider
 -->
@@ -12,8 +12,11 @@
       <Buffers Value="10" PercentageOfTotalMemory="true"/>
     </EventCollector>
 
-    <EventProvider Id="EventProvider_OrtTraceLoggingProvider"
-      Name="3a26b1ff-7484-7484-7484-15261f42614d" Level="5" />
+    <EventProvider Id="EventProvider_OrtTraceLoggingProvider" Name="3a26b1ff-7484-7484-7484-15261f42614d" Level="5" >
+      <CaptureStateOnSave>
+        <Keyword Value="0x1"/> <!-- Session rundown -->
+      </CaptureStateOnSave>
+    </EventProvider>
     <Profile Id="OrtTraceLoggingProvider.Verbose.File"
       Name="OrtTraceLoggingProvider" Description="OrtTraceLoggingProvider"
       LoggingMode="File" DetailLevel="Verbose">

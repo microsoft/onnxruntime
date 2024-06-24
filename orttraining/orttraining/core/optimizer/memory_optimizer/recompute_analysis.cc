@@ -13,13 +13,15 @@
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "core/common/string_utils.h"
 #include "core/framework/data_types.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
 namespace {
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 50;
+// We don't usually need maximum recompute node count from our existing use cases, so loose the constraints here.
+constexpr size_t MAXIMUM_RECOMPUTE_NODE_COUNT = std::numeric_limits<size_t>::max();
 
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
@@ -252,6 +254,12 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
         {
+            utils::GetFullQualifiedOpName("MemcpyFromHost", kOnnxDomain),
+            {
+                {1, {0}},  // Ignore CPU input.
+            },
+        },
+        {
             utils::GetFullQualifiedOpName("Mul", kOnnxDomain),
             {
                 {1, {}},
@@ -280,6 +288,13 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             utils::GetFullQualifiedOpName("PadAndUnflatten", kMSDomain),
             {
                 {1, {1, 2}},  // ignore the indices and unflatten_dims
+            },
+        },
+        {
+            // Be noted, NOT all PythonOp will be allowed to recompute, there will be further check.
+            utils::GetFullQualifiedOpName("PythonOp", kMSDomain),
+            {
+                {1, {}},
             },
         },
         {
@@ -467,6 +482,24 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
   if (it == op_table.end()) {
     return false;
   }
+
+  // If node is PythonOp, we check whether it is a per-defined deterministic op.
+  if (node.OpType() == "PythonOp") {
+    const auto* func_name_attr = graph_utils::GetNodeAttribute(node, "func_name");
+    if (func_name_attr != nullptr) {
+      static const std::set<std::string> deterministic_python_ops = {
+          "flash_attn.bert_padding.IndexFirstAxis",
+          "flash_attn.bert_padding.IndexPutFirstAxis",
+          "flash_attn.flash_attn_interface.FlashAttnFunc",
+          "flash_attn.flash_attn_interface.FlashAttnVarlenFunc",
+          "orttraining_test_ortmodule_api.test_layerwise_recompute_determinstic.<locals>.DropoutFunction",
+      };
+      return deterministic_python_ops.find(func_name_attr->s()) != deterministic_python_ops.end();
+    }
+
+    return false;
+  }
+
   return it->second.count(node.SinceVersion());
 }
 
@@ -483,8 +516,7 @@ const InlinedVector<int>& GetIgnorableInputIndices(const Node& node, ProbeLevel 
  *
  * @param entry_node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
  * @param probe_config The probe config to control recomputable subgraph detecting.
- * @param node_output_index_candidates Candidate output indices of "node", which are consumed by both fw and bw ops.
- * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+ * @param candidate_output_args_map Candidate node to output map.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
  *   Used to re-order the collected subgraph nodes.
  * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological
@@ -500,8 +532,8 @@ const InlinedVector<int>& GetIgnorableInputIndices(const Node& node, ProbeLevel 
  */
 Status SelectRecomputeSubgraph(const Node& entry_node,
                                const ProbeConfig& probe_config,
-                               const InlinedVector<size_t>& node_output_index_candidates,
-                               const ActivationUsedMap& fw_op_output_arg_used_map,
+                               const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                   candidate_output_args_map,
                                const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                    node_index_to_its_order_in_topological_sort_map,
                                const logging::Logger& logger,
@@ -510,6 +542,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
                                bool& can_compromise_stashed_activation,
                                float& save_ratio) {
   const ProbeLevel probe_level = probe_config.probe_level;
+  const InlinedVector<size_t>& node_output_index_candidates = candidate_output_args_map.at(&entry_node);
 
   can_compromise_stashed_activation = false;
 
@@ -575,7 +608,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         }
       } else {
         if (!is_recomputable) {
-          if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+          if (candidate_output_args_map.count(curr_node) > 0) {
             MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
                                           ") is **NOT** in recompute op list, but its output [" +
                                           cur_output_arg_name +
@@ -592,7 +625,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
           }
         }
 
-        if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+        if (candidate_output_args_map.count(curr_node) > 0) {
           MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") " +
                                         "is in recompute op list, while its output [" + cur_output_arg_name +
                                         "] is used in backward, we don't need trace bottom-up further. Entry node: " +
@@ -643,9 +676,10 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
             bool all_constant_dim = true;
             int64_t num_elem = 1;
             for (int k = 0, dim_size = output_shape->dim_size(); k < dim_size; ++k) {
-              if (!output_shape->dim(k).has_dim_value()) {
-                all_constant_dim = false;
+              if (output_shape->dim(k).has_dim_value()) {
                 num_elem *= output_shape->dim(k).dim_value();
+              } else {
+                all_constant_dim = false;
               }
             }
             if (all_constant_dim && num_elem < 1 * 1024 * 1024) {
@@ -744,7 +778,6 @@ Status ParseProbeConfigFromString(std::string_view recompute_probe_config, Probe
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
                                                          const Node& node,
                                                          const ProbeConfig& probe_config,
-                                                         const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
@@ -786,8 +819,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
   float save_ratio = 1.f;
   ORT_ENFORCE(SelectRecomputeSubgraph(node,
                                       probe_config,
-                                      candidate_output_args_map.at(&node),
-                                      fw_op_output_arg_used_map,
+                                      candidate_output_args_map,
                                       node_index_to_its_order_in_topological_sort_map,
                                       logger,
                                       nodes_in_topological_order,

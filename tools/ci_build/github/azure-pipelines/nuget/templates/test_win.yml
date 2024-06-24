@@ -20,7 +20,7 @@ stages:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
-  - job:
+  - job:  NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
     workspace:
       clean: all
     pool: ${{ parameters.AgentPool }}

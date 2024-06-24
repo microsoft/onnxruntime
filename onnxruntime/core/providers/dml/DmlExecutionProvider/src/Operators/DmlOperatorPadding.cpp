@@ -51,7 +51,7 @@ public:
         {
             mode = DML_PADDING_MODE_REFLECTION;
         }
-#if DML_TARGET_VERSION >= 0x6300
+#if DML_TARGET_VERSION >= 0x6400
         else if (modeString == AttrValue::Wrap)
         {
             mode = DML_PADDING_MODE_WRAP;

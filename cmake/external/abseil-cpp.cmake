@@ -27,14 +27,18 @@ FetchContent_Declare(
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS NAMES absl
+    FIND_PACKAGE_ARGS 20240116 NAMES absl
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
 set(ABSEIL_SOURCE_DIR ${abseil_cpp_SOURCE_DIR})
+# abseil_cpp_SOURCE_DIR is non-empty if we build it from source
 message(STATUS "Abseil source dir:" ${ABSEIL_SOURCE_DIR})
-
+# abseil_cpp_VERSION  is non-empty if we find a preinstalled ABSL
+if(abseil_cpp_VERSION)
+  message(STATUS "Abseil version:" ${abseil_cpp_VERSION})
+endif()
 if (GDK_PLATFORM)
   # Abseil considers any partition that is NOT in the WINAPI_PARTITION_APP a viable platform
   # for Win32 symbolize code (which depends on dbghelp.lib); this logic should really be flipped
@@ -45,10 +49,8 @@ endif()
 
 # TODO: since multiple ORT's dependencies depend on Abseil, the list below would vary from version to version.
 # We'd better to not manually manage the list.
-set(ABSEIL_LIBS absl::base
+set(ABSEIL_LIBS
 absl::city
-absl::core_headers
-absl::fixed_array
 absl::flags
 absl::flat_hash_map
 absl::flat_hash_set
@@ -60,9 +62,34 @@ absl::node_hash_set
 absl::optional
 absl::raw_hash_set
 absl::raw_logging_internal
-absl::span
 absl::str_format
-absl::strings
+absl::str_format_internal
+absl::bits
+absl::fixed_array
+absl::numeric_representation
+absl::utility
+absl::type_traits
+absl::string_view
+absl::core_headers
+absl::nullability
+absl::span
+absl::config
 absl::synchronization
+absl::base
+absl::civil_time
+absl::debugging_internal
+absl::demangle_internal
+absl::graphcycles_internal
+absl::int128
+absl::kernel_timeout_internal
+absl::log_severity
+absl::malloc_internal
+absl::spinlock_wait
+absl::stacktrace
+absl::string_view
+absl::strings
+absl::strings_internal
+absl::symbolize
 absl::throw_delegate
-absl::time)
+absl::time
+absl::time_zone)

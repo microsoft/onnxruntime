@@ -2,12 +2,6 @@ parameters:
 - name: arch
   type: string
 
-- name: device
-  type: string
-  values:
-   - CPU
-   - GPU
-
 - name: machine_pool
   type: string
 
@@ -19,6 +13,21 @@ parameters:
   type: string
   default: ''
 
+- name: docker_base_image
+  type: string
+
+- name: trt_version
+  type: string
+  default: '10.0.1.6-1.cuda11.8'
+  values:
+    - 10.0.1.6-1.cuda11.8
+    - 10.0.1.6-1.cuda12.4
+- name: cuda_version
+  type: string
+  default: '11.8'
+  values:
+   - 11.8
+   - 12.2
 
 # TODO: Ideally it should fetch information from the build that triggers it
 - name: cmake_build_type
@@ -79,18 +88,12 @@ jobs:
     #    GdnBreakPolicy: M365
     #    GdnBreakPolicyMinSev: Error
 
-  - template: get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "
-      --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 
-      --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
-      --build-arg BUILD_UID=$( id -u )
-      --build-arg PLATFORM=${{ parameters.arch }}
-      "
-      Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ parameters.trt_version }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: Bash@3
     displayName: 'Bash Script'

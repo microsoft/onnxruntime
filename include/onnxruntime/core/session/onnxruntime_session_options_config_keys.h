@@ -78,15 +78,20 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
 #ifdef ENABLE_TRAINING
-// Specifies a list of op types for memory footprint reduction.
-// The value should be a ","-delimited list of pair of
-// <subgraph string: optimization strategy: number of subgraph to apply>.
-// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
-//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
-//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
-//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
-//   the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.memory_optimizer_config";
+// Specifies a path of the file containing a list of memory optimization configurations.
+// The value should be a string indicating the file path of the config file.
+// The content of the config file is a JSON struct like this:
+// [
+//   "Gelu+Cast+:1:0",
+//   "Dropout+:1:1"
+// ]
+// Taking the example of "Gelu+Cast+:1:0",
+// > "Gelu+Cast+" is the subgraph string, a valid "subgraph string" should be one subgraph representation
+//    output by ORT graph transformations.
+// > "1" is "optimization strategy", valid values: 0 - disabled, 1 - recompute.
+// > "0" is "number of subgraph to apply" which is used to control how many subgraphs to apply optimization,
+//    to avoid "oversaving" the memory.
+static const char* const kOrtSessionOptionsMemoryOptimizerApplyConfig = "optimization.memory_optimizer_config";
 
 // Specifies the config for detecting subgraphs for memory footprint reduction.
 // The value should be a string contains int separated using commas. The default value is "0:0".

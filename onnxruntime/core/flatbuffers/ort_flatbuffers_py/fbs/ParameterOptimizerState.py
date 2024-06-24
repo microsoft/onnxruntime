@@ -10,12 +10,16 @@ class ParameterOptimizerState(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsParameterOptimizerState(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = ParameterOptimizerState()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsParameterOptimizerState(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def ParameterOptimizerStateBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -56,8 +60,32 @@ class ParameterOptimizerState(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
-def ParameterOptimizerStateStart(builder): builder.StartObject(2)
-def ParameterOptimizerStateAddParamName(builder, paramName): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(paramName), 0)
-def ParameterOptimizerStateAddMomentums(builder, momentums): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(momentums), 0)
-def ParameterOptimizerStateStartMomentumsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def ParameterOptimizerStateEnd(builder): return builder.EndObject()
+def ParameterOptimizerStateStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    ParameterOptimizerStateStart(builder)
+
+def ParameterOptimizerStateAddParamName(builder, paramName):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(paramName), 0)
+
+def AddParamName(builder, paramName):
+    ParameterOptimizerStateAddParamName(builder, paramName)
+
+def ParameterOptimizerStateAddMomentums(builder, momentums):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(momentums), 0)
+
+def AddMomentums(builder, momentums):
+    ParameterOptimizerStateAddMomentums(builder, momentums)
+
+def ParameterOptimizerStateStartMomentumsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartMomentumsVector(builder, numElems: int) -> int:
+    return ParameterOptimizerStateStartMomentumsVector(builder, numElems)
+
+def ParameterOptimizerStateEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return ParameterOptimizerStateEnd(builder)

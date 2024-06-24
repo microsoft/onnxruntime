@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 function credentialize () {
     if [ ! -d "/etc/smbcredentials" ]; then

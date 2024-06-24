@@ -61,6 +61,7 @@ template void Impl_Scale<T>(            \
 SPECIALIZE_SCALE_IMPL(half)
 SPECIALIZE_SCALE_IMPL(float)
 SPECIALIZE_SCALE_IMPL(double)
+SPECIALIZE_SCALE_IMPL(BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

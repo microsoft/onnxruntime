@@ -6,7 +6,8 @@
 Loads a model and updates the domain of QuantizeLinear and DequantizeLinear nodes to 'com.microsoft'.
 Optionally updates zero-points to 16bit data types.
 
-This is used to create models for testing QDQ transformations with the contrib QDQ ops.
+This is used to create models for testing QDQ transformations with the contrib QDQ ops and/or
+16-bit ONNX Q/DQ ops.
 
 Usage:
 python3 convert_qdq_ops_to_ms_domain.py --input_model <input onnx model> --output_model <output model> --use_16bit_qdq
@@ -14,8 +15,10 @@ python3 convert_qdq_ops_to_ms_domain.py --input_model <input onnx model> --outpu
 Models created with this script:
 - qdq_with_multi_consumer_dq_nodes.fixed.qdq_contrib.onnx
 - qdq_with_multi_consumer_dq_nodes.fixed.qdq16_contrib.onnx
+- qdq_with_multi_consumer_dq_nodes.fixed.qdq16.onnx
 - fusion/constant_folding_dequantizelinear.qdq_contrib.onnx
 - fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx
+- fusion/constant_folding_dequantizelinear.qdq16.onnx
 - fusion/constant_folding_qdq_node_unit.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.qdq16_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
@@ -117,7 +120,7 @@ def convert_qdq_op_to_16bit(
         raise Exception("Only support Q/DQ ops with explicit zero-point inputs")
 
 
-def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
+def update_qdq_nodes(graph: onnx.GraphProto, use_16bit_qdq: bool, use_onnx_domain: bool = False):
     name_to_initializer = {initializer.name: initializer for initializer in graph.initializer}
     name_to_values = {value.name: value for value in graph.value_info}
     name_to_inputs = {g_input.name: g_input for g_input in graph.input}
@@ -127,14 +130,14 @@ def update_qdq_node_domains(graph: onnx.GraphProto, use_16bit_qdq: bool):
         # Handle subgraphs:
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
-                update_qdq_node_domains(attr.g, use_16bit_qdq)
+                update_qdq_nodes(attr.g, use_16bit_qdq, use_onnx_domain)
             elif attr.type == onnx.AttributeProto.GRAPHS:
                 for subgraph in attr.graphs:
-                    update_qdq_node_domains(subgraph, use_16bit_qdq)
+                    update_qdq_nodes(subgraph, use_16bit_qdq, use_onnx_domain)
 
         # Update Q/DQ domains
         if node.op_type in QDQ_OPS:
-            node.domain = "com.microsoft"
+            node.domain = "com.microsoft" if not use_onnx_domain else ""
 
             if use_16bit_qdq:
                 convert_qdq_op_to_16bit(name_to_initializer, name_to_values, name_to_inputs, name_to_outputs, node)
@@ -144,6 +147,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert Q/DQ ops to com.microsoft domain (or 16-bit)")
     parser.add_argument("--input_model", type=str, required=True, help="Input onnx model path")
     parser.add_argument("--output_model", type=str, required=False, help="Output onnx model path")
+    parser.add_argument("--use_onnx_domain", required=False, action="store_true", help="Use ONNX domain for Q/DQ ops")
     parser.add_argument("--use_16bit_qdq", required=False, action="store_true", help="Convert to 16-bit QDQ")
 
     args = parser.parse_args()
@@ -151,22 +155,28 @@ def main():
     model = onnx.load(args.input_model)
 
     has_ms_domain = False
+    onnx_opset_version = 1
     for opset in model.opset_import:
         if opset.domain == "com.microsoft":
             has_ms_domain = True
-            break
+        elif opset.domain == "" or opset.domain == "ai.onnx":
+            onnx_opset_version = opset.version
 
     if not has_ms_domain:
         model.opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
-    update_qdq_node_domains(model.graph, args.use_16bit_qdq)
+    if args.use_onnx_domain and args.use_16bit_qdq and onnx_opset_version < 21:
+        model = onnx.version_converter.convert_version(model, 21)  # Opset 21 supports 16-bit Q/DQ
+
+    update_qdq_nodes(model.graph, args.use_16bit_qdq, args.use_onnx_domain)
     model = shape_inference.infer_shapes(model)
     onnx.checker.check_model(model, True)
 
     output_model_path = args.output_model
     if not output_model_path:
         base_model_name = os.path.splitext(args.input_model)[0]
-        suffix = ".qdq16_contrib" if args.use_16bit_qdq else ".qdq_contrib"
+        suffix0 = "" if args.use_onnx_domain else "_contrib"
+        suffix = f".qdq16{suffix0}" if args.use_16bit_qdq else f".qdq{suffix0}"
         output_model_path = base_model_name + suffix + ".onnx"
 
     onnx.save_model(model, output_model_path)

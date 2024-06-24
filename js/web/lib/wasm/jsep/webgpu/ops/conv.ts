@@ -7,6 +7,7 @@ import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
+import {computeConv3DInfo, createConv3DNaiveProgramInfo} from './3rd-party/conv3d_naive_webgpu';
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {createGroupedConvProgramInfo, createGroupedConvVectorizeProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
@@ -51,9 +52,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
     throw new Error('Conv requires 2 or 3 inputs');
   }
 
-  // TODO : Need to add support for multi-dimensional conv
-  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
-    throw new Error('currently only support conv 1D and 2D');
+  if (inputs[0].dims.length > 5) {
+    throw new Error('greater than 5D is not supported');
   }
 
   if (inputs[0].dims.length !== inputs[1].dims.length) {
@@ -119,11 +119,11 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
   const format = attributes.format as 'NHWC' | 'NCHW';
   const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number];
-  const dilations = attributes.dilations as [number, number];
+  const dilations = attributes.dilations as number[];
   const group = attributes.group as number;
-  const kernelShape = attributes.kernel_shape as [number, number];
-  const pads = attributes.pads as [number, number, number, number];
-  const strides = attributes.strides as [number, number];
+  const kernelShape = attributes.kernel_shape as number[];
+  const pads = attributes.pads as number[];
+  const strides = attributes.strides as number[];
   const wIsConst = (attributes.w_is_const as () => boolean)();
 
   return {
@@ -303,10 +303,27 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
 };
 
+const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
+  const format = attributes.format === 'NHWC' ? 'channelsLast' : 'channelsFirst';
+  const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
+  const pads = attributes.autoPad === 'NOTSET' ? attributes.pads : attributes.autoPad;
+  const convInfo = computeConv3DInfo(
+      inputs[0].dims as [number, number, number, number, number],
+      inputs[1].dims as [number, number, number, number, number],
+      attributes.strides as number | [number, number, number],
+      attributes.dilations as number | [number, number, number], pads as string | number[], false, format);
+  context.compute(createConv3DNaiveProgramInfo(
+      inputs, adjustedAttributes, convInfo.outShape,
+      [convInfo.filterDepth, convInfo.filterHeight, convInfo.filterWidth],
+      [convInfo.padInfo.front, convInfo.padInfo.top, convInfo.padInfo.left], format));
+};
+
 export const conv = (context: ComputeContext, attributes: ConvAttributes): void => {
-  validateInputs(context.inputs, attributes);  // currently will fail if not conv1D/2D
+  validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 3) {
     conv1d(context, attributes);
+  } else if (context.inputs[0].dims.length === 5) {
+    conv3d(context, context.inputs, attributes);
   } else {
     conv2d(context, context.inputs, attributes);
   }

@@ -66,7 +66,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                        const Node& node,
-                                       const WebnnDeviceType device_type,
+                                       const WebnnDeviceType /* device_type */,
                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
@@ -74,7 +74,7 @@ bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initialize
     return false;
 
   int32_t output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-  if (!IsSupportedDataType(output_type, device_type)) {
+  if (!IsSupportedDataType(output_type, webnn_supported_data_types)) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Output type: [" << output_type
                           << "] is not supported for now";

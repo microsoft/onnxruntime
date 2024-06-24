@@ -40,14 +40,23 @@ class TestAnalyzer(unittest.TestCase):
             log_capture.check_present(
                 ("default", "INFO", "1 partitions with a total of 8/8 nodes can be handled by the NNAPI EP."),
                 ("default", "INFO", "Model should perform well with NNAPI as is: YES"),
-                ("default", "INFO", "1 partitions with a total of 8/8 nodes can be handled by the CoreML EP."),
-                ("default", "INFO", "Model should perform well with CoreML as is: YES"),
+                (
+                    "default",
+                    "INFO",
+                    "1 partitions with a total of 8/8 nodes can be handled by the CoreML NeuralNetwork EP.",
+                ),
+                ("default", "INFO", "Model should perform well with CoreML NeuralNetwork as is: YES"),
+                (
+                    "default",
+                    "INFO",
+                    "1 partitions with a total of 8/8 nodes can be handled by the CoreML MLProgram EP.",
+                ),
+                ("default", "INFO", "Model should perform well with CoreML MLProgram as is: YES"),
             )
 
     def test_scan_model(self):
         """
-        Test a Speech model where all the top level nodes are Scan. All the real operators are in subgraphs, so we
-        don't use NNAPI/CoreML currently. We want to make sure nodes in subgraphs are counted.
+        Test a Speech model where all the top level nodes are Scan. We want to make sure nodes in subgraphs are counted.
         """
         with LogCapture() as log_capture:
             logger = _create_logger()
@@ -57,12 +66,21 @@ class TestAnalyzer(unittest.TestCase):
 
             # print(log_capture)
             log_capture.check_present(
-                ("default", "INFO", "0 partitions with a total of 0/76 nodes can be handled by the NNAPI EP."),
-                ("default", "INFO", "72 nodes are in subgraphs, which are currently not handled."),
-                ("default", "INFO", "Unsupported ops: ai.onnx:Scan"),
+                ("default", "INFO", "4 partitions with a total of 72/76 nodes can be handled by the NNAPI EP."),
+                ("default", "INFO", "72 nodes are in 4 subgraphs. Check EP as to whether subgraphs are supported."),
                 ("default", "INFO", "Model should perform well with NNAPI as is: NO"),
-                ("default", "INFO", "0 partitions with a total of 0/76 nodes can be handled by the CoreML EP."),
-                ("default", "INFO", "Model should perform well with CoreML as is: NO"),
+                (
+                    "default",
+                    "INFO",
+                    "4 partitions with a total of 60/76 nodes can be handled by the CoreML NeuralNetwork EP.",
+                ),
+                ("default", "INFO", "Model should perform well with CoreML NeuralNetwork as is: NO"),
+                (
+                    "default",
+                    "INFO",
+                    "12 partitions with a total of 24/76 nodes can be handled by the CoreML MLProgram EP.",
+                ),
+                ("default", "INFO", "Model should perform well with CoreML MLProgram as is: NO"),
             )
 
     def test_dynamic_shape(self):
@@ -80,10 +98,18 @@ class TestAnalyzer(unittest.TestCase):
                 ("default", "INFO", "0 partitions with a total of 0/1 nodes can be handled by the NNAPI EP."),
                 ("default", "INFO", "Model should perform well with NNAPI as is: NO"),
                 ("default", "INFO", "Model should perform well with NNAPI if modified to have fixed input shapes: YES"),
-                ("default", "INFO", "0 partitions with a total of 0/1 nodes can be handled by the CoreML EP."),
-                ("default", "INFO", "CoreML cannot run any nodes in this model."),
-                ("default", "INFO", "Model should perform well with CoreML as is: NO"),
-                ("default", "INFO", "Model should perform well with CoreML if modified to have fixed input shapes: NO"),
+                (
+                    "default",
+                    "INFO",
+                    "0 partitions with a total of 0/1 nodes can be handled by the CoreML MLProgram EP.",
+                ),
+                ("default", "INFO", "CoreML MLProgram cannot run any nodes in this model."),
+                ("default", "INFO", "Model should perform well with CoreML MLProgram as is: NO"),
+                (
+                    "default",
+                    "INFO",
+                    "Model should perform well with CoreML MLProgram if modified to have fixed input shapes: NO",
+                ),
             )
 
     def test_multi_partitions(self):
@@ -97,26 +123,24 @@ class TestAnalyzer(unittest.TestCase):
 
             # print(log_capture)
             log_capture.check_present(
-                ("default", "INFO", "3 partitions with a total of 17/46 nodes can be handled by the NNAPI EP."),
-                ("default", "INFO", "Partition sizes: [5, 4, 8]"),
+                ("default", "INFO", "3 partitions with a total of 22/50 nodes can be handled by the NNAPI EP."),
+                ("default", "INFO", "\tPartition sizes: [13, 2, 7]"),
                 (
                     "default",
                     "INFO",
-                    "Unsupported ops: ai.onnx:Gather,ai.onnx:ReduceProd,ai.onnx:ReduceSum,"
-                    "ai.onnx:Shape,ai.onnx:Unsqueeze",
+                    "\tUnsupported ops: ai.onnx:ReduceProd,ai.onnx:ReduceSum,ai.onnx:Shape",
                 ),
                 (
                     "default",
                     "INFO",
                     "NNAPI is not recommended with this model as there are 3 partitions "
-                    "covering 37.0% of the nodes in the model. "
+                    "covering 44.0% of the nodes in the model. "
                     "This will most likely result in worse performance than just using the CPU EP.",
                 ),
-                ("default", "INFO", "Model should perform well with NNAPI as is: NO"),
-                ("default", "INFO", "Partition information if the model was updated to make the shapes fixed:"),
-                ("default", "INFO", "3 partitions with a total of 23/46 nodes can be handled by the NNAPI EP."),
-                ("default", "INFO", "Partition sizes: [3, 12, 8]"),
-                ("default", "INFO", "3 partitions with a total of 15/46 nodes can be handled by the CoreML EP."),
-                ("default", "INFO", "Partition sizes: [4, 4, 7]"),
-                ("default", "INFO", "Model should perform well with CoreML as is: NO"),
+                (
+                    "default",
+                    "INFO",
+                    "4 partitions with a total of 20/50 nodes can be handled by the CoreML NeuralNetwork EP.",
+                ),
+                ("default", "INFO", "\tPartition sizes: [11, 3, 5, 1]"),
             )

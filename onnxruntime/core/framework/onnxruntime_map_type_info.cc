@@ -78,6 +78,12 @@ ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
     case TensorType::TensorProto_DataType_FLOAT8E5M2FNUZ: {
       return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
     }  // Non-IEEE floating-point format based on IEEE754 single-precision
+    case TensorType::TensorProto_DataType_INT4: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+    }  // maps to a pair of int4 (size == 1 byte)
+    case TensorType::TensorProto_DataType_UINT4: {
+      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+    }  // maps to a pair of uint4 (size == 1 byte)
     default: {
       return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }

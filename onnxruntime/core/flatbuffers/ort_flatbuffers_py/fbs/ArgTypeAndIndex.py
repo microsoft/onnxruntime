@@ -10,12 +10,16 @@ class ArgTypeAndIndex(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsArgTypeAndIndex(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = ArgTypeAndIndex()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsArgTypeAndIndex(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def ArgTypeAndIndexBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -38,7 +42,26 @@ class ArgTypeAndIndex(object):
             return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
         return 0
 
-def ArgTypeAndIndexStart(builder): builder.StartObject(2)
-def ArgTypeAndIndexAddArgType(builder, argType): builder.PrependInt8Slot(0, argType, 0)
-def ArgTypeAndIndexAddIndex(builder, index): builder.PrependUint32Slot(1, index, 0)
-def ArgTypeAndIndexEnd(builder): return builder.EndObject()
+def ArgTypeAndIndexStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    ArgTypeAndIndexStart(builder)
+
+def ArgTypeAndIndexAddArgType(builder, argType):
+    builder.PrependInt8Slot(0, argType, 0)
+
+def AddArgType(builder, argType):
+    ArgTypeAndIndexAddArgType(builder, argType)
+
+def ArgTypeAndIndexAddIndex(builder, index):
+    builder.PrependUint32Slot(1, index, 0)
+
+def AddIndex(builder, index):
+    ArgTypeAndIndexAddIndex(builder, index)
+
+def ArgTypeAndIndexEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return ArgTypeAndIndexEnd(builder)

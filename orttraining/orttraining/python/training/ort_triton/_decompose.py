@@ -10,11 +10,10 @@ Decompose a complicated op into a series of simple ops.
 
 from typing import List
 
-import numpy as np
 import sympy
 from onnx import GraphProto, NodeProto, TensorProto, helper
 
-from ._utils import get_attribute, get_reduce_info, to_numpy_type
+from ._utils import get_attribute, get_reduce_info
 
 
 def _is_half_dtype(dtype: int):
@@ -132,7 +131,7 @@ class DecomposeDispatch:
         if axis < 0:
             axis += rank
         axes = list(range(axis, rank))
-        epsilon_tensor = helper.make_tensor(name="epsilon_const", data_type=xdtype, dims=(1,), vals=np.array([epsilon]))
+        epsilon_tensor = helper.make_tensor(name="epsilon_const", data_type=xdtype, dims=(1,), vals=[epsilon])
         const_node, const_out = self._new_node(node_name, "Constant", [], value=epsilon_tensor)
         reducemean_node, reducemean_out = self._new_node(node_name, "ReduceMean", [x], outputs=[mean], axes=axes)
         sub_node, sub_out = self._new_node(node_name, "Sub", [x, reducemean_out])
@@ -371,7 +370,7 @@ class DecomposeDispatch:
             name=f"{node_name}_denominator",
             dims=(),
             data_type=dtype,
-            vals=np.array([denominator], dtype=to_numpy_type(dtype)),
+            vals=[denominator],
         )
         denominator_node, denominator_out = self._new_node(node_name, "Constant", [], value=denominator_tensor)
         div_node, _ = self._new_node(node_name, "Div", [sum_out, denominator_out], outputs=[y])

@@ -10,12 +10,16 @@ class IntProperty(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsIntProperty(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = IntProperty()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsIntProperty(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def IntPropertyBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -38,7 +42,26 @@ class IntProperty(object):
             return self._tab.Get(flatbuffers.number_types.Int64Flags, o + self._tab.Pos)
         return 0
 
-def IntPropertyStart(builder): builder.StartObject(2)
-def IntPropertyAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-def IntPropertyAddValue(builder, value): builder.PrependInt64Slot(1, value, 0)
-def IntPropertyEnd(builder): return builder.EndObject()
+def IntPropertyStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    IntPropertyStart(builder)
+
+def IntPropertyAddName(builder, name):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+
+def AddName(builder, name):
+    IntPropertyAddName(builder, name)
+
+def IntPropertyAddValue(builder, value):
+    builder.PrependInt64Slot(1, value, 0)
+
+def AddValue(builder, value):
+    IntPropertyAddValue(builder, value)
+
+def IntPropertyEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return IntPropertyEnd(builder)

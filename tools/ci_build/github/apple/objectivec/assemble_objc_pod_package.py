@@ -103,8 +103,6 @@ def get_pod_config_file(package_variant: PackageVariant):
     """
     if package_variant == PackageVariant.Full:
         return _script_dir / "onnxruntime-objc.config.json"
-    elif package_variant == PackageVariant.Mobile:
-        return _script_dir / "onnxruntime-mobile-objc.config.json"
     elif package_variant == PackageVariant.Training:
         return _script_dir / "onnxruntime-training-objc.config.json"
     else:
@@ -184,7 +182,7 @@ def parse_args():
     parser.add_argument(
         "--staging-dir",
         type=pathlib.Path,
-        default=pathlib.Path("./onnxruntime-mobile-objc-staging"),
+        default=pathlib.Path("./objc-staging"),
         help="Path to the staging directory for the Objective-C pod files.",
     )
     parser.add_argument("--pod-version", required=True, help="Objective-C pod version.")

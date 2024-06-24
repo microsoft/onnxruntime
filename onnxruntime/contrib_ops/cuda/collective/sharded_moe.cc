@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <thread>
 #include <utility>
 
 #include "core/common/safeint.h"
@@ -18,6 +19,18 @@ namespace cuda {
 
 #if defined(ORT_USE_NCCL)
 
+#define CHECK_CUDA(res)     \
+  if (res != cudaSuccess) { \
+    cuda_result = res;      \
+    return;                 \
+  }
+
+#define CHECK_NCCL(res)     \
+  if (res != ncclSuccess) { \
+    nccl_result = res;      \
+    return;                 \
+  }
+
 #define REGISTER_KERNEL_TYPED(T)                                                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                            \
       ShardedMoE, kMSDomain, 1, T, kCudaExecutionProvider,                                                  \
@@ -32,8 +45,9 @@ ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_ke
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("tensor_shards", &tensor_shards_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
   rank_to_experts_start_index_.resize(nccl_->Size());
-  // Initialize rank_to_experts_start_index_[0] to a value to convey that it is not initialized.
-  rank_to_experts_start_index_[0] = std::numeric_limits<int64_t>::min();
+
+  auto allocator = op_kernel_info.GetAllocator(OrtMemTypeDefault);
+  ORT_ENFORCE(SynchronizeExpertsStartIndex(allocator) == Status::OK());
 }
 
 template <typename T>
@@ -46,10 +60,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-
-  // Create a {Rank, ExpertsStartIndex} map on Host.
-  AutoDestoryCudaEvent cuda_event;
-  cudaEvent_t& copy_event = cuda_event.Get();
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -67,10 +77,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                   fc3_experts_weights_optional, fc3_experts_bias_optional));
 
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0, "num_experts should be divisible by world_size");
-
-  if (moe_params.parallel_type == MoEParallelType::EP || moe_params.parallel_type == MoEParallelType::EPAndTP) {
-    ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
-  }
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
                                                                      normalize_routing_weights_);
@@ -133,11 +139,14 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (moe_params.parallel_type == MoEParallelType::TP) {
     ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
-    NCCL_RETURN_IF_ERROR(ncclGroupStart());
-    NCCL_RETURN_IF_ERROR(ncclAllReduce(reinterpret_cast<const char*>(fc2_output.get()),
-                                       reinterpret_cast<char*>(fc2_output_bc.get()), fc2_output_size / sizeof(CudaT),
-                                       GetNcclDataType(input->DataType()), ncclSum, nccl_->Comm(), Stream(context)));
-    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
+    ORT_RETURN_IF_ERROR(FuncCustomAllReduce(nccl_,
+                                            Stream(context),
+                                            fc2_output.get(),
+                                            fc2_output_bc.get(),
+                                            static_cast<int64_t>(fc2_output_size / sizeof(CudaT)),
+                                            input->DataType(),
+                                            collective::IPCMemoryResourcePack::GetGlobalInstance()));
   }
 
   if (moe_params.parallel_type == MoEParallelType::EP) {
@@ -145,9 +154,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
     size_t stride_bytes = stride_count * sizeof(CudaT);
     int64_t total_past_rows = 0;
     int64_t total_covered_rows = 0;
-    if (copy_event != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
-    }
+
     NCCL_RETURN_IF_ERROR(ncclGroupStart());
     for (int rank = 0; rank < nccl_->Size(); ++rank) {
       int64_t experts_start_index = rank_to_experts_start_index_[rank];
@@ -175,36 +182,25 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T>
-Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKernelContext* context,
-                                                   cudaEvent_t& cuda_event) const {
-  if (rank_to_experts_start_index_[0] != std::numeric_limits<int64_t>::min()) {
-    return Status::OK();
-  }
-
-  auto stream = context->GetComputeStream();
-
+Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator) const {
   using IndexType = int64_t;
   size_t IndexTypeSize = sizeof(IndexType);
 
   IAllocatorUniquePtr<IndexType> experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, 1, false, stream);
+      IAllocator::MakeUniquePtr<IndexType>(allocator, 1, false);
   IAllocatorUniquePtr<IndexType> rank_to_experts_start_index_d =
-      IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false, stream);
+      IAllocator::MakeUniquePtr<IndexType>(allocator, nccl_->Size(), false);
 
-  // Only happens in the first run.
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
-                                       cudaMemcpyHostToDevice, Stream(context)));
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(experts_start_index_d.get(), &local_experts_start_index_, IndexTypeSize,
+                                  cudaMemcpyHostToDevice));
   NCCL_RETURN_IF_ERROR(ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),
                                      reinterpret_cast<char*>(rank_to_experts_start_index_d.get()), 1,
                                      GetNcclDataType(DataTypeImpl::GetType<IndexType>()), nccl_->Comm(),
-                                     Stream(context)));
-  // The const_cast<> violates the const modifier to make sure the synchronization happens only once per session.
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
-                                       rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
-                                       cudaMemcpyDeviceToHost, Stream(context)));
+                                     nullptr));
 
-  CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&cuda_event, cudaEventDisableTiming));
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(cuda_event, Stream(context)));
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
+                                  rank_to_experts_start_index_d.get(), nccl_->Size() * IndexTypeSize,
+                                  cudaMemcpyDeviceToHost));
 
   return Status::OK();
 }

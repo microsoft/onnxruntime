@@ -107,6 +107,20 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToInt32HTP) {
   RunCastOpTest<float>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32, ExpectedEPNodeAssignment::All,
                        true);
 }
+
+// Cast int64_t to int32_t on HTP
+// Supported in QNN SDK 2.23
+TEST_F(QnnHTPBackendTests, TestCastInt64ToInt32HTP) {
+  RunCastOpTest<int64_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+                         ExpectedEPNodeAssignment::All, true);
+}
+
+// Cast int32_t to int64_t on HTP
+// Supported in QNN SDK 2.23
+TEST_F(QnnHTPBackendTests, TestCastInt32ToInt64HTP) {
+  RunCastOpTest<int32_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                         ExpectedEPNodeAssignment::All, true);
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

@@ -74,20 +74,22 @@ async function main() {
   prepareTrainingDataByCopying();
 
   console.log('===============================================================');
-  console.log("Running self-hosted tests");
+  console.log('Running self-hosted tests');
   console.log('===============================================================');
   // test cases with self-host (ort hosted in same origin)
   await testAllBrowserCases({hostInKarma: true});
 
   console.log('===============================================================');
-  console.log("Running not self-hosted tests");
+  console.log('Running not self-hosted tests');
   console.log('===============================================================');
-  // test cases without self-host (ort hosted in same origin)
-  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({hostInKarma: false});
-
-  // no error occurs, exit with code 0
-  process.exit(0);
+  // test cases without self-host (ort hosted in cross origin)
+  const server = startServer(path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'), 8081);
+  try {
+    await testAllBrowserCases({hostInKarma: false});
+  } finally {
+    // close the server after all tests
+    await server.close();
+  }
 }
 
 async function testAllBrowserCases({hostInKarma}) {

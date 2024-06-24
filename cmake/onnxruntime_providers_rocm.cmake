@@ -204,6 +204,10 @@
       device_softmax_instance
     )
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
+    if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE)
+      target_link_libraries(onnxruntime_providers_rocm PUBLIC onnxruntime_composable_kernel_fmha)
+      target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL_CK_TILE)
+    endif()
   endif()
 
   if(UNIX)

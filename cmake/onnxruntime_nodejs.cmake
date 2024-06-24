@@ -73,6 +73,9 @@ endif()
 if (onnxruntime_USE_COREML)
     set(NODEJS_BINDING_USE_COREML "--use_coreml")
 endif()
+if (onnxruntime_USE_QNN)
+    set(NODEJS_BINDING_USE_QNN "--use_qnn")
+endif()
 
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 # add custom target
@@ -90,7 +93,7 @@ add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
     COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --onnxruntime-generator=${CMAKE_GENERATOR}
         --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_TENSORRT}
-        ${NODEJS_BINDING_USE_COREML}
+        ${NODEJS_BINDING_USE_COREML} ${NODEJS_BINDING_USE_QNN}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 

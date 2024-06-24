@@ -529,17 +529,8 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
 
-  size_t size;
-  int64_t len = shape.Size();
-  if (len < 0) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape cannot contain any negative value");
-  }
-  if (static_cast<uint64_t>(len) > std::numeric_limits<size_t>::max()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape is too large");
-  }
-  if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(static_cast<size_t>(len), element_type->Size(), &size)) {
-    return Status(ONNXRUNTIME, FAIL, "size overflow");
-  }
+  size_t size = 0;
+  ORT_RETURN_IF_ERROR(Tensor::CalculateTensorStorageSize(element_type, shape, kAllocAlignment, size));
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;

@@ -38,7 +38,7 @@ ONNX_NAMESPACE::AttributeProto* attr_proto_new_tensor(
   auto ret = ONNX_NAMESPACE::AttributeProto::Create();
   ret->set_name(name);
   ret->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
-  *ret->add_tensors() = value;
+  ret->set_t(value);
   return ret.release();
 }
 ONNX_NAMESPACE::AttributeProto* attr_proto_new_ints(const std::string& name, const std::vector<int64_t>& value) {

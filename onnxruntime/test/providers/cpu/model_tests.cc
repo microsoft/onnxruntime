@@ -425,7 +425,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // The other EPs can choose which opsets to test.
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
-  // tensorrt: only enable opset 14 to 17 of onnx tests
+  // tensorrt: only enable opset 12 to 17 of onnx tests
   provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX

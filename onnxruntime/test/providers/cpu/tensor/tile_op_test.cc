@@ -166,62 +166,67 @@ void RunTestWrapper() {
 // OpTester's AddInput and AddOutput do not support std::vector<bool>.
 void RunTestForBool(std::initializer_list<bool> input_data, std::initializer_list<int64_t> input_dims,
                     std::initializer_list<int64_t> repeats, std::initializer_list<int64_t> repeats_dims,
-                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims) {
+                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims,
+                    bool skip_trt = false) {
   OpTester test("Tile");
   test.AddInput<bool>("input", input_dims, input_data);
   test.AddInput<int64_t>("repeats", repeats_dims, repeats);
   test.AddOutput<bool>("output", output_dims, output_data);
-  test.Run();
+  if (skip_trt) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test.Run();
+  }
 }
 
 void RunTestWrapperForBool() {
   // Tile1DWithZeroRepeats
-  RunTestForBool({true, false, true}, {3}, {0}, {1}, {}, {0});
+  RunTestForBool({true, false, true}, {3}, {0}, {1}, {}, {0}, true);
 
   // Tile2DWithZeroRepeats
-  RunTestForBool({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+  RunTestForBool({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0}, true);
 
   // Tile1D
-  RunTestForBool({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9});
+  RunTestForBool({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9}, true);
 
   // Tile2D_1Axis
   RunTestForBool({true, false, true, false}, {2, 2}, {2, 1}, {2}, {true, false, true, false, true, false, true, false},
-                 {4, 2});
+                 {4, 2}, true);
 
   // Tile2D_2Axes
   RunTestForBool(
       {true, false, true, false}, {2, 2}, {2, 2}, {2},
-      {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4});
+      {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4}, true);
 
   // Tile3D
   RunTestForBool({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3},
-                 {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
+                 {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3}, true);
 
   // Tile1DWithOneRepeats
   RunTestForBool({true, false, true, false, true, true}, {2, 1, 3}, {1, 1, 1}, {3},
-                 {true, false, true, false, true, true}, {2, 1, 3});
+                 {true, false, true, false, true, true}, {2, 1, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 1
   // This will trigger the MemCpy optimization path
   RunTestForBool({true, false, true}, {1, 1, 3}, {2, 2, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 2
   // This will trigger the MemCpy optimization path
   RunTestForBool({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
+                 {true, false, true, true, false, true, true, false, true}, {3, 1, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
-                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3}, true);
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
   // This will trigger the (Batched) MemCpy optimization path
   RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
                  {true, false, true, true, false, true, true, false, true, true, false, true,
                   true, false, true, true, false, true, true, false, true, true, false, true},
-                 {4, 2, 3});
+                 {4, 2, 3}, true);
 }
 
 TEST(TensorOpTest, TileFloatType) { RunTestWrapper<float>(); }

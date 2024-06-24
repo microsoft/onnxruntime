@@ -23,9 +23,11 @@ namespace Dml
     size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType);
     size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor);
     uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice);
-    void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides);
+    uint32_t GetBitMaskFromIndices(gsl::span<const uint32_t> indices) noexcept;
+    uint32_t CountLeastSignificantZeros(uint32_t value) noexcept;
+    void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides) noexcept;
 
-    bool IsSigned(DML_TENSOR_DATA_TYPE dataType);
+    bool IsSigned(DML_TENSOR_DATA_TYPE dataType) noexcept;
 
     template <typename T>
     void CastToClampedScalarUnion(DML_TENSOR_DATA_TYPE dataType, T value, DML_SCALAR_UNION* outputValue)

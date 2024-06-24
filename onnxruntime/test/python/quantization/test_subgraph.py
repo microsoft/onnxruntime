@@ -19,9 +19,13 @@ class TestDynamicQuantizationSubgraph(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             onnx_path = os.path.join(tmpdir, "decoder_model_merged.onnx")
             quantized_onnx_path = os.path.join(tmpdir, "decoder_model_merged_quantized.onnx")
-            urllib.request.urlretrieve(
-                "https://huggingface.co/fxmarty/t5-tiny-onnx-testing/resolve/main/decoder_model_merged.onnx", onnx_path
-            )
+            url = "https://huggingface.co/fxmarty/t5-tiny-onnx-testing/resolve/main/decoder_model_merged.onnx"
+            try:
+                urllib.request.urlretrieve(url, onnx_path)
+            except urllib.request.HTTPError as e:
+                # The unit test should not fail for this kind of issue.
+                # TODO: use another way to retrieve the model.
+                raise unittest.SkipTest(f"Unable to fetch {url!r} due to {e}")  # noqa: B904
 
             quantize_dynamic(
                 model_input=onnx_path,
@@ -62,3 +66,7 @@ class TestDynamicQuantizationSubgraph(unittest.TestCase):
                     if attr.type == onnx.AttributeProto.GRAPH:
                         for initializer in attr.g.initializer:
                             self.assertTrue("shared.weight" not in initializer.name)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

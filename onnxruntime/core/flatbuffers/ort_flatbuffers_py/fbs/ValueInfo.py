@@ -10,12 +10,16 @@ class ValueInfo(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsValueInfo(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = ValueInfo()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsValueInfo(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def ValueInfoBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -49,8 +53,32 @@ class ValueInfo(object):
             return obj
         return None
 
-def ValueInfoStart(builder): builder.StartObject(3)
-def ValueInfoAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-def ValueInfoAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
-def ValueInfoAddType(builder, type): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(type), 0)
-def ValueInfoEnd(builder): return builder.EndObject()
+def ValueInfoStart(builder):
+    builder.StartObject(3)
+
+def Start(builder):
+    ValueInfoStart(builder)
+
+def ValueInfoAddName(builder, name):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+
+def AddName(builder, name):
+    ValueInfoAddName(builder, name)
+
+def ValueInfoAddDocString(builder, docString):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
+
+def AddDocString(builder, docString):
+    ValueInfoAddDocString(builder, docString)
+
+def ValueInfoAddType(builder, type):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(type), 0)
+
+def AddType(builder, type):
+    ValueInfoAddType(builder, type)
+
+def ValueInfoEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return ValueInfoEnd(builder)

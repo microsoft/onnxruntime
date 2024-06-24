@@ -68,9 +68,9 @@ namespace onnxruntime {
 class InsertGatherBeforeSceLoss : public GraphTransformer {
  public:
   InsertGatherBeforeSceLoss(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                            const std::vector<std::string>& sparse_label_input_names = {}) noexcept
+                            const bool print_input_density = false) noexcept
       : GraphTransformer("InsertGatherBeforeSceLoss", compatible_execution_providers),
-        sparse_label_input_names_{sparse_label_input_names} {
+        print_density_(print_input_density) {
   }
 
   /**
@@ -79,7 +79,7 @@ class InsertGatherBeforeSceLoss : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  std::vector<std::string> sparse_label_input_names_;
+  bool print_density_ = false;
 };
 
 }  // namespace onnxruntime

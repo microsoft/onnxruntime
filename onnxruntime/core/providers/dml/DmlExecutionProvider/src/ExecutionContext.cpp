@@ -10,10 +10,14 @@ namespace Dml
     ExecutionContext::ExecutionContext(
         ID3D12Device* d3d12Device,
         IDMLDevice* dmlDevice,
-        ID3D12CommandQueue* queue
+        ID3D12CommandQueue* queue,
+        bool cpuSyncSpinningEnabled,
+        bool keepOpen
         )
-        : m_queue(std::make_shared<CommandQueue>(queue))
+        : m_queue(std::make_shared<CommandQueue>(queue, cpuSyncSpinningEnabled))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
+        , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
+        , m_keepOpen(keepOpen)
     {
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
@@ -68,10 +72,10 @@ namespace Dml
 
     void ExecutionContext::FillBufferWithPattern(
         ID3D12Resource* dstBuffer,
-        gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
+        gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */)
     {
         SetCommandRecorder(&m_dmlRecorder);
-        m_dmlRecorder.FillBufferWithPattern(dstBuffer, value);
+        m_dmlRecorder.FillBufferWithPattern(dstBuffer, pattern);
     }
 
     void ExecutionContext::ExecuteCommandList(
@@ -190,8 +194,14 @@ namespace Dml
         // Discard unflushed work and clear queued references.  This prevents the circular reference:
         // Kernel --> ProviderImpl -->  Context --> QueuedRefs --> Kernel
         m_queue->Close();
-        m_currentRecorder = nullptr;
-        m_closed = true;
+
+        // Keep the execution context open when requested, e.g. when used through the python API where there's a single context
+        // and single command queue
+        if (!m_keepOpen)
+        {
+            m_currentRecorder = nullptr;
+            m_closed = true;
+        }
     }
 
     GpuEvent ExecutionContext::GetCurrentCompletionEvent()

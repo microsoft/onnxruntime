@@ -22,6 +22,8 @@ class MaxMinOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -78,6 +80,33 @@ bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 
   if (input_defs.size() < 1) {
     LOGS(logger, VERBOSE) << op_type << " requires at least one input (data)";
+    return false;
+  }
+
+  return true;
+}
+
+bool MaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+                                             const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+  int32_t input1_type;
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger))
+    return false;
+
+  if (!IsSupportedDataType(input0_type, webnn_supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 

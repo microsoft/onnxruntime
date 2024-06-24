@@ -70,7 +70,7 @@ class RandomValueGenerator {
   // Random values generated are in the range [min, max).
   template <typename TFloat16>
   typename std::enable_if<
-      std::is_same_v<TFloat16, MLFloat16>,
+      std::is_same_v<TFloat16, MLFloat16> || std::is_same_v<TFloat16, BFloat16>,
       std::vector<TFloat16>>::type
   Uniform(gsl::span<const int64_t> dims, float min, float max) {
     std::vector<TFloat16> val(detail::SizeFromDims(dims));

@@ -16,6 +16,8 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/optimizer/compute_optimizer/shared_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/util/math.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
@@ -31,6 +33,8 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 
+using namespace onnxruntime::optimizer::compute_optimizer;
+
 namespace onnxruntime {
 namespace test {
 
@@ -44,7 +48,9 @@ const InlinedHashSet<std::string_view> compatible_eps = {};
 Test graph includes multiple equivalent subgraphs as below.
            graph input [32, 256] (float)                graph input [32] (int64_t)
                             |                                   |
-                             \_____________             _______/     graph input -1, scalar (int64_t)
+                             \___________                 ______/    graph input -1, scalar (int64_t)
+                                         \               /               /
+                                          \          PythonOp (flag)    /
                                            \           /        _______/
                                             \         /        /
                                   SCE Node, reduction = 'mean', output_type=1
@@ -58,7 +64,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
   for (const bool is_sce_internal : {true, false}) {
     auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
       auto op_count_pre = CountOpsInGraph(graph);
-      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
 
       if (is_sce_internal)
         TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
@@ -115,20 +121,30 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
     auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>({{32, 256}});
       auto* input2_arg = builder.MakeInput<int64_t>({{32}}, "label");
+      auto* python_op_out1 = builder.MakeIntermediate();
+      auto* python_op_out2 = builder.MakeIntermediate();
       auto* sce_out1 = builder.MakeOutput();
       NodeArg* empty = builder.MakeEmptyInput();
       auto* sce_out2 = builder.MakeIntermediate();
 
+      Node& python_op = builder.AddNode("PythonOp", {input2_arg}, {python_op_out1, python_op_out2}, kMSDomain);
+      python_op.AddAttribute("func_name", "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity");
+      python_op.AddAttribute("input_convention", "dcc");
+      python_op.AddAttribute("input_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("input_tensor_ranks", std::vector<int64_t>{1});
+      python_op.AddAttribute("output_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("output_tensor_ranks", std::vector<int64_t>{1});
       if (is_sce_internal) {
         auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
+
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                    {input1_arg, input2_arg, empty, ignore_index_arg},
+                                    {input1_arg, python_op_out2, empty, ignore_index_arg},
                                     {sce_out1, sce_out2}, kMSDomain);
         sce.AddAttribute("reduction", "mean");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
-                                    {input1_arg, input2_arg, empty},
+                                    {input1_arg, python_op_out2, empty},
                                     {sce_out1, sce_out2});
         sce.AddAttribute("reduction", "mean");
         sce.AddAttribute("ignore_index", static_cast<int64_t>(-100));
@@ -138,7 +154,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_Allowed) {
     std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
-          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
+          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps);
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
                                             TransformerLevel::Level1,
                                             1, pre_graph_checker, post_graph_checker));
@@ -158,7 +174,7 @@ Test graph includes multiple equivalent subgraphs as below.
                                             |
                                     graph output, loss, scalar (float)
 */
-TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_LabelNameNotMatch) {
+TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_WithoutFlagPythonOp) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
 
   for (const bool is_sce_internal : {true, false}) {
@@ -184,7 +200,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_LabelNameNotMat
 
     auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>({{32, 256}});
-      auto* input2_arg = builder.MakeInput<int64_t>({{32}}, "label111");
+      auto* input2_arg = builder.MakeInput<int64_t>({{32}}, "label");
       auto* sce_out1 = builder.MakeOutput();
 
       NodeArg* empty = builder.MakeEmptyInput();
@@ -209,7 +225,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_LabelNameNotMat
     std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
-          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
+          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps);
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
                                             TransformerLevel::Level1,
                                             1, pre_graph_checker, post_graph_checker));
@@ -219,11 +235,13 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_LabelNameNotMat
 
 /*
 Test graph includes multiple equivalent subgraphs as below.
-           graph input [32, 256] (float)                graph input [32] (int64_t)
-                            |                                   |
-                             \_____________             _______/     graph input -1, scalar (int64_t)
-                                           \           /        _______/
-                                            \         /        /
+           graph input [32, 256] (float)                   graph input [32] (int64_t)
+                            |                                      |
+                             \_____________                _______/          graph input -1, scalar (int64_t)
+                                           \              /             _______/
+                                            \            /             /
+                                             \     PythonOp (flag)    /
+                                              \         /            /
                              SCE Node, reduction = 'none', output_type=1
                                             |
                                             |
@@ -235,7 +253,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
   for (const bool is_sce_internal : {true, false}) {
     auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
       auto op_count_pre = CountOpsInGraph(graph);
-      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
       if (is_sce_internal)
         TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
       else
@@ -256,21 +274,30 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
     auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>({{32, 256}});
       auto* input2_arg = builder.MakeInput<int64_t>({{32}}, "label");
+      auto* python_op_out1 = builder.MakeIntermediate();
+      auto* python_op_out2 = builder.MakeIntermediate();
       auto* sce_out1 = builder.MakeOutput();
 
       NodeArg* empty = builder.MakeEmptyInput();
       auto* sce_out2 = builder.MakeIntermediate();
 
+      Node& python_op = builder.AddNode("PythonOp", {input2_arg}, {python_op_out1, python_op_out2}, kMSDomain);
+      python_op.AddAttribute("func_name", "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity");
+      python_op.AddAttribute("input_convention", "dcc");
+      python_op.AddAttribute("input_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("input_tensor_ranks", std::vector<int64_t>{1});
+      python_op.AddAttribute("output_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("output_tensor_ranks", std::vector<int64_t>{1});
       if (is_sce_internal) {
         auto* ignore_index_arg = builder.MakeScalarInitializer<int64_t>(-100);
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                    {input1_arg, input2_arg, empty, ignore_index_arg},
+                                    {input1_arg, python_op_out2, empty, ignore_index_arg},
                                     {sce_out1, sce_out2}, kMSDomain);
         sce.AddAttribute("reduction", "none");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
-                                    {input1_arg, input2_arg, empty},
+                                    {input1_arg, python_op_out2, empty},
                                     {sce_out1, sce_out2});
         sce.AddAttribute("reduction", "none");
         sce.AddAttribute("ignore_index", static_cast<int64_t>(-100));
@@ -280,7 +307,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
     std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
-          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
+          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps);
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
                                             TransformerLevel::Level1,
                                             1, pre_graph_checker, post_graph_checker));
@@ -290,11 +317,13 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_ReduceNone) {
 
 /*
 Test graph include multiple equivalent subgraphs as below.
-           graph input [32, 256] (float)                graph input [32] (int64_t)
-                            |                                   |
-                             \_____________             _______/     graph input -1, scalar (int64_t)
-                                           \           /        _______/
-                                            \         /        /
+           graph input [32, 256] (float)                   graph input [32] (int64_t)
+                            |                                      |
+                             \_____________                _______/       graph input -1, scalar (int64_t)
+                                           \              /             _______/
+                                            \            /             /
+                                             \     PythonOp (flag)    /
+                                              \        /             /
                             SCE Node, reduction = 'none', output_type=1
                                             |
                                             |
@@ -306,7 +335,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
   for (const bool is_sce_internal : {true, false}) {
     auto pre_graph_checker = [is_sce_internal](Graph& graph) -> Status {
       auto op_count_pre = CountOpsInGraph(graph);
-      TEST_RETURN_IF_NOT(op_count_pre.size() == 1U);
+      TEST_RETURN_IF_NOT(op_count_pre.size() == 2U);
       if (is_sce_internal)
         TEST_RETURN_IF_NOT(op_count_pre["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
       else
@@ -327,18 +356,27 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
     auto build_test_case = [is_sce_internal](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<float>({{32, 256}});
       auto* input2_arg = builder.MakeInput<int64_t>({{32}}, "label");
+      auto* python_op_out1 = builder.MakeIntermediate();
+      auto* python_op_out2 = builder.MakeIntermediate();
       auto* sce_out1 = builder.MakeOutput();
       auto* sce_out2 = builder.MakeIntermediate();
 
+      Node& python_op = builder.AddNode("PythonOp", {input2_arg}, {python_op_out1, python_op_out2}, kMSDomain);
+      python_op.AddAttribute("func_name", "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity");
+      python_op.AddAttribute("input_convention", "dcc");
+      python_op.AddAttribute("input_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("input_tensor_ranks", std::vector<int64_t>{1});
+      python_op.AddAttribute("output_tensor_types", std::vector<int64_t>{7});
+      python_op.AddAttribute("output_tensor_ranks", std::vector<int64_t>{1});
       if (is_sce_internal) {
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLossInternal",
-                                    {input1_arg, input2_arg},
+                                    {input1_arg, python_op_out2},
                                     {sce_out1, sce_out2}, kMSDomain);
         sce.AddAttribute("reduction", "sum");
         sce.AddAttribute("output_type", static_cast<int64_t>(1));
       } else {
         Node& sce = builder.AddNode("SoftmaxCrossEntropyLoss",
-                                    {input1_arg, input2_arg},
+                                    {input1_arg, python_op_out2},
                                     {sce_out1, sce_out2});
         sce.AddAttribute("reduction", "sum");
       }
@@ -347,7 +385,7 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_NotAllowed_NoIgnoreIndex) 
     std::vector<int> opsets{12, 13, 14, 15, 17};
     for (auto opset : opsets) {
       std::unique_ptr<GraphTransformer> transformer =
-          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"label"});
+          std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps);
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger, std::move(transformer),
                                             TransformerLevel::Level1,
                                             1, pre_graph_checker, post_graph_checker));
@@ -363,11 +401,55 @@ TEST(ComputeOptimizerTests, InsertGatherBeforeSceLoss_MlmBertE2E) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger));
   Graph& graph = model->MainGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // Insert a PythonOp Flag to enabel the optimization
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : node_topology_list) {
+    auto& node = *graph.GetNode(node_index);
+    bool is_internal_sce = graph_utils::IsSupportedOptypeVersionAndDomain(node, "SoftmaxCrossEntropyLossInternal", {1},
+                                                                          kMSDomain);
+    if (!is_internal_sce) {
+      continue;
+    }
+    InlinedVector<NodeArg*> python_op_node_input_args;
+    python_op_node_input_args.reserve(1);
+    python_op_node_input_args.push_back(node.MutableInputDefs()[1]);
+    InlinedVector<NodeArg*> python_op_node_output_args;
+    python_op_node_output_args.push_back(
+        &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("python_op_ctx"),
+                                  nullptr));
+    python_op_node_output_args.push_back(
+        &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("python_op_out"),
+                                  nullptr));
+    onnxruntime::NodeAttributes attributes;
+    attributes["func_name"] = onnxruntime::utils::MakeAttribute(
+        "func_name",
+        "onnxruntime.training.ortmodule._runtime_inspector.FlagAndPrintDensity");
+    attributes["input_convention"] = onnxruntime::utils::MakeAttribute("input_convention", "dcc");
+    attributes["input_tensor_types"] = onnxruntime::utils::MakeAttribute("input_tensor_types", std::vector<int64_t>{7});
+    attributes["input_tensor_ranks"] = onnxruntime::utils::MakeAttribute("input_tensor_ranks", std::vector<int64_t>{1});
+    attributes["output_tensor_types"] = onnxruntime::utils::MakeAttribute("output_tensor_types", std::vector<int64_t>{7});
+    attributes["output_tensor_ranks"] = onnxruntime::utils::MakeAttribute("output_tensor_ranks", std::vector<int64_t>{1});
+    Node* python_op_node = InsertIntermediateNodeOnDestInput(
+        graph, node,
+        1,
+        0 /* new_node_input_index*/,
+        1 /* new_node_output_index*/,
+        graph.GenerateNodeName("PaddingFlag"),
+        "PythonOp",
+        "",
+        python_op_node_input_args,
+        python_op_node_output_args,
+        attributes,
+        kMSDomain,
+        *logger);
+    python_op_node->SetExecutionProviderType(node.GetExecutionProviderType());
+  }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps, std::vector<std::string>{"labels"}),
+      std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps),
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 

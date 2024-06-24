@@ -175,5 +175,32 @@ T* ConcatStateChunk(const T* past,
   return start;
 }
 
+// GQA version of ConcatStateChunk
+template <typename T>
+T* ConcatStateChunkGQA(const T* past,
+                       const T* chunk,
+                       T* present,
+                       size_t present_buff_chunk_length,
+                       size_t past_buff_chunk_length,
+                       size_t past_chunk_length,
+                       size_t new_chunk_length,
+                       bool is_prompt,
+                       bool past_present_share_buffer,
+                       std::ptrdiff_t i) {
+  T* start = present + i * present_buff_chunk_length;
+
+  T* p = start;
+  if (!is_prompt) {
+    if (!past_present_share_buffer) {
+      const T* src_past = past + i * past_buff_chunk_length;
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
+    p += past_chunk_length;
+  }
+
+  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  return start;
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

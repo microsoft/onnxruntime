@@ -70,7 +70,10 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
 
   auto process = [&](int src_idx) {
     const bool valid_index = static_cast<size_t>(src_idx) < src_defs.size() &&
-                             (move_info.append || static_cast<size_t>(move_info.dest_slot.idx) < dest_defs.size());
+                             (move_info.append ||
+                              move_info.dest_slot.idx != -1);  // don't check that dest_slot.idx < dest_defs.size() yet
+                                                               // as we may need to fill in missing intermediate
+                                                               // optional inputs/outputs.
     if (!valid_index) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Index out of range");
     }
@@ -93,6 +96,34 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
         dest.MutableInputArgsCount().push_back(1);
       }
     } else {
+      if (static_cast<size_t>(move_info.dest_slot.idx) + 1 > dest_defs.size()) {
+        // assume that the gap between dest_slot.idx and dest_defs.size() is due to intermediate optional
+        // inputs/outputs that are not present. fill in those defs with the empty NodeArg.
+        // dest_defs[dest_slot.idx] will also be initialized to the empty NodeArg here but overwritten later.
+        const size_t original_dest_defs_size = dest_defs.size();
+        const size_t new_dest_defs_size = static_cast<size_t>(move_info.dest_slot.idx) + 1;
+
+        NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
+        dest_defs.resize(new_dest_defs_size, &empty_arg);
+
+        if (move_info.dest_slot.in_out == ArgType::kInput) {
+          // input arg counts for optional inputs that were not present should have been set to 0 during
+          // Graph::Resolve(). as the inputs are present now (albeit set to the empty NodeArg), set those counts to 1.
+          auto& input_arg_counts = dest.MutableInputArgsCount();
+
+          ORT_RETURN_IF(input_arg_counts.size() < new_dest_defs_size,
+                        "Expected at least ", new_dest_defs_size, " input arg counts but there are only ",
+                        input_arg_counts.size());
+
+          for (size_t i = original_dest_defs_size; i < new_dest_defs_size; ++i) {
+            ORT_RETURN_IF(input_arg_counts[i] != 0,
+                          "Expected input arg count of zero for input ", i,
+                          ", actual input arg count: ", input_arg_counts[i]);
+            input_arg_counts[i] = 1;
+          }
+        }
+      }
+
       if (!only_update_dest_definitions) {
         // remove any edge to the slot we're replacing
         ProcessEdge(graph, dest, move_info.dest_slot, nullptr, nullptr);
@@ -320,6 +351,7 @@ Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node
         ORT_RETURN_IF_ERROR(MoveInputOutputImpl(graph, move.value_move_info, *src, dest,
                                                 only_update_dest_definitions));
       } else if (move.value_move_info.optional &&
+                 move.value_move_info.append &&
                  move.value_move_info.fill_optional_with_empty) {
         auto& dest_defs = (move.value_move_info.dest_slot.in_out == ArgType::kInput)
                               ? dest.MutableInputDefs()

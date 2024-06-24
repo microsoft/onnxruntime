@@ -28,7 +28,7 @@ from ._ir import (
 )
 from ._op_config import is_reduction_node
 from ._sorted_graph import SortedGraph
-from ._utils import get_reduce_info, sort_reduce_axes, to_numpy_array
+from ._utils import get_reduce_info, sort_reduce_axes, to_torch_tensor
 
 
 class NodeGroup:
@@ -245,10 +245,10 @@ class GraphLowering:
         self._module_outputs = [TensorArg(output.name, self._node_arg_infos[output.name]) for output in graph.output]
         self._module_output_names = set(arg.name for arg in self._module_outputs)
         for initializer in graph.initializer:
-            data = to_numpy_array(initializer)
+            data = to_torch_tensor(initializer)
             self._module_constants.append(TensorArg(initializer.name, data=data))
         for const_node in self._sorted_graph.const_nodes:
-            data = to_numpy_array(const_node)
+            data = to_torch_tensor(const_node)
             self._module_constants.append(TensorArg(const_node.output[0], data=data))
         self._module_constant_names = set(arg.name for arg in self._module_constants)
         self._tensor_args = dict(
@@ -415,7 +415,7 @@ class GraphLowering:
             for idx in range(cur, nxt):
                 for input in sub_nodes[idx].inputs:
                     if input.name in kernel_node.constants or input.name in input_names:
-                        if (input.data is not None and input.data.size == 1) or input.name in load_cache:
+                        if (input.data is not None and input.data.numel() == 1) or input.name in load_cache:
                             continue
                         load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)
@@ -432,7 +432,7 @@ class GraphLowering:
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     input = reduce_node.inputs[0]
                     if input.name in kernel_node.constants or input.name in input_names:
-                        if (input.data is not None and input.data.size == 1) or input.name in load_cache:
+                        if (input.data is not None and input.data.numel() == 1) or input.name in load_cache:
                             continue
                         load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)

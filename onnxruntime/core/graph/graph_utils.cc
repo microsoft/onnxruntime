@@ -172,10 +172,7 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
   return true;
 }
 
-/** Move the input edges that src_node has to target_node.
-After the move is complete src_node will have no input edges.
-*/
-static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
+void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
   auto target_idx = target_node.Index();
   auto input_edges = GraphEdge::GetNodeInputEdges(src_node);
 
@@ -227,8 +224,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
-  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions_vec(versions);
-  return IsSupportedOptypeVersionAndDomain(node, op_type, versions_vec, domain);
+  return IsSupportedOptypeVersionAndDomain(node, op_type, gsl::span{versions.begin(), versions.size()}, domain);
 }
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node, std::string_view op_type,
@@ -387,6 +383,18 @@ std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
   return input_edges;
 }
 
+/** Returns a vector of the input GraphEdges of a node for the provided input index. */
+std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node, size_t index) {
+  std::vector<GraphEdge> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    if (static_cast<size_t>(it->GetDstArgIndex()) == index) {
+      input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+    }
+  }
+
+  return input_edges;
+}
+
 /** Returns a vector of the output GraphEdges of a node. */
 std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
@@ -419,18 +427,18 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
   }
 }
 
+bool IsSupportedProvider(const Node& node,
+                         const InlinedHashSet<std::string_view>& compatible_providers) {
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
   return GetIndexFromName(node, input_name, true);
-}
-
-bool IsSupportedProvider(const Node& node,
-                         const InlinedHashSet<std::string_view>& compatible_providers) {
-  return !(!compatible_providers.empty() &&
-           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.

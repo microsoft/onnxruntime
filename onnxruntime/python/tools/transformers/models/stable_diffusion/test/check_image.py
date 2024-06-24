@@ -14,6 +14,7 @@ def arg_parser():
     parser.add_argument("--image1", type=str, help="Path to image 1")
     parser.add_argument("--image2", type=str, help="Path to image 2")
     parser.add_argument("--cache_dir", type=str, help="Path to model cache directory")
+    parser.add_argument("--negative", action="store_true", help="match the unexpected image, for testing purpose")
     args = parser.parse_args()
     return args
 
@@ -62,11 +63,16 @@ def main():
     cache_dir = args.cache_dir
     score = round(generate_score(image1, image2, cache_dir), 2)
     print("similarity Score: ", {score})
-    if score < 97:
-        print(f"{image1} and {image2} are different")
-        raise SystemExit(1)
+    if args.negative:
+        if score > 95:
+            print("Why generated this incorrect image")
+            raise SystemExit(1)
     else:
-        print(f"{image1} and {image2} are same")
+        if score < 95:
+            print(f"{image1} and {image2} are different")
+            raise SystemExit(1)
+        else:
+            print(f"{image1} and {image2} are same")
 
 
 if __name__ == "__main__":

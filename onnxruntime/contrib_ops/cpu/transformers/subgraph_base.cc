@@ -9,7 +9,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {

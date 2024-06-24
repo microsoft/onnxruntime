@@ -4,12 +4,13 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <utility>
 
-#include "ov_interface.h"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/pass/constant_folding.hpp"
 #include "core/providers/shared_library/provider_api.h"
-#include "backend_utils.h"
+#include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/ov_interface.h"
 
 using Exception = ov::Exception;
 
@@ -17,7 +18,6 @@ namespace onnxruntime {
 namespace openvino_ep {
 namespace backend_utils {
 
-#ifndef NDEBUG
 bool IsDebugEnabled() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
@@ -25,7 +25,6 @@ bool IsDebugEnabled() {
   }
   return false;
 }
-#endif
 
 bool IsCILogEnabled() {
   const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
@@ -265,7 +264,7 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
   auto performanceMap = request->GetNewObj().get_profiling_info();
-  printPerformanceCounts(performanceMap, stream, deviceName);
+  printPerformanceCounts(performanceMap, stream, std::move(deviceName));
 }
 
 }  // namespace backend_utils

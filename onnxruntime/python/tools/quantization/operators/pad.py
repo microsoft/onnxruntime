@@ -68,6 +68,7 @@ class QPad(QuantOperatorBase):
                         self.quantizer.activation_qType,
                         quantized_input_value.scale_name,
                         quantized_input_value.zp_name,
+                        initial_type=scale_tensor.data_type,
                     )
                     self.quantizer.new_nodes.extend(pad_value_qnodes)
                     node.input[2] = pad_value_qnodes[0].output[0]

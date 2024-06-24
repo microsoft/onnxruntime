@@ -54,6 +54,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_scales_optional = context->Input<Tensor>(9);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(10);
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"  // Mute "maybe used uninitialized" warning for MoEParameters.
+#endif
+
   MoEParameters moe_params;
   MoEQuantType quant_type = MoEQuantType::UINT4;
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, quant_type, input, router_probs, fc1_experts_weights,
@@ -134,6 +139,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(moe_params.num_rows),
       static_cast<int>(moe_params.hidden_size), static_cast<int>(k_), Stream(context));
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
   return Status::OK();
 }

@@ -26,6 +26,11 @@ static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
 static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
 static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
+static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
+static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILE_PATH";
+static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
+static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILE_PATH";
+
 };  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
@@ -44,6 +49,10 @@ struct MIGraphXFuncState {
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   std::unordered_map<std::string, float> dynamic_range_map;
+  bool save_compiled_mode = false;
+  std::string save_compiled_path;
+  bool load_compiled_mode = false;
+  std::string load_compiled_path;
   bool dump_model_ops = false;
 };
 
@@ -84,6 +93,10 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool int8_use_native_migraphx_calibration_table_ = false;
   std::string calibration_cache_path_;
   std::unordered_map<std::string, float> dynamic_range_map;
+  bool save_compiled_model_ = false;
+  std::string save_compiled_path_;
+  bool load_compiled_model_ = false;
+  std::string load_compiled_path_;
   bool dump_model_ops_ = false;
   int device_id_;
   migraphx::target t_;

@@ -194,7 +194,8 @@ class TestOpRelu(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    def test_quantize_relu_s8s8(self):
+    @unittest.skip(reason="Shape inference bug, see onnx PR #6080")
+    def test_quantize_qop_relu_s8s8(self):
         np.random.seed(1)
         model_fp32_path = "relu_fp32.onnx"
         self.construct_model_gemm(model_fp32_path)
@@ -207,6 +208,13 @@ class TestOpRelu(unittest.TestCase):
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
+    def test_quantize_qdq_relu_s8s8(self):
+        np.random.seed(1)
+        model_fp32_path = "relu_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
         self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,

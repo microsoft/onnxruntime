@@ -45,7 +45,7 @@ public:
             ML_CHECK_VALID_ARGUMENT(wrappedValueTensor.IsCpuData());
             const uint32_t elementCount = wrappedValueTensor.GetTotalElementCount();
             ML_CHECK_VALID_ARGUMENT(elementCount == 1); // Expect exactly one element.
-            const size_t rawDataByteSize = GetByteSizeFromMlDataType(wrappedValueTensor.GetTensorDataType());
+            const size_t rawDataByteSize = (GetBitSizeFromMlDataType(wrappedValueTensor.GetTensorDataType()) + CHAR_BIT - 1) / CHAR_BIT;
             const std::byte* rawData = static_cast<const std::byte*>(valueTensor->GetData());
 
             memcpy(operatorDesc.Value.Bytes, rawData, std::min(rawDataByteSize, sizeof(operatorDesc.Value.Bytes)));

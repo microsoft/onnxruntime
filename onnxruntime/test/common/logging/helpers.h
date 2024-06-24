@@ -18,6 +18,16 @@ class MockSink : public ::onnxruntime::logging::ISink {
                               const ::onnxruntime::logging::Capture& message));
 };
 
+class MockEtwSink : public ::onnxruntime::logging::ISink {
+ public:
+  MockEtwSink() : ISink(onnxruntime::logging::SinkType::EtwSink) {}
+  ~MockEtwSink() = default;
+
+  MOCK_METHOD3(SendImpl, void(const ::onnxruntime::logging::Timestamp& timestamp,
+                              const std::string& logger_id,
+                              const ::onnxruntime::logging::Capture& message));
+};
+
 // The ACTION*() macros trigger warning C4100 (unreferenced formal
 // parameter) in MSVC with -W4.  Unfortunately they cannot be fixed in
 // the macro definition, as the warnings are generated when the macro

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
 #include "contrib_ops/cuda/moe/ft_moe/moe_gemm_kernels.h"
 
@@ -130,14 +131,14 @@ class MoEBase {
         fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_weights_dims must be equal to fc1_experts_weights_dims, got ",
-                             fc3_experts_weights_optional->Shape().GetDims(), " and ", fc1_experts_weights_dims);
+                             fc3_experts_weights_optional->Shape(), " and ", TensorShape(fc1_experts_weights_dims));
     }
 
     if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr &&
         fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT, "fc3_experts_bias_dims must be equal to fc1_experts_bias_dims, got ",
-          fc3_experts_bias_optional->Shape().GetDims(), " and ", fc1_experts_bias_optional->Shape().GetDims());
+          fc3_experts_bias_optional->Shape(), " and ", fc1_experts_bias_optional->Shape());
     }
 
     parameters.num_rows = num_rows;
@@ -199,7 +200,7 @@ class MoEBase {
     if (fc3_experts_scales != nullptr && fc1_experts_scales_dims != fc3_experts_scales->Shape().GetDims()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_scales must be equal to fc1_experts_scales, got ",
-                             fc3_experts_scales->Shape().GetDims(), " and ", fc1_experts_scales_dims);
+                             fc3_experts_scales->Shape(), " and ", TensorShape(fc1_experts_scales_dims));
     }
 
     return Status::OK();

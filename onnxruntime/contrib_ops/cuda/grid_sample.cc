@@ -22,7 +22,10 @@ namespace cuda {
       onnxruntime::contrib::cuda::GridSample<T, LAYOUT>);
 
 REGISTER_KERNEL_TYPED(float, 1, LAYOUT_NCHW, kMSDomain)
+
+#ifdef ENABLE_CUDA_NHWC_OPS
 REGISTER_KERNEL_TYPED(float, 16, LAYOUT_NHWC, kMSInternalNHWCDomain)
+#endif
 
 template <typename T, bool IsNHWC>
 GridSample<T, IsNHWC>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {

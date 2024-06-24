@@ -32,14 +32,14 @@ class TrainingAgent {
                          int local_rank = 0);
   ~TrainingAgent();
   // For ORTModule.forward()
-  [[nodiscard]] common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunForward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state, const OrtValueCachePtr& cache);
 
   // For ORTModule.backward()
-  [[nodiscard]] common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunBackward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                            PartialGraphExecutionState& state);
 
-  [[nodiscard]] common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunCore(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                        PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                        const OrtValueCachePtr& cache, int32_t partial_graph_index);
 
@@ -51,6 +51,7 @@ class TrainingAgent {
 
   std::string GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
                                                std::string_view recompute_probe_level,
+                                               const bool return_opportunity_table,
                                                std::map<std::string, std::pair<std::string, int>>&
                                                    cluster_id_combinations_to_saved_symbolic_byte_map) const;
 

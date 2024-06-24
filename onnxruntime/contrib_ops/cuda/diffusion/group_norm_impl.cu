@@ -26,7 +26,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/group_norm_impl.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/diffusion/group_norm_common_base.h"
 #include "contrib_ops/cuda/diffusion/group_norm_impl_kernel.cuh"
 

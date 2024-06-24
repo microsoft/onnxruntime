@@ -8,7 +8,8 @@ namespace onnxruntime {
 void GraphViewerToProto(const GraphViewer& graph_view,
                         ONNX_NAMESPACE::GraphProto& graph_proto,
                         bool include_initializer,
-                        bool include_outer_scope_args) {
+                        bool include_outer_scope_args,
+                        ExecutionOrder order) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -34,7 +35,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+  for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
     const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
     const gsl::not_null<const Node*> p_node{graph_view.GetNode(node_idx)};
     // we need to update any GraphProto attributes for subgraphs so that any changes made by things
@@ -62,7 +63,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
-      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder(order)) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {

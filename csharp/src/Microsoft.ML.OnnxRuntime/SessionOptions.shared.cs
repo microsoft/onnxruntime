@@ -507,7 +507,12 @@ namespace Microsoft.ML.OnnxRuntime
         {
             try
             {
+#if NETSTANDARD2_0
+                var ortApiBasePtr = NativeMethods.OrtGetApiBase();
+                var ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
+#else
                 var ortApiBase = NativeMethods.OrtGetApiBase();
+#endif
                 NativeApiStatus.VerifySuccess(
                     OrtExtensionsNativeMethods.RegisterCustomOps(this.handle, ref ortApiBase)
                 );

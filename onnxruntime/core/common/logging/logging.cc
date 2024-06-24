@@ -9,11 +9,11 @@
 #include "core/common/exceptions.h"
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/composite_sink.h"
 
 #ifdef _WIN32
 #include <Windows.h>
 #include "core/platform/windows/logging/etw_sink.h"
-#include "core/common/logging/sinks/composite_sink.h"
 #else
 #include <unistd.h>
 #if defined(__MACH__) || defined(__wasm__) || defined(_AIX)
@@ -22,10 +22,10 @@
 #include <sys/syscall.h>
 #endif
 #endif
-#include "core/platform/ort_mutex.h"
 
 #if __FreeBSD__
 #include <sys/thr.h>  // Use thr_self() syscall under FreeBSD to get thread id
+#include "logging.h"
 #endif
 
 namespace onnxruntime {
@@ -52,6 +52,10 @@ static std::atomic<void*>& DefaultLoggerManagerInstance() noexcept {
   return default_instance;
 }
 
+LoggingManager* LoggingManager::GetDefaultInstance() {
+  return static_cast<LoggingManager*>(DefaultLoggerManagerInstance().load());
+}
+
 // GSL_SUPRESS(i.22) is broken. Ignore the warnings for the static local variables that are trivial
 // and should not have any destruction order issues via pragmas instead.
 // https://developercommunity.visualstudio.com/content/problem/249706/gslsuppress-does-not-work-for-i22-c-core-guideline.html
@@ -66,6 +70,7 @@ static OrtMutex& DefaultLoggerMutex() noexcept {
 }
 
 Logger* LoggingManager::s_default_logger_ = nullptr;
+OrtMutex sink_mutex_;
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -245,27 +250,27 @@ unsigned int GetProcessId() {
 #endif
 }
 
-std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
-                                            logging::Severity etwSeverity) {
+std::unique_ptr<ISink> EnhanceSinkWithEtw(std::unique_ptr<ISink> existing_sink, logging::Severity original_severity,
+                                          logging::Severity etw_severity) {
 #ifdef _WIN32
   auto& manager = EtwRegistrationManager::Instance();
   if (manager.IsEnabled()) {
     auto compositeSink = std::make_unique<CompositeSink>();
-    compositeSink->AddSink(std::move(existingLogger), originalSeverity);
-    compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
+    compositeSink->AddSink(std::move(existing_sink), original_severity);
+    compositeSink->AddSink(std::make_unique<EtwSink>(), etw_severity);
     return compositeSink;
   } else {
-    return existingLogger;
+    return existing_sink;
   }
 #else
   // On non-Windows platforms, just return the existing logger
-  (void)originalSeverity;
-  (void)etwSeverity;
-  return existingLogger;
+  (void)original_severity;
+  (void)etw_severity;
+  return existing_sink;
 #endif  // _WIN32
 }
 
-Severity OverrideLevelWithEtw(Severity originalSeverity) {
+Severity OverrideLevelWithEtw(Severity original_severity) {
 #ifdef _WIN32
   auto& manager = logging::EtwRegistrationManager::Instance();
   if (manager.IsEnabled() &&
@@ -273,7 +278,50 @@ Severity OverrideLevelWithEtw(Severity originalSeverity) {
     return manager.MapLevelToSeverity();
   }
 #endif  // _WIN32
-  return originalSeverity;
+  return original_severity;
+}
+
+bool LoggingManager::AddSinkOfType(SinkType sink_type, std::function<std::unique_ptr<ISink>()> sinkFactory,
+                                   logging::Severity severity) {
+  std::lock_guard<OrtMutex> guard(sink_mutex_);
+  if (sink_->GetType() != SinkType::CompositeSink) {
+    // Current sink is not a composite, create a new composite sink and add the current sink to it
+    auto new_composite = std::make_unique<CompositeSink>();
+    new_composite->AddSink(std::move(sink_), default_min_severity_);  // Move the current sink into the new composite
+    sink_ = std::move(new_composite);                                 // Now sink_ is pointing to the new composite
+  }
+  // Adjust the default minimum severity level to accommodate new sink needs
+  default_min_severity_ = std::min(default_min_severity_, severity);
+  if (s_default_logger_ != nullptr) {
+    s_default_logger_->SetSeverity(default_min_severity_);
+  }
+  CompositeSink* current_composite = static_cast<CompositeSink*>(sink_.get());
+  if (current_composite->HasType(sink_type)) {
+    return false;  // Sink of this type already exists, do not add another
+  }
+
+  current_composite->AddSink(sinkFactory(), severity);
+  return true;
+}
+
+void LoggingManager::RemoveSink(SinkType sink_type) {
+  std::lock_guard<OrtMutex> guard(sink_mutex_);
+
+  if (sink_->GetType() == SinkType::CompositeSink) {
+    auto composite_sink = static_cast<CompositeSink*>(sink_.get());
+
+    Severity newSeverity = composite_sink->RemoveSink(sink_type);
+
+    if (composite_sink->HasOnlyOneSink()) {
+      // If only one sink remains, replace the CompositeSink with this single sink
+      sink_ = composite_sink->GetRemoveSingleSink();
+    }
+
+    default_min_severity_ = newSeverity;
+    if (s_default_logger_ != nullptr) {
+      s_default_logger_->SetSeverity(default_min_severity_);
+    }
+  }
 }
 
 }  // namespace logging

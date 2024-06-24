@@ -8,7 +8,7 @@
 #include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
-extern TensorrtLogger& GetTensorrtLogger();
+extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
 /*
  * Create custom op domain list for TRT plugins.
@@ -57,8 +57,13 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   try {
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
-    TensorrtLogger trt_logger = GetTensorrtLogger();
+    TensorrtLogger trt_logger = GetTensorrtLogger(false);
     initLibNvInferPlugins(&trt_logger, "");
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
+#endif
 
     int num_plugin_creator = 0;
     auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
@@ -79,6 +84,11 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());
   } catch (const std::exception&) {

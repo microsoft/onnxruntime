@@ -3,6 +3,8 @@
 
 #include "conv.h"
 
+#include <cassert>
+
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensorprotoutils.h"
@@ -24,16 +26,30 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
     // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
     auto orig_shape = tensor.Shape();
+    const auto rank = orig_shape.NumDimensions();
 
-    InlinedVector<size_t> perm{0, 2, 3, 1};
-    TensorShapeVector new_dims{orig_shape[0],
-                               orig_shape[2],
-                               orig_shape[3],
-                               orig_shape[1]};
+    if (rank == 4) {
+      InlinedVector<size_t> perm{0, 2, 3, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[1]};
 
-    packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
 
-    SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 3);
+    } else {
+      assert(rank == 3);  // ConvBase::IsOnnxNodeSupported validates this
+
+      InlinedVector<size_t> perm{0, 2, 1};
+      TensorShapeVector new_dims{orig_shape[0],
+                                 orig_shape[2],
+                                 orig_shape[1]};
+
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 2);
+    }
 
     is_packed = true;
 
@@ -47,9 +63,13 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 Status Conv::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);  // this is in NHWC format
   const auto& X_shape = X.Shape();
-  const int64_t N = X_shape[0];  // input is NHWC
-  const int64_t H = X_shape[1];
-  const int64_t W = X_shape[2];
+  const auto rank = X_shape.NumDimensions();
+  const auto is_1D = rank == 3;
+  const int64_t N = X_shape[0];  // input is NHWC or NWC
+
+  // we support 1D or 2D. if 1D we convert to 2D by setting H to 1
+  const int64_t H = is_1D ? 1 : X_shape[1];
+  const int64_t W = X_shape[rank - 2];
 
   // We don't need to call ValidateInputShape as we checked validity in ConvChecker.
   // We also can't use ValidateInputShape as-is as the weight tensor was pre-packed and the layout was changed there.
