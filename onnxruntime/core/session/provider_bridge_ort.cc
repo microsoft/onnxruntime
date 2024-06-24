@@ -1643,6 +1643,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_ep_context_file_path = "";
   trt_options_converted.trt_ep_context_embed_mode = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
+  trt_options_converted.trt_engine_hw_compatible = 0;
 
   return trt_options_converted;
 }
@@ -2256,6 +2257,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_profile_max_shapes;
     delete[] ptr->trt_profile_opt_shapes;
     delete[] ptr->trt_ep_context_file_path;
+    delete[] ptr->trt_onnx_model_folder_path;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

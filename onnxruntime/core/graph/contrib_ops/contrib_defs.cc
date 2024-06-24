@@ -3300,6 +3300,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
+          "onnx_model_filename",
+          "(Optional) Filename of the original ONNX model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
           "hardware_architecture",
           "(Optional) Hardware architecture.",
           AttributeProto::STRING,

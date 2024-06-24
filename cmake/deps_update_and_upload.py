@@ -6,9 +6,9 @@
 #
 # Run without --do-upload once to verify downloading. Use --do-upload when you are ready to publish.
 # E.g.:
-#   python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.82
+#   python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.164
 #   # check contents of C:/temp/onnxruntime_deps
-#   python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.82 --no-download --do-upload
+#   python cmake/deps_update_and_upload.py --root-path C:/temp/onnxruntime_deps --version 1.0.164 --no-download --do-upload
 #
 # Next, update the version number in tools/ci_build/github/azure-pipelines/templates/download-deps.yml.
 
