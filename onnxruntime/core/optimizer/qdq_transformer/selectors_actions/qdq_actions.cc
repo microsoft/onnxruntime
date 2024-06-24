@@ -367,7 +367,9 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
                                                  scale_dst.data<float>(),
                                                  zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
                                                  true,
-                                                 K, N, block_size,
+                                                 static_cast<int>(K),
+                                                 static_cast<int>(N),
+                                                 static_cast<int>(block_size),
                                                  tp.get());
   } else {
     MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4>(weight_src.data<uint8_t>(),
@@ -377,7 +379,9 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
                                                      scale_dst.data<MLFloat16>(),
                                                      zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
                                                      true,
-                                                     K, N, block_size,
+                                                     static_cast<int>(K),
+                                                     static_cast<int>(N),
+                                                     static_cast<int>(block_size),
                                                      tp.get());
   }
 
