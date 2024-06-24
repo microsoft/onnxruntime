@@ -15,10 +15,12 @@ class ModelAccessor:
 
     Attributes:
         model: The onnx model that is manipulated by the onnx blocks.
+        model_path: The path to the base model. Can be None.
     """
 
-    def __init__(self, model: onnx.ModelProto):
+    def __init__(self, model: onnx.ModelProto, model_path: str | None = None):
         self._model = model
+        self._path = model_path
 
     @property
     def model(self) -> onnx.ModelProto:
@@ -30,6 +32,22 @@ class ModelAccessor:
             )
         return self._model
 
+    @property
+    def path(self) -> str:
+        """ModelAccessor property that gets the path to the base model."""
+
+        if self._path is None:
+            raise RuntimeError(
+                "The path to the onnx model was not set. Please use the context manager onnxblock.onnx_model to create the model and pass in a string."
+            )
+        return self._path
+
+    @property
+    def has_path(self) -> bool:
+        """Returns True if ModelAccessor has a path to a model, False otherwise."""
+
+        return self._path is not None
+
 
 # These variable resides in the global namespace.
 # Different methods can access this global model and manipulate it.
@@ -39,7 +57,7 @@ _GLOBAL_CUSTOM_OP_LIBRARY = None
 
 
 @contextmanager
-def base(model: onnx.ModelProto):
+def base(model: onnx.ModelProto, model_path: str | None = None):
     """Registers the base model to be manipulated by the onnx blocks.
 
     Example:
@@ -53,6 +71,7 @@ def base(model: onnx.ModelProto):
 
     Args:
         model: The base model to be manipulated by the onnx blocks.
+        model_path: The path to the base model. None if there is no model path to pass in.
 
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
@@ -69,7 +88,7 @@ def base(model: onnx.ModelProto):
             "model from scratch."
         )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)
+    _GLOBAL_ACCESSOR = ModelAccessor(model_clone, model_path)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
@@ -112,7 +131,7 @@ def empty_base(opset_version: int | None = None):
         )
     )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model)
+    _GLOBAL_ACCESSOR = ModelAccessor(model, None)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
