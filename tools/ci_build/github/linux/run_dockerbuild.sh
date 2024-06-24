@@ -29,8 +29,8 @@ in
 o) BUILD_OS=${OPTARG};;
 #gpu, tensorrt or openvino. It is ignored when BUILD_OS is yocto.
 d) BUILD_DEVICE=${OPTARG};;
-#python version: 3.6 3.7 (absence means default 3.6)
-p) PYTHON_VER=${OPTARG};;
+#python version: 3.6 3.7 3.8 3.9 3.10 3.11 3.12 (absence means default 3.8)
+p) PYTHON_VER=${OPTARG:-3.8};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
@@ -54,9 +54,7 @@ done
 
 # shellcheck disable=SC2034
 EXIT_CODE=1
-DEFAULT_PYTHON_VER="3.8"
 
-PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
@@ -101,7 +99,7 @@ elif [ "$BUILD_DEVICE" = "gpu" ]; then
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "openvino"* ]]; then
-        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.9  --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION}"
+        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION}"
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
