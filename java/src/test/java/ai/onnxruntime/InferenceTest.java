@@ -961,7 +961,7 @@ public class InferenceTest {
     } else {
       fail("Unknown os/platform '" + osName + "'");
     }
-    System.out.printf("customLibraryName is %s%n",customLibraryName);
+
     return customLibraryName;
   }
 
