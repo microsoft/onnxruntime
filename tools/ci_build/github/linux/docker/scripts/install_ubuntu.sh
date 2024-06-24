@@ -50,7 +50,7 @@ PACKAGE_LIST="autotools-dev \
 	zip \
 	rsync libunwind8 libpng-dev libexpat1-dev \
 	python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest \
-	openjdk-11-jdk \
+	openjdk-17-jdk \
 	graphviz"
 
 
