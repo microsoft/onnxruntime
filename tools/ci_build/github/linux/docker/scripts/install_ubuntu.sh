@@ -58,7 +58,7 @@ if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
 
-PACKAGE_LIST="$PACKAGE_LIST libicu66"
+PACKAGE_LIST="$PACKAGE_LIST libicu-dev"
 
 apt-get install -y --no-install-recommends $PACKAGE_LIST
 
