@@ -2,7 +2,7 @@
 
 pip3 install --user --upgrade pip
 
-pip3 install --user numpy==1.19.0 torch pytest
+pip3 install --user "numpy>=1.21.6,<2.0" torch pytest
 pip3 install --user /build/Release/dist/*.whl
 
 export PYTHONPATH=/onnxruntime_src/tools:/usr/local/lib/python3.8/site-packages:$PYTHONPATH

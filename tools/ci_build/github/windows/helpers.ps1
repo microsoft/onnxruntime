@@ -637,7 +637,12 @@ function Install-ONNX {
     }
 
     Write-Host "Installing python packages..."
-    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+
+    # Get the required numpy version from onnxruntime's requirements.txt (e.g., numpy>=1.21.6,<2.0)
+    $numpy_req_match_info = Get-Content "$src_root\requirements.txt" | Select-String -pattern 'numpy'
+    $numpy_to_install = $numpy_req_match_info.ToString()
+
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "$numpy_to_install", "protobuf==$protobuf_version"
     &"python.exe" $pip_args
     if ($lastExitCode -ne 0) {
       exit $lastExitCode

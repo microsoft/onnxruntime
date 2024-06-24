@@ -74,7 +74,7 @@ steps:
     workingFolder: '$(Build.BinariesDirectory)'
 
 - script: |
-    python -m pip install --upgrade "setuptools>=68.2.2" wheel numpy flatbuffers
+    python -m pip install --upgrade "setuptools>=68.2.2" wheel "numpy>=1.21.6,<2.0" flatbuffers
   workingDirectory: '$(Build.BinariesDirectory)'
   displayName: 'Install python modules'
 
