@@ -372,8 +372,7 @@ class MixtralSparseMoeBlock(nn.Module):
             if not iobinding:
                 ort_output = self.ort_sess.run(None, ort_inputs)
             else:
-                for x in range(5):
-                    self.ort_run_with_iobinding(ort_inputs)
+                self.ort_run_with_iobinding(ort_inputs)
                 return None
 
         # print_tensor("input", ort_inputs["input"])
