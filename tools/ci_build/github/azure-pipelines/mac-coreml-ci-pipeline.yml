@@ -32,7 +32,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '11.0'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
