@@ -29,7 +29,7 @@ namespace onnxruntime {
 namespace cuda {
 namespace collective {
 
-#if defined(USE_MPI) || defined(USE_NCCL)
+#if defined(USE_MPI) || defined(ORT_USE_NCCL)
 
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
