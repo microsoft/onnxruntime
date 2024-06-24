@@ -302,6 +302,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseROCMProviderOptions;
         public IntPtr CreateAndRegisterAllocatorV2;
         public IntPtr RunAsync;
+        public IntPtr SessionOptionsAppendExecutionProvider_VitisAI;
     }
 
     internal static class NativeMethods
@@ -1115,6 +1116,9 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, byte[] /*(char char*)*/ settings);
+
+        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_VitisAI(IntPtr /*(OrtSessionOptions*) */ options, byte[] /*(char char*)*/ settings);
 #endif
         /// <summary>
         /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance

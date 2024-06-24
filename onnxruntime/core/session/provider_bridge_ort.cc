@@ -2776,3 +2776,17 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessionOptions* options, char* settings) {
+  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(settings);
+  onnxruntime::ProviderOptions provider_options;
+  auto factory = onnxruntime::VitisAIProviderFactoryCreator::Create(provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_VitisAI: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}

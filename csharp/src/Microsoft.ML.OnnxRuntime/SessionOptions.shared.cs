@@ -411,6 +411,17 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
+        public void AppendExecutionProvider_VitisAI(string settings = "")
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The VitisAI Execution Provider is not supported in this build");
+#else
+            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_VitisAI(handle, utf8));
+#endif
+        }
+
+
         private class ExecutionProviderAppender
         {
             private byte[] _utf8ProviderName;
