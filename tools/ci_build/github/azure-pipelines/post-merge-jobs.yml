@@ -436,7 +436,7 @@ stages:
 
     - template: templates/use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
@@ -473,7 +473,7 @@ stages:
 
     - template: templates/use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
