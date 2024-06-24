@@ -20,6 +20,7 @@ from onnx import TensorProto, helper
 from torch import nn
 
 import onnxruntime
+import onnx
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -27,8 +28,6 @@ numpy.random.seed(42)
 ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
 THRESHOLD = 3e-2
-
-print(f"NP_TYPE_type: {NP_TYPE}")
 
 
 
@@ -74,17 +73,12 @@ def create_moe_onnx_graph(
         ),
     ]
 
-    print(f"Test 11")
+
     fc1_shape = [num_experts, hidden_size, inter_size]
     fc2_shape = [num_experts, inter_size, hidden_size]
     fc3_shape = [num_experts, hidden_size, inter_size]
 
     torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
-    print(f"torch_type: {torch_type}")
-
-    print(f"fc1_experts_weights dtype before conversion: {fc1_experts_weights.dtype}")
-    print(f"fc2_experts_weights dtype before conversion: {fc2_experts_weights.dtype}")
-    print(f"fc3_experts_weights dtype before conversion: {fc3_experts_weights.dtype}")
     
     initializers = [
         helper.make_tensor(
@@ -109,15 +103,11 @@ def create_moe_onnx_graph(
             raw=True,
         ),
     ]
-    print(f"fc1_experts_weights dtype after conversion: {fc1_experts_weights.dtype}")
-    print(f"fc2_experts_weights dtype after conversion: {fc2_experts_weights.dtype}")
-    print(f"fc3_experts_weights dtype after conversion: {fc3_experts_weights.dtype}")
 
     graph_inputs = [
         helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
     ]
 
-    print(f"Type: {type(graph_inputs[0])}")
 
     graph_inputs.append(
         helper.make_tensor_value_info(
@@ -127,7 +117,6 @@ def create_moe_onnx_graph(
         )
     )
 
-    print(f"Type: {type(graph_inputs[0])}")
 
     graph_outputs = [
         helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
@@ -141,11 +130,8 @@ def create_moe_onnx_graph(
         initializers,
     )
 
-    print(f"Test 12")
-
     model = helper.make_model(graph)
     
-    import onnx
     model_path = "mixtral_moe.onnx"
     onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
     
@@ -237,15 +223,12 @@ class MixtralSparseMoeBlock(nn.Module):
 
     def __init__(self, config, batch_size, sequence_length):
         super().__init__()
-        print(f"Test 6")
         self.hidden_dim = config.hidden_size
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_tok
-        print(f"Test 9")
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
-        print(f"Test 10")
         self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
 
         w1_list = []
@@ -255,11 +238,9 @@ class MixtralSparseMoeBlock(nn.Module):
             w1_list.append(self.experts[i].w1.weight)
             w2_list.append(self.experts[i].w2.weight)
             w3_list.append(self.experts[i].w3.weight)
-        print(f"Test 10")
         self.moe_experts_weight1 = torch.stack(w1_list, dim=0)
         self.moe_experts_weight2 = torch.stack(w2_list, dim=0)
         self.moe_experts_weight3 = torch.stack(w3_list, dim=0)
-        print(f"Test 10")
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.moe_onnx_graph = create_moe_onnx_graph(
@@ -274,32 +255,24 @@ class MixtralSparseMoeBlock(nn.Module):
         )
        
 
-        print(f"Test 10")
 
         self.ort_sess = self.create_ort_session()
 
 
     def create_ort_session(self):
-        print(f"Test 8")
         from onnxruntime import InferenceSession, SessionOptions
-        print(f"Test 13")
 
         sess_options = SessionOptions()
 
         cuda_providers = ["CUDAExecutionProvider"]
-        print(f"Available providers: {onnxruntime.get_available_providers()}")
-        print(f"Test 14")
         if cuda_providers[0] not in onnxruntime.get_available_providers():
             return None
-        print(f"Test 15")
         sess_options.log_severity_level = 2
         ort_session = InferenceSession(self.moe_onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
-        print(f"Test 16")
 
         return ort_session
 
     def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
-        print(f"Test 7")
         iobinding = self.ort_sess.io_binding()
         device_id = torch.cuda.current_device()
 
@@ -312,7 +285,6 @@ class MixtralSparseMoeBlock(nn.Module):
             buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(ort_inputs["input"], "cuda", device_id).data_ptr(),
         )
 
-        print(f"fc1_experts_weights dtype after conversion: {NP_TYPE.dtype}")
         iobinding.bind_input(
             name="router_probs",
             device_type="cuda",
@@ -349,6 +321,7 @@ class MixtralSparseMoeBlock(nn.Module):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
+        num_tokens = hidden_states.shape[0]
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
@@ -390,7 +363,6 @@ class MixtralSparseMoeBlock(nn.Module):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
-        print(f"Test: 17")
         ort_inputs = {
             "input": numpy.ascontiguousarray(hidden_states.detach().numpy().astype(NP_TYPE)),
             "router_probs": numpy.ascontiguousarray(router_logits.detach().numpy().astype(NP_TYPE)),
@@ -401,8 +373,9 @@ class MixtralSparseMoeBlock(nn.Module):
             if not iobinding:
                 ort_output = self.ort_sess.run(None, ort_inputs)
             else:
-                self.ort_run_with_iobinding(ort_inputs)
-                return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
+                for x in range(5):
+                    self.ort_run_with_iobinding(ort_inputs)
+                return None
 
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
@@ -411,21 +384,21 @@ class MixtralSparseMoeBlock(nn.Module):
         # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
         # print_tensor("output", ort_output[0])
 
-        return None
+        return ort_output
 
     def parity_check(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
         torch_output = self.forward(hidden_state)
-        ort_output = self.ort_forward(hidden_state, iobinding=True)
-        if ort_output is not None:
-            assert torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04)
+        ort_out = self.ort_forward(hidden_state, iobinding=True)
+        if ort_out is not None:
+            assert torch.allclose(torch_output, ort_out, rtol=1e-04, atol=1e-04)
             print(
                 "batch_size:",
                 self.batch_size,
                 " sequence_length:",
                 self.sequence_length,
                 " max_diff:",
-                (torch_output - ort_output).abs().max(),
+                (torch_output - ort_out).abs().max(),
                 " parity: OK",
             )
 
@@ -435,13 +408,9 @@ class TestMixtralMoE(unittest.TestCase):
         for batch_size in [1, 16]:
             for sequence_length in [128, 1024]:
                 # use a small sizes to speed up the test
-                print(f"Test 1")
                 config = MixtralConfig()
-                print(f"Test 2")
                 mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
-                print(f"Test 3")
                 mixtral_moe.parity_check()
-                print(f"Test 4")
 
 
 if __name__ == "__main__":
