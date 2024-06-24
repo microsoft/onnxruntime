@@ -37,9 +37,8 @@ PACKAGE_LIST="autotools-dev \
 	gfortran \
 	python3-dev \
 	language-pack-en \
-	liblttng-ust0 \
+	liblttng-ust-dev \
 	libcurl4 \
-	libssl1.1 \
 	libkrb5-3 \
 	libtinfo-dev \
 	libtinfo5 \
