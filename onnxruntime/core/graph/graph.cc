@@ -3705,10 +3705,10 @@ SaveInputsOutputsToOrtFormat(flatbuffers::FlatBufferBuilder& builder, const std:
 common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
   if constexpr (endian::native != endian::little) {
-     auto& tens = GetAllInitializedTensors();
-     for (auto& [name, tensor_p] : tens){
-       utils::ConvertRawDataInTensorProto((TensorProto*)tensor_p);
-     }
+    auto& tens = GetAllInitializedTensors();
+    for (auto& [name, tensor_p] : tens){
+      utils::ConvertRawDataInTensorProto(const_cast<TensorProto*>(tensor_p));
+    }
   }
   auto inputs = SaveInputsOutputsToOrtFormat(builder, graph_inputs_including_initializers_);
   auto outputs = SaveInputsOutputsToOrtFormat(builder, graph_outputs_);

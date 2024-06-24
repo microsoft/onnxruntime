@@ -6,6 +6,8 @@
 #include <memory>
 #include <algorithm>
 #include <limits>
+#include <string>
+
 
 #if defined(__wasm__)
 #include <emscripten.h>
@@ -276,73 +278,36 @@ namespace utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-template <typename T1,typename T2 >
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1 *raw_data, T2 raw_data_len)
-{
-  tensor_proto.set_raw_data(raw_data,raw_data_len);
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
-  }
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param){
+  tensor_proto.set_raw_data(std::move(param));
 }
 
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param )
-{
- tensor_proto.set_raw_data(std::move(param));
-}
-
-#define INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(raw_data,raw_data_len) \
-   template void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, raw_data*, raw_data_len); 
-
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(float,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const float,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const std::byte,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(double,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint8_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int8_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int16_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint16_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int32_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(int64_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint64_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(uint32_t,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const long,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(void const,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(char,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const char,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(unsigned const char,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(unsigned const char,unsigned int)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(onnxruntime::MLFloat16,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(const onnxruntime::MLFloat16,unsigned long)
-INSTANTIATE_SET_RAW_DATA_IN_TENSOR_PROTO(onnxruntime::BFloat16,unsigned long)
-
-void ConvertRawDataInTensorProto(TensorProto* tensor)
-{
-  size_t element_size=1;
+void ConvertRawDataInTensorProto(TensorProto* tensor) {
+  size_t element_size = 1;
   char* bytes = NULL;
-  size_t num_elements=0;
-  switch(tensor->data_type())
-  {
+  size_t num_elements = 0;
+  switch(tensor->data_type()) {
     case TensorProto_DataType_FLOAT:
-      bytes = (char*)(tensor->mutable_float_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
       element_size = sizeof(float);
       break;
 
     case TensorProto_DataType_INT32:
-      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(int32_t);
       break;
 
     case TensorProto_DataType_UINT32:
-      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint32_t);
       break;
 
     case TensorProto_DataType_UINT8:
     case TensorProto_DataType_INT8:
-      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint8_t);
       break;
@@ -351,44 +316,44 @@ void ConvertRawDataInTensorProto(TensorProto* tensor)
     case TensorProto_DataType_INT16:
     case TensorProto_DataType_FLOAT16:
     case TensorProto_DataType_BFLOAT16:
-      bytes = (char*)(tensor->mutable_int32_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_int32_data()->mutable_data());
       num_elements = tensor->int32_data_size();
       element_size = sizeof(uint16_t);
       break;
 
     case TensorProto_DataType_UINT64:
-      bytes = (char*)(tensor->mutable_uint64_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_uint64_data()->mutable_data());
       num_elements = tensor->uint64_data_size();
       element_size = sizeof(uint64_t);
       break;
 
     case TensorProto_DataType_DOUBLE:
-      bytes = (char*)(tensor->mutable_double_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_double_data()->mutable_data());
       num_elements = tensor->double_data_size();
       element_size = sizeof(double);
       break;
 
     case TensorProto_DataType_INT64:
-      bytes = (char*)(tensor->mutable_int64_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_int64_data()->mutable_data());
       num_elements = tensor->int64_data_size();
       element_size = sizeof(int64_t);
       break;
 
     case TensorProto_DataType_COMPLEX64:
-      bytes = (char*)(tensor->mutable_float_data()->mutable_data());
+      bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
       element_size = sizeof(float);
       break;
   }
   if (tensor->has_raw_data()) {
     num_elements = (tensor->raw_data().size()) / element_size;
-    bytes = (char*)(tensor->mutable_raw_data()->c_str());
+    bytes = const_cast<char*>(tensor->mutable_raw_data()->c_str());
   }
   for (size_t i = 0; i < num_elements; ++i) {
     char* start_byte = bytes + i * element_size;
     char* end_byte = start_byte + element_size - 1;
     for (size_t count = 0; count < element_size / 2; ++count) {
-      std::swap(*start_byte++,*end_byte--);
+      std::swap(*start_byte++, *end_byte--);
     }
   }
   return;
@@ -1316,7 +1281,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
       *mutable_string_data->Add() = *f;
     }
   } else {
-    utils::SetRawDataInTensorProto(tensor_proto,tensor.DataRaw(),tensor.SizeInBytes());
+    utils::SetRawDataInTensorProto(tensor_proto,tensor.DataRaw(), tensor.SizeInBytes());
   }
 
   return tensor_proto;
@@ -1601,7 +1566,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
       ORT_RETURN_IF_ERROR(status);
     }
-    utils::SetRawDataInTensorProto(dense,std::move(dense_data_storage));
+    utils::SetRawDataInTensorProto(dense, std::move(dense_data_storage));
   } else {
     // No request for std::string
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ",
@@ -1648,9 +1613,11 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
     } else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
-        if constexpr (endian::native != endian::little) {
-        auto src = gsl::make_span<const unsigned char>(static_cast<const unsigned char*>(reinterpret_cast<const unsigned char*>(&v)), sizeof(T));
-        auto dest = gsl::make_span<unsigned char>(static_cast<unsigned char*>(reinterpret_cast<unsigned char*>(dst)) , sizeof(T));
+      if constexpr (endian::native != endian::little) {
+        auto src = gsl::make_span<const unsigned char>(static_cast<const unsigned char*>(
+                   reinterpret_cast<const unsigned char*>(&v)), sizeof(T));
+        auto dest = gsl::make_span<unsigned char>(static_cast<unsigned char*>(
+                   reinterpret_cast<unsigned char*>(dst)), sizeof(T));
         onnxruntime::utils::SwapByteOrderCopy(sizeof(T),src ,dest);
       }
       else {
@@ -1707,7 +1674,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
     }
   } else {
     indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    utils::SetRawDataInTensorProto(indices,std::string());
+    utils::SetRawDataInTensorProto(indices, std::string());
   }
   nnz = gathered_indices.size();
 }

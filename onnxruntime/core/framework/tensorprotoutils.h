@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <type_traits>
+#include <string>
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -18,6 +19,47 @@
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
+
+namespace onnxruntime {
+namespace utils {
+/**
+ * This function is used to convert the endianess of Tensor data.
+ * Mostly, will be used in big endian system to support the model file
+ * generated on little endian system.
+ * @param initializer       given initializer tensor
+ * @returns                 None
+ */
+void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* initializer);
+
+/**
+ * Wrapper function for set_raw_data.
+ * First calls the set_raw_data and then calls ConvertRawDataInTensorProto
+ * under big endian system.
+ * @param tensor_proto given initializer tensor
+ * @param raw_data     source raw_data pointer
+ * @param raw_data_len  length of raw_data
+ * @returns                 None
+ */
+template <typename T1,typename T2>
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_data, T2 raw_data_len){
+  using namespace ONNX_NAMESPACE;
+  tensor_proto.set_raw_data(raw_data, raw_data_len);
+  if constexpr (endian::native != endian::little) {
+    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+  }
+}
+
+/**
+ * Overload Wrapper function for set_raw_data handling string object.
+ * Forward the string object to set_raw_data.
+ * @param tensor_proto given initializer tensor
+ * @param param   string object reference
+ * @returns                 None
+ */
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param);
+} //utils
+} //onnxruntime
+
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
@@ -471,36 +513,5 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      std::vector<uint8_t>& unpacked_tensor);
-
-/**
- * This function is used to convert the endianess of Tensor data.
- * Mostly, will be used in big endian system to support the model file
- * generated on little endian system.
- * @param initializer       given initializer tensor
- * @returns                 None
- */
-void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto *initializer);
-
-/**
- * Wrapper function for set_raw_data.
- * First calls the set_raw_data and then calls ConvertRawDataInTensorProto
- * under big endian system.
- * @param tensor_proto given initializer tensor
- * @param raw_data     source raw_data pointer
- * @param raw_data_len  length of raw_data
- * @returns                 None
- */
-template <typename T1,typename T2>
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1 *raw_data, T2 raw_data_len);
-
-/**
- * Overload Wrapper function for set_raw_data handling string object.
- * Forward the string object to set_raw_data.
- * @param tensor_proto given initializer tensor
- * @param param   string object reference
- * @returns                 None
- */
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param );
-
 }  // namespace utils
 }  // namespace onnxruntime

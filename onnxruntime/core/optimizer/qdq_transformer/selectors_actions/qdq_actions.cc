@@ -133,7 +133,7 @@ struct SetOptionalZeroPoint {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto,a.data(), sizeof(int8_t));
+    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, a.data(), sizeof(int8_t));
 
     return tensor_proto;
   };
@@ -146,7 +146,7 @@ struct SetOptionalZeroPoint {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto,a.data(), sizeof(uint8_t));
+    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, a.data(), sizeof(uint8_t));
     return tensor_proto;
   };
   static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {

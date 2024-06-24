@@ -73,7 +73,7 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
       }
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
-      utils::SetRawDataInTensorProto(tensor_proto,tensor.DataRaw(), buffer_size);
+      utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
     // 4. name

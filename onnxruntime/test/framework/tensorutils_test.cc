@@ -30,7 +30,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   for (int i = 0; i < 4; ++i) {
     memcpy(rawdata + i * sizeof(T), &(f[i]), sizeof(T));
   }
-  utils::SetRawDataInTensorProto(float_tensor_proto,rawdata,len);
+  utils::SetRawDataInTensorProto(float_tensor_proto, rawdata, len);
   T float_data2[4];
   auto status = UnpackTensor(float_tensor_proto, model_path, float_data2, 4);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -103,16 +103,15 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 }
  
 template <typename T>
-void ConvertEndianessForVector(const std::vector<T>& test_data)
-{
+void ConvertEndianessForVector(const std::vector<T>& test_data) {
   const size_t element_size = sizeof(T);
   const size_t num_elements = test_data.size();
-  char *bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
+  char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
   for (size_t i = 0; i < num_elements; ++i) {
     char* start_byte =  bytes + i * element_size;
     char* end_byte = start_byte + element_size - 1;
     for (size_t count = 0; count < element_size / 2; ++count) {
-      std::swap(*start_byte++,*end_byte--);
+      std::swap(*start_byte++, *end_byte--);
     }
   }
 }
@@ -347,7 +346,7 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
   if constexpr (endian::native != endian::little) {
-    ConvertEndianessForVector(val); 
+    ConvertEndianessForVector(val);
   }
   for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);

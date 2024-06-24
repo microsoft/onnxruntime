@@ -164,7 +164,7 @@ void TestInitializerRawData() {
   tensor_proto.add_dims(3);
   tensor_proto.add_dims(4);
 
-  utils::SetRawDataInTensorProto(tensor_proto,data.data(), data.size() * sizeof(T));
+  utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size() * sizeof(T));
   const Initializer init(tensor_proto, Path());
 
   for (size_t idx = 0; idx < data.size(); idx++) {

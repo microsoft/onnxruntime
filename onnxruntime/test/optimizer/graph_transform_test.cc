@@ -4974,7 +4974,7 @@ TEST_F(GraphTransformationTests, CseWithConstantOfShape) {
     value_tensor.add_dims(1);
     float value = 2.333f;
     value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    utils::SetRawDataInTensorProto(value_tensor,reinterpret_cast<const char*>(&value), sizeof(float));
+    utils::SetRawDataInTensorProto(value_tensor, reinterpret_cast<const char*>(&value), sizeof(float));
     builder.AddNode("ConstantOfShape", {shape_out_1}, {constant_of_shape_out_1}).AddAttribute("value", value_tensor);
     builder.AddNode("ConstantOfShape", {shape_out_2}, {constant_of_shape_out_2}).AddAttribute("value", value_tensor);
     builder.AddNode("Mul", {input_arg, constant_of_shape_out_1}, {mul_out_1});
