@@ -3025,8 +3025,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  // TODO: avoid converting it to a multibyte string
-  ctx.set_model_dir(ModelPath().parent_path().string());
+  // ONNX expectes a UTF-8 string here.
+  ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
   if (parent_node_) {
@@ -3977,8 +3977,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
-  // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could be empty.
-  // Else, save external data file in same directory as the model.
+  // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
+  // be empty. Else, save external data file in same directory as the model.
   const std::filesystem::path modified_external_file_path = model_file_path.parent_path() / external_file_path;
 
   std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);

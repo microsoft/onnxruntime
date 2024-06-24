@@ -670,7 +670,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   if (std::filesystem::exists(context_cache_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '", context_cache_path, "' exist already.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
+                           context_cache_path, "' exist already.");
   }
 
   Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),

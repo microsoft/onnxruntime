@@ -50,7 +50,8 @@ class ApiTensor final : public api::TensorRef {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const std::filesystem::path& model_path, AllocatorPtr cpu_allocator)
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+                     AllocatorPtr cpu_allocator)
       : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
