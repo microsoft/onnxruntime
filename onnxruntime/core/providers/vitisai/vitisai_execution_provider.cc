@@ -72,7 +72,7 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
 
 #if 0
-// ONLY uncomment this method for the "Approach 3" mentioned below.
+// ONLY uncomment this method when the "Approach 3" mentioned below is switched ON.
 // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
 // This timing is required to work with both compilation-based EPs and non-compilation-based EPs.
 const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() const {
@@ -535,8 +535,8 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     };
     node_compute_funcs.push_back(compute_info);
   }
-#if 1
-  // Only uncomment this piece of code for the "Approach 3" mentioned above.
+#if 0
+  // ONLY uncomment this piece of code for the "Approach 3" mentioned above is switched ON.
   if (ep_ctx_enabled_ && p_ep_ctx_model_) {
     FulfillEPContextEnablement(fused_nodes_and_graphs);
   }

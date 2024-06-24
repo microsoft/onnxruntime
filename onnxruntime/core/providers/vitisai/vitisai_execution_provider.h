@@ -42,7 +42,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
 #if 0
-  // ONLY uncommented this method for the "Approach 3" mentioned below.
+  // ONLY uncommented this method for the "Approach 3" in the file
+  // "vitisai_execution_provider.cc" is switched ON.
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
