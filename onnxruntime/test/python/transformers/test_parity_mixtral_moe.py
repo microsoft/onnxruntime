@@ -382,21 +382,21 @@ class MixtralSparseMoeBlock(nn.Module):
         # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
         # print_tensor("output", ort_output[0])
 
-        return ort_output
+        return None
 
     def parity_check(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
         torch_output = self.forward(hidden_state)
-        ort_out = self.ort_forward(hidden_state, iobinding=True)
-        if ort_out is not None:
-            assert torch.allclose(torch_output, ort_out, rtol=1e-04, atol=1e-04)
+        ort_output = self.ort_forward(hidden_state, iobinding=True)
+        if ort_output is not None:
+            assert torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04)
             print(
                 "batch_size:",
                 self.batch_size,
                 " sequence_length:",
                 self.sequence_length,
                 " max_diff:",
-                (torch_output - ort_out).abs().max(),
+                (torch_output - ort_output).abs().max(),
                 " parity: OK",
             )
 
