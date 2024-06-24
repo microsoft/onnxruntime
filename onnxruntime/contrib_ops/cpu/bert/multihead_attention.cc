@@ -173,16 +173,16 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       row_size_q, row_size_kv correspond to Br, Bc in the FlashAttention paper.
       Let M = l2_cache_size / sizeof(float)
       In the FlashAttention kernel, there are 5 big matrices that we need to keep in L2 cache:
-        slice of Q -- [Br, head_size]
-        slice of K -- [Bc, head_size]
+        slice of Q -- [Br, qk_head_size]
+        slice of K -- [Bc, qk_head_size]
         slice of V -- [Bc, v_head_size]
         result of QK -- [Br, Bc]
         temporary output (same shape as QKV) -- [Br, v_head_size]
-      The total size of these matrices is (Br + Bc) * (head_size + v_head_size) + Br * Bc
-      By taking Bc = M / (4 * (head_size + v_head_size)), and Br = min(Bc, qk_head_size + v_head_size), we have
-        (Br + Bc) * (head_size + v_head_size) + Br * Bc
-        <= 2 * Bc * (head_size + v_head_size) + Br * Bc
-        <= 2 * Bc * (head_size + v_head_size) + M/4
+      The total size of these matrices is (Br + Bc) * (qk_head_size + v_head_size) + Br * Bc
+      By taking Bc = M / (4 * (qk_head_size + v_head_size)), and Br = min(Bc, qk_head_size + v_head_size), we have
+        (Br + Bc) * (qk_head_size + v_head_size) + Br * Bc
+        <= 2 * Bc * (qk_head_size + v_head_size) + Br * Bc
+        <= 2 * Bc * (qk_head_size + v_head_size) + M/4
         <= 2 * M/4 + M/4 = M * (3/4)
 
       We leave 1/4 of the L2 cache for
