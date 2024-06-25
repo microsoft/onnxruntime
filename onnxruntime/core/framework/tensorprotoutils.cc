@@ -700,7 +700,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesy
                     /*out*/ T* p_data, size_t expected_num_elements) {
 #if !defined(ORT_MINIMAL_BUILD)
   if (HasExternalData(tensor)) {
-    return UnpackTensorWithExternalData(tensor, model_path.empty() ? std::filesystem::path() : model_path.parent_path(),
+    return UnpackTensorWithExternalData(tensor, model_path.parent_path(),
                                         expected_num_elements, p_data);
   }
 #else
