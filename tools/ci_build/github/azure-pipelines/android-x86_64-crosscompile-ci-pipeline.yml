@@ -265,6 +265,7 @@ stages:
           --android_ndk_path $ANDROID_NDK_HOME \
           --android_abi=x86_64 \
           --android_api=30 \
+          --android_run_emulator \
           --build_java \
           --test
         displayName: CPU EP, Test on Android Emulator
@@ -322,13 +323,14 @@ stages:
           --android_ndk_path $ANDROID_NDK_HOME \
           --android_abi=x86_64 \
           --android_api=29 \
+          --android_run_emulator \
           --build_java \
           --use_nnapi \
           --test
         displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
       # used by Build Minimal ORT
-      - script: brew install coreutils ninja
+      - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
@@ -369,7 +371,7 @@ stages:
       - template: "templates/use-android-ndk.yml"
 
       # used by Build Minimal ORT
-      - script: brew install coreutils ninja
+      - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
       - script: |
