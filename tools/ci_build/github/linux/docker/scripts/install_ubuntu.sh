@@ -22,17 +22,17 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 OS_VERSION=$(lsb_release -r -s)
 
 PACKAGE_LIST="aria2 autoconf automake autotools-dev apt-transport-https apt-utils\
-  build-essential bzip2\
-  ca-certificates curl\
-  gfortran git graphviz\
-  language-pack-en libcurl4 libexpat1-dev libicu-dev libkrb5-3 liblttng-ust-dev libpng-dev libssl-dev libssl-dev libtinfo-dev libcurl4-openssl-dev libtinfo5 libtool libunwind8\
-  openjdk-11-jdk openssh-server pkg-config\
-  python3-dev python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest\
-  rsync\
-  sudo\
-  unzip\
-  wget\
-  zip zlib1g zlib1g-dev"
+ build-essential bzip2\
+ ca-certificates curl\
+ gfortran git graphviz\
+ language-pack-en libcurl4 libexpat1-dev libicu-dev libkrb5-3 liblttng-ust-dev libpng-dev libssl-dev libssl-dev libtinfo-dev libcurl4-openssl-dev libtinfo5 libtool libunwind8\
+ openjdk-11-jdk openssh-server pkg-config\
+ python3-dev python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest\
+ rsync\
+ sudo\
+ unzip\
+ wget\
+ zip zlib1g zlib1g-dev"
 
 if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
