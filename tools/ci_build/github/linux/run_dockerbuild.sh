@@ -30,7 +30,7 @@ o) BUILD_OS=${OPTARG};;
 #gpu, tensorrt or openvino. It is ignored when BUILD_OS is yocto.
 d) BUILD_DEVICE=${OPTARG};;
 #python version: 3.8 3.9 3.10 3.11 3.12 (absence means default 3.8)
-p) PYTHON_VER=${OPTARG:-3.8};;
+p) PYTHON_VER=${OPTARG:="3.8"};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
