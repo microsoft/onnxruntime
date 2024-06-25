@@ -59,6 +59,7 @@ stages:
       artifact: 'drop-signed-nuget-CPU'
    
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+      condition: eq(${{ parameters.PublishCpu }}, true)
 
     - template: nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
