@@ -16,7 +16,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
-| BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
+| BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✓ | ✓ | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✓ | ✓ | WebNN CPU backend doesn't support casting to uint64 data type |
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] (Chromium issue: https://issues.chromium.org/issues/326156496) |
@@ -29,11 +29,11 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✓ | ✓ | |
 | Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✗ | ✓ | |
 | Exp | ai.onnx(7-12, 13+) | exp | ✓ | ✓ | |
-| Expand | ai.onnx(8-12, 13+) | expand | ✗ | ✓ | 'shape' input should be a constant |
+| Expand | ai.onnx(8-12, 13+) | expand | ✓ | ✓ | 'shape' input should be a constant |
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Floor | ai.onnx(7-12, 13+) | floor | ✓ | ✓ | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | ✓ | ✓ | |
-| Gelu | ai.onnx(20+) | gelu | ✗ | ✓ | |
+| Gelu | ai.onnx(20+) | gelu | ✓ | ✓ | |
 | Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | ✓ | ✓ | Only supports 1-D 'C' input |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | ✓ | ✓ | Only supports 4-D input |
 | GlobalMaxPool | ai.onnx(7+) | maxPool2d | ✓ | ✓ | Only supports 4-D input |
@@ -43,8 +43,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | HardSigmoid | ai.onnx(7+) | hardSigmoid | ✓ | ✓ | |
 | HardSwish | ai.onnx(14+) | hardSwish | ✓ | ✓ | |
 | Identity | ai.onnx(7-13, 14-15, 16-18, 19-20, 21+) | identity | ✓ | ✓ | |
-| InstanceNormalization | ai.onnx(7+) | instanceNormalization | ✗ | ✓ | |
-| LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | ✗ | ✓ | |
+| InstanceNormalization | ai.onnx(7+) | instanceNormalization | ✓ | ✓ | |
+| LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | ✓ | ✓ | |
 | LeakyRelu | ai.onnx(7-15, 16+) | leakyRelu | ✓ | ✓ | |
 | Less | ai.onnx(7-8, 9-12, 13+) | lesser | ✓ | ✓ | |
 | LessOrEqual | ai.onnx(12-15, 16+) | lesserOrEqual | ✓ | ✓ | |
@@ -60,7 +60,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | ✓ | ✓ | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | ✓ | ✓ | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | ✓ | ✓ | WebNN CPU backend restricts the last dimension of input and slope to be same (Chromium issue: https://issues.chromium.org/issues/335517470) |
-| Reciprocal | ai.onnx(7-12, 13+) | reciprocal | ✗ | ✓ | |
+| Reciprocal | ai.onnx(7-12, 13+) | reciprocal | ✓ | ✓ | |
 | ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | ✗ | ✓ | Input 'axes' if present should be a constant |
 | ReduceL2 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL2 | ✗ | ✓ | Input 'axes' if present should be a constant |
 | ReduceLogSum| ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSum| ✗ | ✓ | Input 'axes' if present should be a constant |
@@ -77,7 +77,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Shape | ai.onnx(7-12, 13-14, 15-18, 19-20, 21+) | slice | ✓ | ✓ | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | ✓ | ✓ | |
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
-| Softsign | ai.onnx(7+) | softsign | ✗ | ✓ | |
+| Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✓ | ✓ | |
 | Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value 1 |
 | Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | |
