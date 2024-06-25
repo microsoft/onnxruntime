@@ -61,10 +61,8 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     if (FE) {
       inputModel = FE->load(params);
       return FE->convert(inputModel);
-    } else {
-      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
-      return NULL;
     }
+    ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
   } catch (const Exception& e) {
     ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
   } catch (...) {
