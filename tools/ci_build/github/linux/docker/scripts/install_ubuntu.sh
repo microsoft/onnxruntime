@@ -21,9 +21,6 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 
 OS_VERSION=$(lsb_release -r -s)
 
-# shellcheck disable=SC2034
-SYS_LONG_BIT=$(getconf LONG_BIT)
-
 PACKAGE_LIST="autotools-dev \
 	automake \
 	build-essential \
