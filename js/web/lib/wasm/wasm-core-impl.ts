@@ -261,7 +261,7 @@ export const createSession = async(
     for (const provider of options?.executionProviders ?? []) {
       const providerName = typeof provider === 'string' ? provider : provider.name;
       if (providerName === 'webnn') {
-        if(wasm.currentContext) {
+        if (wasm.currentContext) {
           throw new Error('WebNN execution provider is already set.');
         }
         if (typeof provider !== 'string') {
@@ -276,7 +276,7 @@ export const createSession = async(
           } else if (gpuDevice) {
             wasm.currentContext = await navigator.ml.createContext(gpuDevice);
           } else {
-            wasm.currentContext = await navigator.ml.createContext({ deviceType, numThreads, powerPreference });
+            wasm.currentContext = await navigator.ml.createContext({deviceType, numThreads, powerPreference});
           }
         } else {
           wasm.currentContext = await navigator.ml.createContext();
@@ -291,7 +291,7 @@ export const createSession = async(
     }
 
     // clear current MLContext after session creation
-    if(wasm.currentContext) {
+    if (wasm.currentContext) {
       wasm.currentContext = undefined;
     }
 

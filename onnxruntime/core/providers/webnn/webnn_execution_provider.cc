@@ -19,7 +19,6 @@ namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
-
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
