@@ -233,11 +233,13 @@ class BaseQuantizer:
 
             try:
                 with warnings.catch_warnings():
-                    warnings.filterwarnings('error')
+                    warnings.filterwarnings("error")
                     quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
             except RuntimeWarning:
-                print(f"The bias_scale might be too small to quantize bias {bias_name} in\
-                      {onnx.helper.tensor_dtype_to_string(self.weight_qType)}.")
+                print(
+                    f"The bias_scale might be too small to quantize bias {bias_name} in\
+                      {onnx.helper.tensor_dtype_to_string(self.weight_qType)}."
+                )
                 quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
 
             # update bias initializer
