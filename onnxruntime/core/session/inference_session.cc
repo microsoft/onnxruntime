@@ -250,6 +250,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -374,15 +375,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   active_sessions_[global_session_id_++] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
-  WindowsTelemetry::RegisterInternalCallback(
-      [this](
-          LPCGUID SourceId,
-          ULONG IsEnabled,
-          UCHAR Level,
-          ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
+  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
+      [this](LPCGUID SourceId,
+             ULONG IsEnabled,
+             UCHAR Level,
+             ULONGLONG MatchAnyKeyword,
+             ULONGLONG MatchAllKeyword,
+             PEVENT_FILTER_DESCRIPTOR FilterData,
+             PVOID CallbackContext) {
         (void)SourceId;
         (void)Level;
         (void)MatchAnyKeyword;
@@ -396,19 +396,18 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           LogAllSessions();
         }
       });
+  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(
-      [&etwRegistrationManager, this](
-          LPCGUID SourceId,
-          ULONG IsEnabled,
-          UCHAR Level,
-          ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+      [&etwRegistrationManager, this](LPCGUID SourceId,
+                                      ULONG IsEnabled,
+                                      UCHAR Level,
+                                      ULONGLONG MatchAnyKeyword,
+                                      ULONGLONG MatchAllKeyword,
+                                      PEVENT_FILTER_DESCRIPTOR FilterData,
+                                      PVOID CallbackContext) {
         (void)SourceId;
         (void)Level;
         (void)MatchAnyKeyword;
@@ -439,6 +438,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           }
         }
       });
+
+  // Register callback for ETW capture state (rundown)
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+
 #endif
 
   SetLoggingManager(session_options, session_env);
@@ -720,9 +723,11 @@ InferenceSession::~InferenceSession() {
     }
   }
 
-  // Unregister the session
+  // Unregister the session and ETW callbacks
 #ifdef _WIN32
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
+  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
   active_sessions_.erase(global_session_id_);
 
