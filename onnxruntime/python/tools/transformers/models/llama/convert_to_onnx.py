@@ -1055,5 +1055,6 @@ def main():
             logger.exception(f"An error occurred while verifying parity: {e}")
             sys.exit(-1)
 
+
 if __name__ == "__main__":
     main()
