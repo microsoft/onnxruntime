@@ -164,6 +164,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
     case QNN_DATATYPE_BOOL_8:
       out << "QNN_DATATYPE_BOOL_8";
       break;
+    case QNN_DATATYPE_SFIXED_POINT_4:
+      out << "QNN_DATATYPE_SFIXED_POINT_4";
+      break;
+    case QNN_DATATYPE_UFIXED_POINT_4:
+      out << "QNN_DATATYPE_UFIXED_POINT_4";
+      break;
     default:
       ORT_THROW("Unknown Qnn Data type");
   }
@@ -298,7 +304,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
   T* data = reinterpret_cast<T*>(client_bufer.data);
   out << " dataSize=" << client_bufer.dataSize;
   uint32_t count = client_bufer.dataSize / sizeof(T);
-  count = count > 100 ? 100 : count;  // limit to 100 data
+  const bool truncate = count > 100;
+
+  count = truncate ? 100 : count;  // limit to 100 data
   out << " clientBuf=(";
   for (uint32_t i = 0; i < count; i++) {
     if constexpr (sizeof(T) == 1) {
@@ -307,7 +315,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
       out << data[i] << " ";
     }
   }
-  out << ")";
+  out << (truncate ? "..." : "") << ")";
   return out;
 }
 

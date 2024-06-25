@@ -525,8 +525,6 @@ def quantize_static(
             use_external_data_format=use_external_data_format,
             extra_options=calib_extra_options,
         )
-        # TODO: Workaround to save memory.
-        del calibrator.model
 
         stride = extra_options.get("CalibStridedMinMax", None)
         if stride:
