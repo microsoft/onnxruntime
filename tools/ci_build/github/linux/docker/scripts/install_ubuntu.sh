@@ -78,7 +78,8 @@ if [ "$OS_VERSION" = "20.04" ] || [ "$OS_VERSION" = "22.04" ]; then
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
-
+else
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
