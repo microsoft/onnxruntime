@@ -58,8 +58,10 @@ RunDQMatMulNotConverted_NonConstDQ(const std::vector<int64_t>& input1_shape,
                                    bool use_contrib_qdq) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
-    auto* input2_arg = builder.MakeInput(input2_shape, T(T::min_val, 0), T(T::min_val, 0));
+    auto* input2_arg = builder.MakeInput(input2_shape, T(T::min_val, 0), T(T::max_val, 0));
     auto* output_arg = builder.MakeOutput();
+
+    std::string domain = use_contrib_qdq ? kMSDomain : "";
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
@@ -69,12 +71,12 @@ RunDQMatMulNotConverted_NonConstDQ(const std::vector<int64_t>& input1_shape,
 
     auto scale_shape = std::vector<int64_t>{input2_shape};
     scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
-    auto scales = builder.rand_gen_.Uniform(scale_shape, 8.0f, 12.0f);
+    auto* scale_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
     if constexpr (use_zp) {
-      auto zero_points = builder.rand_gen_.Uniform<T>(scale_shape, T(0, 0), T(2, 0));
-      builder.AddDequantizeLinearNode(input2_arg, scales, zero_points, dq_output, &attrs, use_contrib_qdq);
+      auto* zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {input2_arg, scale_arg, zp_arg}, {dq_output}, domain, &attrs);
     } else {
-      builder.AddDequantizeLinearNode(input2_arg, scales, dq_output, &attrs, use_contrib_qdq);
+      builder.AddNode("DequantizeLinear", {input2_arg, scale_arg}, {dq_output}, domain, &attrs);
     }
 
     builder.AddNode("MatMul", {input1_arg, dq_output}, {output_arg});
@@ -92,20 +94,82 @@ RunDQMatMulNotConverted_NonConstDQ(const std::vector<int64_t>& input1_shape,
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    19 /*opset_version*/,
+                    21 /*opset_version*/,
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_NonConstDQ) {
+  // DQ contrib op schema is not updated to support blocked quantization
   RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, false);
   RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, true);
   RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, false);
   RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, true);
+}
+
+//        Input2
+//           |
+//    DQ     /
+//     \    /
+//     MatMul
+//       |
+//     output
+template <typename T, bool use_zp>
+typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
+RunDQMatMulNotConverted_FirstDQInput(const std::vector<int64_t>& weight_shape,
+                                   const std::vector<int64_t>& input2_shape,
+                                   const int64_t axis,
+                                   const int64_t block_size,
+                                   bool use_contrib_qdq) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* input2_arg = builder.MakeInput(input2_shape, -100.0f, 100.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    std::string domain = use_contrib_qdq ? kMSDomain : "";
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    NodeAttributes attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
+
+    auto scale_shape = std::vector<int64_t>{weight_shape};
+    scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+    auto* scale_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
+    if constexpr (use_zp) {
+      auto* zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output}, domain, &attrs);
+    } else {
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, domain, &attrs);
+    }
+
+    builder.AddNode("MatMul", {dq_output, input2_arg}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["MatMul"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    1e-5 /*per_sample_tolerance*/,
+                    1e-5 /*relative_per_sample_tolerance*/);
+}
+
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_FirstDQInput) {
+  // DQ contrib op schema is not updated to support blocked quantization
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, true>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, false);
 }
 
 // Input1
@@ -125,6 +189,7 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
     auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
     auto* output_arg = builder.MakeOutput();
     NodeArg* weight_arg = nullptr;
+    std::string domain = use_contrib_qdq ? kMSDomain : "";
 
     // add DQ
     if constexpr (std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>) {
@@ -142,18 +207,18 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
 
     auto scale_shape = std::vector<int64_t>{weight_shape};
     scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
-    auto scales = builder.rand_gen_.Uniform<float>(scale_shape, 8.0f, 12.0f);
+    auto* scale_arg = builder.MakeInitializer(scale_shape, 8.0f, 12.0f);
     if constexpr (use_zp) {
-      std::vector<T> zero_points;
+      NodeArg* zp_arg;
       if constexpr (std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>) {
-        zero_points = builder.rand_gen_.Uniform<T>(scale_shape, T(0, 0), T(2, 0));
+        zp_arg = builder.MakeInitializer(scale_shape, T(0, 0), T(2, 0));
       } else {
-        zero_points = builder.rand_gen_.Uniform<T>(scale_shape, static_cast<T>(0), static_cast<T>(2));
+        zp_arg = builder.MakeInitializer<T>(scale_shape, 0, 2);
       }
 
-      builder.AddDequantizeLinearNode(weight_arg, scales, zero_points, dq_output, &attrs, use_contrib_qdq);
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output}, domain, &attrs);
     } else {
-      builder.AddDequantizeLinearNode(weight_arg, scales, dq_output, &attrs, use_contrib_qdq);
+      builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, domain, &attrs);
     }
 
     builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
@@ -171,61 +236,46 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    19 /*opset_version*/,
+                    21 /*opset_version*/,
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_TypeMismatch) {
+  // DQ contrib op schema is not updated to support blocked quantization
   RunDQMatMulNotConverted_TypeShapeMismatch<int8_t, true>({12, 37}, {37, 12}, 0, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<int8_t, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, false>({12, 37}, {37, 12}, 0, 16, true);
+  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, true>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, false>({12, 37}, {37, 12}, 0, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<int16_t, true>({12, 37}, {37, 12}, 0, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<int16_t, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, false>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<int32_t, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<int32_t, false>({12, 37}, {37, 12}, 0, 16, true);
+  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, true>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, false>({12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<int32_t, false>({12, 37}, {37, 12}, 0, 16, false);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch) {
+  // DQ contrib op schema is not updated to support blocked quantization
   // block size too small
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 8, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 8, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 8, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 8, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 8, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 8, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 8, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 8, true);
   // block size not 2's power
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 17, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 17, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 17, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 17, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 17, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 17, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 17, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 17, true);
   // not axis 0
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 37}, 1, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 37}, 1, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 37}, 1, 16, false);
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 37}, 1, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 37}, 1, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 37}, 1, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 37}, 1, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 37}, 1, 16, true);
   // not rank 2
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12, 2}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12, 2}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12, 2}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12, 2}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12, 2}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12, 2}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12, 2}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12, 2}, 0, 16, true);
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({2, 12, 37}, {2, 37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({2, 12, 37}, {2, 37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({2, 12, 37}, {2, 37, 12}, 0, 16, false);
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({2, 12, 37}, {2, 37, 12}, 0, 16, false);
 }
 
 //  Input1
@@ -240,38 +290,41 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch) {
 template <typename T, bool use_zp>
 typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
 RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
-                     const std::vector<int64_t>& weight_shape,
+                     const std::vector<int64_t>& weight1_shape,
+                     const std::vector<int64_t>& weight2_shape,
                      const int64_t axis,
                      const int64_t block_size,
                      bool use_contrib_qdq) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
     auto* output_arg = builder.MakeOutput();
+    std::string domain = use_contrib_qdq ? kMSDomain : "";
 
     // add DQ
     NodeAttributes attrs;
     utils::SetNodeAttribute(utils::MakeAttribute("axis", axis), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
-    auto scale_shape = std::vector<int64_t>{weight_shape};
-    scale_shape[axis] = (scale_shape[axis] + block_size - 1) / block_size;
+    auto scale1_shape = std::vector<int64_t>{weight1_shape};
+    auto scale2_shape = std::vector<int64_t>{weight2_shape};
+    scale1_shape[axis] = (scale1_shape[axis] + block_size - 1) / block_size;
+    scale2_shape[axis] = (scale2_shape[axis] + block_size - 1) / block_size;
 
-    auto* weight1_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
-    auto* weight2_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* weight1_arg = builder.MakeInitializer(weight1_shape, T(T::min_val, 0), T(T::max_val, 0));
+    auto* weight2_arg = builder.MakeInitializer(weight2_shape, T(T::min_val, 0), T(T::max_val, 0));
     auto* dq1_output = builder.MakeIntermediate();
     auto* dq2_output = builder.MakeIntermediate();
     auto* matmul1_output = builder.MakeIntermediate();
 
-    auto scales1 = builder.rand_gen_.Uniform(scale_shape, 8.0f, 12.0f);
-    auto scales2 = builder.rand_gen_.Uniform(scale_shape, 8.0f, 12.0f);
-    Node* dp1_node = nullptr;
+    auto* scales1_arg = builder.MakeInitializer(scale1_shape, 8.0f, 12.0f);
+    auto* scales2_arg = builder.MakeInitializer(scale2_shape, 8.0f, 12.0f);
     if constexpr (use_zp) {
-      auto zero_points1 = builder.rand_gen_.Uniform<T>(scale_shape, T(0, 0), T(2, 0));
-      auto zero_points2 = builder.rand_gen_.Uniform<T>(scale_shape, T(0, 0), T(2, 0));
-      builder.AddDequantizeLinearNode(weight1_arg, scales1, zero_points1, dq1_output, &attrs, use_contrib_qdq);
-      builder.AddDequantizeLinearNode(weight2_arg, scales2, zero_points2, dq2_output, &attrs, use_contrib_qdq);
+      auto* zp1_arg = builder.MakeInitializer(scale1_shape, T(0, 0), T(2, 0));
+      auto* zp2_arg = builder.MakeInitializer(scale2_shape, T(0, 0), T(2, 0));
+      builder.AddNode("DequantizeLinear", {weight1_arg, scales1_arg, zp1_arg}, {dq1_output}, domain, &attrs);
+      builder.AddNode("DequantizeLinear", {weight2_arg, scales2_arg, zp2_arg}, {dq2_output}, domain, &attrs);
     } else {
-      builder.AddDequantizeLinearNode(weight1_arg, scales1, dq1_output, &attrs, use_contrib_qdq);
-      builder.AddDequantizeLinearNode(weight2_arg, scales2, dq2_output, &attrs, use_contrib_qdq);
+      builder.AddNode("DequantizeLinear", {weight1_arg, scales1_arg}, {dq1_output}, domain, &attrs);
+      builder.AddNode("DequantizeLinear", {weight2_arg, scales2_arg}, {dq2_output}, domain, &attrs);
     }
 
     builder.AddNode("MatMul", {input_arg, dq1_output}, {matmul1_output});
@@ -291,20 +344,17 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    19 /*opset_version*/,
+                    21 /*opset_version*/,
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/);
 }
 
 TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits) {
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, true);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, false);
-  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, true);
+  // DQ contrib op schema is not updated to support blocked quantization
+  RunDQMatMulConverted<Int4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulConverted<Int4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulConverted<UInt4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, false);
+  RunDQMatMulConverted<UInt4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, false);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

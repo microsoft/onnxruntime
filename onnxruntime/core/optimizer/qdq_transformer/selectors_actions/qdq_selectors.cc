@@ -448,9 +448,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // DQ must be MatMul's the second input
-  auto input_node_iter = node.InputNodesBegin();
-  if (++input_node_iter;
-      input_node_iter == node.InputNodesEnd() || input_node_iter->Index() != dq_nodes[0]->Index()) {
+  if (node.InputDefs()[1]->Name() != dq_nodes[0]->OutputDefs()[0]->Name()) {
     return false;
   }
 
