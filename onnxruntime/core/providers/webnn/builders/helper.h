@@ -277,9 +277,9 @@ static const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> webnn_supp
 bool IsSupportedDataType(const int32_t data_type,
                          const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types);
 
-bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
-                                      std::vector<int64_t>& shape_b,
-                                      const logging::Logger& logger);
+bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
+                                    std::vector<int64_t>& shape_b,
+                                    std::vector<int64_t>& output_shape);
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
