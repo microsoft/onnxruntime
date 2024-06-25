@@ -21,8 +21,7 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 
 OS_VERSION=$(lsb_release -r -s)
 
-PACKAGE_LIST="\
-  aria2 autoconf automake autotools-dev apt-transport-https apt-utils\
+PACKAGE_LIST="aria2 autoconf automake autotools-dev apt-transport-https apt-utils\
   build-essential bzip2\
   ca-certificates curl\
   gfortran git graphviz\
