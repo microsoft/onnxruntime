@@ -61,7 +61,7 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 // TODO: When other compilers support std::chrono::operator<<, update this.
 // TODO: Check support for other compilers' version before enable C++20 for other compilers.
 // Xcode added support for C++20's std::chrono::operator<< in SDK version 14.4.
-#if __cplusplus >= 202002L && __MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L
+#if __cplusplus >= 202002L && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L || _WIN32)
 namespace timestamp_ns = std::chrono;
 #else
 namespace timestamp_ns = ::date;

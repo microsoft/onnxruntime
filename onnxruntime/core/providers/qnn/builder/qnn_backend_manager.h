@@ -55,7 +55,7 @@ class QnnBackendManager {
   ~QnnBackendManager();
   char* DlError() {
 #ifdef _WIN32
-    return "";
+    return nullptr;
 #else
     return ::dlerror();
 #endif
