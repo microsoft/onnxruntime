@@ -192,11 +192,7 @@ class Model {
                                                                   const std::filesystem::path& file_path,
                                                                   size_t initializer_size_threshold) const;
 
-#ifdef _WIN32
-  static common::Status Save(Model& model, const std::wstring& file_path);
-#else
-  static common::Status Save(Model& model, const std::string& file_path);
-#endif
+  static common::Status Save(Model& model, const PathString& file_path);
 
   static common::Status Save(Model& model, int fd);
 

@@ -593,15 +593,9 @@ static Status SaveModel(Model& model, const T& file_path) {
 #endif
 }
 
-#ifdef _WIN32
-Status Model::Save(Model& model, const std::wstring& file_path) {
+Status Model::Save(Model& model, const PathString& file_path) {
   return SaveModel(model, file_path);
 }
-#else
-Status Model::Save(Model& model, const std::string& file_path) {
-  return SaveModel(model, file_path);
-}
-#endif
 
 template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
