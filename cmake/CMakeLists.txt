@@ -40,7 +40,7 @@ include(FetchContent)
 include(CheckFunctionExists)
 
 # TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
 set(CMAKE_CXX_STANDARD 20)
 else()
 set(CMAKE_CXX_STANDARD 17)
