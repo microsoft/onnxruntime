@@ -11,6 +11,7 @@
 # --------------------------------------------------------------------------
 import time
 import unittest
+import pytest
 from collections import OrderedDict
 
 import numpy
@@ -126,11 +127,12 @@ def create_moe_onnx_graph(
     )
 
     model = helper.make_model(graph)
+    return model.SerializeToString()
 
-    model_path = "mixtral_moe.onnx"
-    onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
+    #model_path = "mixtral_moe.onnx"
+    #onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
 
-    return model_path
+    #return model_path
 
 
 class ClassInstantier(OrderedDict):
@@ -391,15 +393,35 @@ class MixtralSparseMoeBlock(nn.Module):
                 " parity: OK",
             )
 
+    def benchmark(self):
+        self.ort_forward(iobinding=True)
+
 
 class TestMixtralMoE(unittest.TestCase):
     def test_mixtral_moe_parity(self):
-        for batch_size in [1, 16]:
-            for sequence_length in [128, 1024]:
+        for batch_size in [1, 2]:
+            for sequence_length in [8, 16]:
                 # use a small sizes to speed up the test
+                config = MixtralConfig(hidden_size=256, intermediate_size=1024)
+                mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
+                mixtral_moe.parity_check()
+
+    @pytest.mark.slow
+    def test_mixtral_moe_large(self):
+        for batch_size in [1, 8]:
+            for sequence_length in [16, 64]:
                 config = MixtralConfig()
                 mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
                 mixtral_moe.parity_check()
+
+    @pytest.mark.slow
+    def test_mixtral_moe_benchmark(self):
+        for batch_size in [32, 64]:
+            for sequence_length in [128, 1024]:
+                config = MixtralConfig()
+                mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
+                mixtral_moe.benchmark()
+
 
 
 if __name__ == "__main__":
