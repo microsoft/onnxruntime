@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, Tensor, TRACE, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
+import {Env, Tensor, TRACE, traceFunc} from 'onnxruntime-common';
 
 import {DataType, tensorDataTypeEnumToString} from '../wasm-common';
 
@@ -300,12 +300,11 @@ export class WebGpuBackend {
     }
   }
 
+  @traceFunc
   flush(): void {
     if (!this.commandEncoder) {
       return;
     }
-
-    TRACE_FUNC_BEGIN();
 
     this.endComputePass();
     let queryReadBuffer: GPUBuffer;
@@ -389,7 +388,6 @@ export class WebGpuBackend {
         this.pendingQueries.delete(queryReadBuffer);
       });
     }
-    TRACE_FUNC_END();
   }
 
   /**
@@ -407,7 +405,7 @@ export class WebGpuBackend {
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView,
       outputCount: number): TensorView[] {
-    TRACE_FUNC_BEGIN(program.name);
+    TRACE('CPU', `FUNC_BEGIN::WebGpuBackend::run::${program.name}`);
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
@@ -478,7 +476,7 @@ export class WebGpuBackend {
     if (inputDatas.length !== inputTensorViews.length || outputDatas.length !== outputTensorViews.length) {
       // if all outputs are zero-sized tensors, there is no need to run the program.
       if (outputDatas.length === 0) {
-        TRACE_FUNC_END(program.name);
+        TRACE('CPU', `FUNC_END::WebGpuBackend::run::${program.name}`);
         return outputTensorViews;
       }
       // if some outputs are zero-sized tensors, report an error.
@@ -605,8 +603,7 @@ export class WebGpuBackend {
     }
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
-
-    TRACE_FUNC_END(program.name);
+    TRACE('CPU', `FUNC_END::WebGpuBackend::run::${program.name}`);
     return outputTensorViews;
   }
 
