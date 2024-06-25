@@ -25,7 +25,7 @@ PACKAGE_LIST="aria2 autoconf automake autotools-dev apt-transport-https apt-util
  build-essential bzip2\
  ca-certificates curl\
  gfortran git graphviz\
- language-pack-en libcurl4 libexpat1-dev libicu-dev libkrb5-3 liblttng-ust-dev libpng-dev libssl-dev libssl-dev libtinfo-dev libcurl4-openssl-dev libtinfo5 libtool libunwind8\
+ language-pack-en libcurl4 libexpat1-dev libicu-dev libkrb5-3 liblttng-ust-dev libpng-dev libssl-dev libtinfo-dev libcurl4-openssl-dev libtinfo5 libtool libunwind8\
  openjdk-11-jdk openssh-server pkg-config\
  python3-dev python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest\
  rsync\
