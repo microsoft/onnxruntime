@@ -313,8 +313,8 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
 }
 
 Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
-                                         std::vector<int32_t>& zero_points,
-                                         int32_t& onnx_data_type) const {
+                                         /*out*/ std::vector<int32_t>& zero_points,
+                                         /*out*/ int32_t& onnx_data_type) const {
   const auto& graph_initializers = GetInitializerTensors();
   auto iter = graph_initializers.find(initializer_name);
   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for zero-point(s): ",
@@ -331,7 +331,7 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
 
   switch (onnx_data_type) {
     // QNN use -offset for some reason
-    case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:  // INT4 zero-points are unpacked as 8-bit values for QNN
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
       std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
@@ -340,7 +340,7 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                      });
       break;
     }
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:  // UINT4 zero-points are unpacked as 8-bit values for QNN
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(initializer_bytes));
       std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points),

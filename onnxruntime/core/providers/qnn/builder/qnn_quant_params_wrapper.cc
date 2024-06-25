@@ -41,6 +41,7 @@ QnnQuantParamsWrapper QnnQuantParamsWrapper::Copy() const {
   return QnnQuantParamsWrapper(*this);
 }
 
+// Initializes by copying from a Qnn_QuantizeParams_t.
 Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
   if (per_channel_data_) {
     per_channel_data_.reset(nullptr);
@@ -117,6 +118,8 @@ Status QnnQuantParamsWrapper::Init(const Qnn_QuantizeParams_t& params) {
   return Status::OK();
 }
 
+// Initialize this object from a (potentially) quantized ONNX tensor.
+// QnnModelWrapper provides utilities for unpacking scale and zero-point ONNX initializers.
 Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef& io_def) {
   const std::optional<NodeUnitIODef::QuantParam>& ort_quant_params = io_def.quant_param;
 
@@ -148,6 +151,9 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
 
   const bool is_per_tensor = scales.size() == 1;
 
+  // QNN uses different structs to represent quantization parameters depending on
+  // - per-tensor vs per-channel
+  // - int4 vs not int4
   if (is_per_tensor && !is_int4_type) {
     params_.encodingDefinition = QNN_DEFINITION_DEFINED;
     params_.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
@@ -172,7 +178,6 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
       params_.bwScaleOffsetEncoding.offset = 0;
     }
   } else if (!is_per_tensor && is_int4_type) {
-    // Per-channel quantization for int4.
     const auto* io_shape = io_def.node_arg.Shape();
     ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
     const int32_t io_rank = io_shape->dim_size();
@@ -216,7 +221,6 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
     params_.bwAxisScaleOffsetEncoding.scales = scales_span.data();
     params_.bwAxisScaleOffsetEncoding.offsets = zps_span.data();
   } else if (!is_per_tensor && !is_int4_type) {
-    // Per-channel quantization without int4.
     const auto* io_shape = io_def.node_arg.Shape();
     ORT_RETURN_IF(io_shape == nullptr, "Input/output tensor proto must have a shape");
     const int32_t io_rank = io_shape->dim_size();
