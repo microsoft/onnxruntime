@@ -4,7 +4,7 @@ while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
-d) DEVICE_TYPE=${OPTARG} ;;
+d) DEVICE_TYPE=${OPTARG};;
 *) echo "Invalid option";;
 esac
 done
