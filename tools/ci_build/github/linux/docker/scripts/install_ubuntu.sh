@@ -4,7 +4,8 @@ while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
-d) DEVICE_TYPE=${OPTARG};;
+d) DEVICE_TYPE=${OPTARG} ;;
+*) echo "Invalid option";;
 esac
 done
 
@@ -12,6 +13,7 @@ PYTHON_VER=${PYTHON_VER:=3.8}
 # Some Edge devices only have limited disk space, use this option to exclude some package
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
+# shellcheck disable=SC2034
 DEBIAN_FRONTEND=noninteractive
 echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
@@ -19,6 +21,7 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 
 OS_VERSION=$(lsb_release -r -s)
 
+# shellcheck disable=SC2034
 SYS_LONG_BIT=$(getconf LONG_BIT)
 
 PACKAGE_LIST="autotools-dev \
@@ -60,7 +63,7 @@ fi
 
 PACKAGE_LIST="$PACKAGE_LIST libicu-dev"
 
-apt-get install -y --no-install-recommends $PACKAGE_LIST
+apt-get install -y --no-install-recommends "$PACKAGE_LIST"
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
@@ -70,14 +73,14 @@ if [ "$OS_VERSION" = "20.04" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+                python"$PYTHON_VER" \
+                python"$PYTHON_VER"-dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python"$PYTHON_VER" 1
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        update-alternatives --set python3 /usr/bin/python"$PYTHON_VER"
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+        /usr/bin/python"$PYTHON_VER" -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 fi
 
