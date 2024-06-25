@@ -121,8 +121,7 @@ set +e
 mkdir -p ~/.onnx
 
 if [ -z "$NIGHTLY_BUILD" ]; then
-    # shellcheck disable=SC2121
-    set NIGHTLY_BUILD=0
+    export NIGHTLY_BUILD=0
 fi
 
 if [ "$BUILD_DEVICE" = "cpu" ] || [ "$BUILD_DEVICE" = "openvino" ] || [ "$BUILD_DEVICE" = "arm" ]; then
