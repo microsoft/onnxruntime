@@ -102,7 +102,7 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
-cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -734,6 +734,9 @@ if (onnxruntime_USE_CUDA)
     message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+  elseif(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+    message( STATUS "Flash-Attention unsupported in Windows with CUDA compiler version < 12.0")
+    set(onnxruntime_USE_FLASH_ATTENTION OFF)
   endif()
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.4)
     message( FATAL_ERROR "Failed build due to CUDA compiler version < 11.4")
@@ -1472,6 +1475,9 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
+  if (WIN32)
+    message(FATAL_ERROR "MIGraphX does not support build in Windows!")
+  endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
 endif()
 

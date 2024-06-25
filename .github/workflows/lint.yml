@@ -97,6 +97,7 @@ jobs:
             --exclude=java/src/main/native/*.c
             --exclude=onnxruntime/core/mlas/inc/*
             --exclude=onnxruntime/core/mlas/lib/*
+            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
           filter: "-runtime/references"
 
   lint-js:
