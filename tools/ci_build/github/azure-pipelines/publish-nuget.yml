@@ -100,7 +100,6 @@ stages:
       condition: eq(${{ parameters.PublishDml }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet DML Package'
       artifact: 'drop-signed-nuget-dml'
-
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
