@@ -1,5 +1,10 @@
 parameters:
 
+- name: PublishCpu
+  displayName: Publish Nuget CPU Package
+  type: boolean
+  default: true
+
 - name: PublishDml
   displayName: Publish Nuget DML Package
   type: boolean
@@ -49,7 +54,8 @@ stages:
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
     
     - download: build
-      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      condition: eq(${{ parameters.PublishCpu }}, true)
+      displayName: 'Download Pipeline Artifact - Signed NuGet CPU Package'
       artifact: 'drop-signed-nuget-CPU'
    
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
