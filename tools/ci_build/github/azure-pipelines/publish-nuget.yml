@@ -1,3 +1,25 @@
+parameters:
+
+- name: PublishDml
+  displayName: Publish Nuget DML Package
+  type: boolean
+  default: true
+
+- name: PublishTraining
+  displayName: Publish Nuget Training Package
+  type: boolean
+  default: true
+
+- name: PublishGpu
+  displayName: Publish Nuget GPU Package
+  type: boolean
+  default: true
+
+- name: PublishRocm
+  displayName: Publish Nuget ROCm Package
+  type: boolean
+  default: true
+
 resources:
   pipelines:
   - pipeline: build
@@ -75,22 +97,26 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - download: build
-      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      condition: eq(${{ parameters.PublishDml }}, true)
+      displayName: 'Download Pipeline Artifact - Signed NuGet DML Package'
       artifact: 'drop-signed-nuget-dml'
 
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
-      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      condition: eq(${{ parameters.PublishTraining }}, true)
+      displayName: 'Download Pipeline Artifact - Signed NuGet Training Package'
       artifact: 'drop-signed-nuget-Training-CPU'
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
-      displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+      condition: eq(${{ parameters.PublishGpu }}, true)
+      displayName: 'Download Pipeline Artifact - Signed NuGet GPU Package'
       artifact: 'drop-signed-nuget-GPU'
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
+      condition: eq(${{ parameters.PublishRocm }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
       artifact: 'drop-signed-nuget-ROCm'
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
