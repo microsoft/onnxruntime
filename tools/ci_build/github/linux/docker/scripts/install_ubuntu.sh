@@ -25,7 +25,7 @@ PACKAGE_LIST="autotools-dev \
 	automake \
 	build-essential \
 	git apt-transport-https apt-utils \
-	ca-certificates\
+	ca-certificates \
 	pkg-config \
 	wget \
 	zlib1g \
