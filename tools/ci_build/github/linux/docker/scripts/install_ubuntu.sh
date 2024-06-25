@@ -22,38 +22,37 @@ apt-get update && apt-get install -y software-properties-common lsb-release
 OS_VERSION=$(lsb_release -r -s)
 
 PACKAGE_LIST="autotools-dev \
-	automake \
-	build-essential \
-	git apt-transport-https apt-utils \
-	ca-certificates \
-	pkg-config \
-	wget \
-	zlib1g \
-	zlib1g-dev \
-	libssl-dev \
-	curl libcurl4-openssl-dev \
-	autoconf \
-	sudo \
-	gfortran \
-	python3-dev \
-	language-pack-en \
-	liblttng-ust-dev \
-	libcurl4 \
-	libssl-dev \
-	libkrb5-3 \
-	libtinfo-dev \
-	libtinfo5 \
-	libtool \
-	openssh-server \
-	aria2 \
-	bzip2 \
-	unzip \
-	zip \
-	rsync libunwind8 libpng-dev libexpat1-dev \
-	python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest \
-	openjdk-11-jdk \
-	graphviz"
-
+  automake \
+  build-essential \
+  git apt-transport-https apt-utils \
+  ca-certificates \
+  pkg-config \
+  wget \
+  zlib1g \
+  zlib1g-dev \
+  libssl-dev \
+  curl libcurl4-openssl-dev \
+  autoconf \
+  sudo \
+  gfortran \
+  python3-dev \
+  language-pack-en \
+  liblttng-ust-dev \
+  libcurl4 \
+  libssl-dev \
+  libkrb5-3 \
+  libtinfo-dev \
+  libtinfo5 \
+  libtool \
+  openssh-server \
+  aria2 \
+  bzip2 \
+  unzip \
+  zip \
+  rsync libunwind8 libpng-dev libexpat1-dev \
+  python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest \
+  openjdk-11-jdk \
+  graphviz"
 
 if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
