@@ -16,7 +16,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | ArgMax | ai.onnx(7-10, 11, 12, 13+) | argMax | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
 | ArgMin | ai.onnx(7-10, 11, 12, 13+) | argMin | ✓ | ✓ | WebNN CPU backend only supports 'select_last_index' value is 0 |
 | AveragePool | ai.onnx(7-9, 10, 11, 12-18, 19+) | averagePool2d | ✓ | ✓ | Only supports 4-D input, 2-D 'kernel_shape', 'count_include_pad' value is 0 |
-| BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✗ | ✓ | Only supports 'training_mode' value is 0, one output |
+| BatchNormalization | ai.onnx(7-8, 9-13, 14, 15+) | batchNormalization | ✓ | ✓ | Only supports 'training_mode' value is 0, one output |
 | Cast | ai.onnx(7-8, 9-12, 13-18, 19-20, 21+) | cast | ✓ | ✓ | WebNN CPU backend doesn't support casting to uint64 data type |
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] (Chromium issue: https://issues.chromium.org/issues/326156496) |
@@ -43,8 +43,8 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | HardSigmoid | ai.onnx(7+) | hardSigmoid | ✓ | ✓ | |
 | HardSwish | ai.onnx(14+) | hardSwish | ✓ | ✓ | |
 | Identity | ai.onnx(7-13, 14-15, 16-18, 19-20, 21+) | identity | ✓ | ✓ | |
-| InstanceNormalization | ai.onnx(7+) | instanceNormalization | ✗ | ✓ | |
-| LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | ✗ | ✓ | |
+| InstanceNormalization | ai.onnx(7+) | instanceNormalization | ✓ | ✓ | |
+| LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | ✓ | ✓ | |
 | LeakyRelu | ai.onnx(7-15, 16+) | leakyRelu | ✓ | ✓ | |
 | Less | ai.onnx(7-8, 9-12, 13+) | lesser | ✓ | ✓ | |
 | LessOrEqual | ai.onnx(12-15, 16+) | lesserOrEqual | ✓ | ✓ | |
