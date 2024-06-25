@@ -118,7 +118,7 @@ stages:
       artifact: 'drop-signed-nuget-GPU'
     
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
-      condition: eq(${{ parameters.PublishTraining }}, true)
+      condition: eq(${{ parameters.PublishGpu }}, true)
 
     - download: build
       condition: eq(${{ parameters.PublishRocm }}, true)
@@ -126,7 +126,7 @@ stages:
       artifact: 'drop-signed-nuget-ROCm'
 
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
-      condition: eq(${{ parameters.PublishTraining }}, true)
+      condition: eq(${{ parameters.PublishRocm }}, true)
 
     - script: |
         dir $(Build.BinariesDirectory)\nuget-artifact\final-package
