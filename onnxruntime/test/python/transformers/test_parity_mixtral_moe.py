@@ -9,18 +9,18 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-import unittest
 import time
+import unittest
 from collections import OrderedDict
 
 import numpy
+import onnx
 import torch
 import torch.nn.functional as F
 from onnx import TensorProto, helper
 from torch import nn
 
 import onnxruntime
-import onnx
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -28,8 +28,6 @@ numpy.random.seed(42)
 ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
 THRESHOLD = 3e-2
-
-
 
 
 def value_string_of(numpy_array):
@@ -73,13 +71,12 @@ def create_moe_onnx_graph(
         ),
     ]
 
-
     fc1_shape = [num_experts, hidden_size, inter_size]
     fc2_shape = [num_experts, inter_size, hidden_size]
     fc3_shape = [num_experts, hidden_size, inter_size]
 
     torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
-    
+
     initializers = [
         helper.make_tensor(
             "fc1_experts_weights",
@@ -108,7 +105,6 @@ def create_moe_onnx_graph(
         helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
     ]
 
-
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
@@ -116,7 +112,6 @@ def create_moe_onnx_graph(
             [num_rows, num_experts],
         )
     )
-
 
     graph_outputs = [
         helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
@@ -131,10 +126,10 @@ def create_moe_onnx_graph(
     )
 
     model = helper.make_model(graph)
-    
+
     model_path = "mixtral_moe.onnx"
     onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
-    
+
     return model_path
 
 
@@ -253,11 +248,7 @@ class MixtralSparseMoeBlock(nn.Module):
             self.moe_experts_weight3,
             self.top_k,
         )
-       
-
-
         self.ort_sess = self.create_ort_session()
-
 
     def create_ort_session(self):
         from onnxruntime import InferenceSession, SessionOptions
@@ -382,7 +373,7 @@ class MixtralSparseMoeBlock(nn.Module):
         # print_tensor("fc3_experts_weights", self.moe_experts_weight3.detach().numpy())
         # print_tensor("output", ort_output[0])
 
-        return None
+        return ort_output
 
     def parity_check(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
