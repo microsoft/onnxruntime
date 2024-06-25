@@ -70,7 +70,7 @@ bool ParseEquationComponents(const InitializedTensorSet& initializers,
   // Parse an equation like 'ij,jk->ik' into components {ij, jk, ik} mapping letters to
   // numeric indices {(0,1}, {1,2}, {0,2}}. The last component is the output.
   // Read first to last character in equation, looking for letters, commas, and one arrow.
-  // TODO: support for parsing ellipsis...
+  // The ellipsis is not supported.
   std::map<char, uint32_t> label_maps;
   std::set<char> repeated_labels;
 
@@ -380,18 +380,18 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
     Step 3. Output Transpose:
     Use the following fast permutation calculation algorithm
     to calculate the permutation of transpose.
-    sequence X[] -> sequence Y[] : permutation P[]
-    X[S[i]] = i, Y[T[i]] = i, P[T[i]] = S[i]
-    output_indices is X and target_output_indices is Y
+    sequence x[] -> sequence y[] : permutation p[]
+    x[s[i]] = i, y[t[i]] = i, p[t[i]] = s[i]
+    output_indices is x and target_output_indices is y
   */
   std::vector<uint32_t> target_output_indices(output_labels.begin(), output_labels.end());
 
   // map output dim labels to 0 ~ n-1
-  std::vector<uint32_t> arr(output_indices.begin(), output_indices.end());
+  std::vector<uint32_t> output_indices_sorted(output_indices.begin(), output_indices.end());
   std::map<uint32_t, uint32_t> mapping;
-  std::sort(arr.begin(), arr.end());
-  for (size_t i = 0; i < arr.size(); i++) {
-    mapping[arr[i]] = i;
+  std::sort(output_indices_sorted.begin(), output_indices_sorted.end());
+  for (size_t i = 0; i < output_indices_sorted.size(); i++) {
+    mapping[output_indices_sorted[i]] = i;
   }
 
   for (size_t i = 0; i < output_indices.size(); i++) {
@@ -401,10 +401,10 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
     }
   }
 
-  uint32_t p = target_output_indices.size();
+  uint32_t pad = target_output_indices.size();
   std::vector<int64_t> s(output_indices.size(), -1);
   std::vector<int64_t> t(output_indices.size(), -1);
-  std::vector<uint32_t> v(output_indices.size(), 0);
+  std::vector<uint32_t> p(output_indices.size(), 0);
   for (uint32_t i = 0; i < output_indices.size(); ++i) {
     s[output_indices[i]] = i;
     if (i < target_output_indices.size()) {
@@ -413,16 +413,16 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
   }
   for (uint32_t i = 0; i < output_indices.size(); ++i) {
     if (t[i] == -1) {
-      t[i] = p++;
+      t[i] = pad++;
     }
-    v[static_cast<uint32_t>(t[i])] = static_cast<uint32_t>(s[i]);
+    p[static_cast<uint32_t>(t[i])] = static_cast<uint32_t>(s[i]);
   }
 
   std::vector<uint32_t> sequence_o(output_indices.size());
   std::iota(sequence_o.begin(), sequence_o.end(), 0);
-  if (v != sequence_o) {
+  if (p != sequence_o) {
     emscripten::val options = emscripten::val::object();
-    options.set("permutation", emscripten::val::array(v));
+    options.set("permutation", emscripten::val::array(p));
     output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
   }
 
@@ -594,11 +594,6 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
                                                                                     output_dimensions);
   if (recognized_operator_type == RecognizedOperatorType::None) {
     LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
-    return false;
-  }
-
-  if (recognized_operator_type == RecognizedOperatorType::ReduceSum && device_type == WebnnDeviceType::CPU) {
-    LOGS(logger, VERBOSE) << "Einsum is not supported for cpu in WebNN EP. ReduceSum is not supported in XNNPACK.";
     return false;
   }
 
