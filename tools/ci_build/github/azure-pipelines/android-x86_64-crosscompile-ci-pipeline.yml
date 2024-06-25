@@ -220,16 +220,11 @@ stages:
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'ubuntu-latest'
     workspace:
       clean: all
     condition: succeeded()
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
-
       - task: DownloadPipelineArtifact@2
         inputs:
           ${{ if eq(parameters.specificArtifact, true) }}:
@@ -257,10 +252,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/use-android-emulator.yml
-        parameters:
-          create: true
-          start: true
+#      - template: templates/use-android-emulator.yml
+#        parameters:
+#          create: true
+#          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -274,9 +269,9 @@ stages:
           --test
         displayName: CPU EP, Test on Android Emulator
 
-      - template: templates/use-android-emulator.yml
-        parameters:
-          stop: true
+#      - template: templates/use-android-emulator.yml
+#        parameters:
+#          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
@@ -284,16 +279,13 @@ stages:
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'ubuntu-latest'
+
     timeoutInMinutes: 90
     workspace:
       clean: all
     condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
 
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -322,11 +314,6 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/use-android-emulator.yml
-        parameters:
-          create: true
-          start: true
-
       - script: |
           python3 tools/ci_build/build.py \
           --android \
@@ -348,10 +335,6 @@ stages:
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
 
-      - template: templates/use-android-emulator.yml
-        parameters:
-          stop: true
-
       - template: templates/clean-agent-build-directory-step.yml
 
 - stage: MASTER_BUILD_STAGE
@@ -365,17 +348,12 @@ stages:
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: 'ubuntu-latest'
     timeoutInMinutes: 180
     workspace:
       clean: all
     condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
-
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
         inputs:
@@ -393,11 +371,6 @@ stages:
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
-
-      - template: templates/use-android-emulator.yml
-        parameters:
-          create: true
-          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -435,10 +408,6 @@ stages:
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
-
-      - template: templates/use-android-emulator.yml
-        parameters:
-          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
