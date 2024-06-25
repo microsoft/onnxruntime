@@ -39,6 +39,7 @@ PACKAGE_LIST="autotools-dev \
 	language-pack-en \
 	liblttng-ust-dev \
 	libcurl4 \
+	libssl-dev \
 	libkrb5-3 \
 	libtinfo-dev \
 	libtinfo5 \
