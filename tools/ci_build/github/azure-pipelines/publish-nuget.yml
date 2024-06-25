@@ -100,25 +100,33 @@ stages:
       condition: eq(${{ parameters.PublishDml }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet DML Package'
       artifact: 'drop-signed-nuget-dml'
-      script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+      condition: eq(${{ parameters.PublishDml }}, true)
 
     - download: build
       condition: eq(${{ parameters.PublishTraining }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet Training Package'
       artifact: 'drop-signed-nuget-Training-CPU'
-      script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+      condition: eq(${{ parameters.PublishTraining }}, true)
 
     - download: build
       condition: eq(${{ parameters.PublishGpu }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet GPU Package'
       artifact: 'drop-signed-nuget-GPU'
-      script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+    
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+      condition: eq(${{ parameters.PublishTraining }}, true)
 
     - download: build
       condition: eq(${{ parameters.PublishRocm }}, true)
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
       artifact: 'drop-signed-nuget-ROCm'
-      script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+      condition: eq(${{ parameters.PublishTraining }}, true)
 
     - script: |
         dir $(Build.BinariesDirectory)\nuget-artifact\final-package
