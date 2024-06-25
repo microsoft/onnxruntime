@@ -54,7 +54,7 @@ PACKAGE_LIST="autotools-dev \
 	graphviz"
 
 
-if [ $DEVICE_TYPE = "Normal" ]; then
+if [ "$DEVICE_TYPE" = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
 
@@ -70,14 +70,14 @@ if [ "$OS_VERSION" = "20.04" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+                python$"PYTHON_VER" \
+                python$"PYTHON_VER"-dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python$"PYTHON_VER" 1
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        update-alternatives --set python3 /usr/bin/python$"PYTHON_VER"
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+        /usr/bin/python$"PYTHON_VER" -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 fi
 
