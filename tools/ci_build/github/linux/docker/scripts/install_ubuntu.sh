@@ -72,10 +72,6 @@ if [ "$OS_VERSION" = "20.04" ] || [ "$OS_VERSION" = "22.04" ]; then
                 python${PYTHON_VER} \
                 python${PYTHON_VER}-dev
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-#       if python3.8 exists, then set python3 to python3.8
-        if [ -f /usr/bin/python3.8 ]; then
-            update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-        fi
         update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
         #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
         #put at /usr/local/. Then there will be two pips.
