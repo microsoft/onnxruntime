@@ -14,6 +14,9 @@ export const TRACE = (deviceType: string, label: string) => {
   console.timeStamp(`${deviceType}::ORT::${label}`);
 };
 
+/**
+ * @ignore
+ */
 export const traceFunc = (originalMethod: any, context: ClassMethodDecoratorContext) => {
   if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
     return;
