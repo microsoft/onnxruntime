@@ -40,8 +40,8 @@ void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* initializer);
  * @param raw_data_len  length of raw_data
  * @returns                 None
  */
-template <typename T1,typename T2>
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_data, T2 raw_data_len){
+template <typename T1, typename T2>
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_data, T2 raw_data_len) {
   using namespace ONNX_NAMESPACE;
   tensor_proto.set_raw_data(raw_data, raw_data_len);
   if constexpr (endian::native != endian::little) {
@@ -57,9 +57,8 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_
  * @returns                 None
  */
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param);
-} //utils
-} //onnxruntime
-
+}  // namespace utils
+}  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
 class TensorProto;

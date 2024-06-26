@@ -230,23 +230,22 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
     if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
       while (input != input_end) {
         MurmurHash3_x86_32(input,
-                         input_num_bytes,
-                         seed_,
-                         output);
+                           input_num_bytes,
+                           seed_,
+                           output);
         input += input_num_bytes;
         ++output;
       }
-    }
-    else {
+    } else {
       // Big endian platform require byte swapping.
       auto raw_data = std::make_unique<char[]>(input_num_bytes);
-      char*  raw_data_ptr = raw_data.get();
+      char* raw_data_ptr = raw_data.get();
       while (input != input_end) {
         memcpy(raw_data_ptr, input, input_num_bytes);
         char* start_byte = raw_data_ptr;
         char* end_byte = start_byte + input_num_bytes - 1;
         for (size_t count = 0; count < static_cast<size_t>(input_num_bytes / 2); ++count) {
-          std::swap(*start_byte++,*end_byte--);
+          std::swap(*start_byte++, *end_byte--);
         }
 
         MurmurHash3_x86_32(raw_data_ptr,

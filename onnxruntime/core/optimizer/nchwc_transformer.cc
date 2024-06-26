@@ -899,7 +899,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_B"));
-  utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, padded_buffer.data(),
+  utils::SetRawDataInTensorProto(nchwc_conv_B_tensor_proto, padded_buffer.data(),
                                  gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_B_tensor_proto.add_dims(nchwc_channels);
 

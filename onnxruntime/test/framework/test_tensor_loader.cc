@@ -109,10 +109,10 @@ static void run_external_data_test() {
     char* bytes = reinterpret_cast<char*>(test_data);
     const size_t num_elements = std::size(test_data);
     for (size_t i = 0; i < num_elements; ++i) {
-      char* start_byte =  bytes + i * element_size;
+      char* start_byte = bytes + i * element_size;
       char* end_byte = start_byte + element_size - 1;
       for (size_t count = 0; count < element_size / 2; ++count) {
-        std::swap(*start_byte++,*end_byte--);
+        std::swap(*start_byte++, *end_byte--);
       }
     }
   }

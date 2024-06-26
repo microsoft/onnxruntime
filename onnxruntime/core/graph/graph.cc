@@ -3706,7 +3706,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                       flatbuffers::Offset<fbs::Graph>& fbs_graph) const {
   if constexpr (endian::native != endian::little) {
     auto& tens = GetAllInitializedTensors();
-    for (auto& [name, tensor_p] : tens){
+    for (auto& [name, tensor_p] : tens) {
       utils::ConvertRawDataInTensorProto(const_cast<TensorProto*>(tensor_p));
     }
   }

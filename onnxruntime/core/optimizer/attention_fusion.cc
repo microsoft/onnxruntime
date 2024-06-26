@@ -138,7 +138,7 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     } else {
       MergeWeights<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer,result.data(),gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializer(graph, initializer);

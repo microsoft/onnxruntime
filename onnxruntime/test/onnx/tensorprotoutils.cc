@@ -81,7 +81,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
       char* end_byte = start_byte + element_size - 1;
       /* keep swapping */
       for (size_t count = 0; count < element_size / 2; ++count) {
-        std::swap(*start_byte++,*end_byte--);
+        std::swap(*start_byte++, *end_byte--);
       }
     }
   }

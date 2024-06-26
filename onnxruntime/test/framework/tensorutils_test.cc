@@ -101,14 +101,14 @@ template <>
 std::vector<BFloat16> CreateValues<BFloat16>() {
   return {BFloat16(0.f), BFloat16(1.f), BFloat16(2.f), BFloat16(3.f)};
 }
- 
+
 template <typename T>
 void ConvertEndianessForVector(const std::vector<T>& test_data) {
   const size_t element_size = sizeof(T);
   const size_t num_elements = test_data.size();
   char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
   for (size_t i = 0; i < num_elements; ++i) {
-    char* start_byte =  bytes + i * element_size;
+    char* start_byte = bytes + i * element_size;
     char* end_byte = start_byte + element_size - 1;
     for (size_t count = 0; count < element_size / 2; ++count) {
       std::swap(*start_byte++, *end_byte--);

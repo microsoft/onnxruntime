@@ -8,7 +8,6 @@
 #include <limits>
 #include <string>
 
-
 #if defined(__wasm__)
 #include <emscripten.h>
 #endif
@@ -276,9 +275,8 @@ Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
 
 namespace utils {
 
-#if !defined(ORT_MINIMAL_BUILD)
 
-void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param){
+void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
 }
 
@@ -286,7 +284,7 @@ void ConvertRawDataInTensorProto(TensorProto* tensor) {
   size_t element_size = 1;
   char* bytes = NULL;
   size_t num_elements = 0;
-  switch(tensor->data_type()) {
+  switch (tensor->data_type()) {
     case TensorProto_DataType_FLOAT:
       bytes = reinterpret_cast<char*>(tensor->mutable_float_data()->mutable_data());
       num_elements = tensor->float_data_size();
@@ -359,6 +357,7 @@ void ConvertRawDataInTensorProto(TensorProto* tensor) {
   return;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
                                                const ORTCHAR_T* tensor_proto_dir,
@@ -1262,7 +1261,6 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 }
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
-
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;
 
@@ -1281,7 +1279,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
       *mutable_string_data->Add() = *f;
     }
   } else {
-    utils::SetRawDataInTensorProto(tensor_proto,tensor.DataRaw(), tensor.SizeInBytes());
+    utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
   }
 
   return tensor_proto;
@@ -1615,12 +1613,13 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
       T v = static_cast<T>(src_index);
       if constexpr (endian::native != endian::little) {
         auto src = gsl::make_span<const unsigned char>(static_cast<const unsigned char*>(
-                   reinterpret_cast<const unsigned char*>(&v)), sizeof(T));
+                                                           reinterpret_cast<const unsigned char*>(&v)),
+                                                       sizeof(T));
         auto dest = gsl::make_span<unsigned char>(static_cast<unsigned char*>(
-                   reinterpret_cast<unsigned char*>(dst)), sizeof(T));
-        onnxruntime::utils::SwapByteOrderCopy(sizeof(T),src ,dest);
-      }
-      else {
+                                                      reinterpret_cast<unsigned char*>(dst)),
+                                                  sizeof(T));
+        onnxruntime::utils::SwapByteOrderCopy(sizeof(T), src, dest);
+      } else {
         memcpy(dst, &v, sizeof(T));
       }
     }
