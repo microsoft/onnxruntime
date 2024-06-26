@@ -197,8 +197,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
     auto* tp = context->GetOperatorThreadPool();
     args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    args.buffer_size_per_thread = static_cast<size_t>(args.row_size_q) *
-                                  static_cast<size_t>(2 + args.row_size_kv + args.v_head_size) * sizeof(float);
+    args.buffer_size_per_thread = (static_cast<size_t>(args.row_size_q) * 2 +
+                                  static_cast<size_t>(args.row_size_q) * static_cast<size_t>(args.row_size_kv) +
+                                  static_cast<size_t>(args.row_size_q) * static_cast<size_t>(args.v_head_size))
+                                  * sizeof(float);
     size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
 
