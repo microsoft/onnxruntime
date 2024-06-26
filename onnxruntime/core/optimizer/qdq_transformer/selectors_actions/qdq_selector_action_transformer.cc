@@ -237,7 +237,6 @@ void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> action = std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>();
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // TODO: Enable 16-bit types in selector when QLinearMatMul and MatMulInteger support 16-bit.
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulSelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},

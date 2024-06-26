@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "core/optimizer/selectors_actions/actions.h"
 
 namespace onnxruntime {
@@ -78,7 +82,7 @@ struct MatMulReplaceWithQLinear : public Action {
 
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
 struct DQMatMulReplaceWithMatMulNBits : public Action {
-  DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level = -1);
+  explicit DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level = -1);
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
  private:

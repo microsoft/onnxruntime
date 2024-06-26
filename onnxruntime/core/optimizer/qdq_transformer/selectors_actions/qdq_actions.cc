@@ -287,7 +287,8 @@ DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_
       }()} {
 }
 
-NodeAttributes DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const {
+NodeAttributes
+DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const {
   NodeAttributes extra_attributes;
 
   const auto* dq_node = selected_nodes.Input(0);
@@ -365,56 +366,60 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
 
   if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
-      MlasQDQTransposeBlockwiseQuantized<float, 4, true>(weight_src.DataAsByteSpan().data(),
-                                                         scale_src.data<float>(),
-                                                         zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-                                                         weight_dst.data<uint8_t>(),
-                                                         scale_dst.data<float>(),
-                                                         zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
-                                                         true,
-                                                         static_cast<int>(K),
-                                                         static_cast<int>(N),
-                                                         static_cast<int>(block_size),
-                                                         tp.get());
+      MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
+          weight_src.DataAsByteSpan().data(),
+          scale_src.data<float>(),
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
+          weight_dst.data<uint8_t>(),
+          scale_dst.data<float>(),
+          zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+          true,
+          static_cast<int>(K),
+          static_cast<int>(N),
+          static_cast<int>(block_size),
+          tp.get());
     } else {
-      MlasQDQTransposeBlockwiseQuantized<float, 4, false>(weight_src.DataAsByteSpan().data(),
-                                                          scale_src.data<float>(),
-                                                          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-                                                          weight_dst.data<uint8_t>(),
-                                                          scale_dst.data<float>(),
-                                                          zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
-                                                          true,
-                                                          static_cast<int>(K),
-                                                          static_cast<int>(N),
-                                                          static_cast<int>(block_size),
-                                                          tp.get());
+      MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
+          weight_src.DataAsByteSpan().data(),
+          scale_src.data<float>(),
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
+          weight_dst.data<uint8_t>(),
+          scale_dst.data<float>(),
+          zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+          true,
+          static_cast<int>(K),
+          static_cast<int>(N),
+          static_cast<int>(block_size),
+          tp.get());
     }
   } else {
     if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
-      MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, true>(weight_src.DataAsByteSpan().data(),
-                                                             scale_src.data<MLFloat16>(),
-                                                             zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-                                                             weight_dst.data<uint8_t>(),
-                                                             scale_dst.data<MLFloat16>(),
-                                                             zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
-                                                             true,
-                                                             static_cast<int>(K),
-                                                             static_cast<int>(N),
-                                                             static_cast<int>(block_size),
-                                                             tp.get());
+      MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, true>(
+          weight_src.DataAsByteSpan().data(),
+          scale_src.data<MLFloat16>(),
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
+          weight_dst.data<uint8_t>(),
+          scale_dst.data<MLFloat16>(),
+          zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+          true,
+          static_cast<int>(K),
+          static_cast<int>(N),
+          static_cast<int>(block_size),
+          tp.get());
 
     } else {
-      MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(weight_src.DataAsByteSpan().data(),
-                                                              scale_src.data<MLFloat16>(),
-                                                              zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-                                                              weight_dst.data<uint8_t>(),
-                                                              scale_dst.data<MLFloat16>(),
-                                                              zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
-                                                              true,
-                                                              static_cast<int>(K),
-                                                              static_cast<int>(N),
-                                                              static_cast<int>(block_size),
-                                                              tp.get());
+      MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(
+          weight_src.DataAsByteSpan().data(),
+          scale_src.data<MLFloat16>(),
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
+          weight_dst.data<uint8_t>(),
+          scale_dst.data<MLFloat16>(),
+          zp_dst_ptr ? zp_dst_ptr->data<uint8_t>() : nullptr,
+          true,
+          static_cast<int>(K),
+          static_cast<int>(N),
+          static_cast<int>(block_size),
+          tp.get());
     }
   }
 
