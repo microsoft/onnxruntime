@@ -244,7 +244,6 @@ void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(action));
 
 #else
-  ORT_UNUSED_PARAMETER(is_int8_allowed);
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
 }

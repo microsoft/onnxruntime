@@ -485,20 +485,15 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // weight, scale and zero points (if exists) must be constants
-  const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
-  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
-  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
+  const auto* weight_tensor_proto = graph.GetConstantInitializer(weight_arg->Name(), true);
+  const auto* scale_tensor_proto = graph.GetConstantInitializer(scale_arg->Name(), true);
+  const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), true) : nullptr;
 
-  if (!graph_utils::NodeArgIsConstant(graph, *weight_arg) ||
-      !graph_utils::NodeArgIsConstant(graph, *scale_arg) ||
-      !graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto) ||
-      !graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto)) {
+  if (!weight_tensor_proto || !scale_tensor_proto) {
     return false;
   }
 
-  if (zero_point_arg &&
-      (!graph_utils::NodeArgIsConstant(graph, *zero_point_arg) ||
-       !graph.GetInitializedTensor(zero_point_arg->Name(), zp_tensor_proto))) {
+  if (zero_point_arg && !zp_tensor_proto) {
     return false;
   }
 
