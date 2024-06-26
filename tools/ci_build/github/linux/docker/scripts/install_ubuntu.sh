@@ -91,7 +91,7 @@ elif [ "$OS_VERSION" = "22.04" ]; then
         update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
     fi
 else
-  exit 1
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
