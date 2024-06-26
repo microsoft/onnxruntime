@@ -115,7 +115,7 @@ class WindowsEnv : public Env {
    */
   std::vector<LogicalProcessors> cores_;
 
-  int l2_cache_size;
+  int l2_cache_size_;
   /*
    * "global_processor_info_map_" is a map of:
    * global_processor_id <--> (group_id, local_processor_id)
