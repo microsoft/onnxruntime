@@ -117,10 +117,10 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_NonConstDQ) {
 template <typename T, bool use_zp>
 typename std::enable_if<std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>, void>::type
 RunDQMatMulNotConverted_FirstDQInput(const std::vector<int64_t>& weight_shape,
-                                   const std::vector<int64_t>& input2_shape,
-                                   const int64_t axis,
-                                   const int64_t block_size,
-                                   bool use_contrib_qdq) {
+                                     const std::vector<int64_t>& input2_shape,
+                                     const int64_t axis,
+                                     const int64_t block_size,
+                                     bool use_contrib_qdq) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
     auto* input2_arg = builder.MakeInput(input2_shape, -100.0f, 100.0f);
