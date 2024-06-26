@@ -2,7 +2,7 @@ ARG UBUNTU_VERSION=22.04
 FROM ubuntu:${UBUNTU_VERSION}
 
 ARG OPENVINO_VERSION=2024.0.0
-ARG PYTHON_VERSION=3.9
+ARG PYTHON_VERSION=3.10
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION -d EdgeDevice
