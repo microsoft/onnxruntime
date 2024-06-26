@@ -670,9 +670,14 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
         return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
     }
 
+    template <bool add8>
     static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1)
     {
-        return (v0 & 0xF) | ((v1 & 0xF) << 4);
+        if constexpr (add8) {
+            return (v0 & 0xF ^ 8) | ((v1 & 0xF ^ 8) << 4);
+        } else {
+            return (v0 & 0xF) | ((v1 & 0xF) << 4);
+        }
     }
 
     // If src is row major, then dst is column major. Transpose:
@@ -687,10 +692,16 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
     //  -->
     //  | dst0: low 4 bit | dst0: high 4 bit |
     //  | dst1: low 4 bit | dst1: high 4 bit |
+    template <bool add8>
     static MLAS_FORCEINLINE void Transpose(uint8_t src0, uint8_t src1, uint8_t& dst0, uint8_t& dst1)
     {
-        dst0 = (src0 & 0xF) | ((src1 & 0xF) << 4);
-        dst1 = ((src0 & 0xF0) >> 4) | (src1 & 0xF0);
+        if constexpr (add8) {
+            dst0 = ((src0 & 0xF) ^ 8) | (((src1 & 0xF) ^ 8) << 4);
+            dst1 = (((src0 & 0xF0) ^ 0x80) >> 4) | ((src1 & 0xF0) ^ 0x80);
+        } else {
+            dst0 = (src0 & 0xF) | ((src1 & 0xF) << 4);
+            dst1 = ((src0 & 0xF0) >> 4) | (src1 & 0xF0);
+        }
     }
 
     static MLAS_FORCEINLINE uint8_t QuantizeV(Tin src, float reciprocal_scale, uint8_t zero_point)
@@ -823,6 +834,10 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
         MLAS_THREADPOOL* thread_pool
     )
     {
+        ORT_ENFORCE(
+            src_zero_points || signed_quant || dst_zero_points,
+            "Unsigned quant types without zero points must allocate zero points with value 0."
+        );
         // Must avoid multiple thread write to a single byte, which means the starting index
         // of a thread block must be even. To achieve that, we need to customize the thread
         // block size based on the parity of columns.
@@ -909,7 +924,7 @@ private:
                     if (zero_points) {
                         range2scalezp<Tin, 4, signed_quant>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
                         range2scalezp<Tin, 4, signed_quant>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
-                        zero_points[(scale_idx + i) >> 1] = Pack(v0_tt, v1_tt);
+                        zero_points[(scale_idx + i) >> 1] = Pack<false>(v0_tt, v1_tt);
                     } else {
                         range2scale<Tin, 4, signed_quant>(vmin_t[i], vmax_t[i], scale0_tt);
                         range2scale<Tin, 4, signed_quant>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
@@ -933,7 +948,7 @@ private:
                     for (int32_t i = 0; i < col_size; i += 2) {
                         v0_tt = QuantizeV(src[input_idx_t + i], reciprocal_scale_t[i], zp_t[i]);
                         v1_tt = QuantizeV(src[input_idx_t + i + 1], reciprocal_scale_t[i + 1], zp_t[i + 1]);
-                        dst[(input_idx_t + i) >> 1] = Pack(v0_tt, v1_tt);
+                        dst[(input_idx_t + i) >> 1] = Pack<false>(v0_tt, v1_tt);
                     }
                 }
             }
@@ -1028,7 +1043,7 @@ private:
                                 range2scalezp<Tin, 4, signed_quant>(
                                     vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt, v1_tt
                                 );
-                                zero_points[scale_buffer_idx >> 1] = Pack(v0_tt, v1_tt);
+                                zero_points[scale_buffer_idx >> 1] = Pack<false>(v0_tt, v1_tt);
                             } else {
                                 range2scale<Tin, 4, signed_quant>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt);
                                 range2scale<Tin, 4, signed_quant>(vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt);
@@ -1088,7 +1103,7 @@ private:
                                     src[input_idx_t_start + 1], reciprocal_scale_t[col_idx + 1], zp_t[col_idx + 1]
                                 );
 
-                                dst[input_idx_t_start >> 1] = Pack(v0_tt, v1_tt);
+                                dst[input_idx_t_start >> 1] = Pack<false>(v0_tt, v1_tt);
                             }
                             // tailing unaligned output
                             if (input_idx_t_start < input_idx_t_end) {
@@ -1154,7 +1169,7 @@ private:
                     src0_t = src_weights[src_idx];
                     src1_t = src_weights[src_idx + packed_col_size];
                     src_idx += packed_col_size + packed_col_size;
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                    Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                     dst_weights[dst_idx] = dst0_t;
                     dst_weights[dst_idx + dstT_num_row] = dst1_t;
                 }
@@ -1162,7 +1177,7 @@ private:
                 if (src_idx < src_end_idx) {
                     src0_t = src_weights[src_idx];
                     src1_t = 0;
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                    Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                     dst_weights[dst_idx] = dst0_t;
                     dst_weights[dst_idx + dstT_num_row] = dst1_t;
                 }
@@ -1200,7 +1215,7 @@ private:
                     for (; src_idx < src_end_idx - packed_col_size; ++dst_idx) {
                         src0_t = src_zero_points[src_idx];
                         src1_t = src_zero_points[src_idx + packed_col_size];
-                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                         dst_zero_points[dst_idx] = dst0_t;
                         dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
                         src_idx += packed_col_size + packed_col_size;
@@ -1209,7 +1224,7 @@ private:
                     if (src_idx < src_end_idx) {
                         src0_t = src_zero_points[src_idx];
                         src1_t = 0;
-                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                         dst_zero_points[dst_idx] = dst0_t;
                         dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
                     }
@@ -1257,13 +1272,13 @@ private:
                 for (; src_idx < src_end_idx - columns; ++dst_idx) {
                     src0_t = GetElem(src_weights[src_idx >> 1], src_idx & 1);
                     src1_t = GetElem(src_weights[(src_idx + columns) >> 1], (src_idx + columns) & 1);
-                    dst_weights[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
+                    dst_weights[dst_idx] = Pack<signed_quant>(src0_t, src1_t);
                     src_idx += columns + columns;
                 }
 
                 if (src_idx < src_end_idx) {
                     src0_t = GetElem(src_weights[src_idx >> 1], src_idx & 1);
-                    dst_weights[dst_idx] = src0_t & 0xf;
+                    dst_weights[dst_idx] = Pack<signed_quant>(src0_t, 0);
                 }
             }
         );
@@ -1298,13 +1313,13 @@ private:
                     for (; src_idx < src_end_idx - columns; ++dst_idx) {
                         src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
                         src1_t = GetElem(src_zero_points[(src_idx + columns) >> 1], (src_idx + columns) & 1);
-                        dst_zero_points[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
+                        dst_zero_points[dst_idx] = Pack<signed_quant>(src0_t, src1_t);
                         src_idx += columns + columns;
                     }
 
                     if (src_idx < src_end_idx) {
                         src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
-                        dst_zero_points[dst_idx] = src0_t & 0xf;
+                        dst_zero_points[dst_idx] = Pack<signed_quant>(src0_t, 0);
                     }
                 }
             );
