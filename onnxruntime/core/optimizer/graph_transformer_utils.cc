@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
@@ -44,18 +45,18 @@
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
-#include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/label_encoder_fusion.h"
+#include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
-#include "core/optimizer/matmul_bn_fusion.h"
-#include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
@@ -132,14 +133,13 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<PadFusion>());
       rules.push_back(std::make_unique<MatmulBNFusion>());
-      rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
       rules.push_back(std::make_unique<LabelEncoderFusion>());
       break;
 
     case TransformerLevel::Level2:
+      rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
-      // No level2 rules available today
       break;
 
     case TransformerLevel::Level3:
@@ -359,6 +359,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
+#if !defined(ORT_NEURAL_SPEED)
+      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+#endif  // !defined(ORT_NEURAL_SPEED)
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
@@ -430,6 +434,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
+#if !defined(ORT_NEURAL_SPEED)
+      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep, apply_context));
+#endif  // !defined(ORT_NEURAL_SPEED)
 #else   // !defined(DISABLE_CONTRIB_OPS)
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)

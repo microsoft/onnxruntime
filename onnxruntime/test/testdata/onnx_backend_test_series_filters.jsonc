@@ -312,7 +312,13 @@
         // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
         "^test_dequantizelinear_blocked",
         "^test_quantizelinear_blocked_asymmetric",
-        "^test_quantizelinear_blocked_symmetric"
+        "^test_quantizelinear_blocked_symmetric",
+        // Bug with test model: node's input name does not match the model's input name (x_zero_point vs zero_point)
+        // PR with fix: https://github.com/onnx/onnx/pull/6122
+        "^test_dequantizelinear_int4",
+        "^test_dequantizelinear_uint4",
+        "^test_quantizelinear_int4",
+        "^test_quantizelinear_uint4"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",

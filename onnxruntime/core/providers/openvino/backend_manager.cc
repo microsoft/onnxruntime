@@ -1,8 +1,13 @@
 // Copyright (C) Intel Corporation
 // Licensed under the MIT License
 
+#include <array>
+#include <algorithm>
+#include <cassert>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
@@ -10,6 +15,7 @@
 #include "core/providers/openvino/backend_manager.h"
 #include "core/providers/openvino/ibackend.h"
 #include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -33,8 +39,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       ORT_THROW("Import blob from model failed");
   }
 
-  auto prec_str = GetGlobalContext().precision_str;
-
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
   auto node_input_defs = fused_node.InputDefs();
@@ -44,7 +48,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     i++;
   }
 
-  auto graph_inputs = subgraph.GetInputs();
+  const std::vector<const NodeArg*>& graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     auto it = subgraph_context_.input_names.find(input->Name());
     if (it == subgraph_context_.input_names.end()) {
@@ -67,6 +71,9 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
+    ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
+                "QDQ stripping should not be enabled for models with dynamic input shapes. "
+                "Set enable_qdq_optimizer to False");
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
       if (!GetGlobalContext().disable_dynamic_shapes) {
@@ -218,27 +225,88 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
   return has_sym_dims;
 }
 
+// Check to see if the graph is QDQ
+static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
+  std::unordered_set<std::string> qdq_ops = {"QuantizeLinear", "DequantizeLinear"};
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
+    if (qdq_ops.find(node->OpType()) != qdq_ops.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
+                                ONNX_NAMESPACE::ModelProto* model_proto,
+                                const onnxruntime::Node& fused_node) {
+  if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name;
+#ifdef _WIN32
+    size_t slash = model_name.find_last_of("\\");
+#else
+    size_t slash = model_name.find_last_of("/");
+#endif
+    model_name = model_name.substr(slash + 1, std::string::npos);
+    size_t dot = model_name.find_last_of(".");
+    model_name = model_name.substr(0, dot);
+
+    std::string subgraph_name = fused_node.Name();
+    size_t dash = subgraph_name.find_last_of("-");
+    subgraph_name = subgraph_name.substr(dash, std::string::npos);
+
+    const std::string name = model_name + subgraph_name + ".onnx";
+
+    std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto->SerializeToOstream(dump);
+  }
+}
+
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
                                            const onnxruntime::GraphViewer& subgraph,
                                            const logging::Logger& logger) const {
-  auto model = subgraph.CreateModel(logger);
-
-  auto model_proto = model->ToProto();
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
-
-#ifndef NDEBUG
+  std::chrono::time_point<std::chrono::high_resolution_clock> model_proto_create_start_, model_proto_create_end_;
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    const std::string& name = fused_node.Name();
-    std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+    model_proto_create_start_ = std::chrono::high_resolution_clock::now();
   }
-#else
-  ORT_UNUSED_PARAMETER(fused_node);
-#endif
 
-  return model_proto;
+  auto print_model_proto_duration = [&]() {
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      model_proto_create_end_ = std::chrono::high_resolution_clock::now();
+      auto model_proto_create_duration =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              model_proto_create_end_ - model_proto_create_start_)
+              .count();
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model Proto creation took: " << model_proto_create_duration << " ms.";
+    }
+  };
+
+  // QDQ stripping enabled only for the NPU
+  if (global_context_.device_type.find("NPU") != std::string::npos &&
+      global_context_.enable_qdq_optimizer &&
+      IsQDQGraph(subgraph)) {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
+    std::unique_ptr<onnxruntime::Model> model;
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, model);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    print_model_proto_duration();
+    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
+    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+    return model_proto;
+  } else {
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
+    auto model = subgraph.CreateModel(logger);
+    auto model_proto = model->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+    print_model_proto_duration();
+    DumpOpenVINOEPModel(global_context_.onnx_model_path_name, model_proto.get(), fused_node);
+    return model_proto;
+  }
 }
 
 std::vector<std::vector<int64_t>> GetInputTensorShapes(const Ort::KernelContext& context) {

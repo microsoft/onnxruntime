@@ -36,7 +36,8 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<int32_t>(),
                               DataTypeImpl::GetTensorType<int64_t>(),
-                              DataTypeImpl::GetTensorType<MLFloat16>()})
+                              DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<BFloat16>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Tile);
 

@@ -120,6 +120,19 @@ inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 star
   return result;
 }
 
+template <>
+inline std::vector<BFloat16> ValueRange<BFloat16>(size_t count, BFloat16 start, BFloat16 step) {
+  std::vector<BFloat16> result;
+  result.reserve(count);
+  float curr = start.ToFloat();
+  float f_step = step.ToFloat();
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(BFloat16(curr));
+    curr += f_step;
+  }
+  return result;
+}
+
 inline std::pair<float, float> MeanStdev(gsl::span<const float> v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();

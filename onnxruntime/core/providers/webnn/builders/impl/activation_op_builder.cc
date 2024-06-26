@@ -20,7 +20,9 @@ class ActivationOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -32,40 +34,35 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val output = emscripten::val::object();
 
-  if (Contains(model_builder.GetFusedActivations(), node.InputDefs()[0]->Name())) {
-    LOGS_DEFAULT(VERBOSE) << op_type << " Node [" << node.Name() << "] fused";
-    output = input;
+  NodeAttrHelper helper(node);
+  emscripten::val options = emscripten::val::object();
+  if (op_type == "Elu") {
+    options.set("alpha", helper.Get("alpha", 1.0f));
+    output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
+  } else if (op_type == "Gelu") {
+    output = model_builder.GetBuilder().call<emscripten::val>("gelu", input, options);
+  } else if (op_type == "HardSigmoid") {
+    options.set("alpha", helper.Get("alpha", 0.2f));
+    options.set("beta", helper.Get("beta", 0.5f));
+    output = model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", input, options);
+  } else if (op_type == "HardSwish") {
+    output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input);
+  } else if (op_type == "LeakyRelu") {
+    options.set("alpha", helper.Get("alpha", 0.0f));
+    output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
+  } else if (op_type == "Relu") {
+    output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
+  } else if (op_type == "Sigmoid") {
+    output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input);
+  } else if (op_type == "Softplus") {
+    output = model_builder.GetBuilder().call<emscripten::val>("softplus", input);
+  } else if (op_type == "Softsign") {
+    output = model_builder.GetBuilder().call<emscripten::val>("softsign", input);
+  } else if (op_type == "Tanh") {
+    output = model_builder.GetBuilder().call<emscripten::val>("tanh", input);
   } else {
-    NodeAttrHelper helper(node);
-    emscripten::val options = emscripten::val::object();
-    if (op_type == "Elu") {
-      options.set("alpha", helper.Get("alpha", 1.0f));
-      output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
-    } else if (op_type == "Gelu") {
-      output = model_builder.GetBuilder().call<emscripten::val>("gelu", input, options);
-    } else if (op_type == "HardSigmoid") {
-      options.set("alpha", helper.Get("alpha", 0.2f));
-      options.set("beta", helper.Get("beta", 0.5f));
-      output = model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", input, options);
-    } else if (op_type == "HardSwish") {
-      output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input);
-    } else if (op_type == "LeakyRelu") {
-      options.set("alpha", helper.Get("alpha", 0.0f));
-      output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
-    } else if (op_type == "Relu") {
-      output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
-    } else if (op_type == "Sigmoid") {
-      output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input);
-    } else if (op_type == "Softplus") {
-      output = model_builder.GetBuilder().call<emscripten::val>("softplus", input);
-    } else if (op_type == "Softsign") {
-      output = model_builder.GetBuilder().call<emscripten::val>("softsign", input);
-    } else if (op_type == "Tanh") {
-      output = model_builder.GetBuilder().call<emscripten::val>("tanh", input);
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
-    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -75,13 +72,61 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 bool ActivationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                             const Node& node,
-                                            WebnnDeviceType /* device_type */,
+                                            WebnnDeviceType device_type,
                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
+
+  if (op_type == "Elu" && device_type == WebnnDeviceType::CPU) {
+    NodeAttrHelper helper(node);
+    float alpha = helper.Get("alpha", 1.0f);
+    if (alpha != 1.0f) {
+      LOGS(logger, VERBOSE) << "WebNN CPU backend only supports Elu's alpha == 1.0";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool ActivationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                                 const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  // WebNN relu op supports float32, float16, int32, int8 input data types.
+  if (op_type == "Relu") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    };
+    // WebNN CPU backend does not support int32 data type for relu.
+    if (device_type == WebnnDeviceType::CPU) {
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    }
+  } else {  // Others only support float32 and float16.
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    };
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
 
   return true;
 }

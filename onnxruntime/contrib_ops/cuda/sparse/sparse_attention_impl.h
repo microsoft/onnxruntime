@@ -16,14 +16,10 @@ namespace contrib {
 namespace cuda {
 
 struct BlockLayout {
-  const int32_t* mask;  // shape (num_layout, num_rows, num_cols), where num_rows = num_cols = max_seq_len / block_size.
   int num_layout;
-  int block_size;  // kernel block size, which is <= sparse_block_size
-
-  const int* csr_col_indices;
-  const int* csr_row_indices;
-  int num_rows;
-  int num_cols;
+  int block_size;              // kernel block size, which is <= sparse_block_size
+  const int* csr_row_indices;  // shape [num_layout, stride_row_indices]
+  const int* csr_col_indices;  // shape [num_layout, stride_col_indices]
 };
 
 template <typename T>

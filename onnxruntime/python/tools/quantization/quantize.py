@@ -186,6 +186,12 @@ class StaticQuantConfig(QuantConfig):
                                                        Invalid if also set `scale` or `zero_point`.
                             'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                        Invalid if also set `scale` or `zero_point`.
+                    QDQKeepRemovableActivations = True/False:
+                        Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                        will be explicitly represented in the QDQ model. If false, these activations are automatically
+                        removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                        optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                        operators from the model.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -375,6 +381,9 @@ def quantize_static(
                 CalibTensorRangeSymmetric = True/False :
                     Default is False. If enabled, the final range of tensor during calibration will be explicitly
                     set to symmetric to central point "0".
+                CalibStridedMinMax = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max, only stride amount of
+                    data will be used and then all results will be merged in the end.
                 CalibMovingAverage = True/False :
                     Default is False. If enabled, the moving average of the minimum and maximum values will be
                     computed when the calibration method selected is MinMax.
@@ -423,6 +432,12 @@ def quantize_static(
                                                    Invalid if also set `scale` or `zero_point`.
                         'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                    Invalid if also set `scale` or `zero_point`.
+                QDQKeepRemovableActivations = True/False:
+                    Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                    will be explicitly represented in the QDQ model. If false, these activations are automatically
+                    removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                    optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                    operators from the model.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
@@ -510,7 +525,19 @@ def quantize_static(
             use_external_data_format=use_external_data_format,
             extra_options=calib_extra_options,
         )
-        calibrator.collect_data(calibration_data_reader)
+
+        stride = extra_options.get("CalibStridedMinMax", None)
+        if stride:
+            total_data_size = len(calibration_data_reader)
+            if total_data_size % stride != 0:
+                raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+
+            for start in range(0, total_data_size, stride):
+                end_index = start + stride
+                calibration_data_reader.set_range(start_index=start, end_index=end_index)
+                calibrator.collect_data(calibration_data_reader)
+        else:
+            calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_data()
         if not isinstance(tensors_range, TensorsData):
             raise TypeError(

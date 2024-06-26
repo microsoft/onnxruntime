@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import argparse
-import os
+import glob
 import shlex
 import subprocess
 from enum import Enum
@@ -24,22 +24,13 @@ def _run(command: list[str], **kwargs):
 
 
 def upload_pod_archive(pod_archive_path: Path):
-    env = os.environ.copy()
-    env.update(
-        {
-            # configure azcopy to use managed identity
-            "AZCOPY_AUTO_LOGIN_TYPE": "MSI",
-            "AZCOPY_MSI_CLIENT_ID": "63b63039-6328-442f-954b-5a64d124e5b4",
-        }
-    )
-
     storage_account_name = "onnxruntimepackages"
     storage_account_container_name = "$web"
     dest_url = f"https://{storage_account_name}.blob.core.windows.net/{storage_account_container_name}/"
 
-    upload_command = ["azcopy", "cp", str(pod_archive_path), dest_url]
+    upload_command = ["azcopy", "cp", str(pod_archive_path), dest_url, "--overwrite", "false"]
 
-    _run(upload_command, env=env)
+    _run(upload_command)
 
 
 def update_podspec(pod_archive_path: Path, podspec_path: Path):
@@ -50,6 +41,15 @@ def update_podspec(pod_archive_path: Path, podspec_path: Path):
     podspec_path.write_text(podspec_content)
 
 
+def _resolve_single_path_from_pattern(path_pattern: str) -> Path:
+    matches = glob.glob(path_pattern)
+    if len(matches) != 1:
+        raise argparse.ArgumentTypeError(
+            f"Expected exactly 1 match for pattern '{path_pattern}' but got {len(matches)} matches."
+        )
+    return Path(matches[0]).resolve(strict=True)
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Helper script to perform release tasks. "
@@ -58,14 +58,14 @@ def _parse_args():
 
     parser.add_argument(
         "--pod-archive-path",
-        type=Path,
-        help="Pod archive path.",
+        type=_resolve_single_path_from_pattern,
+        help="Pod archive path. It may be a pattern, in which case it must match exactly one path.",
     )
 
     parser.add_argument(
         "--podspec-path",
-        type=Path,
-        help="Podspec path.",
+        type=_resolve_single_path_from_pattern,
+        help="Podspec path. It may be a pattern, in which case it must match exactly one path.",
     )
 
     parser.add_argument(
@@ -82,11 +82,9 @@ def _validate_args(
 ):
     if require_pod_archive_path:
         assert args.pod_archive_path is not None, "--pod-archive-path must be specified."
-        args.pod_archive_path = args.pod_archive_path.resolve(strict=True)
 
     if require_podspec_path:
         assert args.podspec_path is not None, "--podspec-path must be specified."
-        args.podspec_path = args.podspec_path.resolve(strict=True)
 
 
 def main():

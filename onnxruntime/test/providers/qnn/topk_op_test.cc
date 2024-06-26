@@ -18,26 +18,17 @@ namespace test {
 template <typename DataType>
 inline GetTestModelFn BuildTopKTestCase(const TestInputDef<DataType>& input_def,
                                         const TestInputDef<int64_t>& k_def,
-                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                        bool cast_output_indices = true) {
-  return [input_def, k_def, attrs, cast_output_indices](ModelTestBuilder& builder) {
+                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
+  return [input_def, k_def, attrs](ModelTestBuilder& builder) {
     NodeArg* input = MakeTestInput<DataType>(builder, input_def);
     NodeArg* k_input = MakeTestInput<int64_t>(builder, k_def);
 
     NodeArg* values_output = builder.MakeOutput();
-    NodeArg* indices_output = cast_output_indices ? builder.MakeIntermediate() : builder.MakeOutput();
+    NodeArg* indices_output = builder.MakeOutput();
     Node& topk_node = builder.AddNode("TopK", {input, k_input}, {values_output, indices_output});
 
     for (const auto& attr : attrs) {
       topk_node.AddAttributeProto(attr);
-    }
-
-    // Cast indices to uint32
-    if (cast_output_indices) {
-      auto* uint32_indices_output = builder.MakeOutput();
-      Node& cast_node = builder.AddNode("Cast", {indices_output}, {uint32_indices_output});
-      const auto dst_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32;
-      cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
     }
   };
 }
@@ -58,7 +49,7 @@ static void RunTopKTestOnCPU(const TestInputDef<DataType>& input_def,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  RunQnnModelTest(BuildTopKTestCase<DataType>(input_def, k_def, attrs, false /*cast_output_indices*/),
+  RunQnnModelTest(BuildTopKTestCase<DataType>(input_def, k_def, attrs),
                   provider_options,
                   opset,
                   expected_ep_assignment);
@@ -131,26 +122,19 @@ GetTestQDQModelFn<QuantType> BuildQDQTopKTestCase(const TestInputDef<float>& inp
     // K input
     NodeArg* k_input = MakeTestInput(builder, k_def);
 
-    // Reshape op
+    // TopK_values_output -> Q -> DQ -> output
+    // NOTE: Create output QDQ nodes before the TopK node so that TopK's 'values' output is the graph's first output.
     NodeArg* values_output = builder.MakeIntermediate();
-    NodeArg* indices_output = builder.MakeIntermediate();
+    output_qparams[0] = input_qparams;  // Input and output qparams must be equal.
+    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, values_output, input_qparams.scale,
+                                                     input_qparams.zero_point, use_contrib_qdq);
+    // TopK node
+    NodeArg* indices_output = builder.MakeOutput();
     Node& topk_node = builder.AddNode("TopK", {input_qdq, k_input}, {values_output, indices_output});
 
     for (const auto& attr : attrs) {
       topk_node.AddAttributeProto(attr);
     }
-
-    // op_output -> Q -> DQ -> output
-    // NOTE: Input and output quantization parameters must be equal for Reshape.
-    output_qparams[0] = input_qparams;  // Overwrite!
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, values_output, input_qparams.scale,
-                                                     input_qparams.zero_point, use_contrib_qdq);
-
-    // Cast indices to uint32 (HTP backend does not support int64 graph outputs)
-    auto* uint32_indices_output = builder.MakeOutput();
-    Node& cast_node = builder.AddNode("Cast", {indices_output}, {uint32_indices_output});
-    const auto dst_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32;
-    cast_node.AddAttribute("to", static_cast<int64_t>(dst_type));
   };
 }
 
@@ -171,7 +155,7 @@ static void RunQDQTopKTestOnHTP(const TestInputDef<float>& input_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  auto f32_model_builder = BuildTopKTestCase<float>(input_def, k_def, attrs, true /*cast_output_indices*/);
+  auto f32_model_builder = BuildTopKTestCase<float>(input_def, k_def, attrs);
   auto qdq_model_builder = BuildQDQTopKTestCase<QType>(input_def, k_def, attrs, use_contrib_qdq);
   TestQDQModelAccuracy(f32_model_builder,
                        qdq_model_builder,
@@ -189,18 +173,12 @@ TEST_F(QnnHTPBackendTests, TopK_LargestFloats_U8_LastAxis) {
 }
 
 // Test 16-bit QDQ TopK on HTP backend: top 2 largest floats from last axis
-// TODO: Inaccuracy detected for output 'output_0', element 6.
-// Output quant params: scale=0.00061036087572574615, zero_point=32768.
-// Expected val: -7.2340402603149414
-// QNN QDQ val: -17.446556091308594 (err 10.212515830993652)
-// CPU QDQ val: -7.2339968681335449 (err 4.3392181396484375e-05)
-TEST_F(QnnHTPBackendTests, DISABLED_TopK_LargestFloats_U16_LastAxis) {
+TEST_F(QnnHTPBackendTests, TopK_LargestFloats_U16_LastAxis) {
   RunQDQTopKTestOnHTP<uint16_t>(TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-20.0f, 20.0f, 48)),
                                 TestInputDef<int64_t>({1}, true /* is_initializer */, {2}),
                                 {},  // Attributes
                                 ExpectedEPNodeAssignment::All,
-                                19,     // opset
-                                true);  // Use com.microsoft Q/DQ ops
+                                21);  // opset
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

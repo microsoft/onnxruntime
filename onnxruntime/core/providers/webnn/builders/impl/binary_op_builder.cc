@@ -22,6 +22,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -61,11 +63,63 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
-  // XNNPACK prelu operator expects slope to be a static value.
-  // https://github.com/google/XNNPACK/issues/4692
-  // TODO: Remove this check after it is solved.
-  if (op_type == "PRelu" && !Contains(initializers, input_defs[1]->Name()) && device_type == WebnnDeviceType::CPU) {
-    LOGS(logger, VERBOSE) << "The second input (slope) for PRelu must be a constant initializer for WebNN CPU backend.";
+  std::vector<int64_t> input0_shape;
+  std::vector<int64_t> input1_shape;
+  if (!GetShape(*input_defs[0], input0_shape, logger) ||
+      !GetShape(*input_defs[1], input1_shape, logger)) {
+    return false;
+  }
+
+  // 'prelu' op in WebNN CPU backend restricts the last dimension of input and slope to be same.
+  // TODO: Remove this workaround once the associated issue is resolved in Chromium:
+  // https://issues.chromium.org/issues/335517470.
+  if (op_type == "PRelu" && device_type == WebnnDeviceType::CPU) {
+    if (input0_shape.back() != input1_shape.back()) {
+      LOGS(logger, VERBOSE) << "The last dimension of input and slope for PRelu must be same for WebNN CPU backend.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                             const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+  int32_t input1_type;
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  // WebNN prelu op only supports float32, float16, int32, int8 input data types.
+  if (op_type == "Prelu") {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    };
+    // WebNN CPU backend doesn't support int32 for prelu.
+    if (device_type == WebnnDeviceType::CPU) {
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+    }
+  } else {
+    supported_data_types = webnn_supported_data_types;
+  }
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (input0_type != input1_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 

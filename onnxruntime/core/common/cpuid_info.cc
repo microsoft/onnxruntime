@@ -73,7 +73,7 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 
 namespace onnxruntime {
 
-#ifdef CPUIDINFO_ARCH_X86
+#if defined(CPUIDINFO_ARCH_X86)
 
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
@@ -141,10 +141,11 @@ void CPUIDInfo::X86Init() {
   }
 }
 
-#endif /* CPUIDINFO_ARCH_X86 */
+#endif  // defined(CPUIDINFO_ARCH_X86)
 
 #if defined(CPUIDINFO_ARCH_ARM)
-#ifdef __linux__
+
+#if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
   // Assuming no hyper-threading, no NUMA groups
@@ -190,11 +191,11 @@ void CPUIDInfo::ArmLinuxInit() {
   }
 }
 
-#elif defined(_WIN32)
+#elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
 // ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
-#ifndef _M_ARM
+#if !defined(_M_ARM)
 #pragma region Application Family or OneCore Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
@@ -243,12 +244,12 @@ void CPUIDInfo::ArmWindowsInit() {
       lastUarch = uarch;
     }
   }
-#endif /* Application Family or OneCore Family */
+#endif  // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#else
+#else   // ^ !defined(_M_ARM) / v defined(_M_ARM)
   has_arm_neon_dot_ = false;
-#endif
+#endif  // defined(_M_ARM)
 
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -266,8 +267,32 @@ void CPUIDInfo::ArmWindowsInit() {
   }
 }
 
-#endif /* (arm or arm64) and windows */
-#endif /* arm or arm64*/
+#elif defined(__APPLE__)  // ^ defined(_WIN32)
+
+void CPUIDInfo::ArmAppleInit() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+
+    // Note: We leave is_armv8_narrow_ld_ unset because it only applies to a limited set of uarchs that we don't expect
+    // to encounter on Apple platforms.
+
+    // TODO figure out how to set core_uarchs_
+  } else
+#endif  // defined(CPUINFO_SUPPORTED)
+  {
+    // No fallback detection attempted now. Add if needed.
+  }
+}
+
+#endif  // defined(__APPLE__)
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
 
 uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
 #ifdef _WIN32
@@ -295,11 +320,13 @@ CPUIDInfo::CPUIDInfo() {
                              "due to undetected CPU features.";
   }
 #endif  // defined(CPUINFO_SUPPORTED)
-#ifdef __linux__
+#if defined(__linux__)
   ArmLinuxInit();
 #elif defined(_WIN32)
   ArmWindowsInit();
-#endif  /* (arm or arm64) and windows */
+#elif defined(__APPLE__)
+  ArmAppleInit();
+#endif
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 }
 }  // namespace onnxruntime

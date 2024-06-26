@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
 
@@ -92,53 +93,58 @@ namespace
 {
 
 size_t
-SQNBitGemmWorkspaceAlignment(SQNBitGemmVariant Variant)
-{
-    switch (Variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Q8BlkAlignment();
-        }
-        default: {
-            return 1;
-        }
-    }
-}
-
-size_t
 SQNBitGemmPerGemmWorkspaceSize(
-    SQNBitGemmVariant Variant,
     size_t M,
     size_t N,
     size_t K,
-    size_t BlkLen
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-
-    switch (Variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            // workspace buffer is used for block quantization of A to int8
-            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
-            return PerGemmWorkspaceSize;
-        }
-        default: {
-            return 0;
-        }
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 0;
     }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceSize != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, ComputeType);
+    }
+
+    return 0;
+}
+
+size_t
+SQNBitGemmPerGemmWorkspaceAlignment(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 1;
+    }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment(BlkLen, ComputeType);
+    }
+
+    return 1;
 }
 
 size_t
 SQNBitGemmPerGemmWorkspaceStride(
-    SQNBitGemmVariant Variant,
     size_t M,
     size_t N,
     size_t K,
-    size_t BlkLen
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Size = SQNBitGemmPerGemmWorkspaceSize(Variant, M, N, K, BlkLen);
-    const auto Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+    const auto Size = SQNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
 
@@ -155,14 +161,12 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
-
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
 
-    const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+    const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
 
     const size_t WorkspaceSize = BatchN * PerGemmWorkspaceStride;
 
@@ -574,14 +578,14 @@ MlasSQNBitGemmBatch(
     // Ensure `Workspace` has correct alignment.
     //
     if (Workspace != nullptr) {
-        const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+        const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
         const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(Workspace);
         Workspace = reinterpret_cast<void*>(
             (WorkspaceAddress + Alignment - 1) & (~(Alignment - 1))
         );
     }
 
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
 
     if (const auto InitializeWorkspaceOperation = OperationMap[Variant].InitializeWorkspace;
         InitializeWorkspaceOperation != nullptr) {

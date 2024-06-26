@@ -583,10 +583,6 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
 set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
@@ -654,7 +650,9 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
 endif()
 
-if(onnxruntime_USE_QNN)
+# QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
+# or reduced op builds.
+if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
@@ -876,11 +874,11 @@ if (MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26451>")
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
-  # Avoid the error for Win arm64 Release build. error C1128: number of sections exceeded object file format limit: compile with /bigobj
-  string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
-  if (${GEN_PLATFORM} STREQUAL "arm64" AND "${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    target_compile_options(onnxruntime_test_all PRIVATE "/bigobj")
-  endif()
+
+  # Avoid this compile error in graph_transform_test.cc:
+  # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
+  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
+               APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
@@ -914,13 +912,12 @@ endif()
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
 if (onnxruntime_USE_ROCM)
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
     target_compile_definitions(onnxruntime_test_all PRIVATE USE_COMPOSABLE_KERNEL)
+    if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE)
+      target_compile_definitions(onnxruntime_test_all PRIVATE USE_COMPOSABLE_KERNEL_CK_TILE)
+    endif()
   endif()
   target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -930,12 +927,14 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s INITIAL_MEMORY=536870912 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 -s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm] --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s INITIAL_MEMORY=536870912 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 -s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm] --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
   endif()
   if (onnxruntime_USE_JSEP)
-    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
+    set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\"")
   endif()
 
   ###
@@ -1049,10 +1048,6 @@ set(onnx_test_libs
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto
   ${onnxruntime_EXTERNAL_LIBRARIES})
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
-endif()
 
 if (NOT IOS)
     onnxruntime_add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
@@ -1233,10 +1228,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
-
-    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS AND NOT onnxruntime_BUILD_SHARED_LIB)
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-    endif()
 
     if (onnxruntime_USE_TVM)
       if (WIN32)
@@ -1466,10 +1457,6 @@ endif()
       onnxruntime_common
       onnxruntime_flatbuffers
     )
-
-    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-      list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_language_interop onnxruntime_pyop)
-    endif()
 
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
