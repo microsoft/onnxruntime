@@ -721,48 +721,6 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
     }
 
     /**
-     * @brief Quantize a matrix shape [rows, columns] row-wise. Scales and zero points are calculated.
-     *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row
-     *        major, so the output tensor reserves the shape, in terms output type.
-     *        Thread block is [1, quant_block_size * 2].
-     * @param src               the source matrix, row major: [rows * columns]
-     * @param scales            the scales of quantized blocks, row major layout with shape:
-     *                          [rows * ceil(columns / quant_block_size)]
-     * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales
-     *                          in terms of output type. In terms of uint8_t, the shape is:
-     *                          [ceil(rows * ceil(columns / quant_block_size) * qbits / 8)]
-     * @param dst               the quantized weights, row major: [rows * columns] in terms of
-     *                          output type. In terms of uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
-     * @param rows              number of rows in the source matrix
-     * @param columns           number of columns in the source matrix, must satisfy
-     *                          ceil(columns / quant_block_size) % 2 == 0, so in each thread block,
-     *                          zero points are packed into one byte.
-     * @param quant_block_size  number of elements quantized together.
-     * @param thread_pool       thread pool for parallel processing
-     */
-    static void QuantizeRowWise(
-        const Tin* src,
-        Tin* scales,
-        uint8_t* zero_points,
-        uint8_t* dst,
-        int32_t rows,
-        int32_t columns,
-        int32_t quant_block_size,
-        MLAS_THREADPOOL* thread_pool
-    )
-    {
-        MLAS_UNREFERENCED_PARAMETER(src);
-        MLAS_UNREFERENCED_PARAMETER(scales);
-        MLAS_UNREFERENCED_PARAMETER(zero_points);
-        MLAS_UNREFERENCED_PARAMETER(dst);
-        MLAS_UNREFERENCED_PARAMETER(rows);
-        MLAS_UNREFERENCED_PARAMETER(columns);
-        MLAS_UNREFERENCED_PARAMETER(quant_block_size);
-        MLAS_UNREFERENCED_PARAMETER(thread_pool);
-        ORT_THROW("BlockwiseQDQQuantizer::BlockwiseQDQQuantizer is not implemented");
-    }
-
-    /**
      * @brief Quantize a matrix shape [rows, columns] column-wise. Scales and zero points are calculated.
      *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row major
      *        so the output tensor reserves the shape, in terms output type.
@@ -1799,17 +1757,7 @@ MlasQDQQuantizeBlockwise(
             return true;
         }
     } else {
-        if (zero_points) {
-            BlockwiseQDQQuantizer<Tin, qbits, false>::QuantizeRowWise(
-                src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
-            );
-            return false;
-        } else {
-            BlockwiseQDQQuantizer<Tin, qbits, true>::QuantizeRowWise(
-                src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
-            );
-            return true;
-        }
+        ORT_THROW("Row-wise MlasQDQQuantizeBlockwise is not implemented");
     }
 }
 
