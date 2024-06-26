@@ -343,8 +343,8 @@ class HQQWeightOnlyQuantizer:
         import torch
 
         logger.info(f"start to quantize {node.name} ...")
-        inputB = node.input[1]  # noqa: N806
-        b_pb, bs_graph = get_initializer(inputB, graph_stack)
+        input_b = node.input[1]
+        b_pb, bs_graph = get_initializer(input_b, graph_stack)
         if b_pb is None:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return [node]  # only care about constant weight
@@ -383,7 +383,7 @@ class HQQWeightOnlyQuantizer:
         b_quant = onnx.numpy_helper.from_array(packed_torch.cpu().numpy())
         b_quant.name = b_pb.name + "_Q4"
         for input in bs_graph.input:
-            if input.name == inputB:
+            if input.name == input_b:
                 bs_graph.input.remove(input)
                 break
 
@@ -476,43 +476,43 @@ class DefaultWeightOnlyQuantizer:
 
         logger.info(f"start to quantize {node.name} ...")
         qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
-        inputB = node.input[1]  # noqa: N806
-        B, Bs_graph = get_initializer(inputB, graph_stack)  # noqa: N806
-        if B is None:
+        input_b = node.input[1]
+        b_tensor, b_graph = get_initializer(input_b, graph_stack)
+        if b_tensor is None:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return [node]  # only care about constant weight
 
-        B_array = onnx.numpy_helper.to_array(B)  # noqa: N806
-        if len(B_array.shape) != 2:
+        b_ndarray = onnx.numpy_helper.to_array(b_tensor)
+        if len(b_ndarray.shape) != 2:
             logger.info("MatMul weight is not 2D. Skip to quantize")
             return [node]  # can only process 2-D matrix
 
-        packed, scales, zero_points = self.int4_block_quant(B_array)
+        packed, scales, zero_points = self.int4_block_quant(b_ndarray)
 
         if self.config.quant_format == QuantFormat.QOperator:
-            B_quant = onnx.numpy_helper.from_array(packed, B.name + "_Q4")  # noqa: N806
-            scales_tensor = onnx.numpy_helper.from_array(scales, B.name + "_scales")
+            b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + "_Q4")
+            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
         else:
-            B_quant = onnx.helper.make_tensor(B.name + "_DQ_Q4", qtype, B_array.shape, packed, True)
-            scales_tensor = onnx.numpy_helper.from_array(scales, B.name + "_DQ_scales")
+            b_quant = onnx.helper.make_tensor(b_tensor.name + "_DQ_Q4", qtype, b_ndarray.shape, packed.tobytes(), True)
+            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
-        for input in Bs_graph.input:
-            if input.name == inputB:
-                Bs_graph.input.remove(input)
+        for input in b_graph.input:
+            if input.name == input_b:
+                b_graph.input.remove(input)
                 break
 
-        Bs_graph.initializer.extend([B_quant, scales_tensor])
+        b_graph.initializer.extend([b_quant, scales_tensor])
 
         output_nodes = []
 
         if self.config.quant_format == QuantFormat.QOperator:
-            input_names = [node.input[0], B_quant.name, scales_tensor.name]
+            input_names = [node.input[0], b_quant.name, scales_tensor.name]
             if not self.config.is_symmetric:
-                zp_tensor = onnx.numpy_helper.from_array(zero_points, B.name + "_zero_points")
+                zp_tensor = onnx.numpy_helper.from_array(zero_points, b_tensor.name + "_zero_points")
                 input_names.append(zp_tensor.name)
-                Bs_graph.initializer.extend([zp_tensor])
+                b_graph.initializer.extend([zp_tensor])
             kwargs = {}
-            rows, cols = B_array.shape
+            rows, cols = b_ndarray.shape
             kwargs["K"] = rows
             kwargs["N"] = cols
             kwargs["bits"] = 4
@@ -531,14 +531,16 @@ class DefaultWeightOnlyQuantizer:
 
             output_nodes.append(matmul_q4_node)
         else:
-            dq_input_names = [B_quant.name, scales_tensor.name]
-            dq_output_names = [B_quant.name + "_output"]
+            dq_input_names = [b_quant.name, scales_tensor.name]
+            dq_output_names = [b_quant.name + "_output"]
             matmul_input_names = [node.input[0], dq_output_names[0]]
             matmul_output_names = [node.output[0]]
             if not self.config.is_symmetric:
-                zp_tensor = onnx.helper.make_tensor(B.name + "_DQ_zero_points", qtype, scales.shape, zero_points, True)
+                zp_tensor = onnx.helper.make_tensor(
+                    b_tensor.name + "_DQ_zero_points", qtype, scales.shape, zero_points.tobytes(), True
+                )
                 dq_input_names.append(zp_tensor.name)
-                Bs_graph.initializer.extend([zp_tensor])
+                b_graph.initializer.extend([zp_tensor])
             dq_kwargs = {"axis": 0, "block_size": self.config.block_size}
             dq_node = onnx.helper.make_node(
                 "DequantizeLinear",
