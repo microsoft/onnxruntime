@@ -355,7 +355,7 @@ void DQMatMulReplaceWithMatMulNBits::AddTransposedInitializers(Graph& graph,
                                                std::vector<int64_t>{N * ((quant_num + 1) / 2)});
   } else if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     zp_dst_ptr = std::make_unique<Initializer>(ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-                                               graph.GenerateNodeArgName(zp_arg->Name() + "_T"),
+                                               graph.GenerateNodeArgName("fused_DQ_MatMul_zero_point_T"),
                                                std::vector<int64_t>{N * ((quant_num + 1) / 2)});
   }
 
