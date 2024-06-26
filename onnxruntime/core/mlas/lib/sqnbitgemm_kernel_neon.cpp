@@ -526,7 +526,8 @@ SQ4BitGemmM1Kernel_CompFp32(
 )
 {
     if (QuantBZeroPoint != nullptr) {
-        SQ4BitGemmM1Kernel_CompFp32_Impl<true>(
+        constexpr bool HasZeroPoint = true;
+        SQ4BitGemmM1Kernel_CompFp32_Impl<HasZeroPoint>(
             BlkLen,
             A,
             QuantBData,
@@ -539,7 +540,8 @@ SQ4BitGemmM1Kernel_CompFp32(
             Bias
         );
     } else {
-        SQ4BitGemmM1Kernel_CompFp32_Impl<false>(
+        constexpr bool HasZeroPoint = false;
+        SQ4BitGemmM1Kernel_CompFp32_Impl<HasZeroPoint>(
             BlkLen,
             A,
             QuantBData,
