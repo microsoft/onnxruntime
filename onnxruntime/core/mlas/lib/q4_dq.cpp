@@ -320,7 +320,7 @@ struct BitsTraits {
 
     static constexpr int kBits = qbits;
     static constexpr int kMax = signed_quant ? (1 << (qbits -1)) - 1 : (1 << qbits) - 1;
-    static constexpr int kMid = signed_quant ? 0 : 1 << (qbits - 1);
+    static constexpr int kMid = signed_quant ? 0 : (1 << (qbits - 1));
     static constexpr int kMin = signed_quant ? -(1 << (qbits - 1)) : 0;
     static constexpr float kMaxFp = static_cast<float>(kMax);
     static constexpr float kMinFp = static_cast<float>(kMin);
@@ -360,9 +360,9 @@ range2scalezp(float min, float max, ScaleT& scale, uint8_t& zp)
     }
 
     if (zero_point_fp < BitsTraits<qbits, signed_quant>::kMinFp) {
-        zp = BitsTraits<qbits, signed_quant>::kMin;
+        zp = static_cast<uint8_t>(BitsTraits<qbits, signed_quant>::kMin);
     } else if (zero_point_fp > BitsTraits<qbits, signed_quant>::kMaxFp) {
-        zp = BitsTraits<qbits, signed_quant>::kMax;
+        zp = static_cast<uint8_t>(BitsTraits<qbits, signed_quant>::kMax);
     } else {
         zp = (uint8_t)roundf(zero_point_fp);
     }
@@ -379,7 +379,10 @@ void
 range2scale(float min, float max, ScaleT& scale)
 {
     max = fabsf(max) > fabsf(min) ? max : min;
-    scale = ScaleT(max / BitsTraits<qbits, signed_quant>::halfRange);
+    // !!Note: in the quantized space, abs of min -8 > abs of max 7.
+    // Therefore map the larger half FP space to [-8, 0].
+    // Minus sign achieves this purpose.
+    scale = ScaleT(-max / BitsTraits<qbits, signed_quant>::halfRange);
 };
 
 
