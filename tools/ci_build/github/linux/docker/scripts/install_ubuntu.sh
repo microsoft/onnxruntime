@@ -64,32 +64,32 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 if [ "$OS_VERSION" = "20.04" ]; then
-  PYTHON_VER=${PYTHON_VER:=3.8}
-  if [ "$PYTHON_VER" != "3.8" ]; then
-    add-apt-repository -y ppa:deadsnakes/ppa
-    apt-get update
-    apt-get install -y --no-install-recommends \
-            python${PYTHON_VER} \
-            python${PYTHON_VER}-dev
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-    update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-    #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
-    #put at /usr/local/. Then there will be two pips.
-    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
-  fi
+    PYTHON_VER=${PYTHON_VER:=3.8}
+    if [ "$PYTHON_VER" != "3.8" ]; then
+      add-apt-repository -y ppa:deadsnakes/ppa
+      apt-get update
+      apt-get install -y --no-install-recommends \
+              python${PYTHON_VER} \
+              python${PYTHON_VER}-dev
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
+      update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+      #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
+      #put at /usr/local/. Then there will be two pips.
+      /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+    fi
 elif [ "$OS_VERSION" = "22.04" ]; then
-  PYTHON_VER=${PYTHON_VER:=3.10}
-  if [ "$PYTHON_VER" != "3.10" ]; then
-    add-apt-repository -y ppa:deadsnakes/ppa
-    apt-get update
-    apt-get install -y --no-install-recommends \
-            python${PYTHON_VER} \
-            python${PYTHON_VER}-dev
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 2
-    update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-  fi
+    PYTHON_VER=${PYTHON_VER:=3.10}
+    if [ "$PYTHON_VER" != "3.10" ]; then
+      add-apt-repository -y ppa:deadsnakes/ppa
+      apt-get update
+      apt-get install -y --no-install-recommends \
+              python${PYTHON_VER} \
+              python${PYTHON_VER}-dev
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 2
+      update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+    fi
 else
   exit 1
 fi
