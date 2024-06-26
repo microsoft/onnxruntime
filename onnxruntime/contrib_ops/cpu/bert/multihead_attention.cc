@@ -14,6 +14,7 @@
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
 
+#include <algorithm>
 #include <type_traits>
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
