@@ -252,10 +252,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-#      - template: templates/use-android-emulator.yml
-#        parameters:
-#          create: true
-#          start: true
+      - template: templates/use-android-emulator.yml
+        parameters:
+          create: true
+          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -265,14 +265,13 @@ stages:
           --android_ndk_path $ANDROID_NDK_HOME \
           --android_abi=x86_64 \
           --android_api=30 \
-          --android_run_emulator \
           --build_java \
           --test
         displayName: CPU EP, Test on Android Emulator
 
-#      - template: templates/use-android-emulator.yml
-#        parameters:
-#          stop: true
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
@@ -315,6 +314,11 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
+      - template: templates/use-android-emulator.yml
+        parameters:
+          create: true
+          start: true
+
       - script: |
           python3 tools/ci_build/build.py \
           --android \
@@ -323,7 +327,6 @@ stages:
           --android_ndk_path $ANDROID_NDK_HOME \
           --android_abi=x86_64 \
           --android_api=29 \
-          --android_run_emulator \
           --build_java \
           --use_nnapi \
           --test
@@ -336,6 +339,10 @@ stages:
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
+
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
@@ -374,6 +381,11 @@ stages:
       - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
+     - template: templates/use-android-emulator.yml
+            parameters:
+              create: true
+              start: true
+
       - script: |
           python3 tools/ci_build/build.py \
           --android \
@@ -410,6 +422,10 @@ stages:
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
+
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
