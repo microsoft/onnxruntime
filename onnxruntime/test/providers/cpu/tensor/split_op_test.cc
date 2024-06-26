@@ -838,7 +838,7 @@ TEST(SplitOperatorTest, Split3Inner) {
     return ShapeAndDataT{{batch, end - start}, data0};
   };
 
-  auto do_test = [&](std::vector<int64_t>& splits) {
+  auto do_test = [&](std::vector<int>& splits) {
     outputs.clear();
     outputs.push_back(gen_output(0, splits[0]));
     outputs.push_back(gen_output(splits[0], splits[1]));
@@ -848,7 +848,7 @@ TEST(SplitOperatorTest, Split3Inner) {
   };
 
   // split into 3 same size, and aligned to 16
-  std::vector<int64_t> splits{data_len / 3, data_len / 3 * 2};
+  std::vector<int> splits{data_len / 3, data_len / 3 * 2};
   do_test(splits);
 
   // test split with data alignment is 8
