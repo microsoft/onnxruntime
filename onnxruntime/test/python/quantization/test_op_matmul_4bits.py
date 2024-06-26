@@ -141,16 +141,20 @@ class TestOpMatMul4Bits(unittest.TestCase):
 
         if use_qdq:
             dq_qtype = TensorProto.INT4 if is_symmetric else TensorProto.UINT4
-            dqnode_io_qtypes = {
-                "DequantizeLinear": [
-                    ["i", 0, dq_qtype],
-                ]
-            } if is_symmetric else {
-                "DequantizeLinear": [
-                    ["i", 0, dq_qtype],
-                    ["i", 2, dq_qtype],
-                ]
-            }
+            dqnode_io_qtypes = (
+                {
+                    "DequantizeLinear": [
+                        ["i", 0, dq_qtype],
+                    ]
+                }
+                if is_symmetric
+                else {
+                    "DequantizeLinear": [
+                        ["i", 0, dq_qtype],
+                        ["i", 2, dq_qtype],
+                    ]
+                }
+            )
             check_qtype_by_node_type(self, model_int4_path, dqnode_io_qtypes)
 
         data_reader.rewind()

@@ -677,7 +677,7 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
     static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1)
     {
         if constexpr (add8) {
-            return (v0 & 0xF ^ 8) | ((v1 & 0xF ^ 8) << 4);
+            return ((v0 & 0xF) ^ 8) | (((v1 & 0xF) ^ 8) << 4);
         } else {
             return (v0 & 0xF) | ((v1 & 0xF) << 4);
         }
