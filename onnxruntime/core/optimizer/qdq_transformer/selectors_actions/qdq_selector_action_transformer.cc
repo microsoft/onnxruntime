@@ -65,7 +65,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"Squeeze", {}},
-                                                          {"Unsqueeze", {}}},
+                                                          {"Unsqueeze", {}},
+                                                          {"Flatten", {}}},
                                                          std::move(selector),
                                                          std::move(drop_action));
 #else

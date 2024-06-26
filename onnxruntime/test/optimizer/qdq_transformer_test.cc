@@ -1040,6 +1040,53 @@ TEST(QDQTransformerTests, UnsqueezeDropQDQ) {
   RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, false, 21);
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Flatten -> Q.
+template <typename QuantType>
+static void RunFlattenDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                      int64_t axis = 1,
+                                      bool use_contrib_qdq = false,
+                                      int opset = 21) {
+  auto build_test_case = [input_shape, axis, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* flatten_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    Node& flatten_node = builder.AddNode("Flatten", {input_arg_dq}, {flatten_output});
+    flatten_node.AddAttribute("axis", axis);
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(flatten_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Flatten"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Reshape -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, FlattenDropQDQ) {
+  for (int64_t axis: {0, 1, 3}) {
+    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis);
+    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis, true, 13);     // Use com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, true, 13);    // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, true, 13);   // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, false);       // Use int16 ONNX QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, false);      // Use int16 ONNX QDQ ops
+  }
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;
