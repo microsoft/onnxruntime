@@ -6962,4 +6962,3 @@ def test_aten_attention():
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
-test_aten_attention()
