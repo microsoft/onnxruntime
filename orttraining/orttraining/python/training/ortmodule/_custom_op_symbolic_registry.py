@@ -977,7 +977,7 @@ def softmax(g, input, dim, dtype=None):
 def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
     dropout_p_f = g.op("Cast", dropout_p, to_i=torch.onnx.TensorProtoDataType.FLOAT)
     return g.op(
-        "org.pytorch.aten::ATen", 
+        "org.pytorch.aten::ATen",
         query,
         key,
         value,
@@ -985,5 +985,5 @@ def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p
         dropout_p_f,
         is_causal,
         scale,
-        operator_s="scaled_dot_product_attention"
+        operator_s="scaled_dot_product_attention",
     )
