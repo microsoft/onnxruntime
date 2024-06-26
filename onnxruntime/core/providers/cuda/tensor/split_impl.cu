@@ -158,29 +158,48 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
 }
 
 template <typename T>
-__device__ __forceinline__ void _vec_copy_data(
-    void* output_ptr,
-    const void* input_ptr,
-    const int64_t size_in_byte) {
-  auto output_ptr_vec = reinterpret_cast<T*>(output_ptr);
-  auto input_ptr_vec = reinterpret_cast<const T*>(input_ptr);
-  auto new_size = size_in_byte / sizeof(T);
-  for (int i = threadIdx.x; i < new_size; i += blockDim.x) {
-    output_ptr_vec[i] = input_ptr_vec[i];
-  }
-  auto remain = size_in_byte % sizeof(T);
-  auto output_ptr_r = reinterpret_cast<char*>(output_ptr_vec + new_size);
-  auto input_ptr_r = reinterpret_cast<const char*>(input_ptr_vec + new_size);
-  for (int i = threadIdx.x; i < remain; i += blockDim.x) {
-    output_ptr_r[i] = input_ptr_r[i];
+__global__ void _Split3InnerKernel(const int64_t size0_in_byte,
+                                   const int64_t size1_in_byte,
+                                   const int64_t size2_in_byte,
+                                   const void* input_data,
+                                   void* output_data0,
+                                   void* output_data1,
+                                   void* output_data2,
+                                   const int64_t inner_size_in_byte) {
+  // each block copy one row of input data
+  auto size0 = size0_in_byte / sizeof(T);
+  auto size1 = size1_in_byte / sizeof(T);
+  auto size2 = size2_in_byte / sizeof(T);
+  auto inner_size = inner_size_in_byte / sizeof(T);
+  auto output0_vec = reinterpret_cast<T*>(output_data0) + blockIdx.x * size0;
+  auto output1_vec = reinterpret_cast<T*>(output_data1) + blockIdx.x * size1;
+  auto output2_vec = reinterpret_cast<T*>(output_data2) + blockIdx.x * size2;
+  auto input_vec = reinterpret_cast<const T*>(input_data) + blockIdx.x * inner_size;
+  // all size and pointer are aligned to sizeof(T)
+  // so here use all threads in the block to do vectorized copy
+
+  for (auto tid = threadIdx.x; tid < inner_size; tid += blockDim.x) {
+    auto data = input_vec[tid];
+    if (tid < size0) {
+      output0_vec[tid] = data;
+    } else if (tid < (size0 + size1)) {
+      output1_vec[tid - size0] = data;
+    } else {
+      output2_vec[tid - size0 - size1] = data;
+    }
   }
 }
 
-template <typename T>
-__device__ __forceinline__ void _block_copy_data(T* out, const T* input, int size) {
-  auto copy_size_in_byte = size * sizeof(T);
+Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
+                   const int64_t size2, const void* input_data, void* output_data0, void* output_data1,
+                   void* output_data2, const gsl::span<const int64_t>& input_shape) {
+  CUDA_LONG outer_size = 1;
+  for (size_t i = 0; i < input_shape.size() - 1; ++i) {
+      outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
+  }
+  CUDA_LONG inner_size_in_byte = static_cast<CUDA_LONG>(input_shape[input_shape.size() - 1] * element_size);
 
-  auto select = [](int value) {
+  auto select = [](size_t value) {
     if (value % 16 == 0) {
       return 16;
     } else if (value % 8 == 0) {
@@ -193,82 +212,53 @@ __device__ __forceinline__ void _block_copy_data(T* out, const T* input, int siz
       return 1;
     }
   };
-  // cast the input and output ptr into long value, and check the alignment size of there pointers.
-  auto input_v = reinterpret_cast<size_t>(input);
-  auto out_v = reinterpret_cast<size_t>(out);
-  // select the min alignment of input and output pointer
-  auto vec_size = std::min(select(input_v), select(out_v));
 
-  if (vec_size == 16) {
-    _vec_copy_data<int4>(out, input, copy_size_in_byte);
-  } else if (vec_size == 8) {
-    _vec_copy_data<int2>(out, input, copy_size_in_byte);
-  } else if (vec_size == 4) {
-    _vec_copy_data<int32_t>(out, input, copy_size_in_byte);
-  } else if (vec_size == 2) {
-    _vec_copy_data<int16_t>(out, input, copy_size_in_byte);
-  } else {
-    _vec_copy_data<char>(out, input, copy_size_in_byte);
+  auto input_v = reinterpret_cast<size_t>(input_data);
+  auto output_v0 = reinterpret_cast<size_t>(output_data0);
+  auto output_v1 = reinterpret_cast<size_t>(output_data1);
+  auto output_v2 = reinterpret_cast<size_t>(output_data2);
+  auto size0_in_byte = size0 * element_size;
+  auto size1_in_byte = size1 * element_size;
+  auto size2_in_byte = size2 * element_size;
+
+  auto VEC_SIZE = std::min(select(size0_in_byte), std::min(select(size1_in_byte), select(size2_in_byte)));
+  auto min_output_vec_size = std::min(select(output_v0), std::min(select(output_v1), select(output_v2)));
+  VEC_SIZE = std::min(VEC_SIZE, std::min(select(input_v), min_output_vec_size));
+
+  // determine threads based on the size of the output
+  auto threadsPerBlock = kNumThreadsPerBlock;
+  if ((inner_size_in_byte / VEC_SIZE) < 128) {
+    // use less threads when the size is small
+    threadsPerBlock = 128;
   }
-}
 
-
-template <typename T>
-__global__ void _Split3InnerKernel(const int64_t size0,
-                                   const int64_t size1,
-                                   const int64_t size2,
-                                   const T* input_data,
-                                   T* output_data0,
-                                   T* output_data1,
-                                   T* output_data2,
-                                   const int64_t outer_size,
-                                   const int64_t inner_size) {
-  // each block copy a slice row of input data
-  int64_t row_id = blockIdx.x / 3;
-  int64_t slice_id = blockIdx.x % 3;
-#define _SELECT_1_in_3(slice_id, s1, s2, s3) \
-  ((slice_id == 0) ? (s1) : ((slice_id == 1) ? (s2) : (s3)))
-
-  // move input pointer to the corresponding row, and based on the slice_id, move to the begin of the slice
-  auto input_ptr = input_data + row_id * inner_size + _SELECT_1_in_3(slice_id, 0, size0, size0+size1);
-
-  auto output_ptr = _SELECT_1_in_3(slice_id,
-                                  output_data0 + row_id * size0,
-                                  output_data1 + row_id * size1,
-                                  output_data2 + row_id * size2);
-  auto copy_size = _SELECT_1_in_3(slice_id, size0, size1, size2);
-
-  _block_copy_data(output_ptr, input_ptr, copy_size);
-#undef _SELECT_1_in_3
-}
-
-Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t size0, const int64_t size1,
-                   const int64_t size2, const void* input_data, void* output_data0, void* output_data1,
-                   void* output_data2, const gsl::span<const int64_t>& input_shape) {
-  CUDA_LONG outer_size = 1;
-  for (size_t i = 0; i < input_shape.size() - 1; ++i) {
-      outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
-  }
-  CUDA_LONG inner_size = static_cast<CUDA_LONG>(input_shape[input_shape.size() - 1]);
-
-  int blocksPerGrid = outer_size * 3;
-
-  switch (element_size) {
-#define CASE_ELEMENT_TYPE(type)                                                                 \
-  case sizeof(type): {                                                                          \
-    _Split3InnerKernel<<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(size0, size1, size2,   \
-        reinterpret_cast<const ToCudaType<type>::MappedType*>(input_data),                       \
-        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data0),                           \
-        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data1),                           \
-        reinterpret_cast<ToCudaType<type>::MappedType*>(output_data2), outer_size, inner_size);  \
-  } break
-    CASE_ELEMENT_TYPE(int8_t);
-    CASE_ELEMENT_TYPE(int16_t);
-    CASE_ELEMENT_TYPE(int32_t);
-    CASE_ELEMENT_TYPE(int64_t);
-#undef CASE_ELEMENT_TYPE
+  switch (VEC_SIZE) {
+#define CASE_ELEMENT_TYPE(type)                                                                       \
+    _Split3InnerKernel<type><<<outer_size, threadsPerBlock, 0, stream>>>(                             \
+                                                            size0_in_byte,                            \
+                                                            size1_in_byte,                            \
+                                                            size2_in_byte,                             \
+                                                            input_data,        \
+                                                            output_data0,      \
+                                                            output_data1,      \
+                                                            output_data2,      \
+                                                            inner_size_in_byte)
+    case 16:
+      CASE_ELEMENT_TYPE(int4);
+      break;
+    case 8:
+      CASE_ELEMENT_TYPE(int2);
+      break;
+    case 4:
+      CASE_ELEMENT_TYPE(int1);
+      break;
+    case 2:
+      CASE_ELEMENT_TYPE(short1);
+      break;
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for Split3Inner operator");
+      CASE_ELEMENT_TYPE(char1);
+      break;
+#undef CASE_ELEMENT_TYPE
   }
 
   return Status::OK();
