@@ -9,13 +9,14 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import os
 import time
 import unittest
-import pytest
 from collections import OrderedDict
 
 import numpy
 import onnx
+import pytest
 import torch
 import torch.nn.functional as F
 from onnx import TensorProto, helper
@@ -39,6 +40,15 @@ def value_string_of(numpy_array):
 
 def print_tensor(name, numpy_array):
     print(f"const std::vector<float> {name} = {value_string_of(numpy_array)};")
+
+
+def create_onnx_graph(model, model_path):
+    external_data_path = "mixtral_moe.onnx" + ".data"
+    onnx.save_model(
+        model, model_path, save_as_external_data=True, all_tensors_to_one_file=True, location=external_data_path
+    )
+
+    return model_path
 
 
 def create_moe_onnx_graph(
@@ -127,12 +137,11 @@ def create_moe_onnx_graph(
     )
 
     model = helper.make_model(graph)
-    return model.SerializeToString()
+    model_path = "mixtral_moe.onnx"
 
-    #model_path = "mixtral_moe.onnx"
-    #onnx.save_model(model, model_path, save_as_external_data=True, all_tensors_to_one_file=True)
+    save_model = create_onnx_graph(model, model_path)
 
-    #return model_path
+    return save_model
 
 
 class ClassInstantier(OrderedDict):
@@ -250,6 +259,7 @@ class MixtralSparseMoeBlock(nn.Module):
             self.moe_experts_weight3,
             self.top_k,
         )
+
         self.ort_sess = self.create_ort_session()
 
     def create_ort_session(self):
@@ -394,10 +404,12 @@ class MixtralSparseMoeBlock(nn.Module):
             )
 
     def benchmark(self):
-        self.ort_forward(iobinding=True)
+        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
+        self.ort_forward(hidden_state, iobinding=True)
 
 
 class TestMixtralMoE(unittest.TestCase):
+
     def test_mixtral_moe_parity(self):
         for batch_size in [1, 2]:
             for sequence_length in [8, 16]:
@@ -422,6 +434,9 @@ class TestMixtralMoE(unittest.TestCase):
                 mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
                 mixtral_moe.benchmark()
 
+    os.remove("mixtral_moe.onnx")
+    external_data_path = "mixtral_moe.onnx" + ".data"
+    os.remove(external_data_path)
 
 
 if __name__ == "__main__":
