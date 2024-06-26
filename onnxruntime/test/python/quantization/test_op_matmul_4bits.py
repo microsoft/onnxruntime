@@ -105,8 +105,9 @@ class TestOpMatMul4Bits(unittest.TestCase):
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7  # use stable onnx ir version
+        # blocked quantization requires DQ op set >= 21
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10  # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
@@ -141,6 +142,10 @@ class TestOpMatMul4Bits(unittest.TestCase):
         if use_qdq:
             dq_qtype = TensorProto.INT4 if is_symmetric else TensorProto.UINT4
             dqnode_io_qtypes = {
+                "DequantizeLinear": [
+                    ["i", 0, dq_qtype],
+                ]
+            } if is_symmetric else {
                 "DequantizeLinear": [
                     ["i", 0, dq_qtype],
                     ["i", 2, dq_qtype],
