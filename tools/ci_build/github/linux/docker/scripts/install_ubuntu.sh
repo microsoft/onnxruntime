@@ -48,7 +48,6 @@ PACKAGE_LIST="autotools-dev \
 	unzip \
 	zip \
 	rsync libunwind8 libpng-dev libexpat1-dev \
-	python3-setuptools python3-numpy python3-wheel python3-pip python3-pytest python3-distutils \
 	openjdk-11-jdk \
 	graphviz"
 
@@ -70,7 +69,8 @@ if [ "$OS_VERSION" = "20.04" ]; then
       apt-get update
       apt-get install -y --no-install-recommends \
               python${PYTHON_VER} \
-              python${PYTHON_VER}-dev
+              python${PYTHON_VER}-dev \
+              python${PYTHON_VER}-setuptools python${PYTHON_VER}-numpy python${PYTHON_VER}-wheel python${PYTHON_VER}-pip python${PYTHON_VER}-pytest python${PYTHON_VER}-distutils
       update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
       update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
       update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
@@ -83,7 +83,9 @@ elif [ "$OS_VERSION" = "22.04" ]; then
       apt-get update
       apt-get install -y --no-install-recommends \
               python${PYTHON_VER} \
-              python${PYTHON_VER}-dev
+              python${PYTHON_VER}-dev \
+	            python${PYTHON_VER}-setuptools python${PYTHON_VER}-numpy python${PYTHON_VER}-wheel python${PYTHON_VER}-pip python${PYTHON_VER}-pytest python${PYTHON_VER}-distutils
+
       update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
       update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
 else
