@@ -25,7 +25,7 @@ namespace onnxruntime {
 namespace cuda {
 namespace collective {
 
-#if defined(USE_MPI) || defined(USE_NCCL)
+#if defined(USE_MPI) || defined(ORT_USE_NCCL)
 
 constexpr size_t WARP_SIZE = 32;
 constexpr size_t MAX_ALL_REDUCE_BLOCKS = 24;
