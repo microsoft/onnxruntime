@@ -33,9 +33,9 @@ bool TrySplitQuickGeluMatch(Graph& graph, Node& start, Node*& split, Node*& quic
   // TODO: 1. Check ONNX Op Types to Support
   // Split version 13 has axis as attribute and split as input (Should we only specify it for v13?)
   // raise(SIGTRAP);
-  if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
-    std::cout << "not cuda rocm, it is:" << node.GetExecutionProviderType() << " is it here?" << std::endl;
-  }
+  // if (!graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider})) {
+  //   std::cout << "not cuda rocm, it is:" << node.GetExecutionProviderType() << " is it here?" << std::endl;
+  // }
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Split", {13, 18}) ||
       // !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 2)) {
