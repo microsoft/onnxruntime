@@ -117,6 +117,8 @@ bool GetSplitQuickGeluParams(
   input = split_node.MutableInputDefs()[0];
   axis = -1;
   alpha = -1.0;
+  std::cout << "Input edge count for Split node:" << split_node.GetInputEdgesCount() << std::endl;
+  std::cout << "Output edge count for Split node:" << split_node.GetOutputEdgesCount() << std::endl;
   auto& split_attr = split_node.GetAttributes();
   if (split_attr.find("axis") != split_attr.end()) {
     auto& axis_attr = split_attr.at("axis");
