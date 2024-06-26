@@ -8,7 +8,6 @@ d) DEVICE_TYPE=${OPTARG};;
 esac
 done
 
-PYTHON_VER=${PYTHON_VER:=3.8}
 # Some Edge devices only have limited disk space, use this option to exclude some package
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
@@ -48,6 +47,7 @@ PACKAGE_LIST="autotools-dev \
 	unzip \
 	zip \
 	rsync libunwind8 libpng-dev libexpat1-dev \
+	python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest python3-distutils \
 	openjdk-11-jdk \
 	graphviz"
 
@@ -64,32 +64,34 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 if [ "$OS_VERSION" = "20.04" ]; then
-    if [ "$PYTHON_VER" != "3.8" ]; then
-	    add-apt-repository -y ppa:deadsnakes/ppa
-      apt-get update
-      apt-get install -y --no-install-recommends \
-              python${PYTHON_VER} \
-              python${PYTHON_VER}-dev \
-              python${PYTHON_VER}-setuptools python${PYTHON_VER}-numpy python${PYTHON_VER}-wheel python${PYTHON_VER}-pip python${PYTHON_VER}-pytest python${PYTHON_VER}-distutils
-      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
-      update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-      #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
-      #put at /usr/local/. Then there will be two pips.
-      /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
-    fi
+  PYTHON_VER=${PYTHON_VER:=3.8}
+  if [ "$PYTHON_VER" != "3.8" ]; then
+    add-apt-repository -y ppa:deadsnakes/ppa
+    apt-get update
+    apt-get install -y --no-install-recommends \
+            python${PYTHON_VER} \
+            python${PYTHON_VER}-dev
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
+    update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+    #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
+    #put at /usr/local/. Then there will be two pips.
+    /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+  fi
 elif [ "$OS_VERSION" = "22.04" ]; then
-      add-apt-repository -y ppa:deadsnakes/ppa
-      apt-get update
-      apt-get install -y --no-install-recommends \
-              python${PYTHON_VER} \
-              python${PYTHON_VER}-dev \
-	            python${PYTHON_VER}-setuptools python${PYTHON_VER}-numpy python${PYTHON_VER}-wheel python${PYTHON_VER}-pip python${PYTHON_VER}-pytest python${PYTHON_VER}-distutils
-
-      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-      update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+  PYTHON_VER=${PYTHON_VER:=3.10}
+  if [ "$PYTHON_VER" != "3.10" ]; then
+    add-apt-repository -y ppa:deadsnakes/ppa
+    apt-get update
+    apt-get install -y --no-install-recommends \
+            python${PYTHON_VER} \
+            python${PYTHON_VER}-dev
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 2
+    update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+  fi
 else
-    exit 1
+  exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
