@@ -1,4 +1,4 @@
-numpy==2.0.0
+numpy
 mypy
 pytest
 setuptools>=68.2.2

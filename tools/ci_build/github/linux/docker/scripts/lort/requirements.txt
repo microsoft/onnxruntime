@@ -8,7 +8,7 @@ onnx==1.16.1
 astunparse
 expecttest!=0.2.0
 hypothesis
-numpy==2.0.0
+numpy
 psutil
 pyyaml
 requests

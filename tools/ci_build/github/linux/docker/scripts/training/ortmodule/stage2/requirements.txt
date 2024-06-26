@@ -1,6 +1,6 @@
 pandas
 scikit-learn
-numpy==2.0.0
+numpy
 transformers==v4.36.0
 accelerate==0.25.0
 rsa==4.9

@@ -1,6 +1,6 @@
 setuptools
 wheel
-numpy==2.0.0
+numpy
 typing_extensions
 torch==1.13.1
 parameterized
