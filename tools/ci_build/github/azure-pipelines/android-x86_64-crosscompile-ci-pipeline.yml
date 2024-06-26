@@ -280,7 +280,6 @@ stages:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
       vmImage: 'ubuntu-latest'
-
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -381,10 +380,10 @@ stages:
       - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
-     - template: templates/use-android-emulator.yml
-            parameters:
-              create: true
-              start: true
+      - template: templates/use-android-emulator.yml
+          parameters:
+            create: true
+            start: true
 
       - script: |
           python3 tools/ci_build/build.py \
