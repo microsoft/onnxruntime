@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/group_query_attention.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/rotary_helper.h"
 #include "contrib_ops/cpu/bert/attention_utils.h"
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
@@ -163,14 +164,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;
       T* v_rotary = k_rotary + kv_num_heads_ * sequence_length * head_size;
-      ORT_RETURN_IF_ERROR(group_query_attention_helper::PackVIntoRotaryQKV<T>(tp,
-                                                                              parameters.batch_size,
-                                                                              parameters.sequence_length,
-                                                                              parameters.num_heads,
-                                                                              parameters.kv_num_heads,
-                                                                              parameters.head_size,
-                                                                              v_input,
-                                                                              v_rotary));
+      ORT_RETURN_IF_ERROR(rotary_helper::PackVIntoRotaryQKV<T>(tp,
+                                                               parameters.batch_size,
+                                                               parameters.sequence_length,
+                                                               parameters.num_heads,
+                                                               parameters.kv_num_heads,
+                                                               parameters.head_size,
+                                                               v_input,
+                                                               v_rotary));
     }
   }
 
