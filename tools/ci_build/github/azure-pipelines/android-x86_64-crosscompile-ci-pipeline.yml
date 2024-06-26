@@ -381,9 +381,9 @@ stages:
         displayName: Install coreutils and ninja
 
       - template: templates/use-android-emulator.yml
-          parameters:
-            create: true
-            start: true
+        parameters:
+          create: true
+          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
