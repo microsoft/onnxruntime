@@ -304,7 +304,7 @@ std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
 }
 
 int WindowsEnv::GetL2CacheSize() const {
-  return l2_cache_size;
+  return ;
 }
 
 WindowsEnv& WindowsEnv::Instance() {
@@ -855,6 +855,7 @@ ProcessorInfo WindowsEnv::GetProcessorAffinityMask(int global_processor_id) cons
 }
 
 WindowsEnv::WindowsEnv() {
+  l2_cache_size_ = 0;
   InitializeCpuInfo();
 }
 
@@ -968,7 +969,7 @@ void WindowsEnv::InitializeCpuInfo() {
     if (processor_info->Relationship == RelationCache &&
         processor_info->Cache.Level == 2) {
       // L2 cache
-      l2_cache_size = static_cast<int>(processor_info->Cache.CacheSize);
+      l2_cache_size_ = static_cast<int>(processor_info->Cache.CacheSize);
       break;
     }
 
@@ -978,7 +979,7 @@ void WindowsEnv::InitializeCpuInfo() {
   if (logging::LoggingManager::HasDefaultLogger()) {
     LOGS_DEFAULT(VERBOSE) << "Found total " << cores_.size() << " core(s) from windows system:";
     LOGS_DEFAULT(VERBOSE) << log_stream.str();
-    LOGS_DEFAULT(VERBOSE) << "\nDetected L2 cache size: " << l2_cache_size << " bytes";
+    LOGS_DEFAULT(VERBOSE) << "\nDetected L2 cache size: " << l2_cache_size_ << " bytes";
   }
 }
 }  // namespace onnxruntime
