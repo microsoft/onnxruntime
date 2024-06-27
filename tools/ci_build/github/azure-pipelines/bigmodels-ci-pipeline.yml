@@ -311,7 +311,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0_torch
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "
@@ -319,7 +319,7 @@ stages:
         --build-arg BASEIMAGE=${{ variables.docker_base_image }}
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
-        Repository: onnxruntimeubi8packagestest
+        Repository: onnxruntimeubi8packagestest_torch
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
@@ -344,8 +344,6 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
               popd ; \
             "
@@ -365,8 +363,6 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
               popd ; \
             "
@@ -386,8 +382,6 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
               popd ; \
             "
