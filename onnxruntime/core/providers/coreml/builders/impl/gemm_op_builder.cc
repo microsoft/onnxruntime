@@ -113,7 +113,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     // ML Program MatMul supports N-D input, however we don't use the 'K' or 'N' values calculated below for it
     // so we don't need to update b0 or b1.
   } else {
-    // we only support 2D input for all other combination
+    // we only support 2D input for all other combinations
     b0 = b_shape[0];
     b1 = b_shape[1];
   }

@@ -906,7 +906,7 @@ Status ModelBuilder::SaveModel() {
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
-    // we need to jump through some hurdles to get the model path the ML Program load wants.
+    // we need to jump through some hoops to get the model path the ML Program load wants.
     std::string tmp_model_path = model_output_path_ + "/tmp/model.mlmodel";
     CreateEmptyFile(tmp_model_path);
 
