@@ -3025,7 +3025,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  // ONNX expectes a UTF-8 string here.
+  // ONNX expects a UTF-8 string here.
   ctx.set_model_dir(ToUTF8String(ModelPath().parent_path().native()));
 
   LexicalScopeContext parent;
