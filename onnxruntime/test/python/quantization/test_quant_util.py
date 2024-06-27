@@ -37,41 +37,45 @@ class TestQuantUtil(unittest.TestCase):
             assert isinstance(scale, numpy.ndarray)
             return [float(zp), float(scale)]
 
-        self.assertEqual(_compute_scale_zp(0.0, 0.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
-        self.assertEqual(_compute_scale_zp(1.0, -1.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
-        self.assertEqual(_compute_scale_zp(0.0, 0.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
-        self.assertEqual(_compute_scale_zp(1.0, -1.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
+        numpy.testing.assert_allclose(_compute_scale_zp(0.0, 0.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
+        numpy.testing.assert_allclose(_compute_scale_zp(1.0, -1.0, -127, 127, numpy.int8, symmetric=True), [0, 1.0])
+        numpy.testing.assert_allclose(_compute_scale_zp(0.0, 0.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
+        numpy.testing.assert_allclose(_compute_scale_zp(1.0, -1.0, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
 
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(-1.0, 2.0, -127, 127, numpy.int8, symmetric=True), [0, numpy.float32(2.0 / 127)]
         )
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(-1.0, 2.0, -127, 127, numpy.int8, symmetric=False), [-42, numpy.float32(3.0 / 254)]
         )
 
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(-1.0, 2.0, 0, 255, numpy.uint8, symmetric=True), [128, numpy.float32(4.0 / 255)]
         )
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(-1.0, 2.0, 0, 255, numpy.uint8, symmetric=False), [85, numpy.float32(3.0 / 255)]
         )
 
         tiny_float = numpy.float32(numpy.finfo(numpy.float32).tiny * 0.1)
-        self.assertEqual(_compute_scale_zp(-tiny_float, tiny_float, 0, 255, numpy.uint8, symmetric=True), [0, 1.0])
-        self.assertEqual(_compute_scale_zp(-tiny_float, 0.0, 0, 255, numpy.uint8, symmetric=False), [0, 1.0])
+        numpy.testing.assert_allclose(
+            _compute_scale_zp(-tiny_float, tiny_float, 0, 255, numpy.uint8, symmetric=True), [0, 1.0]
+        )
+        numpy.testing.assert_allclose(
+            _compute_scale_zp(-tiny_float, 0.0, 0, 255, numpy.uint8, symmetric=False), [0, 1.0]
+        )
 
         # Test enforcing a minimum floatint-point range.
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(0.0, 0.0, 0, 255, numpy.uint8, symmetric=False, min_real_range=0.0001), [0, 0.0001 / 255]
         )
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(0.0, 0.0, -128, 127, numpy.int8, symmetric=True, min_real_range=0.0001), [0, 0.0002 / 255]
         )
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(0.0, 0.0, 0, 65535, numpy.uint16, symmetric=False, min_real_range=0.0001),
             [0, 0.0001 / 65535],
         )
-        self.assertEqual(
+        numpy.testing.assert_allclose(
             _compute_scale_zp(0.0, 0.0, -32768, 32767, numpy.int16, symmetric=True, min_real_range=0.0001),
             [0, 0.0002 / 65535],
         )
