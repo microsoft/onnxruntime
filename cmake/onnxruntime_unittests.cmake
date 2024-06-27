@@ -583,6 +583,10 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
+if (onnxruntime_USE_VULKAN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_vulkan)
+endif()
+
 set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
@@ -600,6 +604,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
+    ${PROVIDERS_VULKAN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -692,6 +697,13 @@ if(onnxruntime_USE_AZURE)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_azure)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
+endif()
+
+if(onnxruntime_USE_VULKAN)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/vulkan/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_vulkan)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_vulkan)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_vulkan)
 endif()
 
 if(WIN32)

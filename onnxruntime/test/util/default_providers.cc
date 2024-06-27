@@ -232,7 +232,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
-#if defined(USE_COREML) && defined(__APPLE__)
+#if defined(USE_COREML)  // && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
@@ -301,11 +301,18 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
-#ifdef USE_DML
+#ifdef USE_DMLX
   ConfigOptions config_options{};
   if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
     return factory->CreateProvider();
   }
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DefaultVulkanExecutionProvider() {
+#ifdef USE_VULKAN
+  return VulkanProviderFactoryCreator::Create(ProviderOptions(), nullptr)->CreateProvider();
 #endif
   return nullptr;
 }

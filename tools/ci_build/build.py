@@ -762,6 +762,10 @@ def parse_arguments():
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
+    parser.add_argument("--use_vulkan", action="store_true", help="Enable Vulkan EP")
+    parser.add_argument("--vulkan_sdk_path", type=str, default=os.environ.get("VULKAN_SDK", None),
+                        help="Path to Vulkan SDK")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -1101,6 +1105,8 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_USE_VULKAN=" + ("ON" if args.use_vulkan else "OFF"),
+        "-Donnxruntime_VULKAN_SDK_PATH=" + args.vulkan_sdk_path if args.vulkan_sdk_path else "",
     ]
 
     if args.rv64:
@@ -1865,6 +1871,14 @@ def setup_rocm_build(args):
                 f"rocm_home='{rocm_home}' valid={rocm_home_not_valid}.",
             )
     return rocm_home or ""
+
+
+def setup_vulcan_vars(args):
+    if args.use_vulkan:
+        if args.vulkan_sdk_path is None or not os.path.exists(args.vulkan_sdk_path):
+            raise BuildError("vulkan_sdk path must be specified or available via VULKAN_SDK environment variable. ",
+                             f"vulkan_sdk='{args.vulkan_sdk_path}'.")
+        args.vulkan_sdk_path = os.path.normpath(args.vulkan_sdk_path)
 
 
 def run_android_tests(args, source_dir, build_dir, config, cwd):
@@ -2689,6 +2703,8 @@ def main():
 
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
+
+    setup_vulcan_vars(args)
 
     if args.update or args.build:
         for config in configs:
