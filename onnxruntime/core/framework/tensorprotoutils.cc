@@ -275,7 +275,6 @@ Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
 
 namespace utils {
 
-
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
 }
