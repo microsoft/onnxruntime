@@ -38,7 +38,7 @@ The pre-trained [TorchVision MOBILENET V2](https://pytorch.org/hub/pytorch_visio
    - Quantize the FP32 ONNX model to an uint8 ONNX model
    - Convert both FP32 and uint8 ONNX models to ORT models
 
-   Note: this step is optional, you can download the FP32 and uint8 ORT models [here](https://onnxruntimeexamplesdata.z13.web.core.windows.net/mobilenet_v2_ort_models.zip).
+   Note: this step is optional, you can download the FP32 and uint8 ORT models [here](https://github.com/onnx/models/tree/main/validated/vision/classification/mobilenet/model).
 
 2. Download the model class labels
 
