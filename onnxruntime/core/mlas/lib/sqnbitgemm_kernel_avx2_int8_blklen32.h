@@ -62,10 +62,7 @@ accumulate_blklen32_r2c1blk2_avx2(
     __m256 scale_a0_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_a0));
     __m256 scale_b_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_b));
     // 1 0 1 0 1 0 1 0 -> 1 1 0 0 1 1 0 0
-    __m256 scale_8_ps = _mm256_mul_ps(
-      _mm256_permute_ps(scale_a0_2_ps, _MM_SHUFFLE(1, 1, 0, 0)),
-      _mm256_permute_ps(scale_b_2_ps, _MM_SHUFFLE(1, 1, 0, 0)));
-
+    __m256 scale_8_ps = _mm256_permute_ps(_mm256_mul_ps(scale_a0_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
     acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
 
 
@@ -80,10 +77,66 @@ accumulate_blklen32_r2c1blk2_avx2(
     const __m256 sum_ps_ = _mm256_cvtepi32_ps(sum_8_epi32_);
 
     __m256 scale_a1_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_a1));
-    __m256 scale_8_ps_ = _mm256_mul_ps(
-      _mm256_permute_ps(scale_a1_2_ps, _MM_SHUFFLE(1, 1, 0, 0)),
-      _mm256_permute_ps(scale_b_2_ps, _MM_SHUFFLE(1, 1, 0, 0)));
+    __m256 scale_8_ps_ = _mm256_permute_ps(_mm256_mul_ps(scale_a1_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
     acc1 = _mm256_fmadd_ps(sum_ps_, scale_8_ps_, acc1);
+}
+
+static MLAS_FORCEINLINE void
+accumulate_blklen32_r2c1blk2_no_bc_avx2(
+    const __m256i& av00_32_epi8,
+    const __m256i& av01_32_epi8,
+    const __m256i& av10_32_epi8,
+    const __m256i& av11_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float& scale_a00,
+    const float& scale_a01,
+    const float& scale_a10,
+    const float& scale_a11,
+    const float& scale_b0,
+    const float& scale_b1,
+    __m256& acc0,
+    __m256& acc1
+)
+{
+    // | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+    const __m256i bv_packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+
+    // generating low_mask of 0x0Fs is not as fast as just calling _mm256_set1_epi8(0x0F).
+    const __m256i low_mask = _mm256_set1_epi8(0x0F);
+    //__m256i low_mask = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_packed, bv_packed), 12);
+    // low_mask = _mm256_packus_epi16(low_mask, low_mask);
+    __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);  // 0~31
+    // TODO: this (the second line below) is faster and does not keep low_mask in use.
+    // const __m256i bv1_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bv_packed, 4), low_mask);
+    __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32~63
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv1_32_epi8, bv1_32_epi8), 15);
+    accumulate_1blk_dot(av00_32_epi8, bv0_32_epi8, scale_a00 * scale_b0, one_16_epi16, acc0);
+    accumulate_1blk_dot(av01_32_epi8, bv1_32_epi8, scale_a01 * scale_b1, one_16_epi16, acc0);
+    accumulate_1blk_dot(av10_32_epi8, bv0_32_epi8, scale_a10 * scale_b0, one_16_epi16, acc1);
+    accumulate_1blk_dot(av11_32_epi8, bv1_32_epi8, scale_a11 * scale_b1, one_16_epi16, acc1);
+}
+
+static MLAS_FORCEINLINE void
+accumulate_blklen32_r1c1blk2_no_bc_avx2(
+    const __m256i& av00_32_epi8,
+    const __m256i& av01_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float& scale_a_0,
+    const float& scale_a_1,
+    const float& scale_b_0,
+    const float& scale_b_1,
+    __m256& acc0
+)
+{
+    // | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+    const __m256i bv_packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+    const __m256i low_mask = _mm256_set1_epi8(0x0F);
+    __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);                          // 0~31
+    __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32~63
+
+    __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv0_32_epi8, bv0_32_epi8), 15);
+    accumulate_1blk_dot(av00_32_epi8, bv0_32_epi8, scale_a_0 * scale_b_0, one_16_epi16, acc0);
+    accumulate_1blk_dot(av01_32_epi8, bv1_32_epi8, scale_a_1 * scale_b_1, one_16_epi16, acc0);
 }
 
 static MLAS_FORCEINLINE void
@@ -113,11 +166,7 @@ accumulate_blklen32_r1c1blk2_avx2(
     __m256 scale_a0_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_a0));
     __m256 scale_b_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_b));
     // 1 0 1 0 1 0 1 0 -> 1 1 0 0 1 1 0 0
-    __m256 scale_8_ps = _mm256_mul_ps(
-        _mm256_permute_ps(scale_a0_2_ps, _MM_SHUFFLE(1, 1, 0, 0)),
-        _mm256_permute_ps(scale_b_2_ps, _MM_SHUFFLE(1, 1, 0, 0))
-    );
-
+    __m256 scale_8_ps = _mm256_permute_ps(_mm256_mul_ps(scale_a0_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
     acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
 }
 
@@ -183,12 +232,17 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
     constexpr size_t PerAccuBlk2 = 2;
 
     const size_t lda = BlockCountK * BlkLen32;
-    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-    const size_t StrideQuantBScale = BlockCountK;
+    //const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    //const size_t StrideQuantBScale = BlockCountK;
 
     [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
     assert(CountM % NRows2 == 0);
     assert(CountN % NCols4 == 0);
+    const size_t StrideQuantBDataCol = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBData2 = 2 * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBData1 = 1 * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBScale2 = 2;
+    const size_t StrideQuantBScale1 = 1;
 
     for (size_t m = 0; m < CountM; m += NRows2) {
         const std::byte* QuantBDataColPtr = QuantBData;
@@ -211,79 +265,39 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
-                const std::byte* QuantABlk00 = QuantAPtr;
-                const std::byte* QuantABlk01 = QuantABlk00 + 32;
-                const std::byte* QuantABlk10 = QuantAPtr + lda;
-                const std::byte* QuantABlk11 = QuantABlk10 + 32;
-
                 // load A:
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk00);
-                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk01);
-                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk10);
-                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk11);
-
-                //const float& scale_a00 = Q8BlkScale(QuantABlk00);
-                //const float& scale_a01 = Q8BlkScale(QuantABlk01);
-                //const float& scale_a10 = Q8BlkScale(QuantABlk10);
-                //const float& scale_a11 = Q8BlkScale(QuantABlk11);
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + BlkLen32));
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
+                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda + BlkLen32));
 
                 {
-                    // Col0
-                    //const float& scale_00 = scale_a00 * QuantBScalePtr[0];
-                    //const float& scale_01 = scale_a01 * QuantBScalePtr[1];
-                    //const float& scale_10 = scale_a10 * QuantBScalePtr[0];
-                    //const float& scale_11 = scale_a11 * QuantBScalePtr[1];
-                    //accumulate_blklen32_r2c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, QuantBZeroPointPtr, scale_00, scale_01, scale_10, scale_11, acc[0], acc[NCols4]);
-                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr,
-                      QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc[0], acc[NCols4]);
+                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc[0], acc[NCols4]);
+                }
+                {
+                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + StrideQuantBData2, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + StrideQuantBScale2, acc[1], acc[NCols4 + 1]);
                 }
 
                 {
-                    // Col1
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + StrideQuantBScale)[1];
-                    //const float& scale_10 = scale_a10 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    //const float& scale_11 = scale_a11 * (QuantBScalePtr + StrideQuantBScale)[1];
-                    //accumulate_blklen32_r2c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + StrideQuantBData, QuantBZeroPointPtr + StrideQuantBZeroPoint, scale_00, scale_01, scale_10, scale_11, acc[1], acc[NCols4 + 1]);
-                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + StrideQuantBData,
-                      QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + StrideQuantBScale, acc[1], acc[NCols4 + 1]);
+                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 2 * StrideQuantBData2, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 2 * StrideQuantBScale2, acc[2], acc[NCols4 + 2]);
                 }
 
                 {
-                    // Col2
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + 2 * StrideQuantBScale)[1];
-                    //const float& scale_10 = scale_a10 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    //const float& scale_11 = scale_a11 * (QuantBScalePtr + 2 * StrideQuantBScale)[1];
-                    //accumulate_blklen32_r2c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 2 * StrideQuantBData, QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, scale_00, scale_01, scale_10, scale_11, acc[2], acc[NCols4 + 2]);
-                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 2 * StrideQuantBData,
-                      QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 2 * StrideQuantBScale, acc[2], acc[NCols4 + 2]);
-                }
-
-                {
-                    // Col3
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + 3 * StrideQuantBScale)[1];
-                    //const float& scale_10 = scale_a10 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    //const float& scale_11 = scale_a11 * (QuantBScalePtr + 3 * StrideQuantBScale)[1];
-                    //accumulate_blklen32_r2c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 3 * StrideQuantBData, QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, scale_00, scale_01, scale_10, scale_11, acc[3], acc[NCols4 + 3]);
-                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 3 * StrideQuantBData,
-                      QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 3 * StrideQuantBScale, acc[3], acc[NCols4 + 3]);
+                    accumulate_blklen32_r2c1blk2_avx2(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 3 * StrideQuantBData2, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 3 * StrideQuantBScale2, acc[3], acc[NCols4 + 3]);
                 }
 
                 // increment block pointers
                 QuantAPtr += BlkLen32 * PerAccuBlk2;
                 QuantAScalePtr += PerAccuBlk2;
-                QuantBDataPtr += BlkDataSizeInBytes16 * PerAccuBlk2;
-                QuantBScalePtr += PerAccuBlk2;
+                QuantBDataPtr += BlkDataSizeInBytes16 * PerAccuBlk2 * NCols4;
+                QuantBScalePtr += PerAccuBlk2 * NCols4;
             }  // k_blks_remaining
 
             // TODO: use a loop in case PerAccuBlk2 is not 2.
             if (k_blks_remaining > 0) {
                 // load A
-                const std::byte* QuantABlk0 = QuantAPtr;
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk0);
-                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantABlk0 + lda));
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
 
                 const float& scale_a00 = *QuantAScalePtr;
                 const float& scale_a10 = *(QuantAScalePtr + BlockCountK);
@@ -297,23 +311,23 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
 
                 {
                     // Col1
-                    const float scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    const float scale_10 = scale_a10 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + StrideQuantBData, scale_00, scale_10, acc[1], acc[NCols4 + 1]);
+                    const float scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale1)[0];
+                    const float scale_10 = scale_a10 * (QuantBScalePtr + StrideQuantBScale1)[0];
+                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + StrideQuantBData1, scale_00, scale_10, acc[1], acc[NCols4 + 1]);
                 }
 
                 {
                     // Col2
-                    const float scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    const float scale_10 = scale_a10 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * StrideQuantBData, scale_00, scale_10, acc[2], acc[NCols4 + 2]);
+                    const float scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale1)[0];
+                    const float scale_10 = scale_a10 * (QuantBScalePtr + 2 * StrideQuantBScale1)[0];
+                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * StrideQuantBData1, scale_00, scale_10, acc[2], acc[NCols4 + 2]);
                 }
 
                 {
                     // Col3
-                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    const float& scale_10 = scale_a10 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * StrideQuantBData, scale_00, scale_10, acc[3], acc[NCols4 + 3]);
+                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale1)[0];
+                    const float& scale_10 = scale_a10 * (QuantBScalePtr + 3 * StrideQuantBScale1)[0];
+                    accumulate_blklen32_r2c1blk1_avx2(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * StrideQuantBData1, scale_00, scale_10, acc[3], acc[NCols4 + 3]);
                 }
             }  // k_blks_remaining
 
@@ -329,129 +343,8 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
             _mm_storeu_ps(SumPtr + ldc, acc_r1);
 
             // move to next NCols columns
-            QuantBDataColPtr += NCols4 * StrideQuantBData;
-            QuantBScaleColPtr += NCols4 * StrideQuantBScale;
-
-            BiasPtr += BiasPtr != nullptr ? NCols4 : 0;
-            SumPtr += NCols4;
-        }
-    }
-}
-
-template <bool HasZeroPoint>
-MLAS_FORCEINLINE void
-Q4Int8Gemm2x4x1BlkLen32Avx2(
-    const std::byte* QuantA,
-    const float* QuantAScale,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t BlockCountK,
-    const float* Bias,
-    size_t ldc
-)
-{
-    constexpr size_t BlkLen32 = 32;
-    constexpr size_t BlkBitWidth4 = 4;
-    constexpr size_t NCols4 = 4;
-    constexpr size_t NRows2 = 2;
-    constexpr size_t BlkDataSizeInBytes16 = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-
-    constexpr size_t Q8Blk32Size = BlkLen32;
-
-    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-    const size_t StrideQuantBScale = BlockCountK;
-    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth4>(BlockCountK);
-
-    [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
-    assert(CountM % NRows2 == 0);
-    assert(CountN % NCols4 == 0);
-
-    for (size_t m = 0; m < CountM; m += NRows2) {
-        const std::byte* QuantBDataColPtr = QuantBData;
-        const float* QuantBScaleColPtr = QuantBScale;
-        const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
-        const float* BiasPtr = Bias;
-        auto* SumPtr = C + m * ldc;
-
-        for (size_t n = 0; n < CountN; n += NCols4) {
-            const std::byte* QuantAPtr = QuantA + m * lda;
-            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
-
-            const std::byte* QuantBDataPtr = QuantBDataColPtr;
-            const float* QuantBScalePtr = QuantBScaleColPtr;
-            const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
-
-            __m256 acc[NCols4 * NRows2] = {
-              _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(),
-              _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()
-            };
-
-            // process 2 blks of 64 4b weights a time
-            for (size_t k = 0; k < BlockCountK; k++) {
-                const __m256i av0_32_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk0);
-                const __m256i av1_32_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
-
-                const float& scale_a0 = Q8BlkScale(QuantABlk0);
-                const float& scale_a1 = Q8BlkScale(QuantABlk1);
-
-                {
-                    // Col0
-                    const float& scale0 = scale_a0 * QuantBScalePtr[0];
-                    const float& scale1 = scale_a1 * QuantBScalePtr[0];
-                    accumulate_blklen32_r2c1blk1_avx2<HasZeroPoint>(av0_32_epi8, av1_32_epi8, QuantBDataPtr, QuantBZeroPointPtr, scale0, scale1, acc[0], acc[NCols4], k % 2 == 0);
-                }
-
-                {
-                    // Col1
-                    const float& scale0 = scale_a0 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    const float& scale1 = scale_a1 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2<HasZeroPoint>(av0_32_epi8, av1_32_epi8, QuantBDataPtr + StrideQuantBData, QuantBZeroPointPtr + StrideQuantBZeroPoint, scale0, scale1, acc[1], acc[NCols4 + 1], k % 2 == 0);
-                }
-
-                {
-                    // Col2
-                    const float& scale0 = scale_a0 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    const float& scale1 = scale_a1 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2<HasZeroPoint>(av0_32_epi8, av1_32_epi8, QuantBDataPtr + 2 * StrideQuantBData, QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, scale0, scale1, acc[2], acc[NCols4 + 2], k % 2 == 0);
-                }
-
-                {
-                    // Col3
-                    const float& scale0 = scale_a0 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    const float& scale1 = scale_a1 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r2c1blk1_avx2<HasZeroPoint>(av0_32_epi8, av1_32_epi8, QuantBDataPtr + 3 * StrideQuantBData, QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, scale0, scale1, acc[3], acc[NCols4 + 3], k % 2 == 0);
-                }
-
-                // increment block pointers
-                QuantAPtr += Q8Blk32Size;
-                QuantBDataPtr += BlkDataSizeInBytes16;
-                QuantBScalePtr++;
-                if constexpr (HasZeroPoint) {
-                    QuantBZeroPointPtr += k % 2;
-                }
-            }  // k_blks_remaining
-
-            __m128 acc_r0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
-            __m128 acc_r1 = FoldAccumulators(acc[NCols4 + 0], acc[NCols4 + 1], acc[NCols4 + 2], acc[NCols4 + 3]);
-            if (BiasPtr != nullptr) {
-                const __m128 bias_4_ps = _mm_loadu_ps(BiasPtr);
-                acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
-                acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
-            }
-            _mm_storeu_ps(SumPtr, acc_r0);
-
-            _mm_storeu_ps(SumPtr + ldc, acc_r1);
-
-            // move to next NCols columns
-            QuantBDataColPtr += NCols4 * StrideQuantBData;
-            QuantBScaleColPtr += NCols4 * StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += NCols4 * StrideQuantBZeroPoint;
-            }
+            QuantBDataColPtr += NCols4 * StrideQuantBDataCol;
+            QuantBScaleColPtr += NCols4 * BlockCountK;
 
             BiasPtr += BiasPtr != nullptr ? NCols4 : 0;
             SumPtr += NCols4;
@@ -482,7 +375,7 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
 
     const size_t lda = BlockCountK * BlkLen32;
     const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-    const size_t StrideQuantBScale = BlockCountK;
+    //const size_t StrideQuantBScale = BlockCountK;
 
     [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
     assert(CountM % NRows2 == 0);
@@ -506,16 +399,10 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
-                const std::byte* QuantABlk00 = QuantAPtr;
-                const std::byte* QuantABlk01 = QuantABlk00 + BlkLen32;
-                const std::byte* QuantABlk10 = QuantAPtr + lda;
-                const std::byte* QuantABlk11 = QuantABlk10 + BlkLen32;
-
-                // load A:
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk00);
-                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk01);
-                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk10);
-                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk11);
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + BlkLen32));
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
+                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda + BlkLen32));
 
                 accumulate_blklen32_r2c1blk2_avx2(
                     av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr,
@@ -528,12 +415,9 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
                 QuantBScalePtr += PerAccuBlk2;
             }
 
-            // TODO: use a loop in case PerAccuBlk2 is not 2.
             if (k_blks_remaining > 0) {
-                // load A
-                const std::byte* QuantABlk0 = QuantAPtr;
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk0);
-                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantABlk0 + lda));
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
 
                 const float& scale_a00 = *QuantAScalePtr;
                 const float& scale_a10 = *(QuantAScalePtr + BlockCountK);
@@ -552,7 +436,7 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
 
             // move to next column
             QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
+            QuantBScaleColPtr += BlockCountK;
 
             BiasPtr += BiasPtr != nullptr ? 1 : 0;
             SumPtr += 1;
@@ -584,11 +468,16 @@ Q4Int8GemmXx4BlkLen32Avx2(
     constexpr size_t PerAccuBlk2 = 2;
 
     const size_t lda = BlockCountK * BlkLen32;
-    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-    const size_t StrideQuantBScale = BlockCountK;
+    //const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    //const size_t StrideQuantBScale = BlockCountK;
 
     assert(CountM < NRows2);
     assert(CountN % NCols4 == 0);
+    const size_t StrideQuantBDataCol = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBData2 = 2 * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBData1 = 1 * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
+    const size_t StrideQuantBScale2 = 2;
+    const size_t StrideQuantBScale1 = 1;
 
     for (size_t m = 0; m < CountM; m++) {
         const std::byte* QuantBDataColPtr = QuantBData;
@@ -606,51 +495,36 @@ Q4Int8GemmXx4BlkLen32Avx2(
             __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
                 const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + BlkLen32));
 
                 {
-                  // Col0
-                    //const float& scale_00 = scale_a00 * QuantBScalePtr[0];
-                    //const float& scale_01 = scale_a01 * QuantBScalePtr[1];
-                    //accumulate_blklen32_r1c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantBZeroPointPtr, scale_00, scale_01, acc[0]);
                     accumulate_blklen32_r1c1blk2_avx2(av_00_epi8, av_01_epi8, QuantBDataPtr,
                       QuantAScalePtr, QuantBScalePtr, acc[0]);
                 }
                 {
-                    // Col1
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + StrideQuantBScale)[1];
-                    //accumulate_blklen32_r1c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, QuantBDataPtr + StrideQuantBData, QuantBZeroPointPtr + 1 * StrideQuantBZeroPoint, scale_00, scale_01, acc[1]);
                     accumulate_blklen32_r1c1blk2_avx2(
-                        av_00_epi8, av_01_epi8, QuantBDataPtr + StrideQuantBData,
-                        QuantAScalePtr, QuantBScalePtr + StrideQuantBScale, acc[1]
+                        av_00_epi8, av_01_epi8, QuantBDataPtr + StrideQuantBData2,
+                        QuantAScalePtr, QuantBScalePtr + StrideQuantBScale2, acc[1]
                     );
                 }
                 {
-                    // Col2
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + 2 * StrideQuantBScale)[1];
-                    //accumulate_blklen32_r1c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, QuantBDataPtr + 2 * StrideQuantBData, QuantBZeroPointPtr + 2 * StrideQuantBZeroPoint, scale_00, scale_01, acc[2]);
                     accumulate_blklen32_r1c1blk2_avx2(
-                        av_00_epi8, av_01_epi8, QuantBDataPtr + 2 * StrideQuantBData,
-                        QuantAScalePtr, QuantBScalePtr + 2 * StrideQuantBScale, acc[2]
+                        av_00_epi8, av_01_epi8, QuantBDataPtr + 2 * StrideQuantBData2,
+                        QuantAScalePtr, QuantBScalePtr + 2 * StrideQuantBScale2, acc[2]
                     );
                 }
                 {
-                    // Col3
-                    //const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    //const float& scale_01 = scale_a01 * (QuantBScalePtr + 3 * StrideQuantBScale)[1];
-                    //accumulate_blklen32_r1c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, QuantBDataPtr + 3 * StrideQuantBData, QuantBZeroPointPtr + 3 * StrideQuantBZeroPoint, scale_00, scale_01, acc[3]);
                     accumulate_blklen32_r1c1blk2_avx2(
-                        av_00_epi8, av_01_epi8, QuantBDataPtr + 3 * StrideQuantBData,
-                        QuantAScalePtr, QuantBScalePtr + 3 * StrideQuantBScale, acc[3]);
+                        av_00_epi8, av_01_epi8, QuantBDataPtr + 3 * StrideQuantBData2,
+                        QuantAScalePtr, QuantBScalePtr + 3 * StrideQuantBScale2, acc[3]
+                    );
                 }
                 // increment block pointers
                 QuantAPtr += BlkLen32 * PerAccuBlk2;
                 QuantAScalePtr += PerAccuBlk2;
-                QuantBDataPtr += BlkDataSizeInBytes16 * PerAccuBlk2;
-                QuantBScalePtr += PerAccuBlk2;
+                QuantBDataPtr += BlkDataSizeInBytes16 * PerAccuBlk2 * NCols4;
+                QuantBScalePtr += PerAccuBlk2 * NCols4;
             }
 
             // TODO: use a loop in case PerAccuBlk2 is not 2.
@@ -661,24 +535,24 @@ Q4Int8GemmXx4BlkLen32Avx2(
 
                 const float& scale_a00 = *QuantAScalePtr;
                 {
-                  // Col0
+                    // Col0
                     const float& scale_00 = scale_a00 * (QuantBScalePtr)[0];
                     accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr, scale_00, acc[0]);
                 }
                 {
                     // Col1
-                    const float& scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale)[0];
-                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + StrideQuantBData, scale_00, acc[1]);
+                    const float& scale_00 = scale_a00 * (QuantBScalePtr + StrideQuantBScale1)[0];
+                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + StrideQuantBData1, scale_00, acc[1]);
                 }
                 {
                     // Col2
-                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + 2 * StrideQuantBData, scale_00, acc[2]);
+                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 2 * StrideQuantBScale1)[0];
+                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + 2 * StrideQuantBData1, scale_00, acc[2]);
                 }
                 {
                     // Col3
-                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale)[0];
-                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + 3 * StrideQuantBData, scale_00, acc[3]);
+                    const float& scale_00 = scale_a00 * (QuantBScalePtr + 3 * StrideQuantBScale1)[0];
+                    accumulate_blklen32_r1c1blk1_avx2(av_00_epi8, QuantBDataPtr + 3 * StrideQuantBData1, scale_00, acc[3]);
                 }
             }
 
@@ -690,8 +564,8 @@ Q4Int8GemmXx4BlkLen32Avx2(
             _mm_storeu_ps(SumPtr, acc_r0);
 
             // move to next NCols columns
-            QuantBDataColPtr += NCols4 * StrideQuantBData;
-            QuantBScaleColPtr += NCols4 * StrideQuantBScale;
+            QuantBDataColPtr += NCols4 * StrideQuantBDataCol;
+            QuantBScaleColPtr += NCols4 * BlockCountK;
             BiasPtr += BiasPtr != nullptr ? NCols4 : 0;
             SumPtr += NCols4;
         }
@@ -723,7 +597,7 @@ Q4Int8GemmXxXBlkLen32Avx2(
 
     const size_t lda = BlockCountK * BlkLen32;
     const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen32);
-    const size_t StrideQuantBScale = BlockCountK;
+    //const size_t StrideQuantBScale = BlockCountK;
 
     [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
     assert(CountM < NRows2);
@@ -744,15 +618,12 @@ Q4Int8GemmXxXBlkLen32Avx2(
             __m256 acc0 = _mm256_setzero_ps();
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
-                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
                 const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + BlkLen32));
-
-                //const float& scale_00 = scale_a00 * QuantBScalePtr[0];
-                //const float& scale_01 = scale_a01 * QuantBScalePtr[1];
-                //accumulate_blklen32_r1c1blk2_avx2<HasZeroPoint>(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantBZeroPointPtr, scale_00, scale_01, acc0);
                 accumulate_blklen32_r1c1blk2_avx2(
                     av_00_epi8, av_01_epi8, QuantBDataPtr,
-                    QuantAScalePtr, QuantBScalePtr, acc0);
+                    QuantAScalePtr, QuantBScalePtr, acc0
+                );
 
                 // increment block pointers
                 QuantAPtr += BlkLen32 * PerAccuBlk2;
@@ -776,7 +647,7 @@ Q4Int8GemmXxXBlkLen32Avx2(
 
             // move to next column
             QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
+            QuantBScaleColPtr += BlockCountK;
             BiasPtr += BiasPtr != nullptr ? 1 : 0;
             SumPtr += 1;
         }

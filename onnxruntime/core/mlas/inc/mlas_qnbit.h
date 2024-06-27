@@ -46,7 +46,8 @@ typedef enum {
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;               ///< address of A (float32 matrix)
     size_t lda = 0;                         ///< leading dimension of A
-    const void* QuantBData = nullptr;       ///< address of quantized B (quantized n-bit int values)
+    const void* QuantBDataWorkspace;        ///< address of quantized B (quantized n-bit int values)
+    const std::byte* PackedQuantBData = nullptr;       
     const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
     const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
     const float* QuantBBlkSum = nullptr;    ///< optional address of scale * zp, one per block

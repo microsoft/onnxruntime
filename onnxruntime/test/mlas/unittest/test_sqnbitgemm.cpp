@@ -56,7 +56,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 const float* A,
                 size_t lda,
                 const void* QuantBData,
-                const void* PackedQuantBData,
+                const void* PackedQuantBDataWorkspace,
                 const float* QuantBScale,
                 const void* QuantBZeroPoint,
                 const float* Bias,
@@ -71,7 +71,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBData = PackedQuantBData != nullptr ? PackedQuantBData : QuantBData;
+    params.QuantBDataWorkspace = PackedQuantBDataWorkspace != nullptr ? PackedQuantBDataWorkspace : QuantBData;
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
@@ -265,15 +265,24 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
-    void* PackedQuantBData = nullptr;
+    void* PackedQuantBDataWorkspace = nullptr;
     if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
-      PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
+      PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
       bool has_zp_input = QuantBZeroPoint != nullptr;
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
                                    QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
+
+    CallGemm(M, N, K,
+             A, /* lda */ K,
+             QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
+             Bias,
+             C, /* ldc */ N,
+             Workspace,
+             ComputeType,
+             Threadpool);
 
     if (ComputeType == CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
@@ -283,15 +292,6 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       FAIL() << "Test is not implemented for compute type "
              << ComputeType << " (" << ComputeTypeName(ComputeType) << ")";
     }
-
-    CallGemm(M, N, K,
-             A, /* lda */ K,
-             QuantBData, PackedQuantBData, QuantBScale, QuantBZeroPoint,
-             Bias,
-             C, /* ldc */ N,
-             Workspace,
-             ComputeType,
-             Threadpool);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {
@@ -479,6 +479,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
             tests_registered += RegisterSingleTest(64, 64, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(64, 128, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
             tests_registered += RegisterSingleTest(2, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 2560, 2560, ComputeType, WithThreadpool, Symmetric, has_bias);
             // tests_registered += RegisterSingleTest(256, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
             // tests_registered += RegisterSingleTest(2048, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
           }

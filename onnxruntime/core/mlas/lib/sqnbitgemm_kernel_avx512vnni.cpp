@@ -146,6 +146,7 @@ void
 SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
     size_t BlkLen,
     const std::byte* QuantA,
+    const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
@@ -157,44 +158,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
 )
 {
     if (QuantBZeroPoint != nullptr) {
-        constexpr bool HasZeroPoint = true;
-        if (BlkLen == 16) {
-            SQ4BitGemmM1Kernel_BlkLen16_CompInt8_Impl<HasZeroPoint>(
-                QuantA,
-                QuantBData,
-                QuantBScale,
-                QuantBZeroPoint,
-                C,
-                CountN,
-                CountK,
-                BlockStrideQuantB,
-                Bias
-            );
-        } else if (BlkLen == 32) {
-            SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
-                QuantA,
-                QuantBData,
-                QuantBScale,
-                QuantBZeroPoint,
-                C,
-                CountN,
-                BlockStrideQuantB,
-                Bias
-            );
-        } else {
-            SQ4BitGemmM1Kernel_BlkLen64Plus_CompInt8_Impl<HasZeroPoint, dot_quad_avx512vnni>(
-                BlkLen,
-                QuantA,
-                QuantBData,
-                QuantBScale,
-                QuantBZeroPoint,
-                C,
-                CountN,
-                CountK,
-                BlockStrideQuantB,
-                Bias
-            );
-        }
+        assert(false);
     } else {
         constexpr bool HasZeroPoint = false;
         if (BlkLen == 16) {
@@ -212,6 +176,7 @@ SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
         } else if (BlkLen == 32) {
             SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl<HasZeroPoint, accumulate_mul_sum_avx512vnni<HasZeroPoint>>(
                 QuantA,
+                QuantAScale,
                 QuantBData,
                 QuantBScale,
                 QuantBZeroPoint,
@@ -254,11 +219,10 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
-    std::byte* PackedQuantBDataBegin,
     const float* QuantBScaleBegin,
-    bool /*has_zp_input*/,
+    bool has_zp_input,
     const std::byte* QuantBZPBegin,
-    float* BlockSumBegin,
+    PackedQuantBDataStruct& packed_quant_b,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -271,11 +235,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         SubBlkLen = 64;
     }
 
-    PackQuantB(QuantBDataBegin, PackedQuantBDataBegin, ThreadPool, N, BlockCountK, BlkLen, SubBlkLen);
-
-    if (QuantBScaleBegin) {
-        ComputePackBlkSum(N, QuantBScaleBegin, QuantBZPBegin, BlockSumBegin, ThreadPool, BlockCountK);
-    }
+    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
 }
 
 //

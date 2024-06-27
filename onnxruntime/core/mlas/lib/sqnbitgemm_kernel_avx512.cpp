@@ -316,11 +316,10 @@ SQ4BitGemmPackQuantBDataAndBlkSum512(
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const std::byte* QuantBDataBegin,
-    std::byte* PackedQuantBDataBegin,
     const float* QuantBScaleBegin,
     bool has_zp_input,
     const std::byte* QuantBZPBegin,
-    float* BlockSumBegin,
+    PackedQuantBDataStruct& packed_quant_b,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -332,8 +331,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum512(
     if (ComputeType == CompInt8) {
         SubBlkLen = 128;
     }
-    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin,
-      PackedQuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, BlockSumBegin, ThreadPool);
+    PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
 }
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {

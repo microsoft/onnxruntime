@@ -79,9 +79,10 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.QuantBData = PackedQuantBData != nullptr
-                          ? static_cast<const void*>(PackedQuantBData.get())
-                          : static_cast<const void*>(QuantBData.data());
+  if (PackedQuantBData != nullptr)
+    params.QuantBDataWorkspace = static_cast<const void*>(PackedQuantBData.get());
+  else
+    params.QuantBDataWorkspace = static_cast<const void*>(QuantBData.data());
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = HasBias ? Bias.data() : nullptr;
@@ -89,7 +90,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   params.ldc = N;
 
   // warm up run
-  //MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
+  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
 
   for (auto _ : state) {
     MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());

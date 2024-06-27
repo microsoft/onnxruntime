@@ -358,7 +358,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       for (size_t i = 0; i < batch_count; ++i) {
         data[i].A = a_data + helper.LeftOffsets()[i];
         data[i].lda = lda;
-        data[i].QuantBData = packed_b_.get();
+        data[i].QuantBDataWorkspace = packed_b_.get();
         data[i].QuantBScale = scales_data;
         data[i].QuantBZeroPoint = zero_points_data;
         data[i].Bias = bias_data;
@@ -368,7 +368,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       }
       //auto start2 = std::chrono::high_resolution_clock::now();  // Start timing here
 
-      //int count = 200;
+      //const int CountTotal = 2000;
+      //int count = CountTotal;
       //while (count-- > 0)
         MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
                             thread_pool);
@@ -377,9 +378,9 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
       //std::chrono::duration<double, std::nano> elapsed2 = end - start2;
       //// Calculate and print the duration in nanoseconds
-      // std::chrono::duration<double, std::nano> elapsed = end - start;
-      //std::cout << "MlasSQNBitGemmBatch: " << elapsed2.count() << " ns\n";
-      //std::cout << "main Duration_M" << M << "xN" << N << "xK" << K << ": " << elapsed.count() << " ns\n";
+      //std::chrono::duration<double, std::nano> elapsed = end - start;
+      //std::cout << "MlasSQNBitGemmBatch: " << elapsed2.count() / CountTotal << " ns\n";
+      //std::cout << "main Duration_M" << M << "xN" << N << "xK" << K << ": " << elapsed.count() / CountTotal << " ns\n";
       return Status::OK();
     }
   }
