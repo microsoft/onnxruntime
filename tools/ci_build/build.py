@@ -2812,6 +2812,10 @@ def main():
         if args.enable_external_custom_op_schemas and not is_linux():
             raise BuildError("Registering external custom op schemas is only supported on Linux.")
 
+        n_jobs = number_of_parallel_jobs(args)
+        if isinstance(n_jobs, int) and n_jobs > 1:
+            cmake_extra_defines.append(f"CMAKE_BUILD_PARALLEL_LEVEL={n_jobs}")
+
         generate_build_tree(
             cmake_path,
             source_dir,
