@@ -21,7 +21,8 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
-        use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)) {
+        use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)),
+        allocator_(info.GetAllocator(OrtMemType::OrtMemTypeDefault)) {
           std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
           if (activation == "NONE") {
             epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
@@ -44,6 +45,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   const bool use_fp8_;
+  AllocatorPtr allocator_;
   cublasLtEpilogue_t epilogue_;
 };
 
