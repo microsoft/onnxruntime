@@ -284,6 +284,7 @@ stages:
   - Build_Onnxruntime_Cuda
   jobs:
   - job: Llama2_7B_ONNX
+    timeoutInMinutes: 120
     variables:
       skipComponentGovernanceDetection: true
     workspace:
