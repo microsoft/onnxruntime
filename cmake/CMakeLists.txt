@@ -373,6 +373,10 @@ if (onnxruntime_USE_ROCM)
     message(WARNING "ck_tile can only be enabled on ROCm >= 6.0 due to compatibility and compilation speed, disable automatically")
     set(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE OFF)
   endif()
+  if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(WARNING "ck_tile hits compiler error in Debug build, disable automatically")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE OFF)
+  endif()
 endif()
 
 
