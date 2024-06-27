@@ -8,14 +8,14 @@ Benchmark performance of MultiHeadAttention with Nvidia GPU of Compute Capabilit
 sh benchmark_mha.sh
 """
 
+import csv
 import math
 import os
 import platform
 import statistics
 import time
-from typing import List, Optional
-import csv
 from datetime import datetime
+from typing import List, Optional
 
 import torch
 from onnx import TensorProto, helper
@@ -352,8 +352,9 @@ def get_cpu_kernel_name(config: MultiHeadAttentionConfig) -> str:
 
     return "CPU:Unfused"
 
+
 def run_tflops_test(
-    csv_writer:csv.DictWriter,
+    csv_writer: csv.DictWriter,
     use_gpu: bool = True,
     enable_cuda_graph: bool = False,
     causal: bool = False,
@@ -512,9 +513,7 @@ def run_tflops_test(
             del session
 
             # compute TFLOPS per second
-            speed = tflops_per_second(
-                flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
-            )
+            speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency)
 
             format = InputFormats.input_format_str(input_format)
             print(
@@ -523,8 +522,8 @@ def run_tflops_test(
             )
 
             row = {
-                "use_gpu":use_gpu,
-                "enable_cuda_graph":enable_cuda_graph,
+                "use_gpu": use_gpu,
+                "enable_cuda_graph": enable_cuda_graph,
                 "format": format,
                 "causal": causal,
                 "batch_size": batch_size,
@@ -540,11 +539,14 @@ def run_tflops_test(
             }
             csv_writer.writerow(row)
 
+
 def run_tflops_tests(
     use_gpu: bool = True,
     enable_cuda_graph: bool = False,
 ):
-    csv_filename = "benchmark_mha_{}_{}.csv".format("gpu" if use_gpu else "cpu", datetime.now().strftime("%Y%m%d-%H%M%S"))
+    csv_filename = "benchmark_mha_{}_{}.csv".format(
+        "gpu" if use_gpu else "cpu", datetime.now().strftime("%Y%m%d-%H%M%S")
+    )
     with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = [
             "use_gpu",

@@ -82,7 +82,7 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(q_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  parameters.past_present_share_buffer = true; // Only supports share kv cache buffer for past and present for now.
+  parameters.past_present_share_buffer = true;  // Only supports share kv cache buffer for past and present for now.
 
   int head_size = parameters.head_size;
   const int cache_length = parameters.past_present_share_buffer ? parameters.max_cache_sequence_length : parameters.total_sequence_length;

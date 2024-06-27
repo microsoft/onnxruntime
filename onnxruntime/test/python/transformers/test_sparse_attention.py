@@ -11,13 +11,13 @@ import unittest
 from typing import Optional
 
 import torch
+from benchmark_mha import InputFormats
 from onnx import TensorProto, helper
+from parameterized import parameterized
 from torch import Tensor
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 from onnxruntime.transformers.io_binding_helper import CudaSession, GpuBindingManager
-from benchmark_mha import InputFormats
-from parameterized import parameterized
 
 ENABLE_DEBUG = False
 
@@ -36,7 +36,7 @@ class AttentionConfig:
         softmax_scale: Optional[float],
         do_rotary: bool,
         rotary_interleaved: bool,
-        provider:str="CUDAExecutionProvider",
+        provider: str = "CUDAExecutionProvider",
         device="cuda",
         dtype=torch.float16,
         share_buffer: bool = True,
@@ -72,7 +72,6 @@ class AttentionConfig:
 
         self.share_buffer = share_buffer
         self.is_packed_qkv = is_packed_qkv
-
 
     def shape_dict(self):
         shapes = {
@@ -159,7 +158,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
         softmax_scale=None,
         do_rotary: bool = False,
         rotary_interleaved: bool = False,
-        provider:str="CUDAExecutionProvider",
+        provider: str = "CUDAExecutionProvider",
         device="cuda",
         dtype=torch.float16,
         local_window_size: int = -1,
@@ -230,7 +229,7 @@ class SparseAttentionConfig(AttentionConfig):
         softmax_scale=None,
         do_rotary: bool = False,
         rotary_interleaved: bool = False,
-        provider:str="CUDAExecutionProvider",
+        provider: str = "CUDAExecutionProvider",
         device="cuda",
         dtype=torch.float16,
         is_packed_qkv=False,
@@ -505,9 +504,9 @@ def create_sparse_attention_onnx_model(config: SparseAttentionConfig):
 
 
 def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
-    assert config.dtype == torch.float16
+    assert config.dtype in [torch.float16, torch.float32]
 
-    float_type = TensorProto.FLOAT16
+    float_type = TensorProto.FLOAT16 if config.dtype in [torch.float16] else TensorProto.FLOAT
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
@@ -590,6 +589,7 @@ def create_session(onnx_model_str, cuda_provider_options=None) -> InferenceSessi
     )
     return ort_session
 
+
 # def create_sparse_session(config: SparseAttentionConfig, session_options=None, enable_cuda_graph=False) -> CudaSession:
 #     onnx_model_str = create_sparse_attention_onnx_model(config)
 
@@ -605,6 +605,7 @@ def create_session(onnx_model_str, cuda_provider_options=None) -> InferenceSessi
 #     shape_dict = config.shape_dict()
 #     cuda_session.allocate_buffers(shape_dict)
 #     return cuda_session
+
 
 def group_query_attention_reference(
     query: Tensor,
@@ -812,7 +813,7 @@ def has_cuda_support():
     return False
 
 
-def get_simple_test_case(provider: str, has_past_kv:bool):
+def get_simple_test_case(provider: str, has_past_kv: bool):
     """A simple test case for debugging purpose."""
     device, dtype, _formats = get_provider_support_info(provider, False)
     if provider == "CPUExecutionProvider":
@@ -820,27 +821,27 @@ def get_simple_test_case(provider: str, has_past_kv:bool):
         sequence_length = 3
         packed_qkv = False
         config = SparseAttentionConfig(
-                    batch_size=1,
-                    sequence_length=1 if has_past_kv else sequence_length,
-                    max_sequence_length=16,
-                    past_sequence_length= sequence_length if has_past_kv else 0,
-                    num_heads=4,
-                    kv_num_heads=2,
-                    head_size=8,
-                    sparse_block_size=4,
-                    num_layout=2,
-                    local_blocks=2,
-                    vert_stride=2,
-                    softmax_scale=0.0,
-                    device=device,
-                    dtype=dtype,
-                    is_packed_qkv=packed_qkv,
-                    max_cache_sequence_length=None if sequence_length >= 128 else 128,
-                )
+            batch_size=1,
+            sequence_length=1 if has_past_kv else sequence_length,
+            max_sequence_length=16,
+            past_sequence_length=sequence_length if has_past_kv else 0,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=8,
+            sparse_block_size=4,
+            num_layout=2,
+            local_blocks=2,
+            vert_stride=2,
+            softmax_scale=0.0,
+            device=device,
+            dtype=dtype,
+            is_packed_qkv=packed_qkv,
+            max_cache_sequence_length=None if sequence_length >= 128 else 128,
+        )
         yield config
 
 
-def get_test_cases(provider: str, has_past_kv:bool, comprehensive: bool, debug=False):
+def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rotary=False):
     if provider == "CUDAExecutionProvider" and not has_cuda_support():
         return
         yield
@@ -862,7 +863,7 @@ def get_test_cases(provider: str, has_past_kv:bool, comprehensive: bool, debug=F
                                 batch_size=batch_size,
                                 sequence_length=1 if has_past_kv else sequence_length,
                                 max_sequence_length=256,
-                                past_sequence_length= min(255, sequence_length) if has_past_kv else 0,
+                                past_sequence_length=min(255, sequence_length) if has_past_kv else 0,
                                 num_heads=num_heads,
                                 kv_num_heads=num_heads // 2,
                                 head_size=head_size,
@@ -874,6 +875,7 @@ def get_test_cases(provider: str, has_past_kv:bool, comprehensive: bool, debug=F
                                 device=device,
                                 dtype=dtype,
                                 is_packed_qkv=packed_qkv,
+                                do_rotary=do_rotary,
                                 max_cache_sequence_length=None if sequence_length >= 128 else 128,
                             )
                             yield config
@@ -885,31 +887,32 @@ def get_test_cases(provider: str, has_past_kv:bool, comprehensive: bool, debug=F
             num_heads = heads[i % len(heads)]
             head_size = head_sizes[i % len(head_sizes)]
             format = formats[i % len(formats)]
-            for format in formats:
-                packed_qkv = format == InputFormats.QKV_BSN3H
-                config = SparseAttentionConfig(
-                    batch_size=batch_size,
-                    sequence_length=1 if has_past_kv else sequence_length,
-                    max_sequence_length=256,
-                    past_sequence_length=sequence_length if has_past_kv else 0,
-                    num_heads=num_heads,
-                    kv_num_heads=num_heads // 2,
-                    head_size=head_size,
-                    sparse_block_size=64,
-                    num_layout=2,
-                    local_blocks=2,
-                    vert_stride=2,
-                    softmax_scale=1.8 / (128**0.5),
-                    device=device,
-                    dtype=dtype,
-                    is_packed_qkv=packed_qkv,
-                    max_cache_sequence_length=None if sequence_length >= 128 else 128,  # test smaller kv cache buffer.
-                )
-                yield config
+            packed_qkv = format == InputFormats.QKV_BSN3H
+            config = SparseAttentionConfig(
+                batch_size=batch_size,
+                sequence_length=1 if has_past_kv else sequence_length,
+                max_sequence_length=256,
+                past_sequence_length=sequence_length if has_past_kv else 0,
+                num_heads=num_heads,
+                kv_num_heads=num_heads // 2,
+                head_size=head_size,
+                sparse_block_size=64,
+                num_layout=2,
+                local_blocks=2,
+                vert_stride=2,
+                softmax_scale=1.8 / (128**0.5),
+                device=device,
+                dtype=dtype,
+                is_packed_qkv=packed_qkv,
+                do_rotary=do_rotary,
+                max_cache_sequence_length=None if sequence_length >= 128 else 128,  # test smaller kv cache buffer.
+            )
+            yield config
 
 
 # Do not run too many tests in CI pipeline. Change it to True to run all combinations in dev machine.
 comprehensive_mode = False
+
 
 class TestSparseAttention(unittest.TestCase):
     @unittest.skipUnless(has_cuda_support(), "cuda not available")
@@ -919,16 +922,18 @@ class TestSparseAttention(unittest.TestCase):
         self.run_relevance_test(sm)
 
     @parameterized.expand(get_simple_test_case("CPUExecutionProvider", True), skip_on_empty=True)
-    def test_simple_token_cpu(self, config:SparseAttentionConfig):
+    def test_simple_token_cpu(self, config: SparseAttentionConfig):
         self.run_one_relevance_test(config)
 
     @parameterized.expand(get_simple_test_case("CPUExecutionProvider", False), skip_on_empty=True)
-    def test_simple_prompt_cpu(self, config:SparseAttentionConfig):
+    def test_simple_prompt_cpu(self, config: SparseAttentionConfig):
         self.run_one_relevance_test(config)
 
-    @parameterized.expand(get_test_cases("CPUExecutionProvider", True, comprehensive_mode), skip_on_empty=True)
-    def test_sparse_att_token_cpu(self, config:SparseAttentionConfig):
-        if (config.sparse_block_size * config.local_blocks > config.total_sequence_length):
+    @parameterized.expand(
+        get_test_cases("CPUExecutionProvider", True, comprehensive_mode, do_rotary=True), skip_on_empty=True
+    )
+    def test_sparse_att_token_cpu_rotary(self, config: SparseAttentionConfig):
+        if config.sparse_block_size * config.local_blocks > config.total_sequence_length:
             self.run_one_relevance_test(config)
 
     @parameterized.expand(get_test_cases("CUDAExecutionProvider", True, comprehensive_mode), skip_on_empty=True)
@@ -937,13 +942,12 @@ class TestSparseAttention(unittest.TestCase):
 
     @parameterized.expand(get_test_cases("CPUExecutionProvider", False, comprehensive_mode), skip_on_empty=True)
     def test_sparse_att_prompt_cpu(self, config):
-        if (config.sparse_block_size * config.local_blocks > config.total_sequence_length):
+        if config.sparse_block_size * config.local_blocks > config.total_sequence_length:
             self.run_one_relevance_test(config)
 
     @parameterized.expand(get_test_cases("CUDAExecutionProvider", False, comprehensive_mode), skip_on_empty=True)
     def test_sparse_att_prompt_gpu(self, config):
         self.run_one_relevance_test(config)
-
 
     def run_one_relevance_test(self, config: SparseAttentionConfig):
         if (not config.do_rotary) and config.total_sequence_length <= 2048:

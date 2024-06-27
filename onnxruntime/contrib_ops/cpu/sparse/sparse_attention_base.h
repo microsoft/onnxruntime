@@ -150,7 +150,7 @@ class SparseAttentionBase {
     DUMP_CPU_TENSOR_INIT();
 
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_,  ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
+      DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>(i) / num_heads_;
         const int head_index = static_cast<int>(i) % num_heads_;
@@ -202,7 +202,7 @@ class SparseAttentionBase {
         for (int seq = 0; seq < sequence_length; seq++) {
           int seq_causal_length = is_prompt ? seq + 1 : total_seq_len;
 
-          //DUMP_STRING("seq=", seq, ",seq_causal_length=", seq_causal_length);
+          // DUMP_STRING("seq=", seq, ",seq_causal_length=", seq_causal_length);
 
           ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
 
@@ -215,7 +215,6 @@ class SparseAttentionBase {
         }
 
         DUMP_CPU_TENSOR("softmax", output, sequence_length, total_seq_len);
-
       }
     });
   }
@@ -274,7 +273,6 @@ class SparseAttentionBase {
 
     ThreadPool::TryParallelFor(
         tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-
           DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",begin=", begin, ",end=", end);
 
           for (std::ptrdiff_t i = begin; i != end; ++i) {
@@ -285,7 +283,7 @@ class SparseAttentionBase {
             const int total_seq_len = total_key_lengths[batch_index];
 
             DUMP_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                    ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
 
             const T* v;
             if (packed_qkv) {
@@ -294,7 +292,7 @@ class SparseAttentionBase {
               v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
             }
 
-              // Concatenate past_v + v -> present_v
+            // Concatenate past_v + v -> present_v
             v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
                                     past_chunk_length, kv_input_chunk_length, is_prompt, past_present_share_buffer,
                                     i / kv_num_heads_factor);
