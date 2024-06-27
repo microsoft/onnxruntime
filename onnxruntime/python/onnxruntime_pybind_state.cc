@@ -7,8 +7,7 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
-
+#include "python/numpy_helper.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -823,6 +822,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     std::string calibration_table;
+    std::string save_model_path;
+    std::string load_model_path;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       OrtMIGraphXProviderOptions params{
@@ -830,7 +831,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           0,
           0,
           0,
-          nullptr};
+          nullptr,
+          1,
+          "./compiled_model.mxr",
+          1,
+          "./compiled_model.mxr"};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -876,6 +881,44 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_model_path") {
+          if (!option.second.empty()) {
+            save_model_path = option.second;
+            params.migraphx_save_model_path = save_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
+          }
+        } else if (option.first == "migraphx_load_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_load_model_path") {
+          if (!option.second.empty()) {
+            load_model_path = option.second;
+            params.migraphx_load_model_path = load_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else {
           ORT_THROW("Invalid MIGraphX EP option: ", option.first);

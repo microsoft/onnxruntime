@@ -71,6 +71,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
     auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
     if (dynamic_range_iter != dynamic_range_map.end()) {
       if (!network.getInput(i)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+        LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for network input " << tensor_name;
         return false;
       }
     }
@@ -84,10 +85,12 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
       auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
       if (dynamic_range_iter != dynamic_range_map.end()) {
         if (!trt_layer->getOutput(j)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+          LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for tensor " << tensor_name;
           return false;
         }
       } else if (trt_layer->getType() == nvinfer1::LayerType::kCONSTANT) {
         nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(trt_layer);
+        const std::string const_layer_name = const_layer->getName();
         auto trt_weights = const_layer->getWeights();
         double max_weight = std::numeric_limits<double>::min();
         for (int64_t k = 0, end = trt_weights.count; k < end; ++k) {
@@ -108,13 +111,19 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
             case nvinfer1::DataType::kINT32:
               weight = static_cast<const int32_t*>(trt_weights.values)[k];
               break;
+#if NV_TENSORRT_MAJOR >= 10
+            case nvinfer1::DataType::kINT64:
+              weight = static_cast<double>(static_cast<const int64_t*>(trt_weights.values)[k]);
+              break;
+#endif  // NV_TENSORRT_MAJOR >= 10
             default:
-              LOGS_DEFAULT(ERROR) << "Found unsupported datatype!";
+              LOGS_DEFAULT(ERROR) << "Found unsupported datatype for layer " << const_layer_name;
               return false;
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
         if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
+          LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for layer " << const_layer_name;
           return false;
         }
       }
@@ -3142,7 +3151,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     } else {
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
     }
@@ -3588,8 +3605,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (context_update) {
       if (trt_state->context_memory_sharing_enable) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       } else {
         *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
             trt_state->engine->get()->createExecutionContext());
@@ -3805,7 +3829,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // nvinfer1::ICudaEngine::createExecutionContextWithoutDeviceMemory was deprecated
+#endif
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   } else {
     trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
   }

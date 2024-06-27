@@ -14,7 +14,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -631,6 +631,8 @@ Status FlashAttention(
           data.output,
           cu_seqlens_q,
           cu_seqlens_k,
+          nullptr,  // seqused_k
+          nullptr,  // block_table
           softmax_lse_buffer,
           batch_size,
           num_heads,
@@ -640,7 +642,7 @@ Status FlashAttention(
           sequence_length,
           scale,
           false,  // is causal
-          false  // is bf16
+          false   // is bf16
           ));
 
   DUMP_TENSOR_INIT();
