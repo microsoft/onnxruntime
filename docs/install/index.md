@@ -63,12 +63,8 @@ pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.
 #### Install ONNX Runtime GPU (ROCm)
 For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.0.0
 
-To build on Linux, use the following instructions: 
-```bash
-./build.sh --config <Release|RelWithDebInfo> --use_rocm --rocm_home <path_to_ROCm_home>
-```
+Each major ORT release has a corresponding ROCm package, found [here](https://github.com/microsoft/onnxruntime/releases/). Alternatively, to build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm).
 
-See more information about the ROCm Execution Provider [here](https://onnxruntime.ai/docs/execution-providers/ROCm-ExecutionProvider.html).
 
 ### Install ONNX to export the model
 
