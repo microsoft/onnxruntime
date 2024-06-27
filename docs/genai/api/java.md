@@ -113,7 +113,7 @@ public Sequences encode(String string)
 
 #### Parameters
 
--`string`: text to encode as token ids.
+- `string`: text to encode as token ids.
 
 #### Throws
 
@@ -135,7 +135,7 @@ public String decode(int[] sequence)
 
 #### Parameters
 
--`sequence`: collection of token ids to decode to text
+- `sequence`: collection of token ids to decode to text
 
 #### Throws
 
@@ -157,7 +157,7 @@ public Sequences encodeBatch(String[] strings)
 
 #### Parameters
 
--`strings`: collection of strings to encode as token ids.
+- `strings`: collection of strings to encode as token ids.
 
 #### Throws
 
@@ -178,7 +178,7 @@ public String[] decodeBatch(Sequences sequences)
 
 #### Parameters
 
--`sequences`: a Sequences object with one or more sequences of token ids.
+- `sequences`: a Sequences object with one or more sequences of token ids.
 
 #### Throws
 
@@ -237,9 +237,9 @@ public Tensor(ByteBuffer data, long[] shape, ElementType elementType) throws Gen
 
 #### Parameters
 
--`data`: the data for the Tensor. Must be a direct ByteBuffer.
--`shape`: the shape of the Tensor.
--`elementType`: the Type of elements in the Tensor.
+- `data`: the data for the Tensor. Must be a direct ByteBuffer.
+- `shape`: the shape of the Tensor.
+- `elementType`: the Type of elements in the Tensor.
 
 #### Throws
 
@@ -288,7 +288,7 @@ public void setInput(Sequences sequences)
 ```
 
 #### Parameters
--`sequences`: sequences containing the encoded prompt.
+- `sequences`: sequences containing the encoded prompt.
 
 #### Throws
 `GenAIException`- if the call to the GenAI native API fails.
@@ -304,9 +304,9 @@ public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
 
 #### Parameters
 
--`tokenIds`: the token ids of the encoded prompt/s
--`sequenceLength`: the length of each sequence.
--`batchSize`: size of the batch. 
+- `tokenIds`: the token ids of the encoded prompt/s
+- `sequenceLength`: the length of each sequence.
+- `batchSize`: size of the batch. 
 
 #### Throws
 
@@ -331,8 +331,8 @@ Generator(Model model, GeneratorParams generatorParams)
 
 #### Parameters
 
--`model`: the model.
--`params`: the generator parameters.
+- `model`: the model.
+- `params`: the generator parameters.
 
 #### Throws
 
@@ -373,7 +373,7 @@ public int[] getSequence(long sequenceIndex)
 ```
 
 #### Parameters
--`sequenceIndex`: the index of the sequence.
+- `sequenceIndex`: the index of the sequence.
 
 #### Throws
 
@@ -407,7 +407,7 @@ public int getLastTokenInSequence(long sequenceIndex)
 
 #### Parameters
 
--`sequenceIndex`: the index of the sequence.
+- `sequenceIndex`: the index of the sequence.
 
 #### Throws
 
@@ -467,8 +467,8 @@ public String generate(GeneratorParams generatorParams,
 
 #### Parameters
 
--`generatorParams`: the prompt and settings to run the model with.
--`listener`: optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
+- `generatorParams`: the prompt and settings to run the model with.
+- `listener`: optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
 
 #### Throws
 
