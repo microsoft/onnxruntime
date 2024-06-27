@@ -283,7 +283,7 @@ stages:
   dependsOn:
   - Build_Onnxruntime_Cuda
   jobs:
-  - job: Llama2_ONNX_FP16
+  - job: Llama2_7B_ONNX
     variables:
       skipComponentGovernanceDetection: true
     workspace:
