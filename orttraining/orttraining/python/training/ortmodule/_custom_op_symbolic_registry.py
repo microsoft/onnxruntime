@@ -978,7 +978,7 @@ def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p
     dropout_p_f = g.op("Cast", dropout_p, to_i=torch.onnx.TensorProtoDataType.FLOAT)
     compute_logsumexp = g.op("Constant", value_t=torch.tensor([1], dtype=torch.bool))
     return g.op(
-        "org.pytorch.aten::ATen", 
+        "org.pytorch.aten::ATen",
         query,
         key,
         value,
@@ -988,5 +988,5 @@ def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p
         is_causal,
         scale,
         operator_s="_scaled_dot_product_efficient_attention_cuda",
-        outputs=4
+        outputs=4,
     )[0]
