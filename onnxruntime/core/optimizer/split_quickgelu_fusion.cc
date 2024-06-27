@@ -112,9 +112,11 @@ bool GetSplitQuickGeluParams(
     Node& split_node,
     Node& quickgelu_node,
     NodeArg*& input,
+    NodeArg*& split_count,
     int& axis,
     float& alpha) {
   input = split_node.MutableInputDefs()[0];
+  split_count = split_node.MutableInputDefs()[1];
   axis = -1;
   alpha = -1.0;
   std::cout << "Input edge count for Split node:" << split_node.GetInputEdgesCount() << std::endl;
@@ -147,6 +149,7 @@ void FuseSplitQuickGeluSubgraph(
     Node& quickgelu_node,
     Node& mul_node,
     NodeArg* input,
+    NodeArg* split_count,
     int axis,
     float alpha) {
   std::string fused_desc =
@@ -156,7 +159,7 @@ void FuseSplitQuickGeluSubgraph(
   Node& fused_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                    op_type,
                                    fused_desc,
-                                   std::array{input},
+                                   std::array{input, split_count},
                                    {},
                                    {},
                                    kMSDomain);
@@ -199,13 +202,14 @@ Status SplitQuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     NodeArg* input;
+    NodeArg* split_count;
     int axis;
     float alpha;
     // Call this from match fn
-    if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, axis, alpha)) {
+    if (!GetSplitQuickGeluParams(*split_node, *quickgelu_node, input, split_count, axis, alpha)) {
       continue;
     }
-    FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, axis, alpha);
+    FuseSplitQuickGeluSubgraph(graph, *split_node, *quickgelu_node, *mul_node, input, split_count, axis, alpha);
     modified = true;
     std::cout << "FUSION SUBGRAPH COMPLETE NOW" << std::endl;
 

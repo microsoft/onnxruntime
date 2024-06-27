@@ -642,7 +642,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("axis", "axis value for split", AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
         .Input(0, "X", "The input data as Tensor.", "T")
-        // .Input(1, "split", "split tensor.", "T")
+        .Input(1, "split_count", "split tensor.", "tensor(int64)")
         .Output(0, "Y", "The output.", "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
