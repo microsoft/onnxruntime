@@ -72,7 +72,7 @@ public Sequences generate(GeneratorParams generatorParams)
 
 #### Parameters
 
--`generatorParams`: the generator parameters.
+- `generatorParams`: the generator parameters.
 
 #### Throws
 
