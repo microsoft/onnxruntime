@@ -5,7 +5,7 @@
 
 #include "core/providers/cuda/cuda_kernel.h"
 
-#if defined(ORT_USE_NCCL) || defined(ORT_USE_MPI)
+#if defined(ORT_USE_NCCL) || defined(USE_MPI)
 #ifndef USE_ROCM
 #include "custom_reduce_impl.h"
 #include "ipc_utils.h"

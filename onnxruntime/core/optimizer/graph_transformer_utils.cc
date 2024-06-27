@@ -71,7 +71,6 @@
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer.h"
@@ -215,9 +214,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
 
-      // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
-      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
-      // or consume different initializers with same value, by default, CSE will not merge them.
+      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
+      // CSE. For example, if A and B nodes consume different initializers with same value, by default,
+      // CSE will not merge them.
       InlinedHashSet<std::string> excluded_initializers;
       excluded_initializers.reserve(session_options.initializers_to_share_map.size());
       for (const auto& p : session_options.initializers_to_share_map) {
@@ -225,7 +224,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
       transformers.emplace_back(std::make_unique<ConstantSharing>(no_limit_empty_ep_list, excluded_initializers));
-      transformers.emplace_back(std::make_unique<ShapeInputMerge>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
                                                                   session_options.config_options));
