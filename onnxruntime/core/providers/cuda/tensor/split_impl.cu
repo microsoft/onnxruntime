@@ -227,7 +227,7 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
 
   // determine threads based on the size of the output
   auto threadsPerBlock = kNumThreadsPerBlock;
-  if ((inner_size_in_byte / VEC_SIZE) < 128) {
+  if ((inner_size_in_byte / VEC_SIZE) <= 128) {
     // use less threads when the size is small
     threadsPerBlock = 128;
   }
@@ -247,16 +247,16 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
       CASE_ELEMENT_TYPE(int4);
       break;
     case 8:
-      CASE_ELEMENT_TYPE(int2);
+      CASE_ELEMENT_TYPE(int64_t);
       break;
     case 4:
-      CASE_ELEMENT_TYPE(int1);
+      CASE_ELEMENT_TYPE(int32_t);
       break;
     case 2:
-      CASE_ELEMENT_TYPE(short1);
+      CASE_ELEMENT_TYPE(int16_t);
       break;
     default:
-      CASE_ELEMENT_TYPE(char1);
+      CASE_ELEMENT_TYPE(int8_t);
       break;
 #undef CASE_ELEMENT_TYPE
   }
