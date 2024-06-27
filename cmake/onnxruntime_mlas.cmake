@@ -82,7 +82,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -350,9 +353,12 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         )
-        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         if (NOT APPLE)
           set(mlas_platform_srcs
