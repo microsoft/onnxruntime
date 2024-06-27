@@ -5,14 +5,21 @@
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "core/framework/print_tensor_utils.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
+#include <mutex>
+#include <thread>
 
 namespace onnxruntime {
 namespace contrib {
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
+static std::mutex s_mutex;
 
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
@@ -26,6 +33,10 @@ void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
 
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2) {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
@@ -91,6 +102,13 @@ void DumpCpuTensor(const char* name, const Tensor& tensor) {
   }
   size_t row_size = num_items / num_rows;
   DumpCpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
+}
+
+void CpuTensorConsoleDumper::Print(const std::string& value) const {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+  std::cout << value << std::endl;
 }
 
 void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
@@ -185,6 +203,8 @@ void CpuTensorConsoleDumper::Print(const char* name, const OrtValue& value) cons
 void CpuTensorConsoleDumper::Print(const char* name, int index, bool end_line) const {
   if (!is_enabled_)
     return;
+
+  std::unique_lock<std::mutex> lock(s_mutex);
   std::cout << std::string(name) << "[" << index << "]";
 
   if (end_line) {
@@ -196,6 +216,7 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
   if (!is_enabled_)
     return;
 
+  std::unique_lock<std::mutex> lock(s_mutex);
   std::cout << std::string(name) << "=" << value;
 
   if (end_line) {
@@ -204,6 +225,9 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
 }
 
 #else
+void CpuTensorConsoleDumper::Print(const std::string&) const {
+}
+
 void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
 
@@ -254,7 +278,6 @@ void CpuTensorConsoleDumper::Print(const char*, int, bool) const {
 
 void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
-
 #endif
 
 }  // namespace contrib
