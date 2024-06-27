@@ -341,7 +341,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
   }
 
   if ([options objectForKey:@"graphOptimizationLevel"]) {
-    NSString *graphOptimizationLevel = [[options objectForKey:@"graphOptimizationLevel"] stringValue];
+    NSString *graphOptimizationLevel = [options objectForKey:@"graphOptimizationLevel"];
     if ([graphOptimizationLevelTable objectForKey:graphOptimizationLevel]) {
       sessionOptions.SetGraphOptimizationLevel(
           (GraphOptimizationLevel)[[graphOptimizationLevelTable objectForKey:graphOptimizationLevel] intValue]);
@@ -367,7 +367,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
   }
 
   if ([options objectForKey:@"executionMode"]) {
-    NSString *executionMode = [[options objectForKey:@"executionMode"] stringValue];
+    NSString *executionMode = [options objectForKey:@"executionMode"];
     if ([executionModeTable objectForKey:executionMode]) {
       sessionOptions.SetExecutionMode((ExecutionMode)[[executionModeTable objectForKey:executionMode] intValue]);
     }
@@ -412,7 +412,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
   }
 
   if ([options objectForKey:@"logId"]) {
-    NSString *logId = [[options objectForKey:@"logId"] stringValue];
+    NSString *logId = [options objectForKey:@"logId"];
     sessionOptions.SetLogId([logId UTF8String]);
   }
 
@@ -433,7 +433,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
   }
 
   if ([options objectForKey:@"tag"]) {
-    NSString *tag = [[options objectForKey:@"tag"] stringValue];
+    NSString *tag = [options objectForKey:@"tag"];
     runOptions.SetRunTag([tag UTF8String]);
   }
 
