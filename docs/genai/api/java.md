@@ -28,6 +28,16 @@ The Java API is delivered by the onnxruntime-genai Java package.
 import onnxruntime_genai
 ```
 
+## Exception Class
+
+An exception which contains the error message and code produced by the native layer.
+
+### Constructor
+
+```java
+public GenAIException(String message)
+```
+
 ## Model class
 
 ### Constructor
@@ -47,7 +57,7 @@ public Tokenizer createTokenizer()
 
 #### Throws
 
-`GenAIException` - If the call to the GenAI native API fails
+`GenAIException`- if the call to the GenAI native API fails
 
 #### Returns
 
@@ -62,11 +72,11 @@ public Sequences generate(GeneratorParams generatorParams)
 
 #### Parameters
 
-- `generatorParams`: the generator parameters.
+-`generatorParams`: the generator parameters.
 
 #### Throws
 
-`GenAIException` - If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -83,7 +93,7 @@ public GeneratorParams createGeneratorParams()
 
 #### Throws
 
-`GenAIException` - If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -103,11 +113,11 @@ public Sequences encode(String string)
 
 #### Parameters
 
-- `string`: Text to encode as token ids.
+-`string`: text to encode as token ids.
 
 #### Throws
 
-`GenAIException` - If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -125,11 +135,11 @@ public String decode(int[] sequence)
 
 #### Parameters
 
-- `sequence`: Collection of token ids to decode to text
+-`sequence`: collection of token ids to decode to text
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -147,11 +157,11 @@ public Sequences encodeBatch(String[] strings)
 
 #### Parameters
 
-- `strings`: Collection of strings to encode as token ids.
+-`strings`: collection of strings to encode as token ids.
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -168,11 +178,11 @@ public String[] decodeBatch(Sequences sequences)
 
 #### Parameters
 
-- `sequences`: A Sequences object with one or more sequences of token ids.
+-`sequences`: a Sequences object with one or more sequences of token ids.
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -194,7 +204,7 @@ None
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
@@ -217,6 +227,23 @@ public String decode(int token)
 
 `GenAIException`
 
+## Tensor Class
+
+Constructs a Tensor with the given data, shape, and element type.
+
+```java
+public Tensor(ByteBuffer data, long[] shape, ElementType elementType) throws GenAIException
+```
+
+#### Parameters
+
+-`data`: the data for the Tensor. Must be a direct ByteBuffer.
+-`shape`: the shape of the Tensor.
+-`elementType`: the Type of elements in the Tensor.
+
+#### Throws
+
+`GenAIException`
 
 ## GeneratorParams class
 
@@ -240,7 +267,6 @@ public void setSearchOption(String optionName,
 
 `GenAIException`
 
-
 ### setSearchOption
 
 ```java
@@ -252,7 +278,6 @@ public void setSearchOption(String optionName, boolean value)
 
 `GenAIException`
 
-
 ### setInput
 
 Sets the prompt/s for model execution. The `sequences` are created by using Tokenizer.Encode or EncodeBatch.
@@ -262,13 +287,11 @@ public void setInput(Sequences sequences)
               throws GenAIException
 ```
 
-
 #### Parameters
-- `sequences`: Sequences containing the encoded prompt.
+-`sequences`: sequences containing the encoded prompt.
 
 #### Throws
-`GenAIException`- If the call to the GenAI native API fails.
-
+`GenAIException`- if the call to the GenAI native API fails.
 
 ### setInput
 
@@ -281,14 +304,13 @@ public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
 
 #### Parameters
 
-- `tokenIds`: The token ids of the encoded prompt/s
-- `sequenceLength`: The length of each sequence.
-- `batchSize`: Size of the batch. 
+-`tokenIds`: the token ids of the encoded prompt/s
+-`sequenceLength`: the length of each sequence.
+-`batchSize`: size of the batch. 
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails. NOTE: all sequences in the batch must be the same length.
-
+`GenAIException`- if the call to the GenAI native API fails. NOTE: all sequences in the batch must be the same length.
 
 ## Generator class
 
@@ -309,13 +331,12 @@ Generator(Model model, GeneratorParams generatorParams)
 
 #### Parameters
 
-- `model`: The model.
-- `params`: The generator parameters.
+-`model`: the model.
+-`params`: the generator parameters.
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
-
+`GenAIException`- if the call to the GenAI native API fails.
 
 ### Is generation done
 
@@ -329,7 +350,6 @@ public boolean isDone()
 
 Returns true if the generation process is done, false otherwise.
 
-
 ### Compute logits
 
 Computes the logits for the next token in the sequence.
@@ -341,8 +361,7 @@ public void computeLogits()
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
-
+`GenAIException`- if the call to the GenAI native API fails.
 
 ### Get sequence
 
@@ -354,16 +373,15 @@ public int[] getSequence(long sequenceIndex)
 ```
 
 #### Parameters
-- `sequenceIndex`: The index of the sequence.
+-`sequenceIndex`: the index of the sequence.
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
 An array of integers with the sequence of token ids.
-
 
 ### Generate next token
 
@@ -376,7 +394,7 @@ public void generateNextToken()
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 ### Get last token in sequence
 
@@ -389,16 +407,15 @@ public int getLastTokenInSequence(long sequenceIndex)
 
 #### Parameters
 
-- `sequenceIndex`: The index of the sequence.
+-`sequenceIndex`: the index of the sequence.
 
 #### Throws
 
-`GenAIException`- If the call to the GenAI native API fails.
+`GenAIException`- if the call to the GenAI native API fails.
 
 #### Returns
 
 The last token in the sequence.
-
 
 ## Sequence Class
 
@@ -415,7 +432,6 @@ public long numSequences()
 ### Returns
 
 The number of sequences.
-
 
 ## SimpleGenAI Class
 
@@ -451,13 +467,14 @@ public String generate(GeneratorParams generatorParams,
 
 #### Parameters
 
-- `generatorParams`: The prompt and settings to run the model with.
-- `listener`: Optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
+-`generatorParams`: the prompt and settings to run the model with.
+-`listener`: optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
 
 #### Throws
 
-`GenAIException`- On failure.
+`GenAIException`- on failure.
 
 #### Returns
 
 The generated text.
+
