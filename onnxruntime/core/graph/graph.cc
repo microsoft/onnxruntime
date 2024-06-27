@@ -3977,7 +3977,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
-  ORT_ENFORCE(!model_file_path.has_parent_path() || external_file_path.is_relative());
+  ORT_ENFORCE(external_file_path.is_relative());
   // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
   // be empty. Else, save external data file in same directory as the model.
   const std::filesystem::path modified_external_file_path = model_file_path.parent_path() / external_file_path;
