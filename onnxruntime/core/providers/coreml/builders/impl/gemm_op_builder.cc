@@ -271,7 +271,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       //
       // If required for perf we could manually do the shape alterations the spec documents (convert input to 2D,
       // and remove extra dimension from output), as the 2D input is correctly handled by CoreML matmul.
-      if (a_rank == 1 && b_rank > 1 || a_rank > 1 && b_rank == 1) {
+      if ((a_rank == 1 && b_rank > 1) || (a_rank > 1 && b_rank == 1)) {
         LOGS(logger, VERBOSE) << "Skipping due to bug in CoreML ML Program when one of the inputs is 1D.";
         return false;
       }
