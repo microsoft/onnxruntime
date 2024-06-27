@@ -270,7 +270,7 @@ TEST_F(QnnHTPBackendTests, PadReflectMode_fp16) {
                {utils::MakeAttribute("mode", "reflect")},
                ExpectedEPNodeAssignment::All,
                has_constant_value_input,
-               18,     // opset
+               18,  // opset
                use_htp,
                enable_fp16_precision,
                2e-3f);
