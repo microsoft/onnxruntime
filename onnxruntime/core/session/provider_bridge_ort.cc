@@ -1801,17 +1801,17 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
 }
 
-void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions &ov_options,
-                                                              const SessionOptions *session_options) {
+void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
+                                                   const SessionOptions* session_options) {
   bool disable_cpu_fallback = session_options->config_options.GetConfigOrDefault(
                                   kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  if(disable_cpu_fallback)
+  if (disable_cpu_fallback)
     ov_options["disable_cpu_fallback"] = "true";
 }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(ProviderOptions* provider_options_map,
                                                                                   const SessionOptions* session_options) {
-  if(session_options)
+  if (session_options)
     onnxruntime::ORTSessionOptionsToOrtOpenVINOProviderOptions(*provider_options_map, session_options);
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }

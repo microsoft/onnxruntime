@@ -94,7 +94,7 @@ struct OpenVINOExecutionProviderInfo {
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob),
         enable_qdq_optimizer_(enable_qdq_optimizer),
-        disable_cpu_fallback_(disable_cpu_fallback){
+        disable_cpu_fallback_(disable_cpu_fallback) {
     std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                        "GPU.0", "GPU.1", "NPU"};
     if (dev_type == "") {

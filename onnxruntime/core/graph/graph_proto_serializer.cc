@@ -21,7 +21,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  std::unordered_set<const onnxruntime::NodeArg *> value_info_ = graph_view.GetValueInfo();
+  std::unordered_set<const onnxruntime::NodeArg*> value_info_ = graph_view.GetValueInfo();
 
   // Reserve memory for the vector to avoid reallocations
   std::vector<const NodeArg*> value_info_sorted;
