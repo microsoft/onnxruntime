@@ -279,7 +279,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       condition: ne(variables.hitAnother, 'True')
 
-- stage: Llama2_ONNX_FP16
+- stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
   jobs:
@@ -346,7 +346,7 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
@@ -367,10 +367,31 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda --input /meta-llama2 ;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx fp32 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           onnxruntimeubi8packagestest \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
+              popd ; \
+            "
+      displayName: 'Run Llama2 to Onnx INT4 and parity Test'
       workingDirectory: $(Build.SourcesDirectory)
 
 - stage: Whisper_ONNX
