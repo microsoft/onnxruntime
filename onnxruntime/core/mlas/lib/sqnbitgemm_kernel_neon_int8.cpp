@@ -16,19 +16,23 @@ Abstract:
 
 --*/
 
-#include <cassert>
-
 #include <arm_neon.h>
+
+#include <cassert>
 
 #include "sqnbitgemm.h"
 #include "sqnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
 
-namespace sqnbitgemm_neon {
+namespace sqnbitgemm_neon
+{
 
 //
 // CompInt8 kernel implementation.
 //
+
+namespace
+{
 
 template <size_t SubBlkLen>
 MLAS_FORCEINLINE void
@@ -119,6 +123,8 @@ QuantizeBlock(
     }
 }
 
+}  // namespace
+
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
@@ -139,6 +145,13 @@ QuantizeARow_CompInt8(
         QuantABlkPtr += Q8BlkSize(BlkLen);
     }
 }
+
+namespace
+{
+
+//
+// The ComputeRxC functions compute an R row by C column tile of the output matrix.
+//
 
 template <bool HasZeroPoint>
 MLAS_FORCEINLINE void
@@ -1236,6 +1249,8 @@ SQ4BitGemmKernel_CompInt8_DispatchOnBlkLen(
     }
 }
 
+}  // namespace
+
 size_t
 SQ4BitGemmKernel_CompInt8(
     size_t BlkLen,
@@ -1287,4 +1302,4 @@ SQ4BitGemmKernel_CompInt8(
     return CountM;
 }
 
-}
+}  // namespace sqnbitgemm_neon
