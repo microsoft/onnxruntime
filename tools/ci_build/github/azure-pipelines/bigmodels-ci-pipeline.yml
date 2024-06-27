@@ -346,7 +346,7 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
-              ls -l llam2-7b-fp16; \
+              ls -l llama2-7b-fp16; \
               du -sh llama2-7b-fp16; \
               popd ; \
             "
