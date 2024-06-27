@@ -11,7 +11,7 @@
 	import github from "svelte-highlight/styles/github";
 
 	let pythonCode =
-		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# "Load and preprocess the input image inputTensor"\n...\n# Run inference\noutputs = session.run(None {"input": inputTensor})\nprint(outputs)';
+		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# "Load and preprocess the input image inputTensor"\n...\n# Run inference\noutputs = session.run(None, {"input": inputTensor})\nprint(outputs)';
 	let csharpCode =
 		'using Microsoft.ML.OnnxRuntime;\n// Load the model and create InferenceSession\nstring model_path = "path/to/your/onnx/model";\nvar session = new InferenceSession(model_path);\n// Load and preprocess the input image to inputTensor\n...\n// Run inference\nvar outputs = session.Run(inputTensor).ToList();\nConsole.WriteLine(outputs[0].AsTensor()[0]);';
 	let javascriptCode =
