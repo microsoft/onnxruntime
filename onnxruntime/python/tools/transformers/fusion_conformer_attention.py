@@ -59,17 +59,31 @@ class FusionConformerAttention(FusionAttention):
             logger.debug("fuse_conformer_attention: failed to match v path")
             return
 
-        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0])
+        qk_nodes = self.model.match_parent_path(
+            matmul_qkv,
+            ["Softmax", "Add", "Add", "MatMul"],
+            [0, 0, 0, 0])
 
         if qk_nodes is not None:
-            _, add_qk, matmul_qk = qk_nodes
+            _, add_mask_qk, add_embd_qk, matmul_qk = qk_nodes
         else:
             logger.debug("fuse_conformer_attention: failed to match qk path")
             return
 
+        mask_nodes = self.model.match_parent_path(
+            add_mask_qk,
+            ["Cast", "Reshape", "Where", "Equal", "Cast", "Cast"],
+            [1, 0, 0, 0, 0, 0],
+        )
+        if mask_nodes is not None:
+            _, _, where_mask, _, _, cast_mask = mask_nodes
+        else:
+            logger.debug("fuse_conformer_attention: failed to match mask path")
+            return
+
         q_nodes = self.model.match_parent_path(
             matmul_qk,
-            ["Div", "Transpose", "Reshape", "Add", "MatMul"],
+            ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
             [0, 0, 0, 0, 1],
         )
         if q_nodes is not None:
@@ -111,7 +125,8 @@ class FusionConformerAttention(FusionAttention):
             num_heads,
             hidden_size,
             attention_last_node.output[0],
-            add_qk=add_qk.input[1],
+            key_padding_mask=cast_mask.output[0],
+            add_qk=add_embd_qk.input[1],
             past_k=past_k,
             past_v=past_v,
             present_k=present_k,
