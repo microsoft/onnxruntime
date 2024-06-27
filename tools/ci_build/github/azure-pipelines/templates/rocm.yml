@@ -17,7 +17,7 @@ jobs:
 - job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}_${{ parameters.BuildConfig }}
   workspace:
     clean: all
-  timeoutInMinutes: 180
+  timeoutInMinutes: 360
   pool: Ubuntu-2204-rocm-aiinfra
   variables:
     - name: PythonVersion
