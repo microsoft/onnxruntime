@@ -285,6 +285,7 @@ DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_
             MoveAndAppend(target, ArgType::kInput, 0, ArgType::kInput),
             MoveAll(target, ArgType::kOutput)};
       }()} {
+        ORT_ENFORCE(accuracy_level >= 0 && accuracy_level_ <= 4, "MatMulNBits accuracy level must be between 0 and 4");
 }
 
 NodeAttributes
