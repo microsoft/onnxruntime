@@ -3,7 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cudaDriverWrapper.h"
 
 #define CU_CHECK(expr, driver) cuErrCheck(expr, *driver)

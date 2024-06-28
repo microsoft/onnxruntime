@@ -33,6 +33,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   global_context_->OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   global_context_->export_ep_ctx_blob = info.export_ep_ctx_blob_;
   global_context_->enable_qdq_optimizer = info.enable_qdq_optimizer_;
+  global_context_->disable_cpu_fallback = info.disable_cpu_fallback_;
 
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in

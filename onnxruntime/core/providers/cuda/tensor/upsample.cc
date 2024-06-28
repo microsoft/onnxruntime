@@ -230,7 +230,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           }
 
           const bool is_2D = X_dims.size() == 2;
-          const bool is_nchw = is_2D ? true : (scales[1] == 1.0f && scales[1] == 1.0f);
+          const bool is_nchw = is_2D ? true : (scales[0] == 1.0f && scales[1] == 1.0f);
 
           ORT_RETURN_IF_NOT(is_nchw,
                             "Resize 'Cubic' mode only supports NCWH layout "

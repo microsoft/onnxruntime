@@ -58,7 +58,7 @@ Do not modify directly.*
 | HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
-| LayerNormalization | ai.onnx(17+) |  |
+| LayerNormalization | ai.onnx(1-16,17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
 | Less | ai.onnx(7-8,9-12,13+) |  |
 | LessOrEqual | ai.onnx(12-15,16+) |  |
@@ -74,6 +74,7 @@ Do not modify directly.*
 | Not | ai.onnx(1+) |  |
 | Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
+| QuickGelu | com.microsoft(1+) |  |
 | Range | ai.onnx(11+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |

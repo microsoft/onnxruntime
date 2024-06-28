@@ -193,10 +193,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
 )
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -514,7 +510,8 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/mobile_helpers/*.py
     ${REPO_ROOT}/tools/ci_build/github/android/mobile_package.required_operators.config
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
-    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
 )
 file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
@@ -565,6 +562,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/requirements.txt
+      $<TARGET_FILE_DIR:${build_output_target}>
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -1025,7 +1025,4 @@ if (onnxruntime_USE_QNN)
   endif()
 endif()
 
-endif()
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
 endif()

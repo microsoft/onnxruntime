@@ -23,7 +23,7 @@ $ErrorActionPreference = "Stop"
 
 $Env:Path = "$install_prefix\bin;" + $env:Path
 $Env:MSBUILDDISABLENODEREUSE=1
-
+$Env:CMAKE_PREFIX_PATH = "$install_prefix"
 New-Item -Path "$install_prefix" -ItemType Directory -Force
 
 # Setup compile flags

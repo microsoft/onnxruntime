@@ -76,7 +76,11 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       0,
       0,
       0,
-      nullptr};
+      nullptr,
+      1,
+      "./compiled_model.mxr",
+      1,
+      "./compiled_model.mxr"};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -105,7 +109,8 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
+  SessionOptions session_options;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options)->CreateProvider();
 #else
   return nullptr;
 #endif

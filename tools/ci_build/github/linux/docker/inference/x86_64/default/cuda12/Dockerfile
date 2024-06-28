@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_2_x64_ubi8_gcc12_dotnet:20240531.1
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12_dotnet:20240610.1
 ARG TRT_VERSION
 
 #Install TensorRT only if TRT_VERSION is not empty

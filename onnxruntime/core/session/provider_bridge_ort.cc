@@ -35,6 +35,7 @@
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -1800,7 +1801,18 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
 }
 
-std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
+void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
+                                                   const SessionOptions* session_options) {
+  bool disable_cpu_fallback = session_options->config_options.GetConfigOrDefault(
+                                  kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  if (disable_cpu_fallback)
+    ov_options["disable_cpu_fallback"] = "true";
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(ProviderOptions* provider_options_map,
+                                                                                  const SessionOptions* session_options) {
+  if (session_options)
+    onnxruntime::ORTSessionOptionsToOrtOpenVINOProviderOptions(*provider_options_map, session_options);
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
@@ -2075,7 +2087,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
-  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
   }
@@ -2099,22 +2111,36 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
   return OrtApis::SessionOptionsAppendExecutionProvider_CUDA(options, &provider_options);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->SetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* device_id) {
   API_IMPL_BEGIN
+
+#ifdef USE_CUDA
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
+#ifdef USE_ROCM
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->GetCurrentGpuDeviceId(device_id);
+#endif
+
   return CreateStatus(ORT_FAIL, "CUDA and/or ROCM execution provider is either not enabled or not available.");
   API_IMPL_END
 }

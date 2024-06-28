@@ -120,7 +120,8 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
     bool is_per_axis_quant = false;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant));
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant, quant_axis));
 
     if (is_per_axis_quant) {
       int32_t elem_data_type = 0;
@@ -129,6 +130,13 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
                                   (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
       ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
+
+      if (conv_type == OnnxConvType::kConvTranspose) {
+        ORT_RETURN_IF_NOT(quant_axis == 1,
+                          "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
+      } else {
+        ORT_RETURN_IF_NOT(quant_axis == 0, "Conv's input[1] must be use axis == 0 for per-channel quantization");
+      }
     }
   }
 

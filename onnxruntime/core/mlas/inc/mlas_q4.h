@@ -358,3 +358,70 @@ MlasDequantizeBlockwise(
     int columns,
     MLAS_THREADPOOL* thread_pool
     );
+
+/**
+ * @brief Blockwise 2 bits or 4 bits quantization. After quantization, the weights and zero points
+ *        are packed row-wise. In terms of the qbits type, dst and src have the same shape, and
+ *        scales and zero_points have the same shape.
+ *        columns must be multiple of 8 / qbits.
+ * @tparam Tin
+ * @tparam qbits            number of bits used for quantization, 2 or 4
+ * @param src               points to the floating point matrix, to be quantized, row major shape [rows, columns]
+ * @param scales            points to the scales matrix, row major
+ * @param zero_points       points to the zero_points matrix, row major
+ * @param dst               points to the quantized matrix, shape [rows, columns] row major in qbits type.
+ *                          In uint8_t type, shape is [rows, columns * qbits / 8].
+ * @param columnwise        true when quantize elements in a column, false when quantize elements in a row.
+ * @param rows
+ * @param columns
+ * @param quant_block_size  number of elements in a quantize block
+ * @param thread_pool
+ */
+template <typename Tin, int qbits>
+void
+MlasQDQQuantizeBlockwise(
+    const Tin* src,
+    Tin* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+/**
+ * @brief Transpose blockwise quantized tensors. The src tensors are row major. src weights and zero
+ *        points are packed row-wise. The dst tensors are column major. dst weights and zero points
+ *        are packed column-wise.
+ * @tparam Tin
+ * @tparam qbits            number of bits used for quantization, 2 or 4
+ * @param src_weights       points to the quantized matrix, row major, shape [rows, columns] in qbits type.
+ *                          In uint8_t type, shape is [rows, columns * qbits / 8].
+ * @param src_scales        points to the scales matrix, row major
+ * @param src_zero_points   points to the zero_points matrix, row major. Packed row-wise.
+ * @param dst_weights       points to the quantized matrix, column major. Packed column-wise.
+ * @param dst_scales        points to the scales matrix, column major
+ * @param dst_zero_points   points to the zero_points matrix, column major. Packed column-wise.
+ * @param columnwise        true when quantize elements in a column, false when quantize elements in a row.
+ * @param rows
+ * @param columns
+ * @param quant_block_size  number of elements in a quantize block
+ * @param thread_pool
+ */
+template <typename Tin, int qbits>
+void
+MlasQDQTransposeBlockwiseQuantized(
+    const uint8_t* src_weights,
+    const Tin* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    Tin* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
