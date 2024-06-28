@@ -25,8 +25,10 @@ class EinsumOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Helper functions, thanks for DML EP's OperatorHelper.
@@ -59,8 +61,7 @@ struct Component {
   }
 };
 
-bool ParseEquationComponents(const InitializedTensorSet& initializers,
-                             const Node& node,
+bool ParseEquationComponents(const Node& node,
                              const std::string& equation,
                              std::vector<uint32_t>& label_indices,
                              std::vector<Component>& components,
@@ -484,7 +485,6 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& initializers(model_builder.GetInitializerTensors());
   emscripten::val output = emscripten::val::object();
 
   NodeAttrHelper helper(node);
@@ -494,9 +494,8 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<Component> components;
   std::vector<uint32_t> output_dimensions;
   uint32_t num_labels;
-  ORT_RETURN_IF_NOT(ParseEquationComponents(initializers, node, equation, label_indices,
-                                            components, output_dimensions, num_labels, logger),
-                    "Error parsing equation components.");
+  ORT_RETURN_IF_NOT(ParseEquationComponents(node, equation, label_indices, components, output_dimensions,
+                                            num_labels, logger), "Error parsing equation components.");
 
   RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
                                                                                     output_dimensions);
@@ -566,7 +565,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                         const Node& node,
                                         const WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
@@ -579,8 +578,8 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   std::vector<uint32_t> output_dimensions;
   uint32_t num_labels;
 
-  if (!ParseEquationComponents(initializers, node, equation, label_indices,
-                               components, output_dimensions, num_labels, logger)) {
+  if (!ParseEquationComponents(node, equation, label_indices,components,
+                               output_dimensions, num_labels, logger)) {
     LOGS(logger, VERBOSE) << "EinSum input equation is illegal.";
     return false;
   }
@@ -594,6 +593,80 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
                                                                                     output_dimensions);
   if (recognized_operator_type == RecognizedOperatorType::None) {
     LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
+    return false;
+  }
+
+  return true;
+}
+
+bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                             const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+
+  NodeAttrHelper helper(node);
+  const auto equation = helper.Get("equation", std::string(" "));
+  std::vector<uint32_t> label_indices;
+  std::vector<Component> components;
+  std::vector<uint32_t> output_dimensions;
+  uint32_t num_labels;
+
+  if (!ParseEquationComponents(node, equation, label_indices,
+                               components, output_dimensions, num_labels, logger)) {
+    LOGS(logger, VERBOSE) << "EinSum input equation is illegal.";
+    return false;
+  }
+
+  RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
+                                                                                    output_dimensions);
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
+  if (recognized_operator_type == RecognizedOperatorType::None) {
+    LOGS(logger, VERBOSE) << "The equation is not supported in Einsum.";
+    return false;
+  } else if (recognized_operator_type == RecognizedOperatorType::Pairwise) {
+    // WebNN gemm and matmul only support float32 and float16 input data types.
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    };
+  } else if (recognized_operator_type == RecognizedOperatorType::ReduceSum) {
+    supported_data_types = {
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+        ONNX_NAMESPACE::TensorProto_DataType_INT32,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+        ONNX_NAMESPACE::TensorProto_DataType_INT64,
+        ONNX_NAMESPACE::TensorProto_DataType_UINT64,
+    };
+
+    if (device_type == WebnnDeviceType::CPU) {
+      // WebNN CPU backend doesn't support uint32 and uint64 for reduceSum
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
+      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+    }
+  } else {
+    supported_data_types = webnn_supported_data_types;
+  }
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // A data type
+  int32_t input1_type;  // B data type
+  bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      (has_input1 && !GetType(*input_defs[1], input1_type, logger))) {
+    return false;
+  }
+
+  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input0_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (has_input1 && input0_type != input1_type) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input data types should be the same.";
     return false;
   }
 
