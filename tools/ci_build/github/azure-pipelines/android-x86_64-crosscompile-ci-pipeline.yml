@@ -85,7 +85,7 @@ stages:
         echo "ANDROID_HOME=$ANDROID_HOME" \
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
         ls -R $ANDROID_SDK_ROOT
-     displayName: Check Android NDKs
+      displayName: Check Android NDKs
 
     - script: |
         env | grep ANDROID
@@ -179,7 +179,7 @@ stages:
         echo "ANDROID_HOME=$ANDROID_HOME" \
         echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
         ls -R $ANDROID_SDK_ROOT
-     displayName: Check Android NDKs
+      displayName: Check Android NDKs
 
     - script: |
         env | grep ANDROID
