@@ -34,7 +34,7 @@ stages:
         versionSpec: '3.9'
         addToPath: true
 
-    - template: templates/set-version-number-variables-step.yml
+    - template: set-version-number-variables-step.yml
 
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
@@ -131,6 +131,6 @@ stages:
         publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
         allowPackageConflicts: true
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
