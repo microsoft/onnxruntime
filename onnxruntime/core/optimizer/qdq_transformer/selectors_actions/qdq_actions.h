@@ -82,7 +82,7 @@ struct MatMulReplaceWithQLinear : public Action {
 
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
 struct DQMatMulReplaceWithMatMulNBits : public Action {
-  explicit DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level = -1);
+  explicit DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level);
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
  private:
@@ -91,7 +91,6 @@ struct DQMatMulReplaceWithMatMulNBits : public Action {
   // transpose initializers, and add to the MatMulNBits inputs
   void AddTransposedInitializers(Graph&, const NodesToOptimize& selected_nodes, Node& replacement_node) const;
 
-  // -1 means not set
   const int64_t accuracy_level_;
   const std::string domain_;
   const std::string op_type_;
