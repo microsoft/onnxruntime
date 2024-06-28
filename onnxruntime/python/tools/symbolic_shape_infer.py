@@ -606,9 +606,10 @@ class SymbolicShapeInference:
             # Handle NaN and inf values explicitly
             if np.isinf(value):
                 # Use the maximum float value as the replacement
-                return np.finfo(np.float32).max
+                return int(np.finfo(np.float32).max)
             if np.isnan(value):
                 return 0
+            return int(value)
 
         values = [self._try_get_value(node, i) for i in range(len(node.input))]
         if all([v is not None for v in values]):
