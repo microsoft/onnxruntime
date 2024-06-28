@@ -700,9 +700,16 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLenGreaterThan32(
         const float32x4_t scale = vdupq_n_f32(Q8BlkScale(QuantABlk0) * QuantBScalePtr[0]);
 
         // load B zero point
-        const int8x16_t bzp = vdupq_n_s8(
-            HasZeroPoint ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F}) : 8
-        );
+        const int8x16_t bzp = [&]() -> int8x16_t {
+            if constexpr (HasZeroPoint) {
+                return vdupq_n_s8(
+                    ((k_blk_idx & 1) == 0) ? std::to_integer<int8_t>((*QuantBZeroPointPtr) & std::byte{0x0F})
+                                           : std::to_integer<int8_t>((*QuantBZeroPointPtr) >> 4)
+                );
+            } else {
+                return vdupq_n_s8(8);
+            }
+        }();
 
         const int8_t* QuantADataPtr = Q8BlkData(QuantAPtr);
 
