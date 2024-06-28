@@ -66,6 +66,21 @@ using TimePoint = std::chrono::high_resolution_clock::time_point;
 #define ORT_ATTRIBUTE_UNUSED
 #endif
 
+// ORT_CACHELINE_SIZE
+//
+// Defines L1 cache line size for various architectures
+// Can be used for the purpose of aligning data on cache line boundaries
+#if defined(__x86_64__)
+#define ORT_CACHELINE_SIZE 64
+#elif defined(__aarch64__)
+#define ORT_CACHELINE_SIZE 64
+#elif defined(__powerpc64__)
+#define ORT_CACHELINE_SIZE 128
+#else
+// Default for all other architectures
+#define ORT_CACHELINE_SIZE 64
+#endif
+
 #ifdef ORT_NO_EXCEPTIONS
 // Print the given final message, the message must be a null terminated char*
 // ORT will abort after printing the message.

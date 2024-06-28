@@ -47,6 +47,7 @@
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+#include "core/common/common.h"
 #include "core/common/denormal.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/spin_pause.h"
@@ -190,9 +191,9 @@ enum class PushResult {
 //   support for aligned allocation which we could use here.
 
 #if defined(__x86_64__)
-#define ORT_FALSE_SHARING_BYTES 128
+#define ORT_FALSE_SHARING_BYTES (ORT_CACHELINE_SIZE * 2)
 #else
-#define ORT_FALSE_SHARING_BYTES 64
+#define ORT_FALSE_SHARING_BYTES ORT_CACHELINE_SIZE
 #endif
 
 #define ORT_ALIGN_TO_AVOID_FALSE_SHARING alignas(ORT_FALSE_SHARING_BYTES)

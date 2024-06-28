@@ -255,19 +255,18 @@ std::string ThreadPoolProfiler::DumpChildThreadStat() {
 #pragma warning(disable : 4324) /* Padding added to LoopCounterShard, LoopCounter for alignment */
 #endif
 
-static constexpr int CACHE_LINE_BYTES = 64;
 static constexpr unsigned MAX_SHARDS = 8;
 
 static constexpr int TaskGranularityFactor = 4;
 
-struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
+struct alignas(ORT_CACHELINE_SIZE) LoopCounterShard {
   ::std::atomic<uint64_t> _next{0};
   uint64_t _end{0};
 };
 
-static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
+static_assert(sizeof(LoopCounterShard) == ORT_CACHELINE_SIZE, "Expected loop counter shards to match cache-line size");
 
-class alignas(CACHE_LINE_BYTES) LoopCounter {
+class alignas(ORT_CACHELINE_SIZE) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
               uint64_t d_of_p,
@@ -361,7 +360,7 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
     return num_shards;
   }
 
-  alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
+  alignas(ORT_CACHELINE_SIZE) LoopCounterShard _shards[MAX_SHARDS];
   const unsigned _num_shards;
 };
 
@@ -441,7 +440,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
   } else {
     int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
     std::ptrdiff_t base_block_size = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks)));
-    alignas(CACHE_LINE_BYTES) std::atomic<std::ptrdiff_t> left{total};
+    alignas(ORT_CACHELINE_SIZE) std::atomic<std::ptrdiff_t> left{total};
     LoopCounter lc(total, d_of_p, base_block_size);
     std::function<void(unsigned)> run_work = [&](unsigned idx) {
       std::ptrdiff_t b = base_block_size;
