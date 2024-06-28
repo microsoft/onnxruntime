@@ -321,7 +321,6 @@ void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*curr
                                         uint64_t /*alignment*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
   // even for empty tensors, so allocate a dummy byte.
-  LOGS_DEFAULT(WARNING) << "[TensorRT EP] reallocateOutput() is deprecated after TensorRT 8.6";
   size = std::max(size, static_cast<uint64_t>(1));
   if (size > allocated_size) {
     cudaFree(outputPtr);
