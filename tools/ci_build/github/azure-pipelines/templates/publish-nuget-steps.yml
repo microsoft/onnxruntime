@@ -38,7 +38,7 @@ stages:
 
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
-    - template: nuget/templates/get-nuget-package-version-as-variable.yml
+    - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
