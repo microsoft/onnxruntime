@@ -376,9 +376,9 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.x
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.x
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install mobile workloads
