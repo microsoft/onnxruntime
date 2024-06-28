@@ -577,7 +577,8 @@ class MatMul4BitsQuantizer:
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
-        algo_config: WeightOnlyQuantConfig = None,
+        quant_format=QuantFormat.QOperator,
+        algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
             nodes_to_exclude = []
@@ -590,7 +591,8 @@ class MatMul4BitsQuantizer:
         self.node_quantizer = None
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
-                block_size=block_size, is_symmetric=is_symmetric, accuracy_level=accuracy_level
+                block_size=block_size, is_symmetric=is_symmetric, accuracy_level=accuracy_level,
+                quant_format=quant_format
             )
         self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
