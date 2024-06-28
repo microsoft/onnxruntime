@@ -18,6 +18,7 @@ steps:
   - script: |
       set -e -x
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "emulator"
+      ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
         --create-avd --system-image "system-images;android-31;default;x86_64"
