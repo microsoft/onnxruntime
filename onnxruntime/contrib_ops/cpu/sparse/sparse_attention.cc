@@ -204,7 +204,7 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value,
                         output, present_key, present_value,
-                        total_key_lengths, parameters, allocator, context);
+                        total_key_lengths, block_row_indices, block_col_indices, parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

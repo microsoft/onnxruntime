@@ -818,12 +818,13 @@ def get_simple_test_case(provider: str, has_past_kv: bool):
     device, dtype, _formats = get_provider_support_info(provider, False)
     if provider == "CPUExecutionProvider":
         # A simple case for debugging purpose.
-        sequence_length = 3
+        max_sequence_length = 16
+        sequence_length = 15
         packed_qkv = False
         config = SparseAttentionConfig(
             batch_size=1,
             sequence_length=1 if has_past_kv else sequence_length,
-            max_sequence_length=16,
+            max_sequence_length=max_sequence_length,
             past_sequence_length=sequence_length if has_past_kv else 0,
             num_heads=4,
             kv_num_heads=2,
@@ -836,7 +837,7 @@ def get_simple_test_case(provider: str, has_past_kv: bool):
             device=device,
             dtype=dtype,
             is_packed_qkv=packed_qkv,
-            max_cache_sequence_length=None if sequence_length >= 128 else 128,
+            max_cache_sequence_length=max_sequence_length,
         )
         yield config
 
@@ -942,8 +943,7 @@ class TestSparseAttention(unittest.TestCase):
 
     @parameterized.expand(get_test_cases("CPUExecutionProvider", False, comprehensive_mode), skip_on_empty=True)
     def test_sparse_att_prompt_cpu(self, config):
-        if config.sparse_block_size * config.local_blocks > config.total_sequence_length:
-            self.run_one_relevance_test(config)
+        self.run_one_relevance_test(config)
 
     @parameterized.expand(get_test_cases("CUDAExecutionProvider", False, comprehensive_mode), skip_on_empty=True)
     def test_sparse_att_prompt_gpu(self, config):

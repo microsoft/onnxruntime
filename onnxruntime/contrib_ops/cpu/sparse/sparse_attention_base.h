@@ -3,7 +3,6 @@
 
 #pragma once
 
-// #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
 
 #include "core/common/common.h"
@@ -53,6 +52,8 @@ class SparseAttentionBase {
                         Tensor* present_key,                    // present K output tensor
                         Tensor* present_value,                  // present V output tensor
                         const Tensor* total_key_lengths,        // total key lengths tensor
+                        const Tensor* block_row_indices,        // block row indices
+                        const Tensor* block_col_indices,        // block column indices
                         SparseAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                 // allocator for temporary tensors
                         OpKernelContext* context) const {
@@ -79,7 +80,8 @@ class SparseAttentionBase {
         static_cast<T*>(attention_probs), Q, k, total_key_lengths->Data<int32_t>(),
         batch_size, sequence_length, parameters.total_sequence_length,
         past_buffer_sequence_length, present_buffer_sequence_length, head_size,
-        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv, tp);
+        past_key->Data<T>(), present_key->MutableData<T>(), past_present_share_buffer, packed_qkv,
+        block_row_indices->Data<int32_t>(), block_col_indices->Data<int32_t>(), parameters, tp);
 
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -98,21 +100,25 @@ class SparseAttentionBase {
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                  // output buffer with size BxNxSxT
-                             const T* Q,                          // query start pointer
-                             const T* K,                          // key start pointer
-                             const int32_t* total_key_lengths,    // total key sequence lengths (past + new)
-                             int batch_size,                      // batch size
-                             int sequence_length,                 // sequence length of query or new key
-                             int total_sequence_length,           // maximum past_sequence_length + sequence_length
-                             int past_buffer_sequence_length,     // sequence length of past_key or past_value
-                             int present_buffer_sequence_length,  // sequence length of present_key or present_value
-                             int head_size,                       // head size of query
-                             const T* past_key,                   // past key
-                             T* present_key,                      // present key
-                             bool past_present_share_buffer,      // whether past_key and present_key share the buffer
-                             bool packed_qkv,                     // whether Q, K, V are packed
-                             ThreadPool* tp) const {              // thread pool
+  void ComputeAttentionProbs(
+      T* attention_probs,                     // output buffer with size BxNxSxT
+      const T* Q,                             // query start pointer
+      const T* K,                             // key start pointer
+      const int32_t* total_key_lengths,       // total key sequence lengths (past + new)
+      int batch_size,                         // batch size
+      int sequence_length,                    // sequence length of query or new key
+      int total_sequence_length,              // maximum past_sequence_length + sequence_length
+      int past_buffer_sequence_length,        // sequence length of past_key or past_value
+      int present_buffer_sequence_length,     // sequence length of present_key or present_value
+      int head_size,                          // head size of query
+      const T* past_key,                      // past key
+      T* present_key,                         // present key
+      bool past_present_share_buffer,         // whether past_key and present_key share the buffer
+      bool packed_qkv,                        // whether Q, K, V are packed
+      const int32_t* block_row_indices,       // block row indices
+      const int32_t* block_col_indices,       // block column indices
+      SparseAttentionParameters& parameters,  // parameters
+      ThreadPool* tp) const {                 // thread pool
     const bool is_prompt = (total_sequence_length == sequence_length);
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
@@ -148,6 +154,17 @@ class SparseAttentionBase {
     unit_cost.bytes_stored += bytes_to_copy_key;
 
     DUMP_CPU_TENSOR_INIT();
+    DUMP_CPU_TENSOR("block_row_indices", block_row_indices, parameters.num_sparse_layout, parameters.stride_row_indices);
+    DUMP_CPU_TENSOR("block_col_indices", block_col_indices, parameters.num_sparse_layout, parameters.stride_col_indices);
+
+    // Check whether each layout has sparse (has zero in lower triangular)
+    std::vector<bool> layout_has_sparse(parameters.num_sparse_layout);
+    for (int layout_index = 0; layout_index < parameters.num_sparse_layout; layout_index++) {
+      int nonzero_elements = block_row_indices[(layout_index + 1) * parameters.stride_row_indices - 1];
+      int dense_nonzero = (parameters.stride_row_indices * (parameters.stride_row_indices - 1)) / 2;
+      layout_has_sparse[layout_index] = nonzero_elements < dense_nonzero;
+      DUMP_STRING("layout_has_sparse[", layout_index, "]=", layout_has_sparse[layout_index]);
+    }
 
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       DUMP_STRING("batch_size=", batch_size, ",num_heads=", num_heads_, ",loop_len=", loop_len, ",begin=", begin, ",end=", end);
@@ -197,21 +214,87 @@ class SparseAttentionBase {
 
         DUMP_CPU_TENSOR("QK", output, sequence_length, total_seq_len);
 
-        // compute Softmax
+        // Compute Softmax for causal and output result in place.
         T* output_softmax = output;
-        for (int seq = 0; seq < sequence_length; seq++) {
-          int seq_causal_length = is_prompt ? seq + 1 : total_seq_len;
 
-          // DUMP_STRING("seq=", seq, ",seq_causal_length=", seq_causal_length);
+        int layout_id = head_index % parameters.num_sparse_layout;
+        bool is_sparse_layout = layout_has_sparse[layout_id];
 
-          ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+        DUMP_STRING("layout_id=", layout_id, ",is_sparse_layout=", is_sparse_layout);
 
-          // set causal [seq_causal_length, total_seq_len) to 0.f
-          for (int remain_seq_id = seq_causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
-            output_softmax[remain_seq_id] = 0.f;
+        if (!is_sparse_layout) {  // dense
+          for (int q_id = 0; q_id < sequence_length; q_id++) {
+            int causal_length = past_seq_len + q_id + 1;
+            ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
+            for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
+              output_softmax[remain_seq_id] = 0.f;
+            }
+            output_softmax += total_seq_len;
           }
+        } else {  // sparse
+          int q_id = 0;
+          bool has_sparse = false;
+          std::vector<int32_t> mask(parameters.max_sequence_length);
 
-          output_softmax += total_seq_len;
+          const int32_t* layout_row_indices = block_row_indices + layout_id * parameters.stride_row_indices;
+          const int32_t* layout_col_indices = block_col_indices + layout_id * parameters.stride_col_indices;
+          do {
+            int q_abs_position = past_seq_len + q_id;
+            int causal_length = q_abs_position + 1;
+
+            // Update mask when query token is the first or at the boundary of sparse block.
+            if (q_id == 0 || q_abs_position % parameters.sparse_block_size == 0) {
+              int row_in_sparse_layout = q_abs_position / parameters.sparse_block_size;
+              int start_in_col_indices = layout_row_indices[row_in_sparse_layout];
+              int end_in_col_indices = layout_row_indices[row_in_sparse_layout + 1];
+              int nonzero_blocks = end_in_col_indices - start_in_col_indices;
+              has_sparse = (nonzero_blocks != row_in_sparse_layout + 1);
+
+              DUMP_STRING("q_id=", q_id,
+                          ",q_abs_position=", q_abs_position,
+                          ",sparse_block_size=", parameters.sparse_block_size,
+                          ",row_in_sparse_layout=", row_in_sparse_layout,
+                          ",start_in_col_indices=", start_in_col_indices,
+                          ",end_in_col_indices=", end_in_col_indices,
+                          ",nonzero_blocks=", nonzero_blocks,
+                          ",has_sparse=", has_sparse);
+
+              // Expand attention mask for current row of q_id
+              if (has_sparse) {
+                int block_aligned_length = q_abs_position / parameters.sparse_block_size * parameters.sparse_block_size + parameters.sparse_block_size;
+                DUMP_STRING("block_aligned_length=", block_aligned_length);
+
+                std::fill_n(mask.begin(), block_aligned_length, 0);
+                for (int j = start_in_col_indices; j < end_in_col_indices; j++) {
+                  int col_in_sparse_layout = layout_col_indices[j];
+
+                  int offset = col_in_sparse_layout * parameters.sparse_block_size;
+                  for (int s = 0; s < parameters.sparse_block_size; s++, offset++) {
+                    mask[offset] = 1;
+                  }
+                }
+
+                DUMP_CPU_TENSOR("mask", mask, block_aligned_length);
+              }
+            }
+
+            // Update inline according to attention mask.
+            if (has_sparse) {
+              for (int s = 0; s < causal_length; s++) {
+                if (mask[s] == 0)
+                  output_softmax[s] = std::numeric_limits<T>::lowest();
+              }
+            }
+            ComputeAttentionSoftmaxInplace(output_softmax, 1, causal_length, nullptr);
+
+            for (int remain_seq_id = causal_length; remain_seq_id < total_seq_len; remain_seq_id++) {
+              output_softmax[remain_seq_id] = 0.f;
+            }
+
+            output_softmax += total_seq_len;
+            q_id++;
+
+          } while (q_id < sequence_length);
         }
 
         DUMP_CPU_TENSOR("softmax", output, sequence_length, total_seq_len);
