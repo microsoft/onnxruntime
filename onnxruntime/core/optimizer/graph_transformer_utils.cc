@@ -287,6 +287,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                onnxruntime::kJsExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_eps = {onnxruntime::kCpuExecutionProvider,
                                                             onnxruntime::kDmlExecutionProvider};
+      const int64_t qdq_matmulnbits_accuracy_level =
+          std::stoi(session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                      "4"));
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -300,7 +303,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!qdq_is_int8_allowed) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(avx2_precision_mode, cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
+                                                                                 SatApplyContextVariant{},
+                                                                                 qdq_matmulnbits_accuracy_level));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
