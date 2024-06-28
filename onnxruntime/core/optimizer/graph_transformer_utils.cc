@@ -423,12 +423,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
-
+      const int64_t qdq_matmulnbits_accuracy_level =
+          std::stoi(session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                      "4"));
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
       if (!disable_quant_qdq) {
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed, apply_context));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
+                                                                                 apply_context,
+                                                                                 qdq_matmulnbits_accuracy_level));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
