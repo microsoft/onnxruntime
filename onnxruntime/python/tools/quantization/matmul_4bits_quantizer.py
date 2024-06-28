@@ -591,8 +591,10 @@ class MatMul4BitsQuantizer:
         self.node_quantizer = None
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
-                block_size=block_size, is_symmetric=is_symmetric, accuracy_level=accuracy_level,
-                quant_format=quant_format
+                block_size=block_size,
+                is_symmetric=is_symmetric,
+                accuracy_level=accuracy_level,
+                quant_format=quant_format,
             )
         self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
