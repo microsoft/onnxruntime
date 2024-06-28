@@ -602,7 +602,7 @@ SQ4BitGemm_CompInt8(
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
     if (RangeCountM == 1) {
-        if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 && BlkLen == 16)
+        if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8 == nullptr || (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 && BlkLen == 16))
         {
             //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
 

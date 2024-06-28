@@ -132,7 +132,7 @@ PackQuantB(
                 const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
                 for (size_t k = 0; k < k_blks_remaining; k++) {
                     const size_t k_blk = k_subblk * SubBlkLen / BlkLen + k;
-                    if (BlkLen == 16) {
+                    if (BlkLen == 16 || SubBlkLen == 128) { // TODO: 
                       // not to do the compute order layout yet
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
                         pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
@@ -148,7 +148,7 @@ PackQuantB(
             }
             else
             {
-                if (BlkLen == 16) {
+                if (BlkLen == 16 || SubBlkLen == 128) {
                     // not to do the compute order layout yet
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
@@ -208,7 +208,7 @@ ComputePackBlkSum(
           const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
 #endif
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-        if (Blklen == 16) {
+        if (true || Blklen == 16) { // TODO
 
         } else if (Blklen == 32) {
             size_t scale_dst_offset = GetContinueLayoutOffset32(N, n, BlockCountK, k_blk);
