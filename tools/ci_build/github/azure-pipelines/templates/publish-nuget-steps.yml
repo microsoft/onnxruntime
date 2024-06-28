@@ -1,7 +1,7 @@
 parameters:
-- name: single_artifact
+- name: include_cpu_ep
   type: boolean
-  default: true
+  default: false
 - name: download_artifacts_steps
   type: stepList
 
@@ -42,7 +42,7 @@ stages:
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
-    - ${{if eq(parameters.single_artifact, false)}}:
+    - ${{if eq(parameters.include_cpu_ep, true)}}:
       - download: build
         displayName: 'Download Pipeline Artifact - Signed NuGet Package'
         artifact: 'drop-signed-nuget-CPU'

@@ -12,7 +12,7 @@ resources:
 stages:
   - template: templates/publish-nuget-steps.yml
     parameters:
-      single_artifact: false
+      include_cpu_ep: true
       download_artifacts_steps:
         - download: build
           displayName: 'Download Pipeline Artifact - Signed NuGet Package'
