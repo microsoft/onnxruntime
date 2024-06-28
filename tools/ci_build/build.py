@@ -79,6 +79,7 @@ def _openvino_verify_device_type(device_read):
         "CPU_NO_PARTITION",
         "GPU_NO_PARTITION",
         "NPU_NO_PARTITION",
+        "NPU_NO_CPU_FALLBACK",
     ]
     status_hetero = True
     res = False
@@ -1227,6 +1228,7 @@ def generate_build_tree(
     if args.use_openvino:
         cmake_args += [
             "-Donnxruntime_USE_OPENVINO=ON",
+            "-Donnxruntime_NPU_NO_FALLBACK=" + ("ON" if args.use_openvino == "NPU_NO_CPU_FALLBACK" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU=" + ("ON" if args.use_openvino == "GPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU=" + ("ON" if args.use_openvino == "CPU" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_NPU=" + ("ON" if args.use_openvino == "NPU" else "OFF"),

@@ -1341,6 +1341,10 @@ if (onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
+  if(onnxruntime_NPU_NO_FALLBACK)
+    add_definitions(-DOPENVINO_DISABLE_NPU_FALLBACK=1)
+  endif()
+
   if (onnxruntime_USE_OPENVINO_GPU)
     add_definitions(-DOPENVINO_CONFIG_GPU=1)
   endif()
