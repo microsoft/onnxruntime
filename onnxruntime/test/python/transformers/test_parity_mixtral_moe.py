@@ -43,7 +43,7 @@ def print_tensor(name, numpy_array):
 
 
 def save_model_to_disk(model, model_path):
-    external_data_path = "mixtral_moe.onnx" + ".data"
+    external_data_path = model_path + ".data"
     onnx.save_model(
         model, model_path, save_as_external_data=True, all_tensors_to_one_file=True, location=external_data_path
     )
