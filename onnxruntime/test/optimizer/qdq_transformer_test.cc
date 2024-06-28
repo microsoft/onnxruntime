@@ -1133,6 +1133,51 @@ TEST(QDQTransformerTests, FlattenDropQDQ) {
   }
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Expand -> Q.
+template <typename QuantType>
+static void RunExpandDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                     const std::vector<int64_t>& expanded_shape,
+                                     bool use_contrib_qdq = false,
+                                     int opset = 21) {
+  auto build_test_case = [input_shape, expanded_shape, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* expanded_shape_arg = builder.Make1DInitializer(expanded_shape);
+    auto* expand_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Expand", {input_arg_dq, expanded_shape_arg}, {expand_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(expand_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Expand"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Expand -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, ExpandDropQDQ) {
+  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13});
+  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);     // Use com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);    // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);       // Use int16 ONNX QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);      // Use int16 ONNX QDQ ops
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;
