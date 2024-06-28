@@ -304,7 +304,7 @@ std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
 }
 
 int WindowsEnv::GetL2CacheSize() const {
-  return ;
+  return l2_cache_size_;
 }
 
 WindowsEnv& WindowsEnv::Instance() {
