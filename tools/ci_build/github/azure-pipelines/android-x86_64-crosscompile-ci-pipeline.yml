@@ -170,8 +170,6 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-      parameters:
-
 
     - script: |
         set -e -x \
