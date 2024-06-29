@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/path.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/ort_value.h"
@@ -260,13 +259,11 @@ Status LoadModelCheckpoint(
     ORT_RETURN_IF_ERROR(Env::Default().GetCanonicalPath(
         checkpoint_path, checkpoint_canonical_path));
 
-    Path relative_tensors_data_path_obj{};
-    ORT_RETURN_IF_ERROR(RelativePath(
-        Path::Parse(model_directory_canonical_path),
-        Path::Parse(GetCheckpointTensorsDataFilePath(checkpoint_canonical_path)),
-        relative_tensors_data_path_obj));
+    Path relative_tensors_data_path_obj = std::filesystem::relative(
+        model_directory_canonical_path,
+        GetCheckpointTensorsDataFilePath(checkpoint_canonical_path));
     ORT_RETURN_IF_ERROR(UpdateTensorsExternalDataLocations(
-        relative_tensors_data_path_obj.ToPathString(), loaded_tensor_protos));
+        relative_tensors_data_path_obj.native(), loaded_tensor_protos));
   }
 
   // read properties file
