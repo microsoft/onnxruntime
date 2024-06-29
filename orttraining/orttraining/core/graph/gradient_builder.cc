@@ -2214,5 +2214,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetResizeGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetGemmaRotaryEmbeddingGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"GemmaRotaryEmbeddingGrad", kMSDomain, 1},
+              {GO(0), GO(1), I(0)}, // output1, output2, emb
+              {GI(1), GI(2), GI(3), GI(4)} // q_grad, q_rot_grad, k_grad, k_rot_grad
+              )};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

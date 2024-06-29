@@ -3350,6 +3350,29 @@ TEST(GradientCheckerTest, ResizeGrad) {
   EXPECT_IS_TINY(max_error);
 }
 
+TEST(GradientCheckerTest, GemmaRotaryEmbeddingGrad) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  // OpDef op_def{"GemmaRotaryEmbedding", kOnnxDomain, 18};
+  OpDef op_def{"GemmaRotaryEmbedding", kMSDomain, 1};
+
+  TensorInfo qk_dim({1, 3, 2, 2}, true);
+  TensorInfo emb_dim({1, 2, 2}, false);
+
+  std::vector<std::vector<float>> x_datas = { {0.2f, 0.4f, 0.6f, 0.8f},
+                                              {0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                              {0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                              {0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                              {0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f}};
+
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {emb_dim, qk_dim, qk_dim, qk_dim, qk_dim},
+                                                         {qk_dim, qk_dim}, &max_error, x_datas, {}, true, false, &execution_providers));
+  EXPECT_IS_TINY(max_error);
+}
+
 #endif  // USE_CUDA
 
 }  // namespace test

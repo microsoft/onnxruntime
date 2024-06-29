@@ -1435,7 +1435,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "output2",
                 "4D tensor with shape (batch_size, num_heads, seq_len, dim)",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float16 tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float16 tensors.")
         .TypeConstraint("U", {"tensor(float)"}, "Constrain input 0 type to float tensors")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 1, 0);

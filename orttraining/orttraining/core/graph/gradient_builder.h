@@ -93,6 +93,7 @@ DECLARE_GRADIENT_BUILDER(GetReciprocalGradient)
 DECLARE_GRADIENT_BUILDER(GetLeakyReluGradient)
 DECLARE_GRADIENT_BUILDER(GetConvTransposeGradient)
 DECLARE_GRADIENT_BUILDER(GetResizeGradient)
+DECLARE_GRADIENT_BUILDER(GetGemmaRotaryEmbeddingGradient)
 
 DECLARE_GRADIENT_BUILDER(GetExternalGradient)
 

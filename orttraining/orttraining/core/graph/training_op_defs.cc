@@ -5058,6 +5058,36 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, 1, 0);
         }
       });
+  
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GemmaRotaryEmbeddingGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY1", "Gradient of output Y1.", "T")
+      .Input(1, "dY2", "Gradient of output Y2.", "T")
+      .Input(2, "X", "Input emb", "U")
+      .Output(0, "dq", "Gradient of the input q.", "T")
+      .Output(1, "dq_rot", "Gradient of the input q_rot.", "T")
+      .Output(2, "dk", "Gradient of the input k.", "T")
+      .Output(3, "dk_rot", "Gradient of the input k_rot.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain all input and output types except for emb to float16 tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float)"},
+          "Constrain input emb float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        propagateElemTypeFromInputToOutput(ctx, 0, 2);
+        propagateElemTypeFromInputToOutput(ctx, 0, 3);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+        propagateShapeFromInputToOutput(ctx, 0, 1);
+        propagateShapeFromInputToOutput(ctx, 0, 2);
+        propagateShapeFromInputToOutput(ctx, 0, 3);
+      });
 }
 
 }  // namespace training
