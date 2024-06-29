@@ -4,7 +4,7 @@ description: Instructions to setup the CUDA environtment to run onnxruntime-gena
 has_children: false
 parent: How to
 grand_parent: Generate API (Preview)
-nav_order: 4
+nav_order: 5
 ---
 
 # Setup the CUDA Environment
