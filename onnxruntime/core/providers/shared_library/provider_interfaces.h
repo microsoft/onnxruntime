@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 #include <list>
+#include <filesystem>
 
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
@@ -209,7 +210,7 @@ struct ProviderHost {
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) = 0;
-  virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+  virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                                        /*out*/ std::vector<uint8_t>& unpacked_tensor) = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
@@ -784,7 +785,7 @@ struct ProviderHost {
   virtual const std::string& NodeUnit__Name(const NodeUnit* p) noexcept = 0;
   virtual int NodeUnit__SinceVersion(const NodeUnit* p) noexcept = 0;
   virtual NodeIndex NodeUnit__Index(const NodeUnit* p) noexcept = 0;
-  virtual const Path& NodeUnit__ModelPath(const NodeUnit* p) noexcept = 0;
+  virtual const std::filesystem::path& NodeUnit__ModelPath(const NodeUnit* p) noexcept = 0;
   virtual ProviderType NodeUnit__GetExecutionProviderType(const NodeUnit* p) noexcept = 0;
 
   virtual const Node& NodeUnit__GetNode(const NodeUnit* p) noexcept = 0;
@@ -806,7 +807,7 @@ struct ProviderHost {
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;
-  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::string& external_file_name, const PathString& file_path, size_t initializer_size_threshold) = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) = 0;
   virtual const ModelMetaData& Model__MetaData(const Model* p) const noexcept = 0;
   virtual Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) = 0;
 
@@ -834,7 +835,7 @@ struct ProviderHost {
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
   virtual Graph* Graph__MutableParentGraph(Graph* p) = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
-  virtual const Path& Graph__ModelPath(const Graph* p) const = 0;
+  virtual const std::filesystem::path& Graph__ModelPath(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
   virtual const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const = 0;
@@ -868,7 +869,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
-  virtual const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
+  virtual const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
