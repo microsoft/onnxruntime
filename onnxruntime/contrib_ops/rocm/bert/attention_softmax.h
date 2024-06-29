@@ -55,10 +55,10 @@ __device__ inline void Softmax(const int all_sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
+  const int64_t offset = (blockIdx.y * int64_t(gridDim.x) + blockIdx.x) * all_sequence_length;
   for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
-      const int index = offset + i;
+      const int64_t index = offset + i;
       float input_at_idx = add_before_softmax == nullptr
                                ? static_cast<float>(input[index])
                                : static_cast<float>(input[index] + add_before_softmax[index]);
@@ -79,7 +79,7 @@ __device__ inline void Softmax(const int all_sequence_length,
   float thread_data_sum(0.f);
   for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
-      const int index = offset + i;
+      const int64_t index = offset + i;
       float val = add_before_softmax == nullptr ? input[index] : input[index] + add_before_softmax[index];
       thread_data_sum += expf(val - max_block);
     }
@@ -92,7 +92,7 @@ __device__ inline void Softmax(const int all_sequence_length,
   __syncthreads();
 
   for (int i = threadIdx.x; i < all_sequence_length; i += TPB) {
-    const int index = offset + i;
+    const int64_t index = offset + i;
     float input_at_idx = add_before_softmax == nullptr
                              ? static_cast<float>(input[index])
                              : static_cast<float>(input[index] + add_before_softmax[index]);
@@ -117,8 +117,8 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   __shared__ float max_block;
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
-  const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
-  const int index = offset + threadIdx.x;
+  const int64_t offset = (blockIdx.y * int64_t(gridDim.x) + blockIdx.x) * all_sequence_length;
+  const int64_t index = offset + threadIdx.x;
 
   bool is_valid = false;  // whether it has attention mask == 1.
 
@@ -192,7 +192,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
   __shared__ float max_block;
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
-  int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
+  int64_t index = (blockIdx.y * int64_t(gridDim.x) + blockIdx.x) * all_sequence_length + threadIdx.x;
 
   // Mask all thread_data values to negative infinity to allow BlockReduce Max operation over all thread_data
   // members with all invalid members set to a value that does not impact the final result. This is necessary
