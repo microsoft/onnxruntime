@@ -190,6 +190,14 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider() {
+#if defined(USE_VSINPU)
+  return VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #ifdef USE_RKNPU
   return RknpuProviderFactoryCreator::Create()->CreateProvider();
