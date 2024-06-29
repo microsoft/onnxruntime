@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "core/common/path.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
