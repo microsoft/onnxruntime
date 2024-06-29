@@ -811,7 +811,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     const onnxruntime::GraphViewer& graph_viewer_0(fused_nodes_and_graphs[0].filtered_graph);
     is_ctx_file_exist = qnn::ValidateContextCacheFilePath(is_qnn_ctx_model,
                                                           context_cache_path_cfg_,
-                                                          graph_viewer_0.ModelPath().ToPathString(),
+                                                          graph_viewer_0.ModelPath().native(),
                                                           context_cache_path);
   }
 

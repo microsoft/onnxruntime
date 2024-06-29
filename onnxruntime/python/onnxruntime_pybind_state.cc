@@ -1084,7 +1084,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
-            &OV_provider_options_map)) {
+            &OV_provider_options_map, &session_options)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
