@@ -260,8 +260,7 @@ Status LoadModelCheckpoint(
         checkpoint_path, checkpoint_canonical_path));
 
     std::filesystem::path relative_tensors_data_path_obj = std::filesystem::relative(
-        model_directory_canonical_path,
-        GetCheckpointTensorsDataFilePath(checkpoint_canonical_path));
+        GetCheckpointTensorsDataFilePath(checkpoint_canonical_path), model_directory_canonical_path);
     ORT_RETURN_IF_ERROR(UpdateTensorsExternalDataLocations(
         relative_tensors_data_path_obj.native(), loaded_tensor_protos));
   }
