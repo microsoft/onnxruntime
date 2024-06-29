@@ -66,34 +66,12 @@ const setExecutionProviders =
               const webnnOptions = ep as InferenceSession.WebNNExecutionProviderOption;
               // const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
               const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
-              const numThreads = (webnnOptions as InferenceSession.WebNNContextOptions)?.numThreads;
-              const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
               if (deviceType) {
                 const keyDataOffset = allocWasmString('deviceType', allocs);
                 const valueDataOffset = allocWasmString(deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
                     0) {
                   checkLastError(`Can't set a session config entry: 'deviceType' - ${deviceType}.`);
-                }
-              }
-              if (numThreads !== undefined) {
-                // Just ignore invalid webnnOptions.numThreads.
-                const validatedNumThreads =
-                    (typeof numThreads !== 'number' || !Number.isInteger(numThreads) || numThreads < 0) ? 0 :
-                                                                                                          numThreads;
-                const keyDataOffset = allocWasmString('numThreads', allocs);
-                const valueDataOffset = allocWasmString(validatedNumThreads.toString(), allocs);
-                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    0) {
-                  checkLastError(`Can't set a session config entry: 'numThreads' - ${numThreads}.`);
-                }
-              }
-              if (powerPreference) {
-                const keyDataOffset = allocWasmString('powerPreference', allocs);
-                const valueDataOffset = allocWasmString(powerPreference, allocs);
-                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    0) {
-                  checkLastError(`Can't set a session config entry: 'powerPreference' - ${powerPreference}.`);
                 }
               }
             }
