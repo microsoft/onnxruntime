@@ -259,7 +259,7 @@ Status LoadModelCheckpoint(
     ORT_RETURN_IF_ERROR(Env::Default().GetCanonicalPath(
         checkpoint_path, checkpoint_canonical_path));
 
-    Path relative_tensors_data_path_obj = std::filesystem::relative(
+    std::filesystem::path relative_tensors_data_path_obj = std::filesystem::relative(
         model_directory_canonical_path,
         GetCheckpointTensorsDataFilePath(checkpoint_canonical_path));
     ORT_RETURN_IF_ERROR(UpdateTensorsExternalDataLocations(
