@@ -222,13 +222,22 @@ target_link_libraries(onnxruntime PRIVATE
 )
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-set_target_properties(onnxruntime PROPERTIES
-  PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-  LINK_DEPENDS ${SYMBOL_FILE}
-  VERSION ${ORT_VERSION}
-  FOLDER "ONNXRuntime"
-)
-
+if (WIN32)
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    DEBUG_POSTFIX "${POSTFIX_FOR_DEBUG}"
+    VERSION ${ORT_VERSION}
+    FOLDER "ONNXRuntime"
+  )
+else()
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    FOLDER "ONNXRuntime"
+  )
+endif()
 install(TARGETS onnxruntime
         EXPORT ${PROJECT_NAME}Targets
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime

@@ -68,6 +68,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
   message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
 endif()
 
+set(POSTFIX_FOR_DEBUG "" CACHE STRING "Default filename postfix for libraries under configuration Debug") 
 # Options
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
