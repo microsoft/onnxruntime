@@ -11,6 +11,7 @@
 
 #include <map>
 #include <unordered_map>
+#include <filesystem>
 
 namespace onnxruntime {
 
@@ -100,6 +101,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  mutable std::filesystem::path model_path_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
