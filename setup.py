@@ -297,6 +297,7 @@ if platform.system() == "Linux":
         "libmklml_gnu.so",
         "libiomp5.so",
         "mimalloc.so",
+        "libonnxruntime.so*",
     ]
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda_or_rocm)
@@ -311,22 +312,31 @@ if platform.system() == "Linux":
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
-    libs.append("libonnxruntime.so*")
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
-    libs = ["onnxruntime_pybind11_state.so", "libdnnl.2.dylib", "mimalloc.so"]  # TODO add libmklml and libiomp5 later.
+    libs = [
+        "onnxruntime_pybind11_state.so",
+        "libdnnl.2.dylib",
+        "mimalloc.so",
+        "libonnxruntime.dylib*",
+    ]  # TODO add libmklml and libiomp5 later.
     # DNNL & TensorRT EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.dylib"])
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
     libs.extend(["libonnxruntime_providers_vitisai.dylib"])
-    libs.append("libonnxruntime.dylib*")
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
-    libs = ["onnxruntime_pybind11_state.pyd", "dnnl.dll", "mklml.dll", "libiomp5md.dll", "onnxruntime.dll",]
+    libs = [
+        "onnxruntime_pybind11_state.pyd",
+        "dnnl.dll",
+        "mklml.dll",
+        "libiomp5md.dll",
+        "onnxruntime.dll",
+    ]
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
