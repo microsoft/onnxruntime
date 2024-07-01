@@ -45,9 +45,9 @@ pip install onnxruntime-genai-directml --pre
 
 ### CUDA
 
-#### CUDA 11
-
 Append `-cuda` for the library that is optimized for CUDA environments
+
+#### CUDA 11
 
 ```bash
 pip install numpy
