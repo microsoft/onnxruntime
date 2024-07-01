@@ -2,6 +2,7 @@ import platform
 import unittest
 
 import torch
+import onnxruntime
 from parameterized import parameterized
 from test_flash_attn_cuda import (
     Formats,
@@ -21,6 +22,8 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         if platform.system() != "Linux":
+            return
+        if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
 
@@ -50,8 +53,9 @@ class TestGQA(unittest.TestCase):
         config.ep = "ROCMExecutionProvider"
         if not torch.cuda.is_available():
             return
-        config.ep = "ROCMExecutionProvider"
         if platform.system() != "Linux":
+            return
+        if "CUDAExecutionProvider" in onnxruntime.get_available_providers():
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
 
