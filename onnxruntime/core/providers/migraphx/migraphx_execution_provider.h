@@ -53,10 +53,10 @@ struct MIGraphXFuncState {
 };
 
 // Logical device representation.
-class MIGraphXExecutionProvider final : public IExecutionProvider {
+class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider() override;
+  ~MIGraphXExecutionProvider();
 
   Status Sync() const override;
 
