@@ -101,6 +101,12 @@ TEST_P(ModelTest, Run) {
     }
   }
 
+  // increase tol for models_opset7_fp16_coreml_FNSCandy test on cpu. See
+  // https://github.com/microsoft/onnxruntime/pull/20612
+  if (model_path.find(ORT_TSTR("fp16_coreml_FNS")) > 0) {
+    per_sample_tolerance = 1e-2;
+    relative_per_sample_tolerance = 1e-2;
+  }
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
 
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
