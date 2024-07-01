@@ -299,7 +299,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           parameters.num_heads, parameters.head_size,
                                                           parameters.rotary_dim, parameters.seqlen_present_kv_cache,
                                                           /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                          max_thr_per_blk, /*transposed*/ false,
+                                                          max_thr_per_blk,
                                                           query_strides.ForBNSHCoord<int4>(),
                                                           rotary_q_strides.ForBNSHCoord<int4>()));
     ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<HipT>(hip_stream, rotary_k_tmp.get(), key_ptr,
@@ -310,7 +310,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           parameters.kv_num_heads, parameters.head_size,
                                                           parameters.rotary_dim, parameters.seqlen_present_kv_cache,
                                                           /*position_ids_format*/ 1, parameters.rotary_interleaved,
-                                                          max_thr_per_blk, /*transposed*/ false,
+                                                          max_thr_per_blk,
                                                           key_strides.ForBNSHCoord<int4>(),
                                                           rotary_k_strides.ForBNSHCoord<int4>()));
     query_ptr = reinterpret_cast<const HipT*>(rotary_q_tmp.get());

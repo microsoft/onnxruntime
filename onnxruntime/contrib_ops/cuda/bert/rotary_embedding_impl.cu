@@ -98,7 +98,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
       sequence_length, num_heads, head_size,
       rotary_embedding_dim, max_sequence_length,
       position_ids_format, interleaved,
-      max_threads_per_block, is_input_bnsh_format,
+      max_threads_per_block,
       in_strides, out_strides);
 }
 
@@ -108,7 +108,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
                                    const int sequence_length, const int num_heads, const int head_size,
                                    const int rotary_embedding_dim, const int /*max_sequence_length*/,
                                    const int position_ids_format, const bool interleaved,
-                                   const int max_threads_per_block, const bool is_input_bnsh_format,
+                                   const int max_threads_per_block,
                                    int4 in_strides, int4 out_strides  // strides in bnsh coord
 ) {
   // Note: Current implementation assumes head_size <= max_threads_per_block
