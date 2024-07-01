@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "core/platform/windows/env.h"
 
-#include <memory>
 #include <iostream>
 #include <fstream>
 #include <optional>
@@ -302,10 +301,6 @@ int WindowsEnv::GetNumPhysicalCpuCores() const {
 
 std::vector<LogicalProcessors> WindowsEnv::GetDefaultThreadAffinities() const {
   return cores_.empty() ? std::vector<LogicalProcessors>(DefaultNumCores(), LogicalProcessors{}) : cores_;
-}
-
-int WindowsEnv::GetL2CacheSize() const {
-  return l2_cache_size;
 }
 
 WindowsEnv& WindowsEnv::Instance() {
@@ -929,57 +924,9 @@ void WindowsEnv::InitializeCpuInfo() {
     }
     iter += size;
   }
-
-  DWORD newLength = 0;
-  GetLogicalProcessorInformationEx(RelationCache, nullptr, &newLength);
-  last_error = GetLastError();
-  if (last_error != ERROR_INSUFFICIENT_BUFFER) {
-    const auto error_code = GetLastError();
-    if (logging::LoggingManager::HasDefaultLogger()) {
-      LOGS_DEFAULT(ERROR) << "Failed to calculate byte size for saving cpu info on windows"
-                          << ", error code: " << error_code
-                          << ", error msg: " << std::system_category().message(error_code);
-    }
-    return;
-  }
-
-  if (newLength > returnLength) {
-    // Re-allocate
-    allocation = std::make_unique<char[]>(newLength);
-    processorInfos = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(allocation.get());
-  }
-
-  if (!GetLogicalProcessorInformationEx(RelationCache, processorInfos, &newLength)) {
-    const auto error_code = GetLastError();
-    if (logging::LoggingManager::HasDefaultLogger()) {
-      LOGS_DEFAULT(ERROR) << "Failed to fetch cpu info on windows"
-                          << ", error code: " << error_code
-                          << ", error msg: " << std::system_category().message(error_code);
-    }
-    return;
-  }
-
-  iter = reinterpret_cast<const BYTE*>(processorInfos);
-  end = iter + newLength;
-
-  while (iter < end) {
-    auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
-    auto size = processor_info->Size;
-
-    if (processor_info->Relationship == RelationCache &&
-        processor_info->Cache.Level == 2) {
-      // L2 cache
-      l2_cache_size = static_cast<int>(processor_info->Cache.CacheSize);
-      break;
-    }
-
-    iter += size;
-  }
-
   if (logging::LoggingManager::HasDefaultLogger()) {
     LOGS_DEFAULT(VERBOSE) << "Found total " << cores_.size() << " core(s) from windows system:";
     LOGS_DEFAULT(VERBOSE) << log_stream.str();
-    LOGS_DEFAULT(VERBOSE) << "\nDetected L2 cache size: " << l2_cache_size << " bytes";
   }
 }
 }  // namespace onnxruntime
