@@ -811,7 +811,7 @@ struct NodeUnit final {
   const std::string& Name() const noexcept { return g_host->NodeUnit__Name(this); }
   int SinceVersion() const noexcept { return g_host->NodeUnit__SinceVersion(this); }
   NodeIndex Index() const noexcept { return g_host->NodeUnit__Index(this); }
-  const Path& ModelPath() const noexcept { return g_host->NodeUnit__ModelPath(this); }
+  const std::filesystem::path& ModelPath() const noexcept { return g_host->NodeUnit__ModelPath(this); }
   ProviderType GetExecutionProviderType() const noexcept { return g_host->NodeUnit__GetExecutionProviderType(this); }
 
   const Node& GetNode() const noexcept { return g_host->NodeUnit__GetNode(this); }
@@ -840,7 +840,7 @@ struct Model final {
   Graph& MainGraph() { return g_host->Model__MainGraph(this); }
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToProto() { return g_host->Model__ToProto(this); }
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(const std::string& external_file_name, const PathString& file_path, size_t initializer_size_threshold) { return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path, initializer_size_threshold); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) { return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path, initializer_size_threshold); }
   const ModelMetaData& MetaData() const noexcept { return g_host->Model__MetaData(this); }
 
   Model() = delete;
@@ -873,7 +873,7 @@ struct Graph final {
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
   Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
-  const Path& ModelPath() const { return g_host->Graph__ModelPath(this); }
+  const std::filesystem::path& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->Graph__GetProducerNode(this, node_arg_name); }
@@ -923,7 +923,7 @@ class GraphViewer final {
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
-  const Path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
+  const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }

@@ -546,6 +546,10 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_VSINPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_vsinpu)
+endif()
+
 if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
@@ -593,6 +597,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}

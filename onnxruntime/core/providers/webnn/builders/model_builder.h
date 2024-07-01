@@ -66,7 +66,6 @@ class ModelBuilder {
   emscripten::val wnn_builder_ = emscripten::val::object();
   DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
-  std::vector<std::vector<uint8_t>> unpacked_tensors_;
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
