@@ -1701,11 +1701,12 @@ MlasRequantizeOutput(
     )
 {
     //TO BE CHECK
-    float min_f = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
-    float max_f = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
+    struct{ union{ float min_f; int32_t min_i; }; union { float max_f; int32_t max_i;}; } min_max_val;
+    min_max_val.min_f = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
+    min_max_val.max_f = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
     const __m128 PerMatrixScaleVector = PerColumnScale ? MlasReinterpretAsFloat32x4(__lsx_vldi(0)) : MlasReinterpretAsFloat32x4(__lsx_vldrepl_w(Scale, 0));
-    const __m128 MinimumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&min_f)));
-    const __m128 MaximumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( *((uint32_t*)&max_f)));
+    const __m128 MinimumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( min_max_val.min_i ));
+    const __m128 MaximumValueVector = MlasReinterpretAsFloat32x4(__lsx_vreplgr2vr_w( min_max_val.max_i ));
     const __m128i ZeroPointVector = __lsx_vreplgr2vr_w(ZeroPoint);
 
     if (nullptr != Bias) {
