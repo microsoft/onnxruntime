@@ -183,7 +183,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  *           'dims' (for all types of tensor), 'data' (only for string tensor)
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
-int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
+int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length);
 
 /**
  * release the specified tensor.

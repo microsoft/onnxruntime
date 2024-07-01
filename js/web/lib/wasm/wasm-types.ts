@@ -192,15 +192,26 @@ export interface OrtTrainingAPIs {
   _OrtTrainingReleaseSession(trainingHandle: number): void;
 }
 
+export type FSNode = {
+  contents: Uint8Array;
+  usedBytes: number;
+}
+
 /**
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
 export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<OrtTrainingAPIs>,
                                        Partial<JSEP.Module> {
+  HEAP64: BigInt64Array;
+  HEAPU64: BigUint64Array;
+  PTR_SIZE: number;
+  FS: {create(path: string): FSNode; chdir(path: string): void; unlink(path: string|FSNode): void};
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;

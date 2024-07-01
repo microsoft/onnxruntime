@@ -168,9 +168,9 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
-    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
-    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+    # set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+    # message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+    # set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
@@ -193,7 +193,7 @@ else()
     re2::re2
   )
 
-  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
+  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','setValue','getValue','FS'")
 
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
@@ -215,18 +215,63 @@ else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+    set(MAXIMUM_MEMORY "17179869184")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s MEMORY64=1"
+    )
+    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
+    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
+    set(SMEMORY_FLAG "-sMEMORY64")
+
+    target_compile_options(onnx PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_common PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_session PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_framework PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    #target_compile_options(onnx_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    #target_compile_options(protoc PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    #target_compile_options(libprotobuf-lite PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_providers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_mlas PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_graph PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_flatbuffers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(onnxruntime_util PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(re2 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_base PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+
+    target_link_options(onnxruntime_webassembly PRIVATE
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
+    )
+  else ()
+    set(MAXIMUM_MEMORY "4294967296")
+    target_link_options(onnxruntime_webassembly PRIVATE
+      --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
+    )
+  endif ()
+
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
-    "SHELL:-s MAXIMUM_MEMORY=4294967296"
+    "SHELL:-s MAXIMUM_MEMORY=${MAXIMUM_MEMORY}"
     "SHELL:-s EXIT_RUNTIME=0"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
-    "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s FILESYSTEM=1"
     "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
     "SHELL:-s WASM_BIGINT=1"
+    "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
+    "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_pppppppp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
@@ -241,8 +286,9 @@ else()
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
-      "SHELL:-s ASYNCIFY=1"
+      "SHELL:-s ASYNCIFY=2"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
     )
     set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
   endif()
@@ -279,7 +325,8 @@ else()
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  # target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

@@ -52,8 +52,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
-    string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
-    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+    string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
+    string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
+#    string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+#    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()
 
   # Build WebAssembly with multi-threads support.
@@ -61,6 +63,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_C_FLAGS " -pthread -Wno-pthreads-mem-growth")
     string(APPEND CMAKE_CXX_FLAGS " -pthread -Wno-pthreads-mem-growth")
   endif()
+endif()
+
+# Build WebAssembly with 64bit support.
+if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+  string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
+  string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
 endif()
 
 if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
