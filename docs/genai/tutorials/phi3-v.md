@@ -62,17 +62,28 @@ Support for Windows machines with GPUs other than NVIDIA is coming soon!
    ```
    This command downloads the model into a folder called `cuda-int4-rtn-block-32`.
 
-2. Install the generate() API
+2. Setup your CUDA environment
 
-   ```
+   Install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive).
+
+   Ensure that the `CUDA_PATH` environment variable is set to the location of your CUDA installation.
+
+
+3. Install the generate() API
+
+   * CUDA 11
+
+   ```bash
    pip install numpy
    pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
    ```
 
-3. Setup your CUDA environment
+   * CUDA 12
 
-   Please follow the steps [here](../howto/setup-cuda-env.md) to setup the CUDA environment.
-
+   ```bash
+   pip install numpy
+   pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+   ```
 
 4. Run the model
 
