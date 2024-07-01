@@ -67,6 +67,7 @@ export declare namespace Test {
     modelUrl: string;
     externalData?: InferenceSession.SessionOptions['externalData'];
     backend?: string;  // value should be populated at build time
+    skip?: boolean;
     ioBinding: IOBindingMode;
     platformCondition?: PlatformCondition;
     cases: readonly ModelTestCase[];
@@ -92,6 +93,7 @@ export declare namespace Test {
 
   export interface OperatorTest {
     name: string;
+    skip?: boolean;
     operator: string;
     inputShapeDefinitions?: 'none'|'rankOnly'|'static'|ReadonlyArray<InputShapeDefinition|undefined>;
     opset?: OperatorTestOpsetImport;
