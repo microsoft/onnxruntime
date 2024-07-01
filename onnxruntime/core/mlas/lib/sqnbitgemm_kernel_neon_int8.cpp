@@ -769,6 +769,42 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLenGreaterThan32(
     }
 }
 
+template <size_t NumCols, bool HasZeroPoint>
+MLAS_FORCEINLINE void
+AdvanceColPtrs(
+    size_t StrideQuantBData,
+    size_t StrideQuantBScale,
+    size_t StrideQuantBZeroPoint,
+    const std::byte*& QuantBDataColPtr,
+    const float*& QuantBScaleColPtr,
+    const std::byte*& QuantBZeroPointColPtr,
+    const float*& BiasPtr,
+    float*& SumPtr
+)
+{
+    QuantBDataColPtr += NumCols * StrideQuantBData;
+    QuantBScaleColPtr += NumCols * StrideQuantBScale;
+    if constexpr (HasZeroPoint) {
+        QuantBZeroPointColPtr += NumCols * StrideQuantBZeroPoint;
+    }
+
+    BiasPtr += BiasPtr != nullptr ? NumCols : 0;
+    SumPtr += NumCols;
+}
+
+template <size_t NumRows>
+MLAS_FORCEINLINE void
+AdvanceRowPtrs(
+    size_t StrideQuantA,
+    size_t ldc,
+    const std::byte*& QuantARowPtr,
+    float*& SumRowPtr
+)
+{
+    QuantARowPtr += NumRows * StrideQuantA;
+    SumRowPtr += NumRows * ldc;
+}
+
 template <bool HasZeroPoint>
 void
 SQ4BitGemmKernel_CompInt8_BlkLen16(
@@ -825,23 +861,17 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
                 ldc
             );
 
-            // move to next 2 columns
-
-            QuantBDataColPtr += 2 * StrideQuantBData;
-            QuantBScaleColPtr += 2 * StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += 2 * StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 2 : 0;
-            SumPtr += 2;
+            // Move to next 2 columns
+            AdvanceColPtrs<2, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 2;
         }
 
         if (n_remaining > 0) {
             // Compute last 2x1 tile of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLen16<HasZeroPoint>(
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -863,10 +893,11 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
             );
         }
 
-        // move to next 2 rows
-
-        QuantARowPtr += 2 * StrideQuantA;
-        SumRowPtr += 2 * ldc;
+        // Move to next 2 rows
+        AdvanceRowPtrs<2>(
+            StrideQuantA, ldc,
+            QuantARowPtr, SumRowPtr
+        );
 
         m_remaining -= 2;
     }
@@ -883,7 +914,6 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
         size_t n_remaining = CountN;
         while (n_remaining > 0) {
             // Compute 1x1 tiles of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLen16<HasZeroPoint>(
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -894,16 +924,11 @@ SQ4BitGemmKernel_CompInt8_BlkLen16(
                 BlockCountK
             );
 
-            // move to next column
-
-            QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 1 : 0;
-            SumPtr += 1;
+            // Move to next column
+            AdvanceColPtrs<1, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 1;
         }
@@ -967,23 +992,17 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
                 ldc
             );
 
-            // move to next 2 columns
-
-            QuantBDataColPtr += 2 * StrideQuantBData;
-            QuantBScaleColPtr += 2 * StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += 2 * StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 2 : 0;
-            SumPtr += 2;
+            // Move to next 2 columns
+            AdvanceColPtrs<2, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 2;
         }
 
         if (n_remaining > 0) {
             // Compute last 2x1 tile of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLen32<HasZeroPoint>(
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1005,10 +1024,11 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
             );
         }
 
-        // move to next 2 rows
-
-        QuantARowPtr += 2 * StrideQuantA;
-        SumRowPtr += 2 * ldc;
+        // Move to next 2 rows
+        AdvanceRowPtrs<2>(
+            StrideQuantA, ldc,
+            QuantARowPtr, SumRowPtr
+        );
 
         m_remaining -= 2;
     }
@@ -1025,7 +1045,6 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
         size_t n_remaining = CountN;
         while (n_remaining > 0) {
             // Compute 1x1 tiles of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLen32<HasZeroPoint>(
                 QuantARowPtr,
                 QuantBDataColPtr,
@@ -1036,16 +1055,11 @@ SQ4BitGemmKernel_CompInt8_BlkLen32(
                 BlockCountK
             );
 
-            // move to next column
-
-            QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 1 : 0;
-            SumPtr += 1;
+            // Move to next column
+            AdvanceColPtrs<1, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 1;
         }
@@ -1109,23 +1123,17 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
                 ldc
             );
 
-            // move to next 2 columns
-
-            QuantBDataColPtr += 2 * StrideQuantBData;
-            QuantBScaleColPtr += 2 * StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += 2 * StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 2 : 0;
-            SumPtr += 2;
+            // Move to next 2 columns
+            AdvanceColPtrs<2, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 2;
         }
 
         if (n_remaining > 0) {
             // Compute last 2x1 tile of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLenGreaterThan32<HasZeroPoint>(
                 BlkLen,
                 QuantARowPtr,
@@ -1149,10 +1157,11 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
             );
         }
 
-        // move to next 2 rows
-
-        QuantARowPtr += 2 * StrideQuantA;
-        SumRowPtr += 2 * ldc;
+        // Move to next 2 rows
+        AdvanceRowPtrs<2>(
+            StrideQuantA, ldc,
+            QuantARowPtr, SumRowPtr
+        );
 
         m_remaining -= 2;
     }
@@ -1169,7 +1178,6 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
         size_t n_remaining = CountN;
         while (n_remaining > 0) {
             // Compute 1x1 tiles of output
-
             SQ4BitGemm_CompInt8_Compute1x1_BlkLenGreaterThan32<HasZeroPoint>(
                 BlkLen,
                 QuantARowPtr,
@@ -1181,16 +1189,11 @@ SQ4BitGemmKernel_CompInt8_BlkLenGreaterThan32(
                 BlockCountK
             );
 
-            // move to next column
-
-            QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
-            if constexpr (HasZeroPoint) {
-                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 1 : 0;
-            SumPtr += 1;
+            // Move to next column
+            AdvanceColPtrs<1, HasZeroPoint>(
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, BiasPtr, SumPtr
+            );
 
             n_remaining -= 1;
         }
