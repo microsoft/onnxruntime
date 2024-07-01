@@ -1,14 +1,6 @@
 {
     "build_osx_archs": {
-        "iphoneos": [
-            "arm64"
-        ],
-        "iphonesimulator": [
-            "arm64",
-            "x86_64"
-        ],
         "macabi": [
-            "arm64",
             "x86_64"
         ]
     },
