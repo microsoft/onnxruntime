@@ -738,7 +738,18 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+  auto p_session_options = GetSessionOptions();
+  bool aggressive_cpu_fallback = false;
+  if (p_session_options) {
+    aggressive_cpu_fallback = p_session_options->config_options.GetConfigOrDefault(
+                                  kOrtSessionOptionsAggressiveCpuFallback, "0") == "1";
+  }
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates, aggressive_cpu_fallback);
+#else
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tenative_candidates);
+#endif
+
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0) {

@@ -897,7 +897,17 @@ namespace Dml
         }
 
         // Get the list of nodes that should stay on the CPU
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+        auto p_session_options = GetSessionOptions();
+        bool aggressive_cpu_fallback = false;
+        if (p_session_options) {
+          aggressive_cpu_fallback = p_session_options->config_options.GetConfigOrDefault(
+            kOrtSessionOptionsAggressiveCpuFallback, "0") == "1";
+        }
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes, aggressive_cpu_fallback);
+#else
         auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
+#endif
 
         for (size_t nodeIndex : toplogicalOrder)
         {

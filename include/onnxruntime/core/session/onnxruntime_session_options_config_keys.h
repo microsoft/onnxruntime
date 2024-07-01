@@ -270,3 +270,50 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
+
+// Optionally identifying sub-graphs by traversing the graph in reverse order
+// starting from all CPU consuming nodes (e.g., for Reshape-13, the traversal
+// starts from its 2nd input). Traversing stops when hitting a Size or Shape operator.
+// The identified sub-graphs will be assigned to CPU EP.
+//
+// See comments in the model defined by onnxscript in Python below for an example.
+//
+// @onnxscript.script(default_opset=opset18)
+// def foo(x: FLOAT[12], w: FLOAT[6, 2], dim0: INT64[1], dim1: INT64[1]):
+//     # This should be computed by CPU but is placed
+//     # on CUDA (i.e., all inputs and outputs are GPU tensors)
+//     # when this option is not set to 1.
+//     dim2 = dim1 + 1
+//     # Same as `dim2 = dim1 + 1`. Another GPU node
+//     # when this option is not set to 1.
+//     dim3 = dim2 - 1
+//     # Same as `dim2 = dim1 + 1`. Another GPU node
+//     # when this option is not set to 1.
+//     new_shape = opset18.Concat(dim0, dim3, axis=0)
+//
+//     # A memcpy node will be inserted to copy GPU output
+//     # `new_shape` to CPU since Reshape's 2nd input is a CPU tensor
+//     # per schema definition.
+//     #
+//     # To
+//     #  1. remove memcpy node.
+//     #  2. fallback all computation above this line to CPU.
+//     # use the following code in Python
+//     #  import onnxruntime
+//     #  so = onnxruntime.SessionOptions()
+//     #  so.add_session_config_entry("session.reverse_traverse_cpu_fallback", "1")
+//     #
+//     # Note that x and new_x are still on GPU w/wo
+//     # setting session.reverse_traverse_cpu_fallback.
+//     new_x = opset18.Reshape(x, new_shape)
+//     # A pure GPU node.
+//     y = opset18.MatMul(new_x, w)
+//     return y
+//
+// Option values:
+// - "0": Disable reverse-traversing CPU fallback. [DEFAULT]
+// - "1": Enable reverse-traversing CPU fallback when calling GetCpuPreferredNodes(...).
+//        (i.e., adding nodes found by GetShapeRelatedNodes(...) to CPU node list internally).
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+static const char* const kOrtSessionOptionsAggressiveCpuFallback = "session.aggressive_cpu_fallback";
+#endif

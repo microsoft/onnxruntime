@@ -151,6 +151,10 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   ConfigOptions config_options;
+
+  const ConfigOptions& GetConfigOptions() const {
+    return config_options;
+  };
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
