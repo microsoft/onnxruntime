@@ -2327,12 +2327,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
-  const auto& path_string = graph.ModelPath().ToPathString();
+  const auto& path_string = graph.ModelPath().string();
 #ifdef _WIN32
-  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+  strncpy_s(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
 #else
-  strcpy(model_path_, path_string.c_str());
+  strncpy(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
 #endif
+  model_path_[sizeof(model_path_) - 1] = '\0';
 
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.

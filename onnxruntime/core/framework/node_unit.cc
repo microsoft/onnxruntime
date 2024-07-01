@@ -277,7 +277,7 @@ const std::string& NodeUnit::OpType() const noexcept { return target_node_.OpTyp
 const std::string& NodeUnit::Name() const noexcept { return target_node_.Name(); }
 int NodeUnit::SinceVersion() const noexcept { return target_node_.SinceVersion(); }
 NodeIndex NodeUnit::Index() const noexcept { return target_node_.Index(); }
-const Path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
+const std::filesystem::path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
 ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target_node_.GetExecutionProviderType(); }
 
 void NodeUnit::InitForSingleNode() {
@@ -285,7 +285,7 @@ void NodeUnit::InitForSingleNode() {
   const auto& output_defs = target_node_.OutputDefs();
   const auto& node_attrs = target_node_.GetAttributes();
   auto qlinear_type = GetQLinearOpType(target_node_);
-  if (qlinear_type == QLinearOpType::Unknown || IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
+  if (qlinear_type == QLinearOpType::Unknown) {
     // Not a Qlinear op, add all inputs / outputs
     auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
                          const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
@@ -351,6 +351,13 @@ void NodeUnit::InitForSingleNode() {
                                      NodeUnitIODef::QuantParam{*input_defs[1],
                                                                input_defs.size() == 3 ? input_defs[2] : nullptr,
                                                                axis}});
+  } else if (IsVariadicQLinearOp(qlinear_type)) {
+    size_t input_num = (input_defs.size() - 2) / 3;
+    for (size_t i = 0; i < input_num; i++) {
+      inputs_.push_back(NodeUnitIODef{*input_defs[3 * i + 2], NodeUnitIODef::QuantParam{*input_defs[3 * i + 3],
+                                                                                        input_defs[3 * i + 4]}});
+    }
+    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[0], input_defs[1]}});
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }

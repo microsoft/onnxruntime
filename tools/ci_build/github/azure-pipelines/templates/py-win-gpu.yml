@@ -89,20 +89,6 @@ stages:
               tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
               appendSourceBranchName: false
 
-          - task: PythonScript@0
-            inputs:
-              scriptSource: inline
-              script: |
-                import sys
-                np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.26'
-                import subprocess
-                try:
-                  subprocess.check_call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
-                except subprocess.CalledProcessError:
-                  sys.exit(1)
-              workingDirectory: '$(Build.BinariesDirectory)'
-              displayName: 'Install python modules'
-
           - template: download-deps.yml
 
           - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:

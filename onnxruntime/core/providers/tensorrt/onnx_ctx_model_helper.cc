@@ -29,7 +29,7 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
   return false;
 }
 
-const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer) {
+const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
   // find the top level graph
   const Graph* cur_graph = &graph_viewer.GetGraph();
   while (cur_graph->IsSubgraph()) {
