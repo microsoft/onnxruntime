@@ -120,9 +120,10 @@ export const createMatMulNBitsProgramInfo =
         })();
 
         const processOneBlock = `
+        var b_offset = ${b.indicesToOffset('b_indices')};
         for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
           ${b.indicesSet('b_indices', '2', 'word')};
-          let b_data = ${b.getByIndices('b_indices')};
+          let b_data = ${b.getByOffset('b_offset')};
           for (var i: u32 = 0; i < ${bComponents}; i++) {
             let b_value: u32 = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
             let b_mask: u32 = 0x0F0F0F0Fu;
@@ -161,6 +162,7 @@ export const createMatMulNBitsProgramInfo =
             }
             word_offset += ${8 / aComponents};
           }
+          b_offset = b_offset + ${bComponents};
         }`;
         const updateZeroPointIndex = zeroPoints ? `
           zero_point_offset += 4;
@@ -271,9 +273,10 @@ export const createMatMulNBitsProgramInfo =
               }` :
                                                           ''}
             }
+            var output_offset = global_idx + ${outputNumber} * row;
             for (var k: u32 = 0u; k < ${outputNumber}u; k++) {
-              ${output.indicesSet('output_indices', outputRank - 2, `${outputNumber} * row + k`)};
-              ${output.setByIndices('output_indices', 'output_values[k]')}
+              ${output.setByOffset('output_offset', 'output_values[k]')};
+              output_offset++;
             }
         }`;
       };
