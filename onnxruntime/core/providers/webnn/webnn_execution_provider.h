@@ -43,8 +43,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
-  emscripten::val wnn_context_ = emscripten::val::object();
-  emscripten::val wnn_builder_ = emscripten::val::object();
+  emscripten::val wnn_context_ = emscripten::val::undefined();
+  mutable emscripten::val wnn_builder_ = emscripten::val::undefined();
 
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;

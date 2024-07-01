@@ -96,6 +96,13 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto& logger = *GetLogger();
 
+  if (!wnn_builder_.as<bool>()) {
+    // The GetCapability function may be called again after Compile due to the logic in the
+    // PartitionOnnxFormatModel function (see onnxruntime/core/framework/graph_partitioner.cc).
+    // We need to re-create the wnn_builder_ here to avoid it's been released in last Compile.
+    wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
+  }
+
   const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, wnn_device_type_, logger);
 
   if (node_groups.empty()) {
@@ -336,6 +343,9 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
     node_compute_funcs.push_back(compute_info);
   }
+
+  // Explictly release the WebNN builder to free memory.
+  wnn_builder_ = emscripten::val::undefined();
 
   return Status::OK();
 }
