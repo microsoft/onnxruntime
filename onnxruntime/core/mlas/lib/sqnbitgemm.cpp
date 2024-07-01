@@ -16,9 +16,10 @@ Abstract:
 --*/
 
 #include "sqnbitgemm.h"
-#include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
+
+#include "sqnbitgemm_q8_block.h"
 
 namespace
 {
@@ -372,15 +373,17 @@ SQ4BitGemm_CompFp32(
             if (bias) {
                 AddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
             }
+
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
                     RowsHandled, CountN, ldc
                 );
             }
 
             c_blk += ldc * RowsHandled;
             a_row += lda * RowsHandled;
+
             RowsRemaining -= RowsHandled;
         }
     }
@@ -443,23 +446,24 @@ SQ4BitGemm_CompInt8(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        for (size_t m = 0; m < RangeCountM;) {
+        size_t RowsRemaining = RangeCountM;
+        while (RowsRemaining > 0) {
             const auto RowsHandled = GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, RangeCountM - m, CountN, K, k_blks, ldc, bias
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
             );
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM - m, CountN, ldc
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                    RowsHandled, CountN, ldc
                 );
             }
 
             c_blk += RowsHandled * ldc;
             a_row += RowsHandled * lda;
 
-            m += RowsHandled;
+            RowsRemaining -= RowsHandled;
         }
     }
 }
