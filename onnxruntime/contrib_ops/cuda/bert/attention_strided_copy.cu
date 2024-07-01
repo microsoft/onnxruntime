@@ -84,10 +84,11 @@ template <int NumBytes>
 using ToBytes = typename ToByteType<NumBytes>::T;
 
 template <typename T>
-Status LaunchStridedCopy(cudaStream_t stream,
-                         const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
-                         T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
-                         int max_threads_per_block) {
+Status LaunchStridedCopy(
+    cudaStream_t stream,
+    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    int max_threads_per_block) {
   int batch_size = in_shape.x;
   int num_heads = in_shape.y;
   int sequence_length = in_shape.z;

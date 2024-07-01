@@ -367,8 +367,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
   static_assert(std::is_same_v<ck_tile::index_t, int32_t>);
 
-  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
-  // TODO:
+  const float scale = parameters.scale == 0.0f
+                          ? 1.f / sqrt(static_cast<float>(parameters.head_size))
+                          : parameters.scale;
   bias_enum bias_type = bias_enum::no_bias;
 
   mask_info mask = [&]() {
@@ -391,10 +392,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto seqstart_q_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
   auto seqstart_k_tmp = GetScratchBuffer<int>((batch_size + 1) * sizeof(int), ctx->GetComputeStream());
-  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_q_tmp.get(), batch_size,
-                                         query_strides.strides_for_bnsh_coord.x / query_strides.strides_for_bnsh_coord.z));
-  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(hip_stream, seqstart_k_tmp.get(), batch_size,
-                                         present_strides.strides_for_bnsh_coord.x / present_strides.strides_for_bnsh_coord.z));
+  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(
+      hip_stream, seqstart_q_tmp.get(), batch_size,
+      query_strides.strides_for_bnsh_coord.x / query_strides.strides_for_bnsh_coord.z));
+  ORT_RETURN_IF_ERROR(LaunchSeqStartInit(
+      hip_stream, seqstart_k_tmp.get(), batch_size,
+      present_strides.strides_for_bnsh_coord.x / present_strides.strides_for_bnsh_coord.z));
 
   fmha_fwd_args args{
       query_ptr,
