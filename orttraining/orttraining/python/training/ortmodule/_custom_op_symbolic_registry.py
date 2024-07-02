@@ -971,9 +971,7 @@ def softmax(g, input, dim, dtype=None):
     return softmax
 
 
-# based on the following kernel implementation from PyTorch:
-# https://github.com/pytorch/pytorch/blob/00f675bb4c2ec02bb5ffecfc75571026e220701c/aten/src/ATen/native/transformers/cuda/attention.cu#L788
-# dispatch logic:
+# based on the following internal PyTorch kernel for efficient attention:
 # https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778
 @register_symbolic("scaled_dot_product_attention")
 def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):

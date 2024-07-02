@@ -6946,7 +6946,7 @@ def test_aten_attention():
 
     device = "cuda"
     pt_model = _NeuralNetAttention().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
 
     def run_step(model, inputs):
         prediction = model(*inputs)
@@ -6962,3 +6962,23 @@ def test_aten_attention():
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    mem_eff_attn_nodes = 0
+    for node in onnx_nodes:
+        if ("ATen" in node.name) and ("scaled_dot_product_attention" in node.attributes.operator):
+            mem_eff_attn_nodes += 1
+
+    assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
