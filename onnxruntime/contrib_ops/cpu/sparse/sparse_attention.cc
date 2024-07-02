@@ -82,10 +82,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(q_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  parameters.past_present_share_buffer = true;  // Only supports share kv cache buffer for past and present for now.
+  constexpr bool past_present_share_buffer = true;  // Only supports share buffer for past and present for now.
+  parameters.past_present_share_buffer = past_present_share_buffer;
 
   int head_size = parameters.head_size;
-  const int cache_length = parameters.past_present_share_buffer
+  const int cache_length = past_present_share_buffer
                                ? parameters.max_cache_sequence_length
                                : parameters.total_sequence_length;
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
@@ -100,7 +101,7 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_value = context->Output(2, present_v_shape);
 
   // Check past and present share buffer.
-  if (parameters.past_present_share_buffer) {
+  if (past_present_share_buffer) {
     ORT_ENFORCE(past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw());
   }
 
@@ -142,13 +143,22 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
 
-    std::vector<int64_t> pos_ids(sequence_length == 1 ? batch_size : 1);
-    if (sequence_length == 1) {
+    const bool is_prompt = parameters.total_sequence_length == parameters.sequence_length;
+    std::vector<int64_t> pos_ids(is_prompt ? 1 : batch_size * sequence_length);
+    if (is_prompt) {
+      pos_ids[0] = static_cast<int64_t>(0);
+    } else if (sequence_length == 1) {
       for (int b = 0; b < batch_size; b++) {
         pos_ids[b] = static_cast<int64_t>(total_key_lengths->Data<int32_t>()[b]) - 1;
       }
     } else {
-      pos_ids[0] = static_cast<int64_t>(0);
+      // This supports a rare case that sequence_length > 1 when it is not prompt.
+      for (int b = 0; b < batch_size; b++) {
+        for (int s = 0; s < sequence_length; s++) {
+          pos_ids[b * sequence_length + s] = static_cast<int64_t>(total_key_lengths->Data<int32_t>()[b]) -
+                                             (sequence_length - s);
+        }
+      }
     }
 
     const T* q_input;

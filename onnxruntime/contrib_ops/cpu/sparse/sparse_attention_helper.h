@@ -128,12 +128,6 @@ Status CheckInputs(void* params,
   }
   int total_sequence_length = *((*total_seq_len).template Data<int32_t>());
 
-  // // Make sure that query sequence length is 1 when it is not prompt.
-  // if (total_sequence_length > sequence_length && sequence_length != 1) {
-  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-  //                          "sequence_length shall be 1 when total_sequence_length > sequence_length.");
-  // }
-
   // Check block_row_indices
   const auto& block_row_indices_dim = block_row_indices->Shape().GetDims();
   if (!(block_row_indices_dim.size() == 2 &&

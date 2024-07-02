@@ -843,11 +843,20 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
                     for head_size in head_sizes:
                         for format in formats:
                             packed_qkv = format == InputFormats.QKV_BSN3H
+
+                            non_prompt_len = 1
+                            if provider == "CPUExecutionProvider" and sequence_length > 128 and not do_rotary:
+                                # Generate case of sequence_length > 1 when it is not prompt for CPU provider.
+                                non_prompt_len = batch_size
+
+                            query_sequence_length = non_prompt_len if has_past_kv else sequence_length
                             config = SparseAttentionConfig(
                                 batch_size=batch_size,
-                                sequence_length=1 if has_past_kv else sequence_length,
+                                sequence_length=query_sequence_length,
                                 max_sequence_length=256,
-                                past_sequence_length=min(255, sequence_length) if has_past_kv else 0,
+                                past_sequence_length=(
+                                    min(256 - query_sequence_length, sequence_length) if has_past_kv else 0
+                                ),
                                 num_heads=num_heads,
                                 kv_num_heads=num_heads // 2,
                                 head_size=head_size,
@@ -873,11 +882,19 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
             head_size = head_sizes[i % len(head_sizes)]
             format = formats[i % len(formats)]
             packed_qkv = format == InputFormats.QKV_BSN3H
+
+            non_prompt_len = 1
+            if provider == "CPUExecutionProvider" and sequence_length > 128 and not do_rotary:
+                # Generate case of sequence_length > 1 when it is not prompt for CPU provider.
+                non_prompt_len = batch_size
+
+            query_sequence_length = non_prompt_len if has_past_kv else sequence_length
+
             config = SparseAttentionConfig(
                 batch_size=batch_size,
-                sequence_length=1 if has_past_kv else sequence_length,
+                sequence_length=query_sequence_length,
                 max_sequence_length=256,
-                past_sequence_length=sequence_length if has_past_kv else 0,
+                past_sequence_length=min(256 - query_sequence_length, sequence_length) if has_past_kv else 0,
                 num_heads=num_heads,
                 kv_num_heads=num_heads // 2,
                 head_size=head_size,
@@ -925,6 +942,10 @@ class TestSparseAttention(unittest.TestCase):
 
     @parameterized.expand(get_test_cases("CUDAExecutionProvider", True, comprehensive_mode), skip_on_empty=True)
     def test_sparse_att_token_gpu(self, config):
+        self.run_one_relevance_test(config)
+
+    @parameterized.expand(get_test_cases("CPUExecutionProvider", True, comprehensive_mode), skip_on_empty=True)
+    def test_sparse_att_token_cpu(self, config):
         self.run_one_relevance_test(config)
 
     @parameterized.expand(get_test_cases("CPUExecutionProvider", False, comprehensive_mode), skip_on_empty=True)
