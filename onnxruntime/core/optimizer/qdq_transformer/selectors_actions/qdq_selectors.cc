@@ -150,6 +150,13 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
+  if (!allow_nonpositive_scale_) {
+    // IsQDQPairSupported will check that the scale is the same between q_node and dq_node.
+    if (!IsQOrDQScalePositiveConstantScalar(q_node, get_const_initializer, graph_viewer.ModelPath())) {
+      return false;
+    }
+  }
+
   return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
