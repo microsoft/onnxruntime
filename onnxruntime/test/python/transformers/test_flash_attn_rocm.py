@@ -2,7 +2,6 @@ import platform
 import unittest
 
 import torch
-import onnxruntime
 from parameterized import parameterized
 from test_flash_attn_cuda import (
     Formats,
@@ -13,6 +12,8 @@ from test_flash_attn_cuda import (
     parity_check_gqa_prompt,
     parity_check_gqa_prompt_no_buff,
 )
+
+import onnxruntime
 
 
 class TestGQA(unittest.TestCase):

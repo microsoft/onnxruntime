@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "ck_tile/core/numeric/integer.hpp"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/group_query_attention.h"
@@ -11,6 +10,7 @@
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
 
 #ifdef USE_COMPOSABLE_KERNEL_CK_TILE
+#include "ck_tile/core/numeric/integer.hpp"
 #include "fmha_fwd.hpp"
 #endif
 
