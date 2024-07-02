@@ -80,6 +80,15 @@ struct StringStringEntryProtos final {
 
   PROVIDER_DISALLOW_ALL(StringStringEntryProtos)
 };
+
+struct OperatorSetIdProto final {
+  std::string* mutable_domain() { return g_host->OperatorSetIdProto__mutable_domain(this); }
+  void set_version(int64_t version) { return g_host->OperatorSetIdProto__set_version(this, version); }
+  int64_t version() { return g_host->OperatorSetIdProto__version(this); }
+
+  PROVIDER_DISALLOW_ALL(OperatorSetIdProto)
+};
+
 struct AttributeProto final {
   static std::unique_ptr<AttributeProto> Create() { return g_host->AttributeProto__construct(); }
   void operator=(const AttributeProto& v) { g_host->AttributeProto__operator_assign(this, v); }
@@ -178,6 +187,11 @@ struct ModelProto final {
 
   void set_ir_version(int64_t value) { return g_host->ModelProto__set_ir_version(this, value); }
 
+  const OperatorSetIdProto& opset_import(int index) const { return g_host->ModelProto__opset_import(this, index); }
+  OperatorSetIdProto* mutable_opset_import(int index) { return g_host->ModelProto__mutable_opset_import(this, index); }
+  int opset_import_size() const { return g_host->ModelProto__opset_import_size(this); }
+  OperatorSetIdProto* add_opset_import() { return g_host->ModelProto__add_opset_import(this); }
+
   ModelProto() = delete;
   ModelProto(const ModelProto&) = delete;
   void operator=(const ModelProto&) = delete;
@@ -190,6 +204,7 @@ struct NodeProto final {
   int attribute_size() { return g_host->NodeProto__attribute_size(this); }
   const AttributeProto& attribute(int index) const { return g_host->NodeProto__attribute(this, index); }
   AttributeProto* mutable_attribute(int index) { return g_host->NodeProto__mutable_attribute(this, index); }
+  AttributeProto* add_attribute() { return g_host->NodeProto__add_attribute(this); }
 
   NodeProto() = delete;
   NodeProto(const NodeProto&) = delete;
@@ -372,6 +387,69 @@ struct ValueInfoProtos final {
 
   PROVIDER_DISALLOW_ALL(ValueInfoProtos)
 };
+
+struct FunctionProto final {
+  static std::unique_ptr<FunctionProto> Create() { return g_host->FunctionProto__construct(); }
+  static void operator delete(void* p) { g_host->FunctionProto__operator_delete(reinterpret_cast<FunctionProto*>(p)); }
+
+  bool SerializeToString(std::string& string) const { return g_host->FunctionProto__SerializeToString(this, string); }
+  bool SerializeToOstream(std::ostream& output) const { return g_host->FunctionProto__SerializeToOstream(this, output); }
+  bool ParseFromString(const std::string& data) { return g_host->FunctionProto__ParseFromString(this, data); }
+  std::string SerializeAsString() const { return g_host->FunctionProto__SerializeAsString(this); }
+
+  bool has_name() const { return g_host->FunctionProto__has_name(this); }
+  const std::string& name() const { return g_host->FunctionProto__name(this); }
+  void set_name(const std::string& name) { g_host->FunctionProto__set_name(this, name); }
+
+  bool has_doc_string() const { return g_host->FunctionProto__has_doc_string(this); }
+  const std::string& doc_string() const { return g_host->FunctionProto__doc_string(this); }
+  void set_doc_string(const std::string& doc_string) { g_host->FunctionProto__set_doc_string(this, doc_string); }
+
+  bool has_domain() const { return g_host->FunctionProto__has_domain(this); }
+  const std::string& domain() const { return g_host->FunctionProto__domain(this); }
+  void set_domain(const std::string& domain) { g_host->FunctionProto__set_domain(this, domain); }
+
+  const std::string& input(int index) const { return g_host->FunctionProto__input(this, index); }
+  std::string* mutable_input(int index) { return g_host->FunctionProto__mutable_input(this, index); }
+  int input_size() const { return g_host->FunctionProto__input_size(this); }
+  void add_input(const std::string& value) { g_host->FunctionProto__add_input(this, value); }
+
+  const std::string& output(int index) const { return g_host->FunctionProto__output(this, index); }
+  std::string* mutable_output(int index) { return g_host->FunctionProto__mutable_output(this, index); }
+  int output_size() const { return g_host->FunctionProto__output_size(this); }
+  void add_output(const std::string& value) { g_host->FunctionProto__add_output(this, value); }
+
+  const std::string& attribute(int index) const { return g_host->FunctionProto__attribute(this, index); }
+  std::string* mutable_attribute(int index) { return g_host->FunctionProto__mutable_attribute(this, index); }
+  int attribute_size() const { return g_host->FunctionProto__attribute_size(this); }
+  void add_attribute(const std::string& value) { g_host->FunctionProto__add_attribute(this, value); }
+
+  const AttributeProto& attribute_proto(int index) const { return g_host->FunctionProto__attribute_proto(this, index); }
+  AttributeProto* mutable_attribute_proto(int index) { return g_host->FunctionProto__mutable_attribute_proto(this, index); }
+  int attribute_proto_size() const { return g_host->FunctionProto__attribute_proto_size(this); }
+  AttributeProto* add_attribute_proto() { return g_host->FunctionProto__add_attribute_proto(this); }
+
+  const NodeProto& node(int index) const { return g_host->FunctionProto__node(this, index); }
+  NodeProto* mutable_node(int index) { return g_host->FunctionProto__mutable_node(this, index); }
+  int node_size() const { return g_host->FunctionProto__node_size(this); }
+  NodeProto* add_node() { return g_host->FunctionProto__add_node(this); }
+
+  const ValueInfoProto& value_info(int index) const { return g_host->FunctionProto__value_info(this, index); }
+  ValueInfoProtos* mutable_value_info() { return g_host->FunctionProto__mutable_value_info(this); }
+  ValueInfoProto* mutable_value_info(int index) { return g_host->FunctionProto__mutable_value_info(this, index); }
+  int value_info_size() const { return g_host->FunctionProto__value_info_size(this); }
+  ValueInfoProto* add_value_info() { return g_host->FunctionProto__add_value_info(this); }
+
+  const StringStringEntryProto& metadata_props(int index) const { return g_host->FunctionProto__metadata_props(this, index); }
+  StringStringEntryProtos* mutable_metadata_props() { return g_host->FunctionProto__mutable_metadata_props(this); }
+  StringStringEntryProto* mutable_metadata_props(int index) { return g_host->FunctionProto__mutable_metadata_props(this, index); }
+  int metadata_props_size() const { return g_host->FunctionProto__metadata_props_size(this); }
+  StringStringEntryProto* add_metadata_props() { return g_host->FunctionProto__add_metadata_props(this); }
+
+  FunctionProto() = delete;
+  FunctionProto(const FunctionProto&) = delete;
+  void operator=(const FunctionProto&) = delete;
+};
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -449,6 +527,12 @@ struct IndexedSubGraph_MetaDef final {
   void operator=(const IndexedSubGraph_MetaDef&) = delete;
 };
 
+enum class IndexedSubGraph_SourceOfSchema : uint8_t {
+  CREATE,
+  REUSE_OR_CREATE,
+  EXISTING,
+};
+
 struct IndexedSubGraph final {
   static std::unique_ptr<IndexedSubGraph> Create() { return g_host->IndexedSubGraph__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph__operator_delete(reinterpret_cast<IndexedSubGraph*>(p)); }
@@ -457,6 +541,9 @@ struct IndexedSubGraph final {
 
   void SetMetaDef(std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) { return g_host->IndexedSubGraph__SetMetaDef(this, std::move(*reinterpret_cast<std::unique_ptr<IndexedSubGraph_MetaDef>*>(&meta_def_))); }
   const IndexedSubGraph_MetaDef* GetMetaDef() const { return reinterpret_cast<const IndexedSubGraph_MetaDef*>(g_host->IndexedSubGraph__GetMetaDef(this)); }
+
+  void SetSchemaSource(IndexedSubGraph_SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
+  IndexedSubGraph_SourceOfSchema GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;

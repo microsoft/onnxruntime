@@ -1114,6 +1114,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     if (it != provider_options_map.end()) {
       info = it->second;
     }
+    info["ep_context_enable"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
+    info["ep_context_embed_mode"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+    info["ep_context_file_path"] = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
