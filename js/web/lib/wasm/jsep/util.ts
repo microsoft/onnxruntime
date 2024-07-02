@@ -344,10 +344,11 @@ export class PoolConvUtil {
    * @param pads Padding for the beginning and ending along each axis.
    * @param autoPad DEPRECATED attribute supported for legacy models. Specifies how to implicitly calculate pads in each
    *     dimension. Can take values NOTSET, SAME_UPPER, SAME_LOWER, or VALID.
+   * @param ceilMode: 0=floor, 1=ceil
    */
   static computePoolOutputShape(
       isGlobalOperator: boolean, inputDims: readonly number[], strides: number[], dilations: number[],
-      kernelShape: number[], pads: number[], autoPad?: string): number[] {
+      kernelShape: number[], pads: number[], autoPad?: string, ceilMode?: number): number[] {
     if (inputDims.length <= 0) {
       throw new Error('input shape must be of size greater than 0');
     }
@@ -356,7 +357,7 @@ export class PoolConvUtil {
     const outputDims = [inputDims[0], inputDims[1]];
 
     PoolConvUtil.computeShapeHelper(
-        isGlobalOperator, inputDims, outputDims, strides, dilations, kernelShape, pads, autoPad);
+        isGlobalOperator, inputDims, outputDims, strides, dilations, kernelShape, pads, autoPad, ceilMode);
     return outputDims;
   }
 
@@ -389,7 +390,8 @@ export class PoolConvUtil {
   // adjust pads based on 'autoPad' attribute prior to shape computation
   private static computeShapeHelper(
       isGlobalOperator: boolean, inputDims: readonly number[], outputDims: number[], strides: readonly number[],
-      dilations: readonly number[], kernelShape: readonly number[], pads: number[], autoPad?: string) {
+      dilations: readonly number[], kernelShape: readonly number[], pads: number[], autoPad?: string,
+      ceilMode?: number) {
     if (isGlobalOperator) {
       for (let dim = 0; dim < inputDims.length - 2; dim++) {
         outputDims.push(1);
@@ -398,7 +400,7 @@ export class PoolConvUtil {
       for (let dim = 0; dim < inputDims.length - 2; dim++) {
         outputDims.push(PoolConvUtil.adjustPadAndReturnShape(
             inputDims[dim + 2], strides[dim], dilations[dim], kernelShape[dim], pads, dim, dim + inputDims.length - 2,
-            autoPad));
+            autoPad, ceilMode));
       }
     }
   }
@@ -407,7 +409,8 @@ export class PoolConvUtil {
   // adjusts pad value for given 'autoPad' string and computes output shape along a particular dimension
   private static adjustPadAndReturnShape(
       inSize: number, stride: number, dilation: number, kernel: number, pads: number[], padHeadIndex: number,
-      padTailIndex: number, autoPad?: string): number {
+      padTailIndex: number, autoPad?: string, ceilMode?: number): number {
+    const ceilFunc = (ceilMode) ? Math.ceil : Math.floor;
     const dkernel = dilation * (kernel - 1) + 1;
     if (autoPad && autoPad !== 'NOTSET') {
       switch (autoPad) {
@@ -425,13 +428,13 @@ export class PoolConvUtil {
             pads[padHeadIndex] =
                 (autoPad === 'SAME_LOWER') ? Math.floor((padNeeded + 1) / 2) : Math.floor(padNeeded / 2);
             pads[padTailIndex] = padNeeded - pads[padHeadIndex];
-            return Math.floor(((inSize + padNeeded - kernel) / stride) + 1);
+            return ceilFunc(((inSize + padNeeded - kernel) / stride) + 1);
           }
         default:
           throw new Error('Unsupported AutoPad type');
       }
     } else {
-      return Math.floor(((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride) + 1);
+      return ceilFunc(((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride) + 1);
     }
   }
 }
