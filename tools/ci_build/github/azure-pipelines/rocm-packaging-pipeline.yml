@@ -72,9 +72,76 @@ variables:
   value: ''
 
 stages:
+# ROCm
+- stage: Linux_C_API_Packaging_ROCm_x64
+  dependsOn: []
+  jobs:
+  - job: Linux_C_API_Packaging_ROCm_x64
+    workspace:
+      clean: all
+    timeoutInMinutes: 240
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
+    variables:
+      RocmVersion: '5.6'
+      RocmVersionPatchSuffix: ''
+    steps:
+    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+      submodules: recursive
+    - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux, for get-docker-image-steps.yml
+      submodules: false
+
+    # get-docker-image-steps.yml will move the $(Build.SourcesDirectory)/manylinux into $(Build.SourcesDirectory)/onnxruntime,
+    # then rename $(Build.SourcesDirectory)/onnxruntime as $(Build.SourcesDirectory)
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_rocm
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: >-
+          --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+          --build-arg BUILD_UID=$(id -u)
+          --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
+          --build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)
+          --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+          --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin:
+          --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+        Repository: onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+        CheckOutManyLinux: true
+
+    - template: templates/set-version-number-variables-step.yml
+
+    - task: Bash@3
+      displayName: 'Build'
+      inputs:
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/build_rocm_c_api_package.sh
+        arguments: >-
+          -S $(Build.SourcesDirectory)
+          -B $(Build.BinariesDirectory)
+          -V $(RocmVersion)
+          -I onnxruntimetrainingrocmbuild-rocm$(RocmVersion)
+          -P python3.10
+
+    - script: |
+       set -e -x
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts for CustomOp'  # libcustom_op_library.so from cpu build is built with fp8, ROCm does not support it.
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-linux-x64-rocm-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-rocm'
+        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+    - template: templates/clean-agent-build-directory-step.yml
+
 - stage: NuGet_Packaging_ROCm
   dependsOn:
-  - Setup
   - Linux_C_API_Packaging_ROCm_x64
   condition: succeeded()
   jobs:
