@@ -193,10 +193,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
 )
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -566,6 +562,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/requirements.txt
+      $<TARGET_FILE_DIR:${build_output_target}>
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -1026,7 +1025,4 @@ if (onnxruntime_USE_QNN)
   endif()
 endif()
 
-endif()
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
 endif()

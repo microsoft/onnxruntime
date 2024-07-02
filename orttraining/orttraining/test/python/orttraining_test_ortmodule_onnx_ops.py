@@ -146,6 +146,38 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     device = torch.device(device_name)
                     self.gradient_correctness(name, device)
 
+    @unittest.skipIf(not torch.cuda.is_bf16_supported(), "Test requires CUDA and BF16 support")
+    def test_softmax_bf16_large(self):
+        if torch.version.cuda is None:
+            # Only run this test when CUDA is available, as on ROCm BF16 is not supported by MIOpen.
+            return
+
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+
+            def forward(self, input):
+                out = torch.softmax(input, dim=-1)
+                return out
+
+        device = "cuda:0"
+        input_shape = [2, 4096]
+        # run torch to get the expected result
+        data_torch = torch.randn(size=input_shape, device=device, dtype=torch.bfloat16) + 10
+        data_torch.requires_grad = True
+        torch_model = Model()
+        torch_res = torch_model(input=data_torch)
+        init_grad = torch.ones_like(torch_res)
+        torch_res.backward(gradient=init_grad)
+        # run ort
+        ort_model = ORTModule(torch_model)
+        data_ort = data_torch.detach().clone()
+        data_ort.requires_grad = True
+        ort_res = ort_model(input=data_ort)
+        ort_res.backward(gradient=init_grad)
+        # compare result
+        torch.testing.assert_close(data_torch.grad, data_ort.grad, rtol=1e-5, atol=1e-4)
+
 
 if __name__ == "__main__":
     unittest.main()

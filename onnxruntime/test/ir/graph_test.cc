@@ -388,7 +388,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
   model->MainGraph().SetGraphProtoSyncNeeded();
-  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(*model, ORT_TSTR("graph_with_unused_value_info.onnx")).IsOK());
 }
 
 TEST_F(GraphTest, WrongOpset) {
@@ -762,7 +762,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("graph_1.onnx")).IsOK());
   std::shared_ptr<Model> model2;
   EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
 
@@ -1476,7 +1476,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
   EXPECT_EQ("node_4_out_1", graph.GetOutputs()[0]->Name());
   EXPECT_EQ(2u, graph.GetInputs().size());
 
-  EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("model_x.onnx")).IsOK());
   std::shared_ptr<Model> loaded_model;
   EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
   EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());

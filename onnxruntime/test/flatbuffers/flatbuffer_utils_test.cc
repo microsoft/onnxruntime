@@ -230,7 +230,7 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
   std::vector<flatbuffers::Offset<fbs::Tensor>> fbs_tensors;
   for (const auto& initializer : initializers) {
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, Path(), fbs_tensor, writer));
+    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, std::filesystem::path(), fbs_tensor, writer));
     fbs_tensors.push_back(fbs_tensor);
   }
 
@@ -313,7 +313,7 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   std::vector<flatbuffers::Offset<fbs::Tensor>> fbs_tensors;
   for (const auto& initializer : initializers) {
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, Path(), fbs_tensor, writer));
+    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, std::filesystem::path(), fbs_tensor, writer));
     fbs_tensors.push_back(fbs_tensor);
   }
 
