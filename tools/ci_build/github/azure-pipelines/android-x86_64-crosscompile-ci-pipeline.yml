@@ -80,6 +80,14 @@ stages:
     - template: "templates/use-android-ndk.yml"
 
     - script: |
+        set -e -x \
+        uname -m \
+        echo "ANDROID_HOME=$ANDROID_HOME" \
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
+        ls -R $ANDROID_SDK_ROOT
+      displayName: Check Android NDKs
+
+    - script: |
         env | grep ANDROID
       displayName: View Android ENVs
 
@@ -164,6 +172,14 @@ stages:
     - template: "templates/use-android-ndk.yml"
 
     - script: |
+        set -e -x \
+        uname -m \
+        echo "ANDROID_HOME=$ANDROID_HOME" \
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
+        ls -R $ANDROID_SDK_ROOT
+      displayName: Check Android NDKs
+
+    - script: |
         env | grep ANDROID
       displayName: View Android ENVs
 
@@ -220,16 +236,11 @@ stages:
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
     workspace:
       clean: all
     condition: succeeded()
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
-
       - task: DownloadPipelineArtifact@2
         inputs:
           ${{ if eq(parameters.specificArtifact, true) }}:
@@ -257,11 +268,26 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
+      - script: |
+          set -e -x \
+          uname -m \
+          echo "ANDROID_HOME=$ANDROID_HOME" \
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
+          ls -R $ANDROID_SDK_ROOT
+        displayName: Check Android NDKs
+
       - template: templates/use-android-emulator.yml
         parameters:
           create: true
           start: true
 
+      - script: |
+          set -e -x \
+          uname -m \
+          echo "ANDROID_HOME=$ANDROID_HOME" \
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
+          ls -R $ANDROID_SDK_ROOT
+        displayName: Check Android NDKs
       - script: |
           python3 tools/ci_build/build.py \
           --android \
@@ -282,18 +308,12 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: 90
     workspace:
       clean: all
     condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
 
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -341,7 +361,7 @@ stages:
         displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
       # used by Build Minimal ORT
-      - script: brew install coreutils ninja
+      - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
@@ -363,19 +383,12 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: 'macOS-12'
+      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: 180
     workspace:
       clean: all
     condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
-
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
         inputs:
@@ -391,7 +404,7 @@ stages:
       - template: "templates/use-android-ndk.yml"
 
       # used by Build Minimal ORT
-      - script: brew install coreutils ninja
+      - script: sudo apt install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
       - template: templates/use-android-emulator.yml
