@@ -6930,6 +6930,8 @@ def test_layerwise_recompute_pythonop_determinstic():
 def test_aten_attention():
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1"
+
     class _NeuralNetAttention(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -6983,3 +6985,5 @@ def test_aten_attention():
             mem_eff_attn_nodes += 1
 
     assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
+
+    del os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"]
