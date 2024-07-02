@@ -135,6 +135,8 @@ void CPUIDInfo::X86Init() {
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
           has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));
+          // Check for AVX_NE_CONVERT as half precision kernel uses it with AVX2 and F16C
+          has_avx_ne_convert_ = has_avx2_ && has_f16c_ && (data[3] & (1 << 5));
         }
       }
     }
