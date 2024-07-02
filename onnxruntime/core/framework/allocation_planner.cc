@@ -231,8 +231,10 @@ class PlannerImpl {
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
 
   int DecrementUseCount(OrtValueIndex n) {
-    int& use_count = --UseCount(n);
-    assert(use_count >= 0);
+    int& use_count = UseCount(n);
+    if (use_count > 0) {
+      --use_count;
+    }
     return use_count;
   }
 
