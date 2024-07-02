@@ -72,8 +72,15 @@ variables:
   value: ''
 
 stages:
+- template: stages/set_packaging_variables_stage.yml
+  parameters:
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
+  dependsOn: []
   jobs:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
@@ -141,6 +148,7 @@ stages:
 
 - stage: NuGet_Packaging_ROCm
   dependsOn:
+  - Setup
   - Linux_C_API_Packaging_ROCm_x64
   condition: succeeded()
   jobs:
