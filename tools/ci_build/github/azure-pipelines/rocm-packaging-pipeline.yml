@@ -74,7 +74,6 @@ variables:
 stages:
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
-  dependsOn: []
   jobs:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
