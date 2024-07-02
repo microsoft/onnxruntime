@@ -191,7 +191,7 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
     std::optional<std::vector<float>> scales;
     std::optional<std::vector<int32_t>> zps;
     if (nudef.quant_param.has_value()) {
-      util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+      util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                              nudef, node_unit.ModelPath(),
                                              scale, zp, scales, zps);
     } else {
@@ -202,7 +202,7 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
       });
       bool is_conv_bias = std::distance(qinput.begin(), it) == 2;
       if (!is_conv_bias || it->quant_param.has_value()) {
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                *it, target_nodeunit->ModelPath(),
                                                scale, zp, scales, zps);
       } else if (!it->quant_param.has_value()) {
@@ -214,10 +214,10 @@ std::shared_ptr<tim::vx::Tensor> GraphEP::MapTIMVXTensor(
         // onnx defines conv bias with non quantization, but it must be quantized in VSINPU support
         // The bias scale is set as input_scale * weight_scale if per layer quantized,
         // otherwise input_scale* weight_scale[i] if per channel quantized
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                qinput[0], target_nodeunit->ModelPath(),
                                                in_scale, in_zp, in_scales, in_zps);
-        util::GetQuantizationScaleAndZeroPoint(graph_viewer_.GetAllInitializedTensors(),
+        util::GetQuantizationScaleAndZeroPoint(graph_viewer_,
                                                qinput[1], target_nodeunit->ModelPath(),
                                                w_scale, w_zp, w_scales, w_zps);
         scale = in_scale * w_scale;

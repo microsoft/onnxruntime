@@ -412,7 +412,7 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
 }
 
 void GetQuantizationScaleAndZeroPoint(
-    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    const GraphViewer& graph_viewer, const NodeUnitIODef& io_def, const std::filesystem::path& model_path,
     float& scale, int32_t& zero_point, std::optional<std::vector<float>>& pcq_scales,
     std::optional<std::vector<int32_t>>& pcq_zps) {
   scale = 0.0f;
@@ -421,7 +421,11 @@ void GetQuantizationScaleAndZeroPoint(
   const auto& quant_param = *io_def.quant_param;
   {  // get the scale
     const auto& name = quant_param.scale.Name();
-    Initializer unpacked_tensor(*initializers.at(name), model_path);
+    const auto* s = graph_viewer.GetConstantInitializer(name);
+    if (!s) {
+      LOGS_DEFAULT(ERROR) << name + " is not a constant initializer";
+    };
+    Initializer unpacked_tensor(*s, model_path);
     scale = unpacked_tensor.DataAsSpan<float>()[0];
 
     // per channel quantized handling
@@ -434,7 +438,11 @@ void GetQuantizationScaleAndZeroPoint(
 
   if (quant_param.zero_point) {  // get the zero point if it exists
     const auto& name = quant_param.zero_point->Name();
-    Initializer unpacked_tensor(*initializers.at(name), model_path);
+    const auto* s = graph_viewer.GetConstantInitializer(name);
+    if (!s) {
+      LOGS_DEFAULT(ERROR) << name + " is not a constant initializer";
+    };
+    Initializer unpacked_tensor(*s, model_path);
     bool is_i8_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT8;
     // some qdq conv bias is int32 quantized
     bool is_int32_zp = unpacked_tensor.data_type() == onnx::TensorProto_DataType_INT32;
