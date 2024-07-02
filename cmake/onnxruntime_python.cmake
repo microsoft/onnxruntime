@@ -667,6 +667,15 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
+if (onnxruntime_BUILD_SHARED_LIB)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_OPENVINO)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
