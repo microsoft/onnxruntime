@@ -53,6 +53,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
   std::vector<float> QuantBScale(QuantBScaleSize);
   std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSizeInBytes);
+  bool has_zp_input = !Symmetric;
 
   MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData.data(), QuantBScale.data(),
                                             Symmetric ? nullptr : QuantBZeroPoint.data(),
@@ -71,15 +72,17 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                 QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
                                  tp.get());
   }
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.QuantBData = PackedQuantBData != nullptr
-                          ? static_cast<const void*>(PackedQuantBData.get())
-                          : static_cast<const void*>(QuantBData.data());
+  if (PackedQuantBData != nullptr)
+    params.QuantBDataWorkspace = static_cast<const void*>(PackedQuantBData.get());
+  else
+    params.QuantBDataWorkspace = static_cast<const void*>(QuantBData.data());
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = HasBias ? Bias.data() : nullptr;
@@ -116,9 +119,9 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
   b->ArgsProduct({
       {16, 32, 64, 128, 256},                  // BlkLen
       {1, 1024, 2048},                         // M
-      {4096, 11008},                           // N
-      {4096, 11008},                           // K
-      {1, 8},                                  // Threads
+      {48, 2560, 4096, 11008},                 // N
+      {4096, 2560, 10240, 11008},              // K
+      {1, 8, 64},                                  // Threads
       {int64_t{false}, int64_t{true}},         // Symmetric
       {int64_t{false}, int64_t{true}},         // HasBias
       {int64_t{CompFp32}, int64_t{CompInt8}},  // ComputeType

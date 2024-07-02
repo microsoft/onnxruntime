@@ -56,7 +56,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 const float* A,
                 size_t lda,
                 const void* QuantBData,
-                const void* PackedQuantBData,
+                const void* PackedQuantBDataWorkspace,
                 const float* QuantBScale,
                 const void* QuantBZeroPoint,
                 const float* Bias,
@@ -71,7 +71,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBData = PackedQuantBData != nullptr ? PackedQuantBData : QuantBData;
+    params.QuantBDataWorkspace = PackedQuantBDataWorkspace != nullptr ? PackedQuantBDataWorkspace : QuantBData;
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
@@ -213,10 +213,17 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * ncols + col] << "\t";
+          std::cout << data[row * ncols + col] << ", ";
         }
         std::cout << "\n";
       }
+    };
+
+    auto print_matrix_col = [](size_t nrows, size_t ncols, size_t col, const float* data) {
+      for (size_t row = 0; row < nrows; ++row) {
+        std::cout << data[row * ncols + col] << ", ";
+      }
+      std::cout << "\n";
     };
 
     std::cout << "A:\n";
@@ -258,13 +265,24 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
-    void* PackedQuantBData = nullptr;
+    void* PackedQuantBDataWorkspace = nullptr;
     if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
-      PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
+      PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
+      bool has_zp_input = QuantBZeroPoint != nullptr;
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
+                                   QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
+
+    CallGemm(M, N, K,
+             A, /* lda */ K,
+             QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
+             Bias,
+             C, /* ldc */ N,
+             Workspace,
+             ComputeType,
+             Threadpool);
 
     if (ComputeType == CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
@@ -274,15 +292,6 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       FAIL() << "Test is not implemented for compute type "
              << ComputeType << " (" << ComputeTypeName(ComputeType) << ")";
     }
-
-    CallGemm(M, N, K,
-             A, /* lda */ K,
-             QuantBData, PackedQuantBData, QuantBScale, QuantBZeroPoint,
-             Bias,
-             C, /* ldc */ N,
-             Workspace,
-             ComputeType,
-             Threadpool);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {
@@ -383,6 +392,42 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           }
           tests_registered += RegisterSingleTest(43, 500, 401, ComputeType, WithThreadpool, Symmetric, true);
 
+          tests_registered += RegisterSingleTest(1, 4, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 8, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 16, 49, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 49, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 4, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 4, 92, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 92, 32, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 92, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 92, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 88, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 88, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 84, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 84, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 80, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 80, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 76, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 76, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 72, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 72, 64, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 8, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 16, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 64, 64, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 68, 64, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 92, 92, ComputeType, WithThreadpool, Symmetric, true);
+
+          tests_registered += RegisterSingleTest(1, 1, 16, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, false);
           tests_registered += RegisterSingleTest(1, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
@@ -393,7 +438,51 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, false);
           tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 1, 2131, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 4, 2131, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 527, 1, ComputeType, WithThreadpool, Symmetric, true);
+          //for (int k = 0; k < 2131; k++)
+          //  // k = 33
+          //  tests_registered += RegisterSingleTest(1, 527, k, ComputeType, WithThreadpool, Symmetric, true);
+          //for (int n = 0; n < 527; n++)
+          //  // n = 129
+          //  tests_registered += RegisterSingleTest(1, n, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 128, 32, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 128, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 129, 32, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 129, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+
+          for (bool has_bias : {false, true}) {
+            tests_registered += RegisterSingleTest(1, 1, 33, ComputeType, WithThreadpool, Symmetric, has_bias);
+
+            tests_registered += RegisterSingleTest(1, 1, 32, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 1, 320, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 4, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 4, 231, ComputeType, WithThreadpool, Symmetric, has_bias);
+
+            tests_registered += RegisterSingleTest(2, 1, 1, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 16, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 32, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 1, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 2, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 2, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 4, 2, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 4, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 4, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 64, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 64, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(64, 64, 128, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(64, 128, 64, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(2, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+            tests_registered += RegisterSingleTest(1, 2560, 2560, ComputeType, WithThreadpool, Symmetric, has_bias);
+            // tests_registered += RegisterSingleTest(256, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+            // tests_registered += RegisterSingleTest(2048, 4096, 4096, ComputeType, WithThreadpool, Symmetric, has_bias);
+          }
         }
       }
     }

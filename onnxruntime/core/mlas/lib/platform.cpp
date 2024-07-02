@@ -455,7 +455,7 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
-                            this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            //this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }

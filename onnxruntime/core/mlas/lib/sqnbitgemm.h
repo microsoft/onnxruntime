@@ -26,10 +26,66 @@ Abstract:
 #include "mlasi.h"
 
 constexpr MLAS_FORCEINLINE size_t
+MlasQNBitQuantBBlkSumAlignment()
+{
+    // 16 floats. this alignment is required by GemmFloatKernel
+    return 16 * sizeof(float);
+}
+
+constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
 {
     return BlkLen * BlkBitWidth / 8;
 }
+
+MLAS_FORCEINLINE void*
+MlasAlignAddress(void* addr, const size_t alignment)
+{
+    const uintptr_t QuantBBlkSumAddr = reinterpret_cast<uintptr_t>(addr);
+    addr = (void*)((QuantBBlkSumAddr + alignment - 1) & (~(alignment - 1)));
+    return addr;
+}
+
+struct PackedQuantBDataStruct {
+    PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
+        : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
+    {
+      // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
+        constexpr size_t BlkBitWidth = 4;
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        //const size_t ScaleSize = N * BlockCountK * sizeof(float);
+        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+
+        // _mm256_load_si256 requires alignment on a 32-byte boundary
+        PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
+        QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
+        QuantBBlkSum = (float*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
+
+        PackedQuantBScale = (float*)((std::byte*)QuantBBlkSum + BlkSumSize);
+
+        //PackedQuantBScale = (float*)PackedQuantBWorkspace;
+        //PackedQuantBData = (std::byte*)(PackedQuantBScale) + ScaleSize;
+        //QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
+
+
+        //PackedQuantBScale = (float*)PackedQuantBWorkspace;
+
+        //PackedQuantBData = (std::byte*)PackedQuantBWorkspace + ScaleSize;
+        //QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
+        ////PackedQuantBData = (std::byte*)MlasAlignAddress64(PackedQuantBData);
+        ////QuantBBlkSum = (float*)MlasAlignAddress64(QuantBBlkSum);
+
+        //constexpr size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
+        //const uintptr_t QuantBBlkSumAddr = reinterpret_cast<uintptr_t>(QuantBBlkSum);
+        //QuantBBlkSum = reinterpret_cast<float*>((QuantBBlkSumAddr + Alignment - 1) & (~(Alignment - 1)));
+    }
+    std::byte* PackedQuantBData;
+    float* PackedQuantBScale;
+    float* QuantBBlkSum;
+
+    void* QuantBWorkspace_;
+    size_t N_, BlockCountK_, BlkLen_;
+};
 
 template <size_t BlkBitWidth>
 constexpr MLAS_FORCEINLINE size_t
@@ -73,6 +129,21 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmPackQuantBData_Fn* SQ4BitGemmPackQuantBData = nullptr;
+
+    typedef void(SQ4BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        const float* QuantBScaleBegin,
+        bool has_zp_input,
+        const std::byte* QuantBZPBegin,
+        PackedQuantBDataStruct& packed_quant_b,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
 
     //
     // Workspace size calculation function prototypes.
@@ -201,6 +272,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQ4BitGemmM1Kernel_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
+        const float* QuantAScale,
         const std::byte* QuantBData,
         const float* QuantBScale,
         const std::byte* QuantBZeroPoint,
@@ -212,6 +284,24 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmM1Kernel_CompInt8_Fn* SQ4BitGemmM1Kernel_CompInt8 = nullptr;
+
+    typedef void(SQ4BitGemmKernel_CompInt8_Fn)(
+        const size_t BlkLen,
+        const std::byte* QuantA,
+        const float* QuantAScale,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        float* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockCountK,
+        const float* Bias,
+        size_t lda,
+        size_t ldc
+    );
+
+    SQ4BitGemmKernel_CompInt8_Fn* SQ4BitGemmKernel_CompInt8 = nullptr;
 
     /**
      * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
@@ -230,4 +320,14 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     );
 
     QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
+
+    typedef void(QuantizeARow_CompInt8_Fn2)(
+        size_t BlkLen,
+        const float* A,
+        size_t CountK,
+        std::byte* QuantA,
+        float* QuantAScale,
+        float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
+    );
+    QuantizeARow_CompInt8_Fn2* QuantizeARow_CompInt8_2 = nullptr;
 };
