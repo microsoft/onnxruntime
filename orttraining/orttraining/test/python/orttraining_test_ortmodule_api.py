@@ -25,7 +25,6 @@ from packaging.version import Version
 # Import autocasting libs
 from torch import nn
 from torch.cuda import amp
-from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
 
@@ -6929,6 +6928,8 @@ def test_layerwise_recompute_pythonop_determinstic():
 
 
 def test_aten_attention():
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
     class _NeuralNetAttention(torch.nn.Module):
         def __init__(self):
             super().__init__()
