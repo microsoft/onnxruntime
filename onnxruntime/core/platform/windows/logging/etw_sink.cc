@@ -147,11 +147,11 @@ void EtwRegistrationManager::LazyInitialize() {
   if (!initialized_) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
     if (!initialized_) {  // Double-check locking pattern
-      initialized_ = true;
       etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
       if (FAILED(etw_status_)) {
         ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
       }
+      initialized_ = true;
     }
   }
 }
