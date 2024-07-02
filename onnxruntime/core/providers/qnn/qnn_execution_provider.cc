@@ -378,6 +378,20 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
+  bool enable_htp_weight_sharing = false;
+  static const std::string QNN_HTP_WEIGHT_SHARING_ENABLED = "enable_htp_weight_sharing";
+  auto htp_weight_sharing_enabled_pos = provider_options_map.find(QNN_HTP_WEIGHT_SHARING_ENABLED);
+  if (htp_weight_sharing_enabled_pos != provider_options_map.end()) {
+    if ("1" == htp_weight_sharing_enabled_pos->second) {
+      enable_htp_weight_sharing = true;
+    } else if ("0" == htp_weight_sharing_enabled_pos->second) {
+      enable_htp_weight_sharing = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing << " only 0 or 1 allowed. Set to 0.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
@@ -387,7 +401,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       std::move(qnn_saver_path),
       device_id_,
       htp_arch,
-      soc_model);
+      soc_model,
+      enable_htp_weight_sharing);
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {

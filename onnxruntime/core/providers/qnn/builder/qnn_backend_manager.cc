@@ -13,6 +13,7 @@
 // #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
+#include "HTP/QnnHtpContext.h"
 #include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
@@ -521,6 +522,12 @@ Status QnnBackendManager::CreateContext() {
   }
 
   QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  QnnHtpContext_CustomConfig_t customConfig;
+  customConfig.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
+  customConfig.weightSharingEnabled = enable_htp_weight_sharing_;
+  qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  qnn_context_config.customConfig = &customConfig;
+
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
