@@ -30,7 +30,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const std::filesystem::pat
   for (int i = 0; i < 4; ++i) {
     memcpy(rawdata + i * sizeof(T), &(f[i]), sizeof(T));
   }
-  float_tensor_proto.set_raw_data(rawdata, len);
+  utils::SetRawDataInTensorProto(float_tensor_proto, rawdata, len);
   T float_data2[4];
   auto status = UnpackTensor(float_tensor_proto, model_path, float_data2, 4);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -103,7 +103,24 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 }
 
 template <typename T>
+void ConvertEndianessForVector(const std::vector<T>& test_data) {
+  const size_t element_size = sizeof(T);
+  const size_t num_elements = test_data.size();
+  char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
+  for (size_t i = 0; i < num_elements; ++i) {
+    char* start_byte = bytes + i * element_size;
+    char* end_byte = start_byte + element_size - 1;
+    for (size_t count = 0; count < element_size / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
+}
+
+template <typename T>
 void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(test_data);
+  }
   size_t size_in_bytes = test_data.size() * sizeof(T);
   ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
 }
@@ -147,6 +164,9 @@ void UnpackAndValidate(const TensorProto& tensor_proto, const std::filesystem::p
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(val);
+  }
 
   // Validate data
   for (size_t i = 0; i < test_data.size(); i++) {
@@ -325,6 +345,9 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(val);
+  }
   for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }

@@ -5,6 +5,7 @@
 
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/framework/tensorprotoutils.h"
 namespace onnxruntime {
 namespace QDQ {
 
@@ -132,7 +133,7 @@ struct SetOptionalZeroPoint {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    tensor_proto.set_raw_data(a.data(), sizeof(int8_t));
+    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, a.data(), sizeof(int8_t));
 
     return tensor_proto;
   };
@@ -145,8 +146,7 @@ struct SetOptionalZeroPoint {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-    tensor_proto.set_raw_data(a.data(), sizeof(uint8_t));
-
+    onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, a.data(), sizeof(uint8_t));
     return tensor_proto;
   };
   static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {

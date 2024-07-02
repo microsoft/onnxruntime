@@ -881,8 +881,6 @@ common::Status InferenceSession::RegisterGraphTransformer(
 }
 
 common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& filepath) const {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-endian machines");
-
   // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
   // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
   // what the total flatbuffers serialized size will be.
@@ -1390,8 +1388,6 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-  static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
-
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded

@@ -8,6 +8,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "contrib_ops/cpu/murmur_hash3.h"
+#include <memory>
+#include <utility>
 
 // Platform-specific functions and macros
 
@@ -60,11 +62,31 @@ inline uint64_t rotl64(uint64_t x, int8_t r) {
 // handle aligned reads, do the conversion here
 
 FORCE_INLINE uint32_t getblock(const uint32_t* p, int i) {
-  return p[i];
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+    return p[i];
+  } else {
+    const uint8_t* c = (const uint8_t*)&p[i];
+    return (uint32_t)c[0] |
+           (uint32_t)c[1] << 8 |
+           (uint32_t)c[2] << 16 |
+           (uint32_t)c[3] << 24;
+  }
 }
 
 FORCE_INLINE uint64_t getblock(const uint64_t* p, int i) {
-  return p[i];
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+    return p[i];
+  } else {
+    const uint8_t* c = (const uint8_t*)&p[i];
+    return (uint64_t)c[0] |
+           (uint64_t)c[1] << 8 |
+           (uint64_t)c[2] << 16 |
+           (uint64_t)c[3] << 24 |
+           (uint64_t)c[4] << 32 |
+           (uint64_t)c[5] << 40 |
+           (uint64_t)c[6] << 48 |
+           (uint64_t)c[7] << 56;
+  }
 }
 
 //-----------------------------------------------------------------------------
@@ -204,13 +226,35 @@ Status MurmurHash3::Compute(OpKernelContext* ctx) const {
     int input_num_bytes = static_cast<int>(input_element_bytes);
     ORT_ENFORCE(input_num_bytes % 4 == 0);
     const auto input_end = input + input_count * input_num_bytes;
-    while (input != input_end) {
-      MurmurHash3_x86_32(input,
-                         input_num_bytes,
-                         seed_,
-                         output);
-      input += input_num_bytes;
-      ++output;
+
+    if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
+      while (input != input_end) {
+        MurmurHash3_x86_32(input,
+                           input_num_bytes,
+                           seed_,
+                           output);
+        input += input_num_bytes;
+        ++output;
+      }
+    } else {
+      // Big endian platform require byte swapping.
+      auto raw_data = std::make_unique<char[]>(input_num_bytes);
+      char* raw_data_ptr = raw_data.get();
+      while (input != input_end) {
+        memcpy(raw_data_ptr, input, input_num_bytes);
+        char* start_byte = raw_data_ptr;
+        char* end_byte = start_byte + input_num_bytes - 1;
+        for (size_t count = 0; count < static_cast<size_t>(input_num_bytes / 2); ++count) {
+          std::swap(*start_byte++, *end_byte--);
+        }
+
+        MurmurHash3_x86_32(raw_data_ptr,
+                           input_num_bytes,
+                           seed_,
+                           output);
+        input += input_num_bytes;
+        ++output;
+      }
     }
   }
   return Status::OK();
