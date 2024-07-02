@@ -441,7 +441,7 @@ def run_tflops_test(use_gpu: bool = True, enable_cuda_graph: bool = False, repea
                     sequence_length=sequence_length,
                     num_heads=num_heads,
                     head_size=head_size,
-                    causal=True,
+                    causal=causal,
                     use_kv_cache=use_kv_cache,
                     past_sequence_length=past_sequence_length,
                     max_cache_sequence_length=None,
