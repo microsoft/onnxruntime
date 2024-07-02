@@ -5,6 +5,7 @@
 // It implements onnxruntime::ProviderHost
 
 #include "core/common/inlined_containers.h"
+#include "core/common/path_string.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
@@ -1202,13 +1203,6 @@ struct ProviderHostImpl : ProviderHost {
     GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order));
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
-
-  // Path (wrapped)
-  PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
-  const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept override { return p->GetComponents(); }
-  bool Path__IsEmpty(const Path* p) noexcept override { return p->IsEmpty(); }
-  std::unique_ptr<Path> Path__construct() override { return std::make_unique<Path>(); }
-  void Path__operator_delete(ONNX_NAMESPACE::Path* p) override { delete p; };
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }

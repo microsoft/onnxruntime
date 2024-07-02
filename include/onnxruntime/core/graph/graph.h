@@ -17,12 +17,12 @@
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
 #endif
 #include "core/common/inlined_containers_fwd.h"
-#include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"

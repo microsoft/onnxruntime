@@ -6215,9 +6215,10 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
           std::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
           TransformerLevel::Level1));
       ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-      Path p = Path::Parse(test_case.model_uri);
-      ASSERT_FALSE(p.GetComponents().empty());
-      PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+      std::filesystem::path p = test_case.model_uri;
+      PathString model_filename = ORT_TSTR("transformed_");
+      model_filename += p.filename();
+      std::filesystem::path transformed_model_uri = std::filesystem::path(temp_dir.Path()) / model_filename;
       ASSERT_STATUS_OK(Model::Save(*p_model, transformed_model_uri));
       // Load the transformed model to validate
       ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));

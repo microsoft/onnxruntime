@@ -968,19 +968,6 @@ class GraphViewer final {
   void operator=(const GraphViewer&) = delete;
 };
 
-struct Path final {
-  static std::unique_ptr<Path> Create() { return g_host->Path__construct(); }
-  static void operator delete(void* p) { g_host->Path__operator_delete(reinterpret_cast<Path*>(p)); }
-
-  PathString ToPathString() const noexcept { return g_host->Path__ToPathString(this); }
-  const std::vector<PathString>& GetComponents() const noexcept { return g_host->Path__GetComponents(this); }
-  bool IsEmpty() const noexcept { return g_host->Path__IsEmpty(this); }
-
-  Path() = delete;
-  Path(const Path&) = delete;
-  void operator=(const Path&) = delete;
-};
-
 struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;
