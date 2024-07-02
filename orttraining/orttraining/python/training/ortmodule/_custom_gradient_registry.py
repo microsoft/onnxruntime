@@ -280,7 +280,9 @@ def upsample_bicubic2d_gradient():
 
 # based on the following kernel implementation from PyTorch:
 # https://github.com/pytorch/pytorch/blob/52341c28e817ee6bc36b529823f8248ba395d5bb/aten/src/ATen/native/transformers/cuda/attention_backward.cu#L748
-@register_gradient("org.pytorch.aten", "ATen", "_scaled_dot_product_efficient_attention_cuda", "")
+# dispatch logic:
+# https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14784
+@register_gradient("org.pytorch.aten", "ATen", "_scaled_dot_product_efficient_attention", "")
 def scaled_dot_product_attention_gradient():
     return [
         ("Constant", [], ["grad_input_mask"], {"value": {"value": [1, 1, 1, 1], "dtype": "int", "is_tensor": True}}),
@@ -302,6 +304,6 @@ def scaled_dot_product_attention_gradient():
                 "I(7)",
             ],
             ["GI(0)", "GI(1)", "GI(2)", "GI(3)"],
-            {"operator": {"value": "_scaled_dot_product_efficient_attention_backward_cuda", "dtype": "string"}},
+            {"operator": {"value": "_scaled_dot_product_efficient_attention_backward", "dtype": "string"}},
         ),
     ]
