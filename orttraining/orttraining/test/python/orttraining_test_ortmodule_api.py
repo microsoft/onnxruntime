@@ -25,6 +25,7 @@ from packaging.version import Version
 # Import autocasting libs
 from torch import nn
 from torch.cuda import amp
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
 
@@ -6925,3 +6926,39 @@ def test_layerwise_recompute_pythonop_determinstic():
     else:
         if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+
+def test_aten_attention():
+    class _NeuralNetAttention(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, q, k, v):
+            with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+                return torch.nn.functional.scaled_dot_product_attention(q, k, v)
+
+    def gen_inputs(device, dtype):
+        return [
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+        ]
+
+    device = "cuda"
+    pt_model = _NeuralNetAttention().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, inputs):
+        prediction = model(*inputs)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = gen_inputs(device=device, dtype=torch.float32)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
