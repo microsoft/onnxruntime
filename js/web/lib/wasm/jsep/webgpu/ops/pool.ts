@@ -38,7 +38,8 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
   PoolConvUtil.adjustPoolAttributes(isGlobalOperator, inputShapeAsChannelFirst, kernelShape, strides, dilations, pads);
 
   const outputShapeAsChannelFirst = PoolConvUtil.computePoolOutputShape(
-      isGlobalOperator, inputShapeAsChannelFirst, strides, dilations, kernelShape, pads, attributes.autoPad);
+      isGlobalOperator, inputShapeAsChannelFirst, strides, dilations, kernelShape, pads, attributes.autoPad,
+      attributes.ceilMode);
 
   const newAttributes = Object.assign({}, attributes);
   if (hasDilations) {
@@ -319,10 +320,6 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   const countIncludePad = (attributes.count_include_pad as number) === 0 ? false : true;
 
   const attr = parsePoolCommonAttributes(attributes);
-  // TODO: support attribute 'ceil_mode'
-  if (attr.ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
-  }
   const averagePoolAttributes = {countIncludePad, ...attr, cacheKey: ''};
   return {...averagePoolAttributes, cacheKey: createAveragePoolShaderKeyFromAttributes(averagePoolAttributes)};
 };
@@ -397,12 +394,9 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   const dilations = attributes.dilations as [number, number];
 
   const attr = parsePoolCommonAttributes(attributes);
-  // TODO: support attribute 'ceil_mode' and 'storage_order'
+  // TODO: support attribute 'storage_order'
   if (storageOrder !== 0) {
     throw new Error('column major storage order is not yet supported for MaxPool');
-  }
-  if (attr.ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for MaxPool');
   }
   const maxPoolAttributes = {storageOrder, dilations, ...attr, cacheKey: ''};
   return {...maxPoolAttributes, cacheKey: createMaxPoolShaderKeyFromAttributes(maxPoolAttributes)};
