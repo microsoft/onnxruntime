@@ -216,7 +216,9 @@ class QnnModelWrapper {
   Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
 
   // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
-  Status UnpackZeroPoints(const std::string& initializer_name, std::vector<int32_t>& zero_points) const;
+  Status UnpackZeroPoints(const std::string& initializer_name,
+                          /*out*/ std::vector<int32_t>& zero_points,
+                          /*out*/ int32_t& onnx_data_type) const;
 
   // Checks if a tensor in the ONNX graph is per-channel quantized.
   Status IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,

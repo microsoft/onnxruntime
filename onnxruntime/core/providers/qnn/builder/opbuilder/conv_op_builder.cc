@@ -127,7 +127,8 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
       int32_t elem_data_type = 0;
       ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
 
-      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
+                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
                                   (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
       ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
 
