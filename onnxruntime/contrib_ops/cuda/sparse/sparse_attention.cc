@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cuda/sparse/sparse_attention_impl.h"
 #include "contrib_ops/cuda/sparse/sparse_attention.h"
-#include "contrib_ops/cuda/sparse/sparse_attention_helper.h"
+#include "contrib_ops/cpu/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
 #include "core/platform/env_var_utils.h"
