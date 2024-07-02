@@ -457,16 +457,21 @@ RecognizedOperatorType DetermineRecognizedOperatorType(const std::vector<uint32_
     auto input_labels = components[0].GetLabels(label_indices);
     auto output_labels = components[1].GetLabels(label_indices);
     if (input_labels.size() == output_labels.size()) {
-      if (equals(input_labels, output_labels)) {  // identity
+      if (equals(input_labels, output_labels)) {
+        // Identity: input labels = output labels
         return RecognizedOperatorType::Identity;
       } else {
         return RecognizedOperatorType::Transpose;
       }
-    } else if (output_labels.empty()) {  // scalar output, reduce
+    } else if (input_labels.size() == input_labels.back() + 1) {
+      // ReduceSum: There is no repeated character in input.
       return RecognizedOperatorType::ReduceSum;
+    } else if (input_labels.size() == input_labels.back() + 2) {
+      // Diagonal: One repeated character in input, ii->i / iij->ij / iijk -> ijk.
+      return RecognizedOperatorType::Diagonal;
+    } else {
+      return RecognizedOperatorType::None;
     }
-    return RecognizedOperatorType::None;
-
   } else if (components.size() == 3) {  // two inputs
     auto input_A_labels = components[0].GetLabels(label_indices);
     auto input_B_labels = components[1].GetLabels(label_indices);
@@ -495,22 +500,20 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> output_dimensions;
   uint32_t num_labels;
   ORT_RETURN_IF_NOT(ParseEquationComponents(node, equation, label_indices, components, output_dimensions,
-                                            num_labels, logger), "Error parsing equation components.");
+                                            num_labels, logger),
+                    "Error parsing equation components.");
 
   RecognizedOperatorType recognized_operator_type = DetermineRecognizedOperatorType(label_indices, components,
                                                                                     output_dimensions);
 
   switch (recognized_operator_type) {
     case RecognizedOperatorType::Multiply: {
-      const size_t a_idx = 0, b_idx = 1;
-      emscripten::val a = model_builder.GetOperand(node.InputDefs()[a_idx]->Name());
-      emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
+      emscripten::val a = model_builder.GetOperand(node.InputDefs()[0]->Name());
+      emscripten::val b = model_builder.GetOperand(node.InputDefs()[1]->Name());
       output = model_builder.GetBuilder().call<emscripten::val>("mul", a, b);
     } break;
-
     case RecognizedOperatorType::ReduceSum: {
       auto kept_axes = components.back().GetLabels(label_indices);
-      assert(kept_axes.size() <= 1);
       std::vector<uint32_t> reduced_axes;
       uint32_t kept_axes_mask = 0;
       for (auto axis : kept_axes) {
@@ -530,6 +533,102 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       options.set("axes", emscripten::val::array(reduced_axes));
 
       output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", input, options);
+
+      // transpose output
+      std::vector<uint32_t> output_labels_sorted(kept_axes.begin(), kept_axes.end());
+      std::map<uint32_t, uint32_t> mapping;
+      std::sort(output_labels_sorted.begin(), output_labels_sorted.end());
+
+      auto equals = [](std::vector<uint32_t> a, gsl::span<const uint32_t> b) {
+        return std::equal(a.begin(), a.end(), b.begin(), b.end());
+      };
+      if (equals(output_labels_sorted, kept_axes)) {
+        break;
+      }
+
+      for (size_t i = 0; i < output_labels_sorted.size(); i++) {
+        mapping[output_labels_sorted[i]] = i;
+      }
+      std::vector<uint32_t> permutation;
+      for (auto idx : kept_axes) {
+        permutation.push_back(mapping[idx]);
+      }
+      emscripten::val options_transpose = emscripten::val::object();
+      options.set("permutation", emscripten::val::array(permutation));
+      output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
+    } break;
+    case RecognizedOperatorType::Diagonal: {
+      emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
+      auto input_labels = components[0].GetLabels(label_indices);
+      auto output_labels = components[1].GetLabels(label_indices);
+      uint32_t diagonal_idx_1, diagonal_idx_2;
+      uint32_t permutation_idx = 0;
+      for (uint32_t idx = 0; idx < input_labels.size(); idx++) {
+        if (idx != input_labels[idx]) {
+          diagonal_idx_1 = input_labels[idx];
+          diagonal_idx_2 = idx;
+          break;
+        }
+      }
+
+      // tranpose input
+      std::vector<uint32_t> permutation(input_labels.size());
+      for (uint32_t idx = 0; idx < input_labels.size(); idx++) {
+        if (idx != diagonal_idx_1 && idx != diagonal_idx_2) {
+          permutation[permutation_idx++] = idx;
+        }
+      }
+      permutation[permutation_idx++] = diagonal_idx_1;
+      permutation[permutation_idx] = diagonal_idx_2;
+
+      emscripten::val options = emscripten::val::object();
+      options.set("permutation", emscripten::val::array(permutation));
+      emscripten::val new_input = emscripten::val::object();
+      output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
+
+      // triu + tril = diagonal
+      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output);  // triu
+      emscripten::val options_tril = emscripten::val::object();
+      options_tril.set("upper", false);
+      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output, options_tril);  // tril
+
+      // reducesum to achieve the diagonal values
+      std::vector<int64_t> input_shape;
+      std::vector<uint32_t> reduced_axes;
+      ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
+      if (input_shape[diagonal_idx_1] > input_shape[diagonal_idx_2]) {
+        reduced_axes.push_back(input_labels.size() - 2);
+      } else {
+        reduced_axes.push_back(input_labels.size() - 1);
+      }
+      emscripten::val options_reduce = emscripten::val::object();
+      options_reduce.set("keepDimensions", false);
+      options_reduce.set("axes", emscripten::val::array(reduced_axes));
+      output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", output, options_reduce);  // triu
+
+      // transpose output
+      std::vector<uint32_t> target_output_indices(output_labels.begin(), output_labels.end());
+      std::vector<uint32_t> output_indices(permutation.begin(), permutation.end() - 1);
+
+      // Use the fast permutation calculation algorithm mentioned above
+      std::vector<int64_t> s(output_indices.size(), -1);
+      std::vector<int64_t> t(output_indices.size(), -1);
+      std::vector<uint32_t> p(output_indices.size(), 0);
+      for (uint32_t i = 0; i < output_indices.size(); ++i) {
+        s[output_indices[i]] = i;
+        t[target_output_indices[i]] = i;
+      }
+      for (uint32_t i = 0; i < output_indices.size(); ++i) {
+        p[static_cast<uint32_t>(t[i])] = static_cast<uint32_t>(s[i]);
+      }
+
+      std::vector<uint32_t> sequence_o(output_indices.size());
+      std::iota(sequence_o.begin(), sequence_o.end(), 0);
+      if (p != sequence_o) {
+        emscripten::val options_transpose = emscripten::val::object();
+        options.set("permutation", emscripten::val::array(p));
+        output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
+      }
     } break;
 
     case RecognizedOperatorType::Transpose: {
@@ -545,7 +644,6 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     } break;
 
     case RecognizedOperatorType::Identity: {
-      // identity has not been supported by XNNPack backend, but it will be coming soon.
       emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
       output = input;
     } break;
@@ -578,7 +676,7 @@ bool EinsumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   std::vector<uint32_t> output_dimensions;
   uint32_t num_labels;
 
-  if (!ParseEquationComponents(node, equation, label_indices,components,
+  if (!ParseEquationComponents(node, equation, label_indices, components,
                                output_dimensions, num_labels, logger)) {
     LOGS(logger, VERBOSE) << "EinSum input equation is illegal.";
     return false;
@@ -648,8 +746,8 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevice
     supported_data_types = webnn_supported_data_types;
   }
   const auto& op_type = node.OpType();
-  int32_t input0_type;  // A data type
-  int32_t input1_type;  // B data type
+  int32_t input0_type;
+  int32_t input1_type;
   bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
