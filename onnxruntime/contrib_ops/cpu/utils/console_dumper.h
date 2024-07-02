@@ -37,6 +37,8 @@ class IConsoleDumper {
   virtual void Print(const char* name, int index, bool end_line) const = 0;
   virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
 
+  virtual void Print(const std::string& value) const = 0;
+
  protected:
   bool is_enabled_;
 };

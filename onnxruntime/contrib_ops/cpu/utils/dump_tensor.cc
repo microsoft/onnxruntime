@@ -1,18 +1,38 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iomanip>
 #include "contrib_ops/cpu/utils/dump_tensor.h"
+#include <iomanip>
+#include <mutex>
+#include <thread>
+#include <iostream>
 #include "core/framework/print_tensor_utils.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 #if DUMP_CPU_TENSOR_LEVEL > 0
 
+// Environment variable to enable/disable dumping
+constexpr const char* kEnableCpuTensorDumper = "ORT_ENABLE_CPU_DUMP";
+
+// Environment variable to enable/disable dumping thread id
+constexpr const char* kDumpThreadId = "ORT_DUMP_THREAD_ID";
+
+// To avoid dumping at the same time from multiple threads
+static std::mutex s_mutex;
+
+static bool s_output_thread_id = false;
+
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  if (s_output_thread_id)
+    std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
@@ -26,6 +46,11 @@ void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
 
 template <typename T>
 void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2) {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  if (s_output_thread_id)
+    std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
   }
@@ -91,6 +116,21 @@ void DumpCpuTensor(const char* name, const Tensor& tensor) {
   }
   size_t row_size = num_items / num_rows;
   DumpCpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
+}
+
+CpuTensorConsoleDumper::CpuTensorConsoleDumper() {
+  is_enabled_ = ParseEnvironmentVariableWithDefault<int>(kEnableCpuTensorDumper, 1) != 0;
+  s_output_thread_id = ParseEnvironmentVariableWithDefault<int>(kDumpThreadId, 0) != 0;
+}
+
+void CpuTensorConsoleDumper::Print(const std::string& value) const {
+  if (!is_enabled_)
+    return;
+
+  std::unique_lock<std::mutex> lock(s_mutex);
+  if (s_output_thread_id)
+    std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+  std::cout << value << std::endl;
 }
 
 void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
@@ -185,6 +225,8 @@ void CpuTensorConsoleDumper::Print(const char* name, const OrtValue& value) cons
 void CpuTensorConsoleDumper::Print(const char* name, int index, bool end_line) const {
   if (!is_enabled_)
     return;
+
+  std::unique_lock<std::mutex> lock(s_mutex);
   std::cout << std::string(name) << "[" << index << "]";
 
   if (end_line) {
@@ -196,6 +238,7 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
   if (!is_enabled_)
     return;
 
+  std::unique_lock<std::mutex> lock(s_mutex);
   std::cout << std::string(name) << "=" << value;
 
   if (end_line) {
@@ -204,6 +247,12 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
 }
 
 #else
+CpuTensorConsoleDumper::CpuTensorConsoleDumper() {
+}
+
+void CpuTensorConsoleDumper::Print(const std::string&) const {
+}
+
 void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
 
@@ -254,7 +303,6 @@ void CpuTensorConsoleDumper::Print(const char*, int, bool) const {
 
 void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
-
 #endif
 
 }  // namespace contrib
