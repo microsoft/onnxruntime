@@ -71,6 +71,7 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 
+stages:
 - stage: NuGet_Packaging_ROCm
   dependsOn:
   - Setup
