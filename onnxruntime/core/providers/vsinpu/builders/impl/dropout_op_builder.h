@@ -31,52 +31,46 @@
 namespace onnxruntime {
 namespace vsi {
 namespace npu {
-
-class BatchNormOpBuilder : public BaseOpBuilder {
-  enum NormINPUTS {
-    input_tensor = 0,
-    scale_tensor = 1,
-    Bias_tensor = 2,
-    mean_tensor = 3,
-    var_tensor = 4
-  };
-  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 9; }
-
+class DropoutOpBuilder : public BaseOpBuilder {
+  bool HasSupportedInputOutputsImpl(const InitializedTensorSet& initializers,
+                                    const NodeUnit& node_unit) const override {
+    if (node_unit.Inputs().size() > 2) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto =
+          initializers.at(node_unit.Inputs()[2].node_arg.Name());
+      std::vector<uint8_t> training_mode(1);
+      auto status = onnxruntime::utils::UnpackTensor(
+          *tensor_proto,
+          tensor_proto->has_raw_data() ? tensor_proto->raw_data().data() : nullptr,
+          tensor_proto->has_raw_data() ? tensor_proto->raw_data().size() : 0,
+          training_mode.data(), training_mode.size());
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Failed to get data training mode tensor.";
+        return false;
+      }
+      if (training_mode[0] == true) {
+        LOGS_DEFAULT(WARNING) << "Only support inference typed dropout now.";
+        return false;
+      }
+    }
+    if (node_unit.Inputs().size() > 1) return false;
+    return true;
+  }
   bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer,
                      const Node* node) const override {
-    auto input_defs = node->InputDefs();
     NodeAttrHelper helper(*node);
-    auto training_mode = helper.Get("training_mode", 0);
-    if (training_mode) {
-      LOGS_DEFAULT(WARNING) << "Training is not supported in batch_norm op.";
+    if (helper.HasAttr("seed")) {
+      LOGS_DEFAULT(WARNING) << "Not support seed in Dropout op.";
       return false;
     }
-    if (helper.HasAttr("spatial")) {
-      LOGS_DEFAULT(WARNING) << "VSINPU does not support 'spatial' parameter.";
-      return false;
-    }
-    if (!graph_viewer.IsConstantInitializer(input_defs[NormINPUTS::scale_tensor]->Name(), true)) {
-      LOGS_DEFAULT(WARNING) << "Not support mean/var/gamma/beta set as dynamic input yet.";
-      return false;
-    }
-
     return true;
   }
   bool HandleBuildOp(vsi::npu::GraphEP* graph_ep,
                      std::vector<std::shared_ptr<tim::vx::Tensor>>& inputs,
                      std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,
                      const NodeUnit& node_unit) override {
-    LOGS_DEFAULT(INFO) << "Creating BatchNorm Op.";
-    NodeAttrHelper helper(node_unit.GetNode());
-    auto epsilon = helper.Get("epsilon", 1e-5f);
-    auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::BatchNorm>(epsilon);
-    std::vector<std::shared_ptr<tim::vx::Tensor>> reordered_inputs;
-    int indices[] = {NormINPUTS::input_tensor, NormINPUTS::mean_tensor, NormINPUTS::var_tensor,
-                     NormINPUTS::scale_tensor, NormINPUTS::Bias_tensor};
-    for (int i : indices) {
-      reordered_inputs.push_back(inputs[i]);
-    }
-    (*op).BindInputs(reordered_inputs).BindOutputs(outputs);
+    LOGS_DEFAULT(VERBOSE) << "Creating DropOut Op.";
+    auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::Dropout>(1.0);
+    (*op).BindInput(inputs[0]).BindOutputs(outputs);
     graph_ep->GetOps().push_back(std::move(op));
     return true;
   }

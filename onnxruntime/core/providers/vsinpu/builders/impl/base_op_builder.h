@@ -40,7 +40,7 @@ class BaseOpBuilder : public IOpBuilder {
   bool IsSupported(const onnxruntime::GraphViewer& graph_viewer,
                    const NodeUnit& node_unit) const override;
   bool BuildOp(vsi::npu::GraphEP* graph_ep,
-               const onnxruntime::GraphViewer& graph_viewer, const NodeUnit& node_unit);
+               const onnxruntime::GraphViewer& graph_viewer, const NodeUnit& node_unit) override;
   virtual bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer,
                              const Node* node) const {
     return true;

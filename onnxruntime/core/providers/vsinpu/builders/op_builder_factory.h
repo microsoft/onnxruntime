@@ -51,6 +51,8 @@
 #include "impl/unsqueeze_op_builder.h"
 #include "impl/resize_op_builder.h"
 #include "impl/cast_op_builder.h"
+#include "impl/dropout_op_builder.h"
+#include "impl/slice_op_builder.h"
 namespace onnxruntime {
 namespace vsi {
 namespace npu {
@@ -108,7 +110,8 @@ static const std::map<std::string, createIOpBuildItemFunc> reg = {
     REGISTER_OP_BUILDER("Unsqueeze", UnsqueezeOpBuilder),
     REGISTER_OP_BUILDER("Resize", ResizeOpBuilder),
     REGISTER_OP_BUILDER("Cast", CastOpBuilder),
-
+    REGISTER_OP_BUILDER("Dropout", DropoutOpBuilder),
+    REGISTER_OP_BUILDER("Slice", SliceOpBuilder)
 #undef REGISTER_OP_BUILDER
 };
 

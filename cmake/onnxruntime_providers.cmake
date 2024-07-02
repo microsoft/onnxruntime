@@ -192,32 +192,7 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_USE_VSINPU)
-  add_definitions(-DUSE_VSINPU=1)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
-  file(GLOB_RECURSE onnxruntime_providers_vsinpu_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/vsinpu/builders/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/vsinpu/builders/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/vsinpu/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/vsinpu/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
-  )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vsinpu_srcs})
-  add_library(onnxruntime_providers_vsinpu ${onnxruntime_providers_vsinpu_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_vsinpu
-    onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers Boost::mp11
-    safeint_interface nsync::nsync_cpp)
-  add_dependencies(onnxruntime_providers_vsinpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_vsinpu PROPERTIES FOLDER "ONNXRuntime" LINKER_LANGUAGE CXX)
-  target_include_directories(onnxruntime_providers_vsinpu PRIVATE ${ONNXRUNTIME_ROOT} $ENV{TIM_VX_INSTALL}/include)
-
-  find_library(TIMVX_LIBRARY NAMES tim-vx PATHS $ENV{TIM_VX_INSTALL}/lib NO_DEFAULT_PATH)
-  if(TIMVX_LIBRARY)
-    target_link_libraries(onnxruntime_providers_vsinpu PRIVATE ${TIMVX_LIBRARY})
-  else()
-    message(FATAL_ERROR "Cannot find TIM-VX library!")
-  endif()
-
+  include(onnxruntime_providers_vsinpu.cmake)
 endif()
 
 if (onnxruntime_USE_XNNPACK)

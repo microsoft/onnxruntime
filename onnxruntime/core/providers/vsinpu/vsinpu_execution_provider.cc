@@ -137,9 +137,10 @@ VSINPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* meta_def = capability->sub_graph->GetMetaDef();
-      bool has_any_non_constant_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
-        return !graph_viewer.IsConstantInitializer(input, true);
-      });
+      bool has_any_non_constant_inputs = std::any_of(meta_def->inputs.begin(),
+                                                     meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+                                                       return !graph_viewer.IsConstantInitializer(input, true);
+                                                     });
 
       // ALL inputs are constant
       if (!has_any_non_constant_inputs) {
@@ -184,7 +185,8 @@ Status ComputeStateFunc(vsi::npu::GraphEP* graph_ep,
       const auto tensor_info = onnx_input_tensor.GetTensorTypeAndShapeInfo();
 
       auto origin_tensor = graph_ep->GetGraphInputs()[i]->tensor;
-      origin_tensor->CopyDataToTensor(onnx_input_tensor.GetTensorRawData(), vsi::npu::util::GetTensorBytes(tensor_info));
+      origin_tensor->CopyDataToTensor(onnx_input_tensor.GetTensorRawData(),
+                                      vsi::npu::util::GetTensorBytes(tensor_info));
       j++;
     }
   }
