@@ -3431,6 +3431,15 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
   If zero_points has same type as A, it's not packed and has the same shape as Scales.
 )DOC";
 
+  // This is really bad as we expose a property to the user that should never be set by user.
+  // We have to use this as we perform cuda prepacking during graph optimization phase and
+  // this is the only way to pass the information to the runtime.
+  static const char* PrepackProperty_doc = R"DOC(
+Indicates whether the weight matrix is prepacked (value 1), or not (value 0, default).
+This property should NEVER be set by user. It is set by ONNX Runtime internally during
+model loading time.
+)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3446,6 +3455,8 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
             "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
             "type T1.",
             AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("column_wise_blocking", "whether to quantize weight columnwise (value 1, default), or rowwise (value 0)", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("prepacked", PrepackProperty_doc, AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1 or 2 dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")

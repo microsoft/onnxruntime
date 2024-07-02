@@ -47,10 +47,9 @@ void weightsMinuEight2Half(uint32_t const &weights,
   //
   // 1.125 instruction per weight, 9 instructions in total.
 
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   uint32_t*      b32s   = reinterpret_cast<uint32_t*>(dest.data());
   const uint32_t high_8s = weights >> 8;
-
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   asm volatile(
     "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
     "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
@@ -67,6 +66,8 @@ void weightsMinuEight2Half(uint32_t const &weights,
       "r"(0x64086408));
 #else
   assert(false);
+  (void)(weights);
+  (void)(dest);
 #endif
 }
 
@@ -331,6 +332,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
     // only one scale/offset, so the block size cannot be smaller than 16.
     static_assert(QuantBlocking::kRow % 16 == 0);
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
     const int meta_k = k_iter / (QuantBlocking::kRow / 16);
     half const* scales = reinterpret_cast<half const*>(frag_scales.data() + meta_k * kMetaFragSize);
     [[maybe_unused]] half const* offsets = nullptr;
@@ -391,6 +393,14 @@ struct QuantBScaleLoader<cutlass::MatrixShape<block_size_, 1>, WarpShape_, Eleme
         }
       }
     }
+#else
+    assert(false);
+    (void)(k_iter);
+    (void)(frag_pack_b);
+    (void)(frag_scales);
+    (void)(frag_offsets);
+    (void)(frag_b);
+#endif  // __CUDA_ARCH__
   }
 
 };
@@ -611,6 +621,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
     constexpr int kPackedBKStride = PackedBSize / kPackedBNTiles;
     static_assert(kPackedBKStride * kPackedBNTiles == PackedBSize);
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
     // Row-wise quantization, every row has its own scale/offset
     CUTLASS_PRAGMA_UNROLL
     for (int nn = 0; nn < (WarpShape::kN / 16); ++nn) {
@@ -680,6 +691,14 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
         }
       }
     }
+#else
+    assert(false);
+    (void)(k_iter);
+    (void)(frag_pack_b);
+    (void)(frag_scales);
+    (void)(frag_offsets);
+    (void)(frag_b);
+#endif  // __CUDA_ARCH__
   }
 
 };

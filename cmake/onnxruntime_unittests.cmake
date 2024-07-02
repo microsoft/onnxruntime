@@ -272,6 +272,13 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     "${TEST_SRC_DIR}/optimizer/*.h"
     )
 
+  if (MSVC AND ((onnxruntime_target_platform STREQUAL "ARM64") OR (onnxruntime_target_platform STREQUAL "ARM64EC")))
+    set_source_files_properties("${TEST_SRC_DIR}/optimizer/graph_transform_test.cc" PROPERTIES COMPILE_FLAGS "/bigobj")
+    list(REMOVE_ITEM onnxruntime_test_optimizer_src
+        "${TEST_SRC_DIR}/optimizer/gpu_op_prepack_test.cc"
+    )
+  endif()
+
   set(onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/framework/*.cc"
     "${TEST_SRC_DIR}/framework/*.h"

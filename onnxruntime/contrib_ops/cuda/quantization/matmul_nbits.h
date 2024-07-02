@@ -14,16 +14,34 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-using namespace onnxruntime::cuda;
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
  public:
+  using CudaT = typename ToCudaType<T>::MappedType;
+
   MatMulNBits(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for MatMulNBits op,"
+                " additional bits support is planned.");
+    int64_t column_wise_quant_blk = 1;
+    info.GetAttrOrDefault<int64_t>("column_wise_blocking", &column_wise_quant_blk, int64_t(1));
+    column_wise_quant_blk_ = column_wise_quant_blk != 0;
+    info.GetAttrOrDefault<int64_t>("prepacked", &prepack_, int64_t(0));
+  }
+
+  Status PrepackedGemm([[maybe_unused]] cudaStream_t stream,
+                       [[maybe_unused]] int M,
+                       [[maybe_unused]] const Tensor* a,
+                       [[maybe_unused]] const Tensor* b,
+                       [[maybe_unused]] const Tensor* scales,
+                       [[maybe_unused]] const Tensor* zero_points,
+                       [[maybe_unused]] Tensor* Y) const {
+    ORT_THROW("Prepacked gemm is not supported for MatMulNBits op.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -34,6 +52,7 @@ class MatMulNBits final : public CudaKernel {
   int64_t block_size_;
   int64_t nbits_;
   bool column_wise_quant_blk_{true};
+  int64_t prepack_{0};
 };
 
 }  // namespace cuda

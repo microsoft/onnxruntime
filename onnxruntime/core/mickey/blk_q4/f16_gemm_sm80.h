@@ -11,8 +11,18 @@
 
 #pragma once
 
+// Ignore CUTLASS warning C4100: unreferenced formal parameter
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+
 #include "cutlass/cutlass.h"
 #include "cutlass_ext/q4gemm/device/quantb_gemm.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -127,14 +137,6 @@ struct BlkQ4F16GemmImpl {
     if constexpr (!kHasQuantOffset) {
       return cutlass::Status::kErrorNotSupported;
     } else {
-      if constexpr (ShapeMMAThreadBlock::kM == 16) {
-        if (problem_size_.m() > 16) {
-          // For M > 16, the caller should have picked the
-          // kernel with bigger M
-          return cutlass::Status::kErrorNotSupported;
-        }
-      }
-
       // Construct Gemm arguments
       Arguments args{
           problem_size_,
@@ -172,14 +174,6 @@ struct BlkQ4F16GemmImpl {
     if constexpr (kHasQuantOffset) {
       return cutlass::Status::kErrorNotSupported;
     } else {
-      if constexpr (ShapeMMAThreadBlock::kM == 16) {
-        if (problem_size_.m() > 16) {
-          // For M > 16, the caller should have picked the
-          // kernel with bigger M
-          return cutlass::Status::kErrorNotSupported;
-        }
-      }
-
       // Construct Gemm arguments
       Arguments args{
           problem_size_,

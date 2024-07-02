@@ -111,6 +111,10 @@ onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_src
 
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
+
+# using optimizer as cuda prepacking, so extra headers are needed
+target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
+
 if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
   onnxruntime_add_include_to_target(onnxruntime_optimizer nlohmann_json::nlohmann_json)
