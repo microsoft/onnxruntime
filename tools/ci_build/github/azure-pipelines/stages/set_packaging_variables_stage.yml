@@ -63,6 +63,6 @@ stages:
     - bash: echo $(MyVar)
     - bash: echo $(BuildTime)
     - bash: echo $(BuildDate)
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+    - template: ../templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
