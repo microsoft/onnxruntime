@@ -85,7 +85,9 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   parameters.past_present_share_buffer = true;  // Only supports share kv cache buffer for past and present for now.
 
   int head_size = parameters.head_size;
-  const int cache_length = parameters.past_present_share_buffer ? parameters.max_cache_sequence_length : parameters.total_sequence_length;
+  const int cache_length = parameters.past_present_share_buffer
+                               ? parameters.max_cache_sequence_length
+                               : parameters.total_sequence_length;
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(kv_num_heads_),
                                         static_cast<int64_t>(cache_length),
@@ -134,7 +136,8 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.max_sequence_length = sequence_length;  // unused
     rotary_params.seq_stride = head_size;
     rotary_params.head_stride = sequence_length * rotary_params.seq_stride;
-    rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) * rotary_params.head_stride;
+    rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) *
+                                 rotary_params.head_stride;
     rotary_params.position_ids_format = sequence_length == 1 ? 1 : 0;
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
@@ -154,7 +157,8 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
     T* k_rotary;
     if (packed_qkv) {
       OrtValue RotaryQKV;
-      Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size}), allocator, RotaryQKV);
+      TensorShape qkv_shape({batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size});
+      Tensor::InitOrtValue(element_type, qkv_shape, allocator, RotaryQKV);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = q_input + num_heads_ * sequence_length * head_size;
       q_rotary = RotaryQKV.GetMutable<Tensor>()->MutableData<T>();
@@ -162,9 +166,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
       Q = RotaryQKV;
     } else {
       OrtValue RotaryQ;
-      Tensor::InitOrtValue(element_type, TensorShape({batch_size, num_heads_, sequence_length, head_size}), allocator, RotaryQ);
+      TensorShape q_shape({batch_size, num_heads_, sequence_length, head_size});
+      Tensor::InitOrtValue(element_type, q_shape, allocator, RotaryQ);
       OrtValue RotaryK;
-      Tensor::InitOrtValue(element_type, TensorShape({batch_size, kv_num_heads_, sequence_length, head_size}), allocator, RotaryK);
+      TensorShape k_shape({batch_size, kv_num_heads_, sequence_length, head_size});
+      Tensor::InitOrtValue(element_type, k_shape, allocator, RotaryK);
       q_input = Q.Get<Tensor>().Data<T>();
       k_input = K.Get<Tensor>().Data<T>();
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();

@@ -590,23 +590,6 @@ def create_session(onnx_model_str, cuda_provider_options=None) -> InferenceSessi
     return ort_session
 
 
-# def create_sparse_session(config: SparseAttentionConfig, session_options=None, enable_cuda_graph=False) -> CudaSession:
-#     onnx_model_str = create_sparse_attention_onnx_model(config)
-
-#     if config.provider == "CUDAExecutionProvider":
-#         device_id = torch.cuda.current_device() if isinstance(config.device, str) else config.device.index
-#         provider_options = CudaSession.get_cuda_provider_options(device_id, enable_cuda_graph)
-#         providers = [(config.provider, provider_options), "CPUExecutionProvider"]
-#     else:
-#         providers = ["CPUExecutionProvider"]
-
-#     ort_session = InferenceSession(onnx_model_str, session_options, providers=providers)
-#     cuda_session = CudaSession(ort_session, config.device, enable_cuda_graph)
-#     shape_dict = config.shape_dict()
-#     cuda_session.allocate_buffers(shape_dict)
-#     return cuda_session
-
-
 def group_query_attention_reference(
     query: Tensor,
     key: Tensor,
@@ -877,6 +860,7 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
                                 dtype=dtype,
                                 is_packed_qkv=packed_qkv,
                                 do_rotary=do_rotary,
+                                rotary_interleaved=sequence_length <= 128,
                                 max_cache_sequence_length=None if sequence_length >= 128 else 128,
                             )
                             yield config
@@ -906,6 +890,7 @@ def get_test_cases(provider: str, has_past_kv: bool, comprehensive: bool, do_rot
                 dtype=dtype,
                 is_packed_qkv=packed_qkv,
                 do_rotary=do_rotary,
+                rotary_interleaved=sequence_length <= 128,
                 max_cache_sequence_length=None if sequence_length >= 128 else 128,  # test smaller kv cache buffer.
             )
             yield config
@@ -934,6 +919,7 @@ class TestSparseAttention(unittest.TestCase):
         get_test_cases("CPUExecutionProvider", True, comprehensive_mode, do_rotary=True), skip_on_empty=True
     )
     def test_sparse_att_token_cpu_rotary(self, config: SparseAttentionConfig):
+        # When there is rotary, we use ORT GQA as reference: ORT GQA does not support mask so here we use dense.
         if config.sparse_block_size * config.local_blocks > config.total_sequence_length:
             self.run_one_relevance_test(config)
 

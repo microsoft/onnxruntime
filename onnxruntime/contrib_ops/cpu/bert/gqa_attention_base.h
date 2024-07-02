@@ -30,7 +30,6 @@ class GQAAttentionBase {
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
     rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
 
-    // local_window_size is used in GQA but not in SparseAttention.
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
   }
 
