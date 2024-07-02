@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from typing import Callable
 import os
+from typing import Callable
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
@@ -970,6 +970,7 @@ def softmax(g, input, dim, dtype=None):
     softmax = g.op("Softmax", casted_input, axis_i=dim)
 
     return softmax
+
 
 ATEN_SDPA_FALLBACK = os.getenv("ORTMODULE_ATEN_SDPA_FALLBACK", None)
 if ATEN_SDPA_FALLBACK:

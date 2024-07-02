@@ -286,7 +286,12 @@ if ATEN_SDPA_FALLBACK:
     @register_gradient("org.pytorch.aten", "ATen", "_scaled_dot_product_efficient_attention", "")
     def scaled_dot_product_attention_gradient():
         return [
-            ("Constant", [], ["grad_input_mask"], {"value": {"value": [1, 1, 1, 1], "dtype": "int", "is_tensor": True}}),
+            (
+                "Constant",
+                [],
+                ["grad_input_mask"],
+                {"value": {"value": [1, 1, 1, 1], "dtype": "int", "is_tensor": True}},
+            ),
             (
                 ("ATen", "org.pytorch.aten"),
                 [

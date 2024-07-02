@@ -6981,7 +6981,7 @@ def test_aten_attention():
 
     mem_eff_attn_nodes = 0
     for node in onnx_nodes:
-        if ("ATen" in node.name) and ("scaled_dot_product_attention" in node.attributes.operator):
+        if "_scaled_dot_product_efficient_attention" in node.attributes.operator:
             mem_eff_attn_nodes += 1
 
     assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
