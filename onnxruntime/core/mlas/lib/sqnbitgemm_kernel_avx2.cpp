@@ -434,6 +434,44 @@ SQ4BitGemmM1Kernel_CompInt8_avx2(
     }
 }
 
+size_t
+SQ4BitGemmKernel_CompInt8_avx2(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    size_t ldc,
+    const float* Bias
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(ldc);
+
+    if (CountM == 0) {
+        return 0;
+    }
+
+    SQ4BitGemmM1Kernel_CompInt8_avx2(
+        BlkLen,
+        QuantA,
+        QuantBData,
+        QuantBScale,
+        QuantBZeroPoint,
+        C,
+        CountN,
+        CountK,
+        BlockCountK,
+        Bias
+    );
+
+    return 1;
+}
+
 template <size_t NCols, bool HasZeroPoint>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkLen16_CompFp32_avx2(
@@ -1109,7 +1147,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2 = []() {
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx2;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
-    d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8_avx2;
+    d.SQ4BitGemmKernel_CompInt8 = SQ4BitGemmKernel_CompInt8_avx2;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8_avx2;
 
     return d;

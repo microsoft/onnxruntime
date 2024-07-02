@@ -16,9 +16,10 @@ Abstract:
 --*/
 
 #include "sqnbitgemm.h"
-#include "sqnbitgemm_q8_block.h"
 
 #include <cassert>
+
+#include "sqnbitgemm_q8_block.h"
 
 namespace
 {
@@ -80,7 +81,7 @@ MlasIsSQNBitGemmAvailable(
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp32 != nullptr;
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Dispatch->SQ4BitGemmM1Kernel_CompInt8 != nullptr &&
+            return Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr &&
                    Dispatch->QuantizeARow_CompInt8 != nullptr;
         }
         default: {
@@ -372,15 +373,17 @@ SQ4BitGemm_CompFp32(
             if (bias) {
                 AddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
             }
+
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
                     RowsHandled, CountN, ldc
                 );
             }
 
             c_blk += ldc * RowsHandled;
             a_row += lda * RowsHandled;
+
             RowsRemaining -= RowsHandled;
         }
     }
@@ -431,36 +434,6 @@ SQ4BitGemm_CompInt8(
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
-    if (RangeCountM == 1) {
-        size_t CountN;
-        for (size_t n = 0; n < RangeCountN; n += CountN) {
-            CountN = std::min(RangeCountN - n, size_t{128});
-
-            const std::byte* a_row = QuantA;
-            const std::byte* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            const std::byte* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-            float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
-                BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
-        }
-        return;
-    }
-
-    // This is a naive M > 1 implementation that repeatedly calls the M=1 kernel.
-    // TODO Replace it with an optimized implementation.
     size_t CountN;
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
@@ -473,21 +446,24 @@ SQ4BitGemm_CompInt8(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        for (size_t m = 0; m < RangeCountM; ++m) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+        size_t RowsRemaining = RangeCountM;
+        while (RowsRemaining > 0) {
+            const auto RowsHandled = GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
             );
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                    RowsHandled, CountN, ldc
                 );
             }
 
-            c_blk += ldc;
-            a_row += lda;
+            c_blk += RowsHandled * ldc;
+            a_row += RowsHandled * lda;
+
+            RowsRemaining -= RowsHandled;
         }
     }
 }
