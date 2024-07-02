@@ -1794,7 +1794,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     }
 
     std::vector<ArgDef> output_args;
-    for (const auto& output : node_def.outputs) {
+    for (size_t output_index = 0; output_index < node_def.outputs.size(); ++output_index) {
+      const auto& output = node_def.outputs[output_index];
+      if (!IsGradientRequiredForSrcNodeInput(output_index)) {
+        output_args.emplace_back(ArgDef());
+        continue;
+      }
+
       if (output.find("GI(") == 0) {
         size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
         output_args.emplace_back(GI(index));
