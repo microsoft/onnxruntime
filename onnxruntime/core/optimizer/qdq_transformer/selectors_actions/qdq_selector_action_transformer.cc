@@ -228,6 +228,28 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 #endif
 }
 
+void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry,
+                      int64_t qdq_matmulnbits_accuracy_level) {
+  // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
+  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
+  const std::string action_name{"DQMatMul"};
+
+  std::unique_ptr<Action> action =
+      std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>(qdq_matmulnbits_accuracy_level);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"MatMul", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+
+#else
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 to 5 nodes. 0=DQ A, 1=DQ B, 2=DQ C(optional), 3=Gemm, 4=Q Y(optional)
   // Replace with QGemm
@@ -271,7 +293,8 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
-SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
+SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed,
+                                                    int64_t qdq_matmulnbits_accuracy_level) {
   SelectorActionRegistry qdq_selector_action_registry;
   SplitQDQRules(qdq_selector_action_registry);
   DropQDQNodesRules(qdq_selector_action_registry);
@@ -283,6 +306,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
   GemmQDQRules(qdq_selector_action_registry);
   WhereQDQRules(qdq_selector_action_registry);
+  DQMatMulQDQRules(qdq_selector_action_registry, qdq_matmulnbits_accuracy_level);
 
   return qdq_selector_action_registry;
 }
@@ -290,10 +314,10 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
 }  // namespace
 
 QDQSelectorActionTransformer::QDQSelectorActionTransformer(
-    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
+    bool is_int8_allowed, const SatApplyContextVariant& apply_context, int64_t qdq_matmulnbits_accuracy_level)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorActionRegistry(is_int8_allowed),
+          CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level),
           apply_context,
           // this transformer is only compatible with the CPU and DML EP
           {kCpuExecutionProvider, kDmlExecutionProvider}} {

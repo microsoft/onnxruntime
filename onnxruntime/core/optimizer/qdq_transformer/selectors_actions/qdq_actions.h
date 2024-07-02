@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "core/optimizer/selectors_actions/actions.h"
 
 namespace onnxruntime {
@@ -74,6 +78,24 @@ struct MatMulReplaceWithQLinear : public Action {
  private:
   QDQReplaceWithNew matmul_int_to_float_replacer_;
   BinaryReplaceWithQLinear qlinear_matmul_replacer_;
+};
+
+// used together with DQMatMulNodeGroupSelector, which does the sanity check
+struct DQMatMulReplaceWithMatMulNBits : public Action {
+  explicit DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level);
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+
+ private:
+  NodeAttributes ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const;
+
+  // transpose initializers, and add to the MatMulNBits inputs
+  void AddTransposedInitializers(Graph&, const NodesToOptimize& selected_nodes, Node& replacement_node) const;
+
+  const int64_t accuracy_level_;
+  const std::string domain_;
+  const std::string op_type_;
+  const std::vector<NodeAndMoveInfo> value_moves_;
+  RemoveNodes node_remover_;
 };
 
 struct GemmReplaceWithQuant : public Action {
