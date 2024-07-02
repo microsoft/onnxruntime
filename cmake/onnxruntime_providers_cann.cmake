@@ -25,6 +25,10 @@
   target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
   target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
 
+  if (onnxruntime_ENABLE_TRAINING_OPS AND onnxruntime_ENABLE_PYTHON)
+    onnxruntime_add_include_to_target(onnxruntime_providers_cann Python::Module)
+  endif()
+
   set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_cann PROPERTIES FOLDER "ONNXRuntime")
 
