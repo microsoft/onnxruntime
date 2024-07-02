@@ -49,10 +49,10 @@ miopenStatus_t GetWorkspaceSize(miopenHandle_t handle, const MiopenConvState<mio
 }
 
 size_t GetMaxWorkspaceSize(miopenHandle_t handle, const MiopenConvState<miopenConvAlgoPerf_t>& s,
-                           const miopenConvFwdAlgorithm_t* algo, int n_algo) {
+                           const miopenConvFwdAlgorithm_t* algo, int n_algo, int device_id = 0) {
   // TODO: get maximum available size from memory arena
   size_t free, total;
-  HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+  onnxruntime::rocm::hipMemGetInfoAlt(device_id, &free, &total);
   // Assuming 10% of fragmentation
   free = static_cast<size_t>(static_cast<double>(free) * 0.9);
   size_t max_ws_size = 0;
@@ -283,7 +283,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       int algo_count = 1;
       const ROCMExecutionProvider* rocm_ep = static_cast<const ROCMExecutionProvider*>(this->Info().GetExecutionProvider());
       static constexpr int num_algos = MIOPEN_CONVOLUTION_FWD_ALGO_COUNT;
-      size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetMiopenHandle(context), s_, kAllAlgos, num_algos)
+      size_t max_ws_size = rocm_ep->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetMiopenHandle(context), s_, kAllAlgos, num_algos, rocm_ep->GetDeviceId())
                                                                    : AlgoSearchWorkspaceSize;
       IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
       MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionForwardAlgorithm(

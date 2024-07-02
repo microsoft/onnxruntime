@@ -67,5 +67,17 @@ inline int warpSizeDynamic() {
   return deviceProp.warpSize;
 }
 
+inline void hipMemGetInfoAlt(uint32_t deviceId, size_t* pFree, size_t* pTotal) {
+  const auto status = hipMemGetInfo(pFree, pTotal);
+  if (status != hipSuccess) {
+    size_t usedMemory = 0;
+    ROCMSMI_CALL_THROW(rsmi_init(0));
+    ROCMSMI_CALL_THROW(rsmi_dev_memory_total_get(deviceId, RSMI_MEM_TYPE_VIS_VRAM, pTotal));
+    ROCMSMI_CALL_THROW(rsmi_dev_memory_usage_get(deviceId, RSMI_MEM_TYPE_VIS_VRAM, &usedMemory));
+    *pFree = *pTotal - usedMemory;
+    ROCMSMI_CALL_THROW(rsmi_shut_down());
+  }
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime
