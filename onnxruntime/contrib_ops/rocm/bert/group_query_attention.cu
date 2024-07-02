@@ -517,7 +517,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return Status::OK();
 #else
-  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "GroupQueryAttention requires ck_tiles to be enabled");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "GroupQueryAttention requires ck_tile to be enabled");
 #endif
 }
 

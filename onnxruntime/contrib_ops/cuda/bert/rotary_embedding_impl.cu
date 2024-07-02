@@ -116,7 +116,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
   // instead. This will require kernel changes to support.
   ORT_ENFORCE(head_size <= max_threads_per_block, "Rotary embedding dim must be <= max_threads_per_block");
-  // strides in cannoical bnsh coord, h is always contiguous (dim_stride == 1)
+  // strides in canonical bnsh coord, h is always contiguous (dim_stride == 1)
   ORT_ENFORCE(in_strides.w == 1 && out_strides.w == 1, "head dim must contiguous");
 
   int tpb = (head_size + 31) / 32 * 32;
