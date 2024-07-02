@@ -261,6 +261,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kNnapiExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {

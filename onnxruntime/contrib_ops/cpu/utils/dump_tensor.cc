@@ -247,6 +247,9 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
 }
 
 #else
+CpuTensorConsoleDumper::CpuTensorConsoleDumper() {
+}
+
 void CpuTensorConsoleDumper::Print(const std::string&) const {
 }
 

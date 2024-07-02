@@ -32,18 +32,28 @@ namespace Dml
             uint32_t guaranteedBaseOffsetAlignment
             );
 
-        DML_TENSOR_DESC GetDmlDesc();
+        DML_TENSOR_DESC GetDmlDesc() noexcept;
 
-        inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
-        inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
+        inline DML_TENSOR_DATA_TYPE GetDmlDataType() const noexcept { return m_bufferTensorDesc.DataType; }
+        inline MLOperatorTensorDataType GetMlOperatorDataType() const noexcept { return m_mlOperatorTensorDataType; }
         void ForceUnsignedDataType();
 
-        inline bool IsValid() const { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
+        inline bool IsValid() const noexcept { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
-        gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
-        gsl::span<const uint32_t> GetStrides() const;
+        void EnsureDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
+
+        gsl::span<const uint32_t> GetSizes() const noexcept { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
+        gsl::span<const uint32_t> GetStrides() const noexcept;
         void SetStrides(gsl::span<const uint32_t> strides);
+        void EnsureStridesExist() noexcept;
+
+        void SetDimensionsAndStrides(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides);
+
+        // Rearranges existing m_sizes and m_strides by gathering axes from dimensionMapping.
+        // It IS legal to change the number of dimensions by adding filler, dropping entire dimensions for a new view,
+        // and even duplicating logical dimensions. Axes beyond the original rank will be filled by size 1 and stride 0.
+        // e.g. Existing sizes [2,3,4] with [2,0] yields [4,2].
         void PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment);
 
         inline uint64_t GetBufferSizeInBytes() const
@@ -91,8 +101,6 @@ namespace Dml
         uint32_t m_sizes[MaximumDimensionCount] = {};
         uint32_t m_strides[MaximumDimensionCount] = {};
         DML_BUFFER_TENSOR_DESC m_bufferTensorDesc = {};
-
-        void EnsureStridesExist();
     };
 
     class TensorDescBuilder

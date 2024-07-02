@@ -334,6 +334,11 @@ Status FlashAttention(
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
     float scale) {
+  ORT_UNUSED_PARAMETER(device_prop);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(parameters);
+  ORT_UNUSED_PARAMETER(data);
+  ORT_UNUSED_PARAMETER(scale);
   return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "flash attention does not support float tensor");
 }
 #endif

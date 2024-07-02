@@ -35,6 +35,7 @@
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -283,7 +284,7 @@ struct ProviderHostImpl : ProviderHost {
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint32_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
-  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                                /*out*/ std::vector<uint8_t>& unpacked_tensor) override {
     return utils::UnpackInitializerData(tensor, model_path, unpacked_tensor);
   }
@@ -612,8 +613,12 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     } else if (data_type->s() == "int32") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    } else if (data_type->s() == "uint32") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT32;
     } else if (data_type->s() == "int64") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    } else if (data_type->s() == "uint64") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT64;
     } else if (data_type->s() == "int1") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
     } else if (data_type->s() == "bfloat16") {
@@ -624,6 +629,26 @@ struct ProviderHostImpl : ProviderHost {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
     } else if (data_type->s() == "int16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
+    } else if (data_type->s() == "double") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    } else if (data_type->s() == "string") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_STRING;
+    } else if (data_type->s() == "complex64") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
+    } else if (data_type->s() == "complex128") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
+    } else if (data_type->s() == "float8e4m3fn") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
+    } else if (data_type->s() == "float8e4m3fnuz") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
+    } else if (data_type->s() == "float8e5m2") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
+    } else if (data_type->s() == "float8e5m2funz") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
+    } else if (data_type->s() == "uint4") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+    } else if (data_type->s() == "int4") {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_INT4;
     } else {
       return;
     }
@@ -999,7 +1024,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& NodeUnit__Name(const NodeUnit* p) noexcept override { return p->Name(); }
   int NodeUnit__SinceVersion(const NodeUnit* p) noexcept override { return p->SinceVersion(); }
   NodeIndex NodeUnit__Index(const NodeUnit* p) noexcept override { return p->Index(); }
-  const Path& NodeUnit__ModelPath(const NodeUnit* p) noexcept override { return p->ModelPath(); }
+  const std::filesystem::path& NodeUnit__ModelPath(const NodeUnit* p) noexcept override { return p->ModelPath(); }
   ProviderType NodeUnit__GetExecutionProviderType(const NodeUnit* p) noexcept override {
     return p->GetExecutionProviderType();
   }
@@ -1039,7 +1064,7 @@ struct ProviderHostImpl : ProviderHost {
   void Model__operator_delete(Model* p) override { delete p; }
   Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToProto()); }
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::string& external_file_name, const PathString& file_path, size_t initializer_size_threshold) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold)); };
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold)); };
   const ModelMetaData& Model__MetaData(const Model* p) const noexcept override { return p->MetaData(); };
   Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) override { return Model::Load(file_path, model_proto); }
 
@@ -1076,7 +1101,7 @@ struct ProviderHostImpl : ProviderHost {
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
   Graph* Graph__MutableParentGraph(Graph* p) override { return p->MutableParentGraph(); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
-  const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
+  const std::filesystem::path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
   const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
@@ -1132,7 +1157,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
-  const Path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); }
+  const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); }
 
   const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
@@ -1800,7 +1825,18 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
 }
 
-std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions* provider_options_map) {
+void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
+                                                   const SessionOptions* session_options) {
+  bool disable_cpu_fallback = session_options->config_options.GetConfigOrDefault(
+                                  kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  if (disable_cpu_fallback)
+    ov_options["disable_cpu_fallback"] = "true";
+}
+
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(ProviderOptions* provider_options_map,
+                                                                                  const SessionOptions* session_options) {
+  if (session_options)
+    onnxruntime::ORTSessionOptionsToOrtOpenVINOProviderOptions(*provider_options_map, session_options);
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
@@ -2075,7 +2111,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
   }
-  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
   }

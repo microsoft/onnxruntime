@@ -307,9 +307,9 @@ stages:
       displayName: 'Create models link'
 
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.1
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.1
+        versionSpec: 6.10.x
 
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
@@ -341,6 +341,11 @@ stages:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: ${{ parameters.DoEsrp }}
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: 3.8
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

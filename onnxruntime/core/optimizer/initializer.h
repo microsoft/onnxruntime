@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 #include <cmath>
-
+#include <filesystem>
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/path.h"
@@ -28,7 +28,7 @@ class Initializer final {
               gsl::span<const int64_t> dims);
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const Path& model_path = {});
+              const std::filesystem::path& model_path = {});
 
   ~Initializer() = default;
 

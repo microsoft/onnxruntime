@@ -675,7 +675,7 @@ Status FlashAttention(
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
-      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
+      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache, /*block_table*/ nullptr,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
       parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
       scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),

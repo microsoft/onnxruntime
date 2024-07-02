@@ -20,6 +20,7 @@ import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
+from packaging import version
 from parameterized import parameterized
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
@@ -1878,11 +1879,31 @@ def parity_check_gqa_past_no_buff(
     numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
+def has_flash_attention():
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 8 and (
+        platform.system() == "Linux"
+        or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
+    )
+
+
+def has_memory_efficient():
+    if not torch.cuda.is_available():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    if major < 5 or (major == 5 and minor < 3):
+        return False
+    return True
+
+
 def packed_mha_test_cases():
     batches = [2] if pipeline_mode else [1, 5]
-    seqs = [8, 97, 256, 1024] if pipeline_mode else [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]
+    seqs = [1024, 1025] if pipeline_mode else [1024, 1025, 2048]
     num_h = [1, 3] if pipeline_mode else [1, 6, 16]
     h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
     for b in batches:
         for s in seqs:
             for n in num_h:
@@ -1911,6 +1932,7 @@ def mha_test_cases():
     )
     num_h = [1, 3] if pipeline_mode else [1, 6, 16]
     h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
     for b in batches:
         for s, s2 in seqs:
             for n in num_h:
@@ -1922,21 +1944,17 @@ def mha_test_cases():
 class TestMHA(unittest.TestCase):
     @parameterized.expand(packed_mha_test_cases())
     def test_packed_mha(self, _, config):
-        if not torch.cuda.is_available() or platform.system() != "Linux":
+        if not has_flash_attention():
             return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8:
-            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST PACKED MHA ---------")
         parity_check_mha(config, True)
 
     @parameterized.expand(mha_test_cases())
     def test_mha(self, _, config):
-        if not torch.cuda.is_available() or platform.system() != "Linux":
+        if not has_flash_attention():
             return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8:
-            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
         parity_check_mha(config, False)
 
@@ -2106,10 +2124,7 @@ def gqa_past_flash_attention_test_cases():
 class TestGQA(unittest.TestCase):
     @parameterized.expand(gqa_no_past_memory_efficient_test_cases())
     def test_gqa_no_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
-        if not torch.cuda.is_available():
-            return
-        major, minor = torch.cuda.get_device_capability()
-        if major < 5 or (major == 5 and minor < 3):
+        if not has_memory_efficient():
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("------- MEMORY EFFICIENT ATTENTION (PROMPT CASE) ---------")
@@ -2135,10 +2150,7 @@ class TestGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
     def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
-        if not torch.cuda.is_available():
-            return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8 or platform.system() != "Linux":
+        if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (PROMPT CASE) --------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
@@ -2162,10 +2174,7 @@ class TestGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_past_memory_efficient_test_cases())
     def test_gqa_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
-        if not torch.cuda.is_available():
-            return
-        major, minor = torch.cuda.get_device_capability()
-        if major < 5 or (major == 5 and minor < 3):
+        if not has_memory_efficient():
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
@@ -2191,10 +2200,7 @@ class TestGQA(unittest.TestCase):
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
     def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
-        if not torch.cuda.is_available():
-            return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8 or platform.system() != "Linux":
+        if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
