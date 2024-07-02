@@ -425,7 +425,7 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
@@ -436,7 +436,7 @@ stages:
 
     - template: templates/use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
@@ -462,7 +462,7 @@ stages:
   - job: IosMinimalTrainingBuild
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
@@ -473,7 +473,7 @@ stages:
 
     - template: templates/use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
