@@ -311,7 +311,6 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 
     ```bash
     export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE
-	export ORTMODULE_ATEN_SDPA_FALLBACK=0 # DISABLE
     ```
 
 ### 2.2 Memory Optimization
