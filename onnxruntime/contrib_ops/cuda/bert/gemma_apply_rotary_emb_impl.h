@@ -9,18 +9,20 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T, typename U>
-Status LaunchGemmaRotaryEmbeddingKernel(
+template <typename T>
+Status LaunchGemmaApplyRotaryEmbeddingKernel(
     cudaStream_t stream,
     T* output1,
     T* output2,
-    const U* emb,
-    // const T* q,
-    // const T* q_rot,
-    // const T* k,
-    // const T* k_rot,
+    // const U* emb,
+    const T* sin_emb,
+    const T* cos_emb,
+    const T* q,
+    const T* q_rot,
+    const T* k,
+    const T* k_rot,
     const int batch_size,
-    // const int num_heads,
+    const int num_heads,
     const int seq_len,
     const int dim);
 

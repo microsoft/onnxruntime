@@ -40,6 +40,54 @@ from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
+from onnxscript import ir
+from onnxscript.rewriter import pattern
+
+# def fuse_rotary_embedding(model):
+#     def gemma_rotary_embedding_pattern(op, emb, q, q_rot, k, k_rot, axis):
+#         sin_val = op.Sin(emb)
+#         casted_sin = op.Cast(sin_val, to=10) # for fp16 mix-precision training. Other types are not supported.
+#         cos_val = op.Cos(emb)
+#         casted_cos = op.Cast(cos_val, to=10)
+#         unsqueezed_sin = op.Unsqueeze(casted_sin, axis)
+#         unsqueezed_cos = op.Unsqueeze(casted_cos, axis)
+#         q_embed = (q * unsqueezed_cos) + (q_rot * unsqueezed_sin)
+#         k_embed = (k * unsqueezed_cos) + (k_rot * unsqueezed_sin)
+#         return q_embed, k_embed
+
+#     def gemma_rotary_apply_pattern(op, emb, q, q_rot, k, k_rot, axis, **_):
+#         """The replacement pattern."""
+#         part1, part2 = op.GemmaRotaryEmbedding(
+#             emb, q, q_rot, k, k_rot, axis, domain="com.microsoft", outputs=2
+#         )
+#         return part1, part2
+    
+#     ir_model = ir.serde.deserialize_model(model)
+    
+#     rule = pattern.RewriteRule(gemma_rotary_embedding_pattern, gemma_rotary_apply_pattern, verbose=10)
+
+#     ##########################
+#     # Let's apply it.
+#     rule.apply_to_model(ir_model)
+
+#     rewritten_model = ir.serde.serialize_model(ir_model)
+#     return rewritten_model
+def fuse_rotary_embedding():
+    def gemma_rotary_embedding_pattern2(op, emb, axes1, axes2):
+        sin_val = op.Sin(emb)
+        casted_sin = op.Cast(sin_val, to=10) # for fp16 mix-precision training. Other types are not supported.
+        cos_val = op.Cos(emb)
+        casted_cos = op.Cast(cos_val, to=10)
+        unsqueezed_sin = op.Unsqueeze(casted_sin, axes1) # Multi output doesn't check axes
+        unsqueezed_cos = op.Unsqueeze(casted_cos, axes2)
+        return unsqueezed_sin, unsqueezed_cos
+
+    def gemma_rotary_apply_pattern2(op, emb, axes1, axes2, **_):
+        """The replacement pattern."""
+        unsqueezed_sin, unsqueezed_cos = op.GemmaRotaryEmbedding(
+            emb, axes1, axes2, domain="com.microsoft", outputs=2
+        )
+        return unsqueezed_sin, unsqueezed_cos
 
 class _RunStateInfo:
     def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]]):
@@ -110,6 +158,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Exporter can take extra arguments for ORTModule extensions
         # It cannot overlap with required/immutable arguments (validated in runtime)
         self._export_extra_kwargs = {}
+
+        self._post_export_callback_funcs = [fuse_rotary_embedding]
 
         # Input and output infos (including schema) for exported model.
         self._input_info: Optional[_InputInfo] = None
@@ -446,6 +496,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if len(invalid_args) != 0:
                     error_msg = f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
                     raise RuntimeError(error_msg)
+                
+                # print(f"#*#*#self._debug_options.log_level={self._debug_options.log_level}")
+                # print(f"#*#*#self._debug_options.save_onnx={self._debug_options.save_onnx}")
+                # print(f"#*#*#self._debug_options.onnx_prefix={self._debug_options.onnx_prefix}")
 
                 torch.onnx.export(
                     self._flattened_module,
@@ -500,7 +554,18 @@ class GraphExecutionManager(GraphExecutionInterface):
                 RuntimeError(f"There was an error while exporting the PyTorch model to ONNX: \n\n{message}"),
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
+        onnx.save(exported_model, "gemma_bef_fusion_l3.onnx")
+        # exported_model = onnx.load("/home/jingywa/onnxscript/examples/gemma_optimized_pre_grad_training - Copy.onnx")
 
+        for func in self._post_export_callback_funcs:
+            exported_model = func(exported_model)
+
+        for node in exported_model.graph.node:
+            if node.op_type == "GemmaRotaryEmbedding":
+                print(f"#*#*# Found GemmaRotaryEmbedding{node.op_type}")
+        
+        onnx.save(exported_model, "gemma_after_fusion_l3.onnx")
+        
         if self._runtime_options.enable_custom_autograd_function:
             from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
 
