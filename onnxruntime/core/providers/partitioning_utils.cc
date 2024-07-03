@@ -171,7 +171,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
                         node_graph_index.emplace(&downstream_node, graph_index);
                       }
                     });
-      nodes_to_include.emplace(current_node, nodes_connected);
+      nodes_to_include.emplace(connected_node, nodes_connected);
     }
   };
 
