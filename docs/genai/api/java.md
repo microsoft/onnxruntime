@@ -7,7 +7,7 @@ grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 
-# Java API
+# ONNX Runtime generate() Java API
 
 _Note: this API is in preview and is subject to change._
 
@@ -37,6 +37,142 @@ An exception which contains the error message and code produced by the native la
 ```java
 public GenAIException(String message)
 ```
+
+## SimpleGenAI Class
+
+The `SimpleGenAI` class provides a simple usage example of the GenAI API. It works with a model that generates text based on a prompt, processing a single prompt at a time.
+Usage:
+
+Create an instance of the class with the path to the model. The path should also contain the GenAI configuration files.
+Call createGeneratorParams with the prompt text.
+Set any other search options via the GeneratorParams object as needed using `setSearchOption`.
+Call generate with the GeneratorParams object and an optional listener.
+The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the TokenUpdateListener interface and provide an instance of that class as the `listener` argument.
+
+### Constructor
+
+```java
+public SimpleGenAI(String modelPath)
+            throws GenAIException
+```
+
+#### Throws
+
+`GenAIException`
+
+### Generate
+
+Generate text based on the prompt and settings in GeneratorParams. 
+
+NOTE: This only handles a single sequence of input (i.e. a single prompt which equates to batch size of 1).
+
+```java
+public String generate(GeneratorParams generatorParams,
+ Consumer<String> listener)
+                throws GenAIException
+```
+
+#### Parameters
+
+- `generatorParams`: the prompt and settings to run the model with.
+- `listener`: optional callback for tokens to be provided as they are generated. 
+
+NOTE: Token generation will be blocked until the listener's `accept` method returns.
+
+#### Throws
+
+`GenAIException`- on failure.
+
+#### Returns
+
+The generated text.
+
+## GenAI Class
+
+Description
+
+### Initialize OS_ARCH_STR Method
+
+Computes and initializes OS_ARCH_STR (such as linux-x64)
+
+```java
+private static String initOsArch()
+```
+
+### Check Android Method
+
+Check if we're running on Android.
+
+```java
+static boolean isAndroid()
+```
+
+#### Returns
+
+Returns True if the property java.vendor equals The Android Project, false otherwise.
+
+### Cleanup Method
+
+Marks the file for delete on exit.
+
+```java
+private static void cleanUp(File file)
+```
+
+#### Parameters
+
+- `file`: the file to remove.
+
+### Load Method
+
+Load a shared library by name.
+
+NOTE: If the library path is not specified via a system property then it attempts to extract the library from the classpath before loading it.
+
+```java
+private static void load(String library) throws IOException
+```
+
+#### Parameters
+
+- `library`: the bare name of the library.
+
+#### Throws
+
+`IOException`- If the fild failed to read or write.
+
+### Extract Method
+
+Extracts the library from the classpath resources. Returns optional.empty if it failed to extract or couldn't be found.
+
+```java
+private static Optional<File> extractFromResources(String library)
+```
+
+#### Parameters
+
+- `library`: the library name.
+
+#### Returns
+
+An optional containing the file if it is successfully extracted, or an empty optional if it failed to extract or couldn't be found.
+
+### Map Library Method
+
+Maps the library name into a platform dependent library filename. Converts macOS's "jnilib" to "dylib" but otherwise is the same as {@link System#mapLibraryName(String)}.
+
+```java
+private static String mapLibraryName(String library)
+```
+
+#### Parameters
+
+- `library`: the library name.
+
+#### Returns
+
+The library filename.
+
 
 ## Model class
 
@@ -84,7 +220,9 @@ The generated sequences.
 
 ### Generate Parameters Method
 
-Creates a GeneratorParams instance for executing the model. NOTE: GeneratorParams internally uses the Model, so the Model instance must remain valid.
+Creates a GeneratorParams instance for executing the model. 
+
+NOTE: GeneratorParams internally uses the Model, so the Model instance must remain valid.
 
 ```java
 public GeneratorParams createGeneratorParams()
@@ -310,7 +448,9 @@ public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
 
 #### Throws
 
-`GenAIException`- if the call to the GenAI native API fails. NOTE: all sequences in the batch must be the same length.
+`GenAIException`- if the call to the GenAI native API fails. 
+
+NOTE: all sequences in the batch must be the same length.
 
 ## Generator class
 
@@ -432,49 +572,4 @@ public long numSequences()
 ### Returns
 
 The number of sequences.
-
-## SimpleGenAI Class
-
-The `SimpleGenAI` class provides a simple usage example of the GenAI API. It works with a model that generates text based on a prompt, processing a single prompt at a time.
-Usage:
-
-Create an instance of the class with the path to the model. The path should also contain the GenAI configuration files.
-Call createGeneratorParams with the prompt text.
-Set any other search options via the GeneratorParams object as needed using `setSearchOption`.
-Call generate with the GeneratorParams object and an optional listener.
-The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the TokenUpdateListener interface and provide an instance of that class as the `listener` argument.
-
-### Constructor
-
-```java
-public SimpleGenAI(String modelPath)
-            throws GenAIException
-```
-
-#### Throws
-
-`GenAIException`
-
-### Generate
-
-Generate text based on the prompt and settings in GeneratorParams. NOTE: This only handles a single sequence of input (i.e. a single prompt which equates to batch size of 1).
-
-```java
-public String generate(GeneratorParams generatorParams,
- Consumer<String> listener)
-                throws GenAIException
-```
-
-#### Parameters
-
-- `generatorParams`: the prompt and settings to run the model with.
-- `listener`: optional callback for tokens to be provided as they are generated. NOTE: Token generation will be blocked until the listener's `accept` method returns.
-
-#### Throws
-
-`GenAIException`- on failure.
-
-#### Returns
-
-The generated text.
 
