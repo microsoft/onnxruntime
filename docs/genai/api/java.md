@@ -38,38 +38,60 @@ An exception which contains the error message and code produced by the native la
 public GenAIException(String message)
 ```
 
+#### Example
+
+```java
+catch (GenAIException e) {
+  throw new GenAIException("Token generation loop failed.", e);
+}
+```
+
 ## SimpleGenAI Class
 
 The `SimpleGenAI` class provides a simple usage example of the GenAI API. It works with a model that generates text based on a prompt, processing a single prompt at a time.
 Usage:
 
 Create an instance of the class with the path to the model. The path should also contain the GenAI configuration files.
+
+```java
+SimpleGenAI genAI = new SimpleGenAI(folderPath);
+```
+
 Call createGeneratorParams with the prompt text.
 Set any other search options via the GeneratorParams object as needed using `setSearchOption`.
+
+```java
+GeneratorParams generatorParams = genAI.createGeneratorParams(promptText);
+// .. set additional generator params before calling generate()
+```
+
 Call generate with the GeneratorParams object and an optional listener.
-The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the TokenUpdateListener interface and provide an instance of that class as the `listener` argument.
+
+```java
+String fullResponse = genAI.generate(generatorParams, listener);
+```
+
+//token listener changed to consumer<string>?
+The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the ``Consumer<String>`` interface and provide an instance of that class as the `listener` argument.
 
 ### Constructor
 
 ```java
-public SimpleGenAI(String modelPath)
-            throws GenAIException
+public SimpleGenAI(String modelPath) throws GenAIException
 ```
 
 #### Throws
 
-`GenAIException`
+`GenAIException`- on failure.
 
-### Generate
+### Generate Method
 
 Generate text based on the prompt and settings in GeneratorParams. 
 
 NOTE: This only handles a single sequence of input (i.e. a single prompt which equates to batch size of 1).
 
 ```java
-public String generate(GeneratorParams generatorParams,
- Consumer<String> listener)
-                throws GenAIException
+public String generate(GeneratorParams generatorParams, Consumer<String> listener) throws GenAIException
 ```
 
 #### Parameters
@@ -87,16 +109,58 @@ NOTE: Token generation will be blocked until the listener's `accept` method retu
 
 The generated text.
 
-## GenAI Class
-
-Description
-
-### Initialize OS_ARCH_STR Method
-
-Computes and initializes OS_ARCH_STR (such as linux-x64)
+#### Example
 
 ```java
-private static String initOsArch()
+SimpleGenAI generator = new SimpleGenAI(modelPath);
+GeneratorParams params = generator.createGeneratorParams("What's 6 times 7?");
+Consumer<String> listener = token -> logger.info("onTokenGenerate: " + token);
+String result = generator.generate(params, listener);
+
+logger.info("Result: " + result);
+```
+
+### createGenerateParams Method
+
+Create the generator parameters and add the prompt text. The user can set other search options via the GeneratorParams object prior to running `generate`.
+
+```java
+public GeneratorParams createGeneratorParams(String prompt) throws GenAIException
+```
+
+#### Parameters
+
+- `prompt`: the prompt text to encode.
+
+#### Throws
+
+`GenAIException`- on failure.
+
+#### Returns
+
+The generator parameters.
+
+//delete
+## GenAI Class
+
+GenAI class provides a set of static functions and string definitions used to describe current running environment.
+
+### Initialize GenAI environment
+
+Load all the libraries required by GenAI.
+
+```java
+static synchronized void init() throws IOException;
+```
+
+#### Throws
+
+`IOException` - if any of required libraries fail to load.
+
+#### Example
+
+```java
+GenAI.init();
 ```
 
 ### Check Android Method
@@ -111,68 +175,13 @@ static boolean isAndroid()
 
 Returns True if the property java.vendor equals The Android Project, false otherwise.
 
-### Cleanup Method
-
-Marks the file for delete on exit.
+#### Example
 
 ```java
-private static void cleanUp(File file)
+if (GenAI.isAndroid()) {
+  // Android-specific code
+}
 ```
-
-#### Parameters
-
-- `file`: the file to remove.
-
-### Load Method
-
-Load a shared library by name.
-
-NOTE: If the library path is not specified via a system property then it attempts to extract the library from the classpath before loading it.
-
-```java
-private static void load(String library) throws IOException
-```
-
-#### Parameters
-
-- `library`: the bare name of the library.
-
-#### Throws
-
-`IOException`- If the fild failed to read or write.
-
-### Extract Method
-
-Extracts the library from the classpath resources. Returns optional.empty if it failed to extract or couldn't be found.
-
-```java
-private static Optional<File> extractFromResources(String library)
-```
-
-#### Parameters
-
-- `library`: the library name.
-
-#### Returns
-
-An optional containing the file if it is successfully extracted, or an empty optional if it failed to extract or couldn't be found.
-
-### Map Library Method
-
-Maps the library name into a platform dependent library filename. Converts macOS's "jnilib" to "dylib" but otherwise is the same as {@link System#mapLibraryName(String)}.
-
-```java
-private static String mapLibraryName(String library)
-```
-
-#### Parameters
-
-- `library`: the library name.
-
-#### Returns
-
-The library filename.
-
 
 ## Model class
 
@@ -187,8 +196,7 @@ Model(String modelPath)
 Creates a Tokenizer instance for this model. The model contains the configuration information that determines the tokenizer to use.
 
 ```java
-public Tokenizer createTokenizer()
-                          throws GenAIException
+public Tokenizer createTokenizer() throws GenAIException
 ```
 
 #### Throws
@@ -202,8 +210,7 @@ public Tokenizer createTokenizer()
 ### Generate Method
 
 ```java
-public Sequences generate(GeneratorParams generatorParams)
-                   throws GenAIException
+public Sequences generate(GeneratorParams generatorParams) throws GenAIException
 ```
 
 #### Parameters
@@ -218,6 +225,12 @@ public Sequences generate(GeneratorParams generatorParams)
 
 The generated sequences.
 
+#### Example
+
+```java
+Sequences output = model.generate(generatorParams);
+```
+
 ### Generate Parameters Method
 
 Creates a GeneratorParams instance for executing the model. 
@@ -225,8 +238,7 @@ Creates a GeneratorParams instance for executing the model.
 NOTE: GeneratorParams internally uses the Model, so the Model instance must remain valid.
 
 ```java
-public GeneratorParams createGeneratorParams()
-                                      throws GenAIException
+public GeneratorParams createGeneratorParams() throws GenAIException
 ```
 
 #### Throws
@@ -237,16 +249,20 @@ public GeneratorParams createGeneratorParams()
 
 The GeneratorParams instance.
 
+#### Example
+
+```java
+GeneratorParams params = generator.createGeneratorParams("What's 6 times 7?");
+```
 
 ## Tokenizer class
 
-### Encode
+### Encode Method
 
 Encodes a string into a sequence of token ids.
 
 ```java
-public Sequences encode(String string)
-                 throws GenAIException
+public Sequences encode(String string) throws GenAIException
 ```
 
 #### Parameters
@@ -261,14 +277,18 @@ public Sequences encode(String string)
 
 A Sequences object with a single sequence in it.
 
+#### Example
 
-### Decode
+```java
+Sequences encodedPrompt = tokenizer.encode(prompt);
+```
+
+### Decode Method
 
 Decodes a sequence of token ids into text.
 
 ```java
-public String decode(int[] sequence)
-              throws GenAIException
+public String decode(int[] sequence) throws GenAIException
 ```
 
 #### Parameters
@@ -283,14 +303,18 @@ public String decode(int[] sequence)
 
 The text representation of the sequence.
 
+#### Example
 
-### Encode batch
+```java
+String result = tokenizer.decode(output_ids);
+```
+
+### encodeBatch Method
 
 Encodes an array of strings into a sequence of token ids for each input.
 
 ```java
-public Sequences encodeBatch(String[] strings)
-                      throws GenAIException
+public Sequences encodeBatch(String[] strings) throws GenAIException
 ```
 
 #### Parameters
@@ -305,13 +329,18 @@ public Sequences encodeBatch(String[] strings)
 
 A Sequences object with one sequence per input string.
 
-### Decode batch
+#### Example
+
+```java
+Sequences encoded = tokenizer.encodeBatch(inputs);
+```
+
+### decodeBatch Method
 
 Decodes a batch of sequences of token ids into text.
 
 ```java
-public String[] decodeBatch(Sequences sequences)
-                     throws GenAIException
+public String[] decodeBatch(Sequences sequences) throws GenAIException
 ```
 
 #### Parameters
@@ -326,19 +355,19 @@ public String[] decodeBatch(Sequences sequences)
 
 An array of strings with the text representation of each sequence.
 
+#### Example
 
-### Create tokenizer decoding stream
+```java
+String[] decoded = tokenizer.decodeBatch(encoded);
+```
+
+### createStream Method
 
 Creates a TokenizerStream object for streaming tokenization. This is used with Generator class to provide each token as it is generated.
 
 ```java
-public TokenizerStream createStream()
-                             throws GenAIException
+public TokenizerStream createStream() throws GenAIException
 ```
-
-#### Parameters
-
-None
 
 #### Throws
 
@@ -348,18 +377,19 @@ None
 
 The new TokenizerStream instance.
 
-
 ## TokenizerStream class
 
 This class is used to convert individual tokens when using Generator.generateNextToken.
 
 ### Decode method
 
- 
 ```java
-public String decode(int token)
-              throws GenAIException
+public String decode(int token) throws GenAIException
 ```
+
+#### Parameters
+
+- `token`: int value for token
 
 #### Throws
 
@@ -383,6 +413,19 @@ public Tensor(ByteBuffer data, long[] shape, ElementType elementType) throws Gen
 
 `GenAIException`
 
+#### Example
+
+Create a 2x2 Tensor with 32-bit float data.
+
+```java
+long[] shape = {2, 2};
+ByteBuffer data = ByteBuffer.allocateDirect(4 * Float.BYTES);
+FloatBuffer floatBuffer = data.asFloatBuffer();
+floatBuffer.put(new float[] {1.0f, 2.0f, 3.0f, 4.0f});
+
+Tensor tensor = new Tensor(data, shape, Tensor.ElementType.float32);
+```
+
 ## GeneratorParams class
 
 The `GeneratorParams` class represents the parameters used for generating sequences with a model. Set the prompt using setInput, and any other search options using setSearchOption.
@@ -390,39 +433,49 @@ The `GeneratorParams` class represents the parameters used for generating sequen
 ### Create a Generator Params object
 
 ```java
-//find
+GeneratorParams params = new GeneratorParams(model);
 ```
 
-### setSearchOption
+### setSearchOption Method
 
 ```java
-public void setSearchOption(String optionName,
- double value)
-                     throws GenAIException
+public void setSearchOption(String optionName, double value) throws GenAIException
 ```
 
 #### Throws
 
 `GenAIException`
 
-### setSearchOption
+#### Example
+
+Set search option to limit the model generation length.
 
 ```java
-public void setSearchOption(String optionName, boolean value)
-                     throws GenAIException
+generatorParams.setSearchOption("max_length", 10);
+```
+
+### setSearchOption Method
+
+```java
+public void setSearchOption(String optionName, boolean value) throws GenAIException
 ```
 
 #### Throws
 
 `GenAIException`
 
-### setInput
+#### Example
+
+```java
+generatorParams.setSearchOption("early_stopping", true);
+```
+
+### setInput Method
 
 Sets the prompt/s for model execution. The `sequences` are created by using Tokenizer.Encode or EncodeBatch.
 
 ```java
-public void setInput(Sequences sequences)
-              throws GenAIException
+public void setInput(Sequences sequences) throws GenAIException
 ```
 
 #### Parameters
@@ -431,13 +484,19 @@ public void setInput(Sequences sequences)
 #### Throws
 `GenAIException`- if the call to the GenAI native API fails.
 
-### setInput
+#### Example
+//correct?
+```java
+generatorParams.setInput(encodedPrompt);
+```
+
+### setInput Method
 
 Sets the prompt/s token ids for model execution. The `tokenIds` are the encoded parameters.
 
 ```java
 public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
-              throws GenAIException
+ throws GenAIException
 ```
 
 #### Parameters
@@ -451,6 +510,12 @@ public void setInput(int[] tokenIds, int sequenceLength, int batchSize)
 `GenAIException`- if the call to the GenAI native API fails. 
 
 NOTE: all sequences in the batch must be the same length.
+
+#### Example
+
+```java
+generatorParams.setInput(tokenIds, sequenceLength, batchSize);
+```
 
 ## Generator class
 
@@ -478,7 +543,7 @@ Generator(Model model, GeneratorParams generatorParams)
 
 `GenAIException`- if the call to the GenAI native API fails.
 
-### Is generation done
+### isDone Method
 
 Checks if the generation process is done.
 
@@ -490,26 +555,24 @@ public boolean isDone()
 
 Returns true if the generation process is done, false otherwise.
 
-### Compute logits
+### computeLogits Method
 
 Computes the logits for the next token in the sequence.
 
 ```java
-public void computeLogits()
-                   throws GenAIException
+public void computeLogits() throws GenAIException
 ```
 
 #### Throws
 
 `GenAIException`- if the call to the GenAI native API fails.
 
-### Get sequence
+### getSequence Method
 
 Retrieves a sequence of token ids for the specified sequence index.
 
 ```java
-public int[] getSequence(long sequenceIndex)
-                  throws GenAIException
+public int[] getSequence(long sequenceIndex) throws GenAIException
 ```
 
 #### Parameters
@@ -523,26 +586,30 @@ public int[] getSequence(long sequenceIndex)
 
 An array of integers with the sequence of token ids.
 
-### Generate next token
+#### Exmaple
+correct?
+```java
+int[] outputIds = output.getSequence(i);
+```
+
+### generateNextToken Method
 
 Generates the next token in the sequence.
 
 ```java
-public void generateNextToken()
-                       throws GenAIException
+public void generateNextToken() throws GenAIException
 ```
 
 #### Throws
 
 `GenAIException`- if the call to the GenAI native API fails.
 
-### Get last token in sequence
+### getLastTokenInSequence Method
 
 Retrieves the last token in the sequence for the specified sequence index.
 
 ```java
-public int getLastTokenInSequence(long sequenceIndex)
-                           throws GenAIException
+public int getLastTokenInSequence(long sequenceIndex) throws GenAIException
 ```
 
 #### Parameters
@@ -573,3 +640,8 @@ public long numSequences()
 
 The number of sequences.
 
+#### Example
+//correct?
+```java
+int numSequences = (int) sequences.numSequences();
+```
