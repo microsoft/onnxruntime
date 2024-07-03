@@ -48,8 +48,7 @@ Call generate with the GeneratorParams object and an optional listener.
 String fullResponse = genAI.generate(generatorParams, listener);
 ```
 
-//token listener changed to consumer<string>?
-The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the ``Consumer<String>`` interface and provide an instance of that class as the `listener` argument.
+The listener is used as a callback mechanism so that tokens can be used as they are generated. Create a class that implements the `Consumer<String>` interface and provide an instance of that class as the `listener` argument.
 
 ### Constructor
 
