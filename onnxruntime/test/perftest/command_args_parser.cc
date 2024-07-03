@@ -97,6 +97,7 @@ namespace perftest {
       "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Only works for float32 model. Defaults to '0' (with FP32 precision.). \n"
+      "\t    [QNN only] [context_node_name_prefix]: QNN EPContext node name prefix to make sure the generated node name unique for split models. e.g 'phi3_part1'.\n"
       "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
       "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"

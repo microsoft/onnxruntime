@@ -378,6 +378,17 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
+  // For the case that workaroud QNN context PD memory limit, use need split the model into pieces and 
+  // generate the QNN context model separately.
+  // It could happen that the generated EPContext node in separate graph has same node name.
+  // User can set this context_node_name_prefix for each split pieces to avoid that happens.
+  static const std::string QNN_CONTEXT_NODE_NAME_PREFIX = "context_node_name_prefix";
+  auto context_node_name_prefix_pos = provider_options_map.find(QNN_CONTEXT_NODE_NAME_PREFIX);
+  if (context_node_name_prefix_pos != provider_options_map.end()) {
+    context_node_name_prefix_ = context_node_name_prefix_pos->second;
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
+  }
+
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
@@ -612,7 +623,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
     int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-    return MakeString(QNN, "_", model_hash, "_", metadef_id);
+    return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
   };
 
   // For model with EPContext, make sure each partition only has one single EPContext node
