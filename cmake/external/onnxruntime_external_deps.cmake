@@ -31,6 +31,60 @@ message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
 include(external/abseil-cpp.cmake)
 
+if (onnxruntime_USE_VULKAN)
+  if (NOT ENV{VULKAN_SDK})
+    set(ENV{VULKAN_SDK} ${onnxruntime_VULKAN_SDK_PATH})
+  endif()
+  message(STATUS "onnxruntime_VULKAN_SDK_PATH: ${onnxruntime_VULKAN_SDK_PATH}")
+  message(STATUS "VULKAN_SDK env var: $ENV{VULKAN_SDK}")
+
+  find_package(Vulkan REQUIRED)
+
+  if (NOT VULKAN_FOUND)
+    message(FATAL_ERROR "Vulkan SDK was not found. onnxruntime_VULKAN_SDK_PATH is set to ${onnxruntime_VULKAN_SDK_PATH}")
+  endif()
+
+  # this is enough for find_package(glslang) to work, but the find_dependencies usage within that still breaks
+  list(APPEND CMAKE_PREFIX_PATH $ENV{VULKAN_SDK})
+
+  # the Windows Vulkan SDK has an incomplete cmake setup. we need to do this hack and patch the NCNN CMakeLists.txt.
+  # the Linux Vulkan SDK looks to be correct and may be able to just include NCNN as-is and let it find the package
+  # via the CMAKE_PREFIX_PATH addition of the Vulkan SDK path.
+  if (WIN32)
+    add_library(SPIRV-Tools-static STATIC IMPORTED)
+    set_target_properties(SPIRV-Tools-static PROPERTIES
+      IMPORTED_LOCATION "$ENV{VULKAN_SDK}/Lib/SPIRV-Tools.lib"
+    )
+
+    include("$ENV{VULKAN_SDK}/Lib/cmake/SPIRV-Tools-optTargets.cmake")
+    include("$ENV{VULKAN_SDK}/Lib/cmake/glslang/glslang-targets.cmake")
+    set(glslang_FOUND TRUE CACHE BOOL "" FORCE)
+
+    # TODO: Setup patch command to not call find_package(glslang) in ncnn CMakeLists.txt
+    # set(ncnn_patch_command)
+  endif()
+
+  FetchContent_Declare(
+      ncnn
+      URL ${DEP_URL_ncnn}
+      URL_HASH SHA1=${DEP_SHA1_ncnn}
+  )
+
+  set(NCNN_SYSTEM_GLSLANG ON CACHE BOOL "" FORCE)
+  set(NCNN_ENABLE_LTO ${onnxruntime_ENABLE_LTO} CACHE BOOL "" FORCE)
+  # set(NCNN_SHARED_LIB ON CACHE BOOL "" FORCE)
+  set(NCNN_STDIO OFF CACHE BOOL "" FORCE)
+  # set(NCNN_INSTALL_SDK OFF CACHE BOOL "" FORCE)
+  set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+  set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+  # TODO: These default to being disabled on Android an iOS in NCNN. For now use the ORT setting.
+  set(NCNN_DISABLE_RTTI ${onnxruntime_DISABLE_RTTI} CACHE BOOL "" FORCE)
+  set(NCNN_DISABLE_EXCEPTION ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL "" FORCE)
+  # TBD what to set the various NCNN_PIXEL* values to
+
+  onnxruntime_fetchcontent_makeavailable(ncnn)
+endif()
+
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(

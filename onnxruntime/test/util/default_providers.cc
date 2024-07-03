@@ -322,8 +322,9 @@ std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultVulkanExecutionProvider() {
 #ifdef USE_VULKAN
   return VulkanProviderFactoryCreator::Create(ProviderOptions(), nullptr)->CreateProvider();
-#endif
+#else
   return nullptr;
+#endif
 }
 
 }  // namespace test
