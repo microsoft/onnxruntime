@@ -436,7 +436,6 @@ public void setInput(Sequences sequences) throws GenAIException
 `GenAIException`- if the call to the GenAI native API fails.
 
 #### Example
-//correct?
 ```java
 generatorParams.setInput(encodedPrompt);
 ```
@@ -538,7 +537,6 @@ public int[] getSequence(long sequenceIndex) throws GenAIException
 An array of integers with the sequence of token ids.
 
 #### Exmaple
-correct?
 ```java
 int[] outputIds = output.getSequence(i);
 ```
@@ -592,7 +590,6 @@ public long numSequences()
 The number of sequences.
 
 #### Example
-//correct?
 ```java
 int numSequences = (int) sequences.numSequences();
 ```
