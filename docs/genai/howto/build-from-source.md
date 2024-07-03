@@ -15,7 +15,8 @@ nav_order: 2
 
 ## Pre-requisites
 
-`cmake`
+- `cmake`
+- `.Net v6` (if building C# library or API)
 
 ## Clone the onnxruntime-genai repo
 
@@ -154,36 +155,45 @@ This step assumes that you are in the root of the onnxruntime-genai repo, and yo
 cd ../onnxruntime-genai
 ```
 
-### Build for Windows CPU
+### Build Python API
+
+#### Build for Windows CPU
 
 ```bash
 python build.py
 ```
 
-### Build for Windows DirectML
+#### Build for Windows DirectML
 
 ```bash
 python build.py --use_dml
 ```
 
-### Build on Linux
+#### Build on Linux
 
 ```bash
 python build.py
 ```
 
-### Build on Linux with CUDA
+#### Build on Linux with CUDA
 
 ```bash
 python build.py --use_cuda
 ```
 
-### Build on Mac
+#### Build on Mac
 
 ```bash
 python build.py
 ```
-  
+
+### Build Java API
+
+```bash
+python build.py --build_java --config Release
+```
+Change config to Debug for debug builds.
+
 ## Install the library into your application
 
 ### Install Python wheel
@@ -193,9 +203,11 @@ cd build/wheel
 pip install *.whl
 ```
 
+### Install .jar
+
+Copy `build/Windows/Release/src/java/build/libs/*.jar` into your application.
+
 ### Install Nuget package
-
-
 
 ### Install C/C++ header file and library
 

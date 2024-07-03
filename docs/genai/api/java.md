@@ -17,33 +17,10 @@ _Note: this API is in preview and is subject to change._
 {:toc}
 
 ## Install and import
-//ADD LATER
-The Java API is delivered by the onnxruntime-genai Java package.
-
-```bash
-//install onnxruntime-genai
-```
+The Java API is delivered by the ai.onnxruntime.genai Java package. Package publication is pending. To build the package from source, see the [installation guide](../howto/install.md).
 
 ```java
-import onnxruntime_genai
-```
-
-## Exception Class
-
-An exception which contains the error message and code produced by the native layer.
-
-### Constructor
-
-```java
-public GenAIException(String message)
-```
-
-#### Example
-
-```java
-catch (GenAIException e) {
-  throw new GenAIException("Token generation loop failed.", e);
-}
+import ai.onnxruntime.genai.*;
 ```
 
 ## SimpleGenAI Class
@@ -140,46 +117,21 @@ public GeneratorParams createGeneratorParams(String prompt) throws GenAIExceptio
 
 The generator parameters.
 
-//delete
-## GenAI Class
+## Exception Class
 
-GenAI class provides a set of static functions and string definitions used to describe current running environment.
+An exception which contains the error message and code produced by the native layer.
 
-### Initialize GenAI environment
-
-Load all the libraries required by GenAI.
+### Constructor
 
 ```java
-static synchronized void init() throws IOException;
+public GenAIException(String message)
 ```
-
-#### Throws
-
-`IOException` - if any of required libraries fail to load.
 
 #### Example
 
 ```java
-GenAI.init();
-```
-
-### Check Android Method
-
-Check if we're running on Android.
-
-```java
-static boolean isAndroid()
-```
-
-#### Returns
-
-Returns True if the property java.vendor equals The Android Project, false otherwise.
-
-#### Example
-
-```java
-if (GenAI.isAndroid()) {
-  // Android-specific code
+catch (GenAIException e) {
+  throw new GenAIException("Token generation loop failed.", e);
 }
 ```
 
