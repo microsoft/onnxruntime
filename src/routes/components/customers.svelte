@@ -8,6 +8,8 @@
 	import antgroupLogo from '../../images/logos/antgroup-logo.png';
 	import ATLASLogo from '../../images/logos/ATLAS-logo.png';
 	import bazaarvoiceLogo from '../../images/logos/bazaarvoice-logo.png';
+	import camoLogo from '../../images/logos/camo-logo.png';
+	import cephableLogo from '../../images/logos/cephable-logo.png';
 	import clearbladeLogo from '../../images/logos/clearblade-logo.png';
 	import deezerLogo from '../../images/logos/deezer-logo.png';
 	import hypefactorsLogo from '../../images/logos/hypefactors-logo.png';
@@ -57,6 +59,16 @@
 			href: './testimonials#Bazaarvoice',
 			src: bazaarvoiceLogo,
 			alt: 'Bazaarvoice'
+		},
+		{
+			href: './testimonials#Camo',
+			src: camoLogo,
+			alt: 'Camo'
+		},
+		{
+			href: './testimonials#Cephable',
+			src: cephableLogo,
+			alt: 'Cephable'
 		},
 		{
 			href: './testimonials#ClearBlade',

@@ -6,6 +6,8 @@
 	import antgrouplogo from '../../images/logos/antgroup-logo.png';
 	import atlaslogo from '../../images/logos/ATLAS-logo.png';
 	import bazaarvoicelogo from '../../images/logos/bazaarvoice-logo.png';
+	import camologo from '../../images/logos/camo-logo.png';
+	import cephablelogo from '../../images/logos/cephable-logo.png';
 	import clearbladelogo from '../../images/logos/clearblade-logo.png';
 	import deezerlogo from '../../images/logos/deezer-logo.png';
 	import intelligenzaeticablogo from '../../images/logos/intelligenza-etica-logo.png';
@@ -73,6 +75,22 @@
 			author: 'Matthew Leyburn, Software Engineer, Bazaarvoice',
 			imgsrc: bazaarvoicelogo,
 			imgalt: 'Bazaarvoice logo'
+		},
+		{
+			title: 'Camo',
+			quote:
+				"ONNX Runtime enables Camo Studio to deliver features like background segmentation and feature detection with speed and accuracy. It seamlessly integrated with our existing models and lets us target any processor, including the latest NPUs, saving us valuable development time and allowing us to bring innovative features to all our users. We recommend ONNX Runtime to any developer looking to streamline model deployment and unlock the full potential of their applications.",
+			author: 'Aidan Fitzpatrick, Founder & CEO, Reincubate',
+			imgsrc: camologo,
+			imgalt: 'Camo logo'
+		},
+		{
+			title: 'Cephable',
+			quote:
+				"The ONNX Runtime allows us to simultaneously target CPU, GPU and NPU enabled devices. Converting a model to NPU, using ONNX Runtime and AI Hub reduced our engineering effort from 30 days to 7 days. Given the current state of the art, that would likely be only 3 days today. This allows us to deliver cutting edge performance to our users, minimizing impact of AI/ML workloads when running other applications, and leaves more time to focus on feature work.",
+			author: 'Jon Campbell, Director of Engineering, Cephable',
+			imgsrc: cephablelogo,
+			imgalt: 'Cephable logo'
 		},
 		{
 			title: 'ClearBlade',
