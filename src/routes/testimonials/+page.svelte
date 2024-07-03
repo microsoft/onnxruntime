@@ -4,6 +4,7 @@
 	import adobelogo from '../../images/logos/adobe-logo.png';
 	import amdlogo from '../../images/logos/amd-logo.png';
 	import antgrouplogo from '../../images/logos/antgroup-logo.png';
+	import algoriddimLogo from '../../images/logos/algoriddim-logo.png';
 	import atlaslogo from '../../images/logos/ATLAS-logo.png';
 	import bazaarvoicelogo from '../../images/logos/bazaarvoice-logo.png';
 	import camologo from '../../images/logos/camo-logo.png';
@@ -59,6 +60,14 @@
 			author: 'Xiaoming Zhang, Head of Inference Team, Ant Group',
 			imgsrc: antgrouplogo,
 			imgalt: 'Ant Group logo'
+		},
+		{
+			title: 'Algoriddim',
+			quote:
+				'At Algoriddim we are using ONNX Runtime on Windows devices to power our Neural Mix™ feature that allows users to isolate vocal and instruments of any song in real-time, as well as our Automix feature that allows for seamless automatic DJ mixes. ONNX Runtime strikes the perfect balance between abstraction and flexibility, and using the QNN execution provider allows us to leverage the NPU on Copilot+ PCs for unparalleled inference performance while keeping the CPU free for other tasks.',
+			author: 'Frederik Seiffert, CTO, Algoriddim',
+			imgsrc: algoriddimLogo,
+			imgalt: 'Algoriddim logo'
 		},
 		{
 			title: 'Atlas Experiment',
