@@ -378,7 +378,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
-  // For the case that workaround QNN context PD memory limit, user need split the model into pieces and 
+  // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
   // generate the QNN context model separately.
   // It could happen that the generated EPContext node in separate graph has same node name.
   // User can set this context_node_name_prefix for each split pieces to avoid that happens.
