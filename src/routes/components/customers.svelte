@@ -6,6 +6,7 @@
 	import adobeLogo from '../../images/logos/adobe-logo.png';
 	import amdLogo from '../../images/logos/amd-logo.png';
 	import antgroupLogo from '../../images/logos/antgroup-logo.png';
+	import algoriddimLogo from '../../images/logos/algoriddim-logo.png';
 	import ATLASLogo from '../../images/logos/ATLAS-logo.png';
 	import bazaarvoiceLogo from '../../images/logos/bazaarvoice-logo.png';
 	import camoLogo from '../../images/logos/camo-logo.png';
@@ -49,6 +50,11 @@
 			href: './testimonials#Ant%20Group',
 			src: antgroupLogo,
 			alt: 'Ant Group'
+		},
+		{
+			href: './testimonials#Algoriddim',
+			src: algoriddimLogo,
+			alt: 'Algoriddim'
 		},
 		{
 			href: './testimonials#Atlas%20Experiment',
