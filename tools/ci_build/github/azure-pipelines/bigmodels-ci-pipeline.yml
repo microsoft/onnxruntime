@@ -505,7 +505,7 @@ stages:
 
 - stage: Llama2_70B_ONNX
   dependsOn:
-  - BBuild_Onnxruntime_Cuda_With_NCCL
+  - Build_Onnxruntime_Cuda_With_NCCL
   jobs:
   - job: Llama2_70B_ONNX
     timeoutInMinutes: 120
