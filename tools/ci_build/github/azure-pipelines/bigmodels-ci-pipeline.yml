@@ -505,16 +505,16 @@ stages:
 
 - stage: Llama2_70B_ONNX
   dependsOn:
-  - Build_Onnxruntime_Cuda
+  - BBuild_Onnxruntime_Cuda_With_NCCL
   jobs:
-  - job: Llama2_7B_ONNX
+  - job: Llama2_70B_ONNX
     timeoutInMinutes: 120
     variables:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
     pool:
-      name: Onnxruntime-Linux-GPU-A100-WUS3
+      name: zhanyi_test_A100_pool
       demands:
       - WorkFolder -equals /mnt/storage/
     steps:
@@ -559,7 +559,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           -v $(Agent.TempDirectory)/meta_llama2_70b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
             bash -c "
               set -ex; \
@@ -569,9 +569,9 @@ stages:
               python3 -m pip install -r requirements-70b-model.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
-              ls -l llama2-7b-fp16; \
-              du -sh llama2-7b-fp16; \
+              CUDA_VISIBLE_DEVICES=0,1 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-distributed --precision fp16 --execution_provider cuda --use_gqa;\
+              ls -l llama2-70b-distributed; \
+              du -sh llama2-70b-distributed; \
               popd ; \
             "
       displayName: 'Run Llama2 70B to Onnx F16 and parity Test'
