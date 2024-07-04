@@ -11,7 +11,6 @@
 
 #include "core/common/flatbuffers.h"
 
-#include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
