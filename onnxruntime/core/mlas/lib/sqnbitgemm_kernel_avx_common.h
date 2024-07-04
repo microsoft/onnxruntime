@@ -33,7 +33,7 @@ SQ4BitGemmPackQuantBDataSize(
 }
 
 static size_t
-GetContinueLayoutOffset64(size_t N, const size_t n, const size_t SubOrBlkCountK, const size_t k_sub_or_blk)
+GetContinueLayoutOffsetSubBlk(size_t N, const size_t n, const size_t SubOrBlkCountK, const size_t k_sub_or_blk)
 {
     size_t T = n / 4, t = n % 4;
     bool te = T == N / 4;
@@ -47,19 +47,19 @@ GetContinueLayoutOffset64(size_t N, const size_t n, const size_t SubOrBlkCountK,
 }
 
 static size_t
-GetContinueLayoutOffset32(size_t N, const size_t n, const size_t BlockCountK, const size_t k_blk)
+GetContinueLayoutOffsetBlkInSubBlk(size_t N, const size_t n, const size_t BlockCountK, const size_t k_blk, const int blks_per_sub)
 {
-    size_t T = n / 4, t = n % 4, k_subblk = k_blk / 2, b = k_blk % 2;
-    bool te = T == N / 4, be = k_subblk == BlockCountK / 2;
+    size_t T = n / 4, t = n % 4, k_subblk = k_blk / blks_per_sub, b = k_blk % blks_per_sub;
+    bool te = T == N / 4, be = k_subblk == BlockCountK / blks_per_sub;
     size_t scale_dst_offset = T * 4 * BlockCountK;
     if (te) {
         scale_dst_offset += t * BlockCountK + k_blk;
     } else {
-        scale_dst_offset += k_subblk * 2 * 4;
+        scale_dst_offset += k_subblk * blks_per_sub * 4;
         if (be) {
             scale_dst_offset += b * 4 + t;
         } else {
-            scale_dst_offset += t * 2 + b;
+            scale_dst_offset += t * blks_per_sub + b;
         }
     }
     return scale_dst_offset;
@@ -132,36 +132,34 @@ PackQuantB(
                 const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
                 for (size_t k = 0; k < k_blks_remaining; k++) {
                     const size_t k_blk = k_subblk * SubBlkLen / BlkLen + k;
-                    if (BlkLen == 16 || SubBlkLen == 128) { // TODO: 
+                    if (BlkLen == 16) {
                       // not to do the compute order layout yet
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
                         pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
-                    } else if (BlkLen == 32) {
-                        const size_t dst_data_offset = GetContinueLayoutOffset32(N, n, BlockCountK, k_blk);
+                    } else if (BlkLen >= SubBlkLen) {
+                        // shall not reach here with avx2
+                        assert(SubBlkLen == 128);
+                    } else {
+                        int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                        const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                         pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
-                    } else {
-                        // shall not reach here (with avx2?)
-                        assert(false);
                     }
                 }
-            }
-            else
-            {
-                if (BlkLen == 16 || SubBlkLen == 128) {
+            } else {
+                if (BlkLen == 16) {
                     // not to do the compute order layout yet
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
-                }
-                else if (BlkLen == 32) {
-                    const size_t k_blk = k_subblk * SubBlkLen / BlkLen;
-                    const size_t dst_data_offset = GetContinueLayoutOffset32(N, n, BlockCountK, k_blk);
-                    std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
-                } 
-                else {  // if (BlkLen > 32)
-                    const size_t dst_data_offset = GetContinueLayoutOffset64(N, n, SubBlkCountK, k_subblk);
+                } else if (BlkLen >= SubBlkLen) {
+                    const size_t dst_data_offset = GetContinueLayoutOffsetSubBlk(N, n, SubBlkCountK, k_subblk);
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * SubBlkDataSize;
+                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+                } else {
+                    int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                    const size_t k_blk = k_subblk * blks_per_sub;
+                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                    std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
                     pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 }
             }
@@ -173,7 +171,8 @@ PackQuantB(
 
 static void
 ComputePackBlkSum(
-  size_t Blklen,
+  size_t BlkLen,
+  size_t SubBlkLen,
   size_t N,
   float* QuantBScaleBegin,
   const std::byte* QuantBZPBegin,
@@ -208,13 +207,14 @@ ComputePackBlkSum(
           const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
 #endif
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-        if (true || Blklen == 16) { // TODO
+        if (BlkLen == 16) {  // TODO
 
-        } else if (Blklen == 32) {
-            size_t scale_dst_offset = GetContinueLayoutOffset32(N, n, BlockCountK, k_blk);
+        } else if (BlkLen >= SubBlkLen) {
+            const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
             *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
-        } else if (Blklen > 32) {
-            const size_t scale_dst_offset = GetContinueLayoutOffset64(N, n, BlockCountK, k_blk);
+        } else {
+            int blks_per_sub = (int)(SubBlkLen / BlkLen);
+            size_t scale_dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
             *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
         }
     }
@@ -248,7 +248,7 @@ PackQuantBDataAndBlkSum(
     }
 
     if ((QuantBScaleBegin && !has_zp_input) || QuantBZPBegin) {
-        ComputePackBlkSum(BlkLen, N, packed_quant_b.PackedQuantBScale, QuantBZPBegin, packed_quant_b.QuantBBlkSum, ThreadPool, BlockCountK);
+        ComputePackBlkSum(BlkLen, SubBlkLen, N, packed_quant_b.PackedQuantBScale, QuantBZPBegin, packed_quant_b.QuantBBlkSum, ThreadPool, BlockCountK);
     }
 }
 
