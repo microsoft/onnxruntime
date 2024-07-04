@@ -1782,8 +1782,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
       {initializer_name, ort_value}};
 
   // We do not need actual files there since we are not going to load it.
-  const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
-  const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("external_data.bin"));
+  const auto tensor_data_dir_path = ORT_TSTR(".");
+  const auto tensor_data_dir_relative_path = ORT_TSTR("external_data.bin");
 
   const auto tensor_proto =
       [&]() {
@@ -1792,7 +1792,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()),
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path),
                                    tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
@@ -1827,7 +1827,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     ASSERT_FALSE(utils::HasExternalData(*with_data));
     const auto& original_tensor = ort_value.Get<Tensor>();
     Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data,
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path, *with_data,
                                                 replaced_tensor));
     ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
     const auto original_span = original_tensor.DataAsSpan<int32_t>();

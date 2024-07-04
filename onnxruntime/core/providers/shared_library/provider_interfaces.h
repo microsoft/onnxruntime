@@ -903,13 +903,6 @@ struct ProviderHost {
                                     int execution_order) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
 
-  // Path
-  virtual PathString Path__ToPathString(const Path* p) noexcept = 0;
-  virtual const std::vector<PathString>& Path__GetComponents(const Path* p) noexcept = 0;
-  virtual bool Path__IsEmpty(const Path* p) noexcept = 0;
-  virtual std::unique_ptr<Path> Path__construct() = 0;
-  virtual void Path__operator_delete(ONNX_NAMESPACE::Path* p) = 0;
-
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;
 
