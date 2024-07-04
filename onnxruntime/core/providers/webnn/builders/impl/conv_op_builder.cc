@@ -185,7 +185,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       element_size = sizeof(float);
       break;
-      break;
     default:
       break;
   }
