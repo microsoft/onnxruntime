@@ -4,7 +4,7 @@ description: Java API reference for ONNX Runtime generate() API
 has_children: false
 parent: API docs
 grand_parent: Generate API (Preview)
-nav_order: 1
+nav_order: 4
 ---
 
 # ONNX Runtime generate() Java API
@@ -17,7 +17,7 @@ _Note: this API is in preview and is subject to change._
 {:toc}
 
 ## Install and import
-The Java API is delivered by the ai.onnxruntime.genai Java package. Package publication is pending. To build the package from source, see the [installation guide](../howto/build-from-source.md).
+The Java API is delivered by the ai.onnxruntime.genai Java package. Package publication is pending. To build the package from source, see the [build from source guide](../howto/build-from-source.md).
 
 ```java
 import ai.onnxruntime.genai.*;

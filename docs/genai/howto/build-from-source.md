@@ -16,7 +16,7 @@ nav_order: 2
 ## Pre-requisites
 
 - `cmake`
-- `.Net v6` (if building C# library or API)
+- `.Net v6` (if building C#)
 
 ## Clone the onnxruntime-genai repo
 
