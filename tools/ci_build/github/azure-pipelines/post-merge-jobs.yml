@@ -446,7 +446,7 @@ stages:
         python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
-          tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+          tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |

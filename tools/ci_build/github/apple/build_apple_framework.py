@@ -66,7 +66,7 @@ def _build_for_apple_sysroot(
         framework_dir = os.path.join(
             build_dir_current_arch,
             build_config,
-            build_config + "-" + sysroot,
+            ((build_config + "-" + sysroot) if sysroot != "macosx" else build_config),
             (
                 "onnxruntime.framework"
                 if build_dynamic_framework
