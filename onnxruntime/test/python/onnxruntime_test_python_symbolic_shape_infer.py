@@ -609,11 +609,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
         initializers = [b, scale, zero_point]
 
-        kwargs = {
-            "K": 10,
-            "N": 4,
-            "block_size": 16
-        }
+        kwargs = {"K": 10, "N": 4, "block_size": 16}
 
         nodes = [
             helper.make_node(
@@ -625,7 +621,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                     "zero_point",
                 ],
                 outputs=["output_f32"],
-                **kwargs
+                **kwargs,
             ),
         ]
 
