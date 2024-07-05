@@ -206,10 +206,9 @@ class SymbolicShapeInference:
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
-            "SparseAttention": self._infer_SparseAttention,
-            "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
+            "MatMulNBits": self._infer_MatMulNBits,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "NhwcConv": self._infer_NhwcConv,
             "PackedAttention": self._infer_PackedAttention,
@@ -223,9 +222,10 @@ class SymbolicShapeInference:
             "RestorePadding": self._infer_RestorePadding,
             "RotaryEmbedding": self._infer_RotaryEmbedding,
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
+            "SkipGroupNorm": self._infer_SkipGroupNorm,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
-            "MatMulNBits": self._infer_MatMulNBits,
+            "SparseAttention": self._infer_SparseAttention,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
