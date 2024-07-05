@@ -45,11 +45,11 @@ MlasFlashAttentionThreaded(
     }
 
     for (ptrdiff_t task_index = task_start; task_index < task_end; ++task_index) {
-        ptrdiff_t ib = task_index;
-        ptrdiff_t il = (ib % q_chunk_count) * row_size_q;
-        ib /= q_chunk_count;
-        ptrdiff_t ih = ib % num_heads;
-        ib /= num_heads;
+        ptrdiff_t batch_idx = task_index;
+        ptrdiff_t q_idx = (batch_idx % q_chunk_count) * row_size_q;
+        batch_idx /= q_chunk_count;
+        ptrdiff_t head_idx = batch_idx % num_heads;
+        batch_idx /= num_heads;
 
         char* buffer_current_thread = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
         float* l = reinterpret_cast<float*>(buffer_current_thread);
@@ -63,21 +63,21 @@ MlasFlashAttentionThreaded(
 
         for (ptrdiff_t ir = 0; ir < kv_sequence_length; ir += row_size_kv) {
             /*
-                S = Q[ib, ih, il:il+row_size_q, :] * (K[ib, ih, ir:ir+row_size_kv, :]).T
+                S = Q[batch_idx, head_idx, q_idx:q_idx+row_size_q, :] * (K[batch_idx, head_idx, ir:ir+row_size_kv, :]).T
                 old_m = m
                 m = max(m, rowmax(S))
                 diff = old_m - m
                 S = exp(S - m)
                 l = exp(diff) * l + rowsum(S)
-                O = diag(exp(diff)) * O + S * V[ib, ih, ir:ir+row_size_kv, :]
+                O = diag(exp(diff)) * O + S * V[batch_idx, head_idx, ir:ir+row_size_kv, :]
             */
             // TODO: Need to concat if past_k is present
-            ptrdiff_t h = ib * num_heads + ih;
-            const float* inputQ = query + (h * q_sequence_length + il) * qk_head_size;
+            ptrdiff_t h = batch_idx * num_heads + head_idx;
+            const float* inputQ = query + (h * q_sequence_length + q_idx) * qk_head_size;
             const float* inputK = key + (h * kv_sequence_length + ir) * qk_head_size;
             const float* inputV = value + (h * kv_sequence_length + ir) * v_head_size;
 
-            size_t row_size_q_capped = static_cast<size_t>(std::min(row_size_q, q_sequence_length - il));
+            size_t row_size_q_capped = static_cast<size_t>(std::min(row_size_q, q_sequence_length - q_idx));
             size_t row_size_kv_capped = static_cast<size_t>(std::min(row_size_kv, kv_sequence_length - ir));
 
             MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
@@ -143,8 +143,8 @@ MlasFlashAttentionThreaded(
                      nullptr);
         }
 
-        float* output_row = output + ((ib * q_sequence_length + il) * num_heads + ih) * v_head_size;
-        ptrdiff_t row_size_q_valid = std::min(row_size_q, q_sequence_length - il);
+        float* output_row = output + ((batch_idx * q_sequence_length + q_idx) * num_heads + head_idx) * v_head_size;
+        ptrdiff_t row_size_q_valid = std::min(row_size_q, q_sequence_length - q_idx);
         // TODO: leverage advanced instruction sets
         for (ptrdiff_t irow = 0; irow < row_size_q_valid; ++irow) {
             for (ptrdiff_t icol = 0; icol < v_head_size; ++icol) {
