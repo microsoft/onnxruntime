@@ -181,7 +181,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     // CompInt8 kernel function prototypes.
     //
 
-        /**
+    /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
      *
