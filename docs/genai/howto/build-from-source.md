@@ -106,7 +106,7 @@ copy build\Windows\Release\Release\onnxruntime.lib ..\onnxruntime-genai\ort\lib
 ```bash
 build.bat --build_shared_lib --skip_tests --parallel --use_dml --config Release
 copy include\onnxruntime\core\session\onnxruntime_c_api.h ..\onnxruntime-genai\ort\include
-copy include\onnxruntime\core\providers\dml\dml_provider_factory.h ..\onnxruntime-genai\include
+copy include\onnxruntime\core\providers\dml\dml_provider_factory.h ..\onnxruntime-genai\ort\include
 copy build\Windows\Release\Release\*.dll ..\onnxruntime-genai\ort\lib
 copy build\Windows\Release\Release\onnxruntime.lib ..\onnxruntime-genai\ort\lib
 ```
