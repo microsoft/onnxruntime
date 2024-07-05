@@ -1833,8 +1833,8 @@ struct MlasFlashAttentionThreadedArgs {
     int kv_sequence_length;
     int qk_head_size;
     int v_head_size;
-    int row_size_q;
-    int row_size_kv;
+    int block_size_q;
+    int block_size_kv;
     float scale;
     int thread_count;
     float* buffer;

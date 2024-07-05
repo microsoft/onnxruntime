@@ -171,7 +171,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.v_head_size = v_head_size;
     args.scale = (scale_ == 0.0f) ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
     /*
-      row_size_q, row_size_kv correspond to Br, Bc in the FlashAttention paper.
+      block_size_q, block_size_kv correspond to Br, Bc in the FlashAttention paper.
       Let M = l2_cache_size / sizeof(float)
       In the FlashAttention kernel, there are 5 big matrices that we need to keep in L2 cache:
         slice of Q -- [Br, qk_head_size]
@@ -190,17 +190,17 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
         1. storing small tensors l and m
         2. instruction (code)
     */
-    args.row_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
-    args.row_size_kv = std::max(args.row_size_kv, 1);  // avoid row_size_kv = 0
-    args.row_size_q = std::min(args.row_size_kv, qk_head_size + v_head_size);
-    args.row_size_kv = std::min(args.row_size_kv, kv_sequence_length);  // No point to have row_size_kv > kv_sequence_length
-    args.row_size_q = std::min(args.row_size_q, q_sequence_length);     // No point to have row_size_q > q_sequence_length
+    args.block_size_kv = l2_cache_size_ / (static_cast<int>(sizeof(float)) * 4 * (qk_head_size + v_head_size));
+    args.block_size_kv = std::max(args.block_size_kv, 1);  // avoid block_size_kv = 0
+    args.block_size_q = std::min(args.block_size_kv, qk_head_size + v_head_size);
+    args.block_size_kv = std::min(args.block_size_kv, kv_sequence_length);  // No point to have block_size_kv > kv_sequence_length
+    args.block_size_q = std::min(args.block_size_q, q_sequence_length);     // No point to have block_size_q > q_sequence_length
 
     auto* tp = context->GetOperatorThreadPool();
     args.thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
-    args.buffer_size_per_thread = (static_cast<size_t>(args.row_size_q) * 2 +
-                                   static_cast<size_t>(args.row_size_q) * static_cast<size_t>(args.row_size_kv) +
-                                   static_cast<size_t>(args.row_size_q) * static_cast<size_t>(args.v_head_size)) *
+    args.buffer_size_per_thread = (static_cast<size_t>(args.block_size_q) * 2 +
+                                   static_cast<size_t>(args.block_size_q) * static_cast<size_t>(args.block_size_kv) +
+                                   static_cast<size_t>(args.block_size_q) * static_cast<size_t>(args.v_head_size)) *
                                   sizeof(float);
     size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
