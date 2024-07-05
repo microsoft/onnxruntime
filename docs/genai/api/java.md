@@ -17,7 +17,7 @@ _Note: this API is in preview and is subject to change._
 {:toc}
 
 ## Install and import
-The Java API is delivered by the ai.onnxruntime.genai Java package. Package publication is pending. To build the package from source, see the [installation guide](../howto/install.md).
+The Java API is delivered by the ai.onnxruntime.genai Java package. Package publication is pending. To build the package from source, see the [installation guide](../howto/build-from-source.md).
 
 ```java
 import ai.onnxruntime.genai.*;
@@ -156,7 +156,7 @@ public Tokenizer createTokenizer() throws GenAIException
 
 #### Returns
 
-`onnxruntime_genai.Model`
+The tokenizer instance.
 
 ### Generate Method
 
@@ -182,7 +182,7 @@ The generated sequences.
 Sequences output = model.generate(generatorParams);
 ```
 
-### Generate Parameters Method
+### createGeneratorParams Method
 
 Creates a GeneratorParams instance for executing the model. 
 
@@ -573,7 +573,7 @@ public int getLastTokenInSequence(long sequenceIndex) throws GenAIException
 
 The last token in the sequence.
 
-## Sequence Class
+## Sequences Class
 
 Represents a collection of encoded prompts/responses.
 
@@ -593,3 +593,20 @@ The number of sequences.
 ```java
 int numSequences = (int) sequences.numSequences();
 ```
+
+### getSequence Method
+
+Gets the sequence at the specified index.
+
+```java
+public int[] getSequence(long sequenceIndex)
+```
+
+#### Parameters
+
+- `sequenceIndex`: The index of the sequence.
+
+#### Returns
+
+The sequence as an array of integers.
+
