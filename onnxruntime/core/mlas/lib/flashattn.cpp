@@ -80,7 +80,7 @@ MlasFlashAttentionThreaded(
             size_t row_size_q_capped = static_cast<size_t>(std::min(block_size_q, q_sequence_length - q_idx));
             size_t row_size_kv_capped = static_cast<size_t>(std::min(block_size_kv, kv_sequence_length - ir));
 
-            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
+            MlasSgemmOperation(CBLAS_TRANSPOSE::CblasNoTrans,
                      CBLAS_TRANSPOSE::CblasTrans,
                      row_size_q_capped,
                      row_size_kv_capped,
@@ -92,8 +92,7 @@ MlasFlashAttentionThreaded(
                      static_cast<size_t>(qk_head_size),
                      0.0f,
                      intermediate,
-                     row_size_kv_capped,
-                     nullptr);
+                     row_size_kv_capped);
 
             for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q_capped); ++irow) {
                 float* p = intermediate + irow * row_size_kv_capped;
@@ -127,7 +126,7 @@ MlasFlashAttentionThreaded(
                     // When ir == 0, there is no need to scale the old result because it is zero.
                 }
             }
-            MlasGemm(CBLAS_TRANSPOSE::CblasNoTrans,
+            MlasSgemmOperation(CBLAS_TRANSPOSE::CblasNoTrans,
                      CBLAS_TRANSPOSE::CblasNoTrans,
                      row_size_q_capped,
                      static_cast<size_t>(v_head_size),
@@ -139,8 +138,7 @@ MlasFlashAttentionThreaded(
                      static_cast<size_t>(v_head_size),
                      ir == 0 ? 0.0f : 1.0f,
                      temp_output,
-                     static_cast<size_t>(v_head_size),
-                     nullptr);
+                     static_cast<size_t>(v_head_size));
         }
 
         float* output_row = output + ((batch_idx * q_sequence_length + q_idx) * num_heads + head_idx) * v_head_size;
