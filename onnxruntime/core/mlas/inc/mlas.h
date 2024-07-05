@@ -53,6 +53,9 @@ Abstract:
 #if defined(_M_ARM) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
+#if defined(_M_RISCV) || defined(__riscv)
+#define MLAS_TARGET_RISCV
+#endif
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC) || defined(MLAS_TARGET_ARM)
 #define MLAS_TARGET_ARM_ANY
 #endif
