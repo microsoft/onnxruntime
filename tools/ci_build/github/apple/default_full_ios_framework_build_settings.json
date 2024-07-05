@@ -1,7 +1,7 @@
 {
     "build_osx_archs": {
         "macabi": [
-            "x86_64"
+            "arm64"
         ]
     },
     "build_params": {
