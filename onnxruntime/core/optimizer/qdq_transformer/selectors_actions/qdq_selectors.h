@@ -367,9 +367,9 @@ class MatMulSelector : public BaseSelector {
 };
 
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
-class DQMatMulSelector : public BaseSelector {
+class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
-  explicit DQMatMulSelector(gsl::span<const char*> compatible_providers = {})
+  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
 };
 

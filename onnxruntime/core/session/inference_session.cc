@@ -1613,7 +1613,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
-    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
+    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep,
+    concurrency::ThreadPool* intra_op_thread_pool) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
@@ -1621,7 +1622,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
         static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
-        optimizers_to_disable);
+        optimizers_to_disable, intra_op_thread_pool);
 
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
@@ -2009,7 +2010,8 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, cpu_ep));
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, cpu_ep,
+                                                  GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -3171,7 +3173,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
 
         if (use_full_build_optimizations) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                       optimizers_to_disable_);
+                                                       optimizers_to_disable_,
+                                                       GetIntraOpThreadPoolToUse());
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
@@ -3180,7 +3183,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
-                                                                      optimizers_to_disable_);
+                                                                      optimizers_to_disable_,
+                                                                      GetIntraOpThreadPoolToUse());
         }
       }();
 

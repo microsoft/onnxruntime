@@ -228,18 +228,20 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 #endif
 }
 
-void DQMatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry,
-                      int64_t qdq_matmulnbits_accuracy_level) {
+void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_registry,
+                                int64_t qdq_matmulnbits_accuracy_level,
+                                concurrency::ThreadPool* intra_op_thread_pool) {
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
   // DQ's weight is int4/uint4. DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
   const std::string action_name{"DQMatMul"};
 
   std::unique_ptr<Action> action =
-      std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>(qdq_matmulnbits_accuracy_level);
+      std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>(qdq_matmulnbits_accuracy_level,
+                                                            intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulSelector>();
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"MatMul", {}}},
                                                          std::move(selector),
@@ -294,7 +296,8 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 }
 
 SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed,
-                                                    int64_t qdq_matmulnbits_accuracy_level) {
+                                                    int64_t qdq_matmulnbits_accuracy_level,
+                                                    concurrency::ThreadPool* intra_op_thread_pool) {
   SelectorActionRegistry qdq_selector_action_registry;
   SplitQDQRules(qdq_selector_action_registry);
   DropQDQNodesRules(qdq_selector_action_registry);
@@ -306,18 +309,22 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed,
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
   GemmQDQRules(qdq_selector_action_registry);
   WhereQDQRules(qdq_selector_action_registry);
-  DQMatMulQDQRules(qdq_selector_action_registry, qdq_matmulnbits_accuracy_level);
+  DQMatMulToMatMulNBitsRules(qdq_selector_action_registry,
+                             qdq_matmulnbits_accuracy_level,
+                             intra_op_thread_pool);
 
   return qdq_selector_action_registry;
 }
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(
-    bool is_int8_allowed, const SatApplyContextVariant& apply_context, int64_t qdq_matmulnbits_accuracy_level)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(bool is_int8_allowed,
+                                                           const SatApplyContextVariant& apply_context,
+                                                           int64_t qdq_matmulnbits_accuracy_level,
+                                                           concurrency::ThreadPool* intra_op_thread_pool)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level),
+          CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level, intra_op_thread_pool),
           apply_context,
           // this transformer is only compatible with the CPU and DML EP
           {kCpuExecutionProvider, kDmlExecutionProvider}} {

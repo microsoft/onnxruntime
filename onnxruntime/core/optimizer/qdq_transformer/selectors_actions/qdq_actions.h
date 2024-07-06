@@ -81,21 +81,27 @@ struct MatMulReplaceWithQLinear : public Action {
 };
 
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
-struct DQMatMulReplaceWithMatMulNBits : public Action {
-  explicit DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level);
-  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+struct DQMatMulReplaceWithMatMulNBits : public ReplaceWithNew {
+  DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level,
+                                 concurrency::ThreadPool* intra_op_thread_pool);
 
  private:
-  NodeAttributes ExtraAttributes(const Graph&, const NodesToOptimize& selected_nodes) const;
+  std::string OpType(const RuntimeState&) const override { return op_type_; }
+
+  std::string Domain(const RuntimeState&) const override { return domain_; }
+
+  NodeAttributes ExtraAttributes(const RuntimeState&) const override;
+
+  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override { return value_moves_; }
 
   // transpose initializers, and add to the MatMulNBits inputs
-  void AddTransposedInitializers(Graph&, const NodesToOptimize& selected_nodes, Node& replacement_node) const;
+  Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const override;
 
   const int64_t accuracy_level_;
   const std::string domain_;
   const std::string op_type_;
   const std::vector<NodeAndMoveInfo> value_moves_;
-  RemoveNodes node_remover_;
+  concurrency::ThreadPool* intra_op_thread_pool_;
 };
 
 struct GemmReplaceWithQuant : public Action {
