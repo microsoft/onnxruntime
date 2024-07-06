@@ -158,6 +158,8 @@ struct ReplaceWithNew : public Action {
   // specifies how the inputs and outputs for the replaced nodes are moved to the new node
   virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
 
+  virtual Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const { return Status::OK(); }
+
   RemoveNodes node_remover_;
 };
 

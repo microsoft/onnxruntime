@@ -23,7 +23,8 @@ class QDQSelectorActionTransformer : public SelectorActionTransformer {
  public:
   QDQSelectorActionTransformer(bool is_int8_allowed,
                                const SatApplyContextVariant& apply_context = {},
-                               int64_t qdq_matmulnbits_accuracy_level = 4);
+                               int64_t qdq_matmulnbits_accuracy_level = 4,
+                               concurrency::ThreadPool* intra_op_thread_pool = nullptr);
 };
 
 }  // namespace onnxruntime

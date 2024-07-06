@@ -15,12 +15,6 @@ namespace onnxruntime {
 namespace QDQ {
 namespace {
 
-#if defined(_MSC_VER)
-#define FORCEINLINE __forceinline
-#else
-#define FORCEINLINE __attribute__((always_inline)) inline
-#endif
-
 constexpr bool Is16BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
@@ -29,21 +23,6 @@ constexpr bool Is16BitIntType(int32_t data_type) {
 constexpr bool Is4BitIntType(int32_t data_type) {
   return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4) ||
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
-}
-
-FORCEINLINE bool IsPowerOfTwo(int64_t val) {
-  if (val < 0) return false;
-
-  bool seen_one = val & 1;
-  val >>= 1;
-
-  for (; val; seen_one = val & 1, val >>= 1) {
-    if (seen_one) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 // adjust for an optional input/output that has an entry but does not exist
@@ -439,16 +418,16 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                       const Node& node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
-  ONNX_UNUSED_PARAMETER(q_nodes);
+  ORT_UNUSED_PARAMETER(q_nodes);
   const auto& graph = graph_viewer.GetGraph();
 
-  // MatMul has only 1 DQ input and the DQ must has 1 output edge which is not graph output
+// MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
   if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
     return false;
   }
 
   // DQ must be MatMul's the second input
-  if (node.InputDefs()[1]->Name() != dq_nodes[0]->OutputDefs()[0]->Name()) {
+  if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
     return false;
   }
 
@@ -480,7 +459,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   auto block_size = a_iter->second.i();
-  if (block_size < 16 || !IsPowerOfTwo(block_size)) {
+  if (block_size < 16 || ((block_size - 1) & block_size)) {
     return false;
   }
 
