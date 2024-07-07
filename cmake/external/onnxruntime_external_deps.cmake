@@ -44,6 +44,16 @@ if (onnxruntime_USE_VULKAN)
     message(FATAL_ERROR "Vulkan SDK was not found. onnxruntime_VULKAN_SDK_PATH is set to ${onnxruntime_VULKAN_SDK_PATH}")
   endif()
 
+  # NOTE: For now we're using glslang from the Vulkan SDK and wiring things up so NCNN can find that.
+  # If we wanted to use glslang from source there are a few more hoops to jump through.
+  # NCNN uses glslang as a submodule, but if we add a FetchContent for glslang here that isn't in a state where
+  # the NCNN CMakeLists.txt is happy with it as the glslang cmake setup isn't generated yet. Not sure how to resolve
+  # that. Not sure if this is a scenario where you'd call FetchContent_MakeAvailable with multiple package names,
+  # or whether onnxruntime_fetchcontent_makeavailable supports that.
+  #
+  # FWIW the current expected usage of glslang would be to pre-compile shaders to bytecode offline, so glslang code
+  # wouldn't be included in the released binary. That is TBC though as this is all experimental currently.
+
   # this is enough for find_package(glslang) to work, but the find_dependencies usage within that still breaks
   list(APPEND CMAKE_PREFIX_PATH $ENV{VULKAN_SDK})
 
@@ -68,6 +78,7 @@ if (onnxruntime_USE_VULKAN)
       ncnn
       URL ${DEP_URL_ncnn}
       URL_HASH SHA1=${DEP_SHA1_ncnn}
+      #  ${CMAKE_CURRENT_BINARY_DIR}/<lcName>-src
   )
 
   set(NCNN_SYSTEM_GLSLANG ON CACHE BOOL "" FORCE)

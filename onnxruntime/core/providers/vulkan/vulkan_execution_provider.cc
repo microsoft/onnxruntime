@@ -13,8 +13,10 @@
 #include "core/providers/vulkan/vulkan_allocator.h"
 #include "core/providers/vulkan/vulkan_data_transfer.h"
 
-// Add includes of kernel implementations
-// #include "core/providers/vulkan/math/mul.h"
+#include "core/providers/vulkan/activation/activations.h"
+
+#include "ncnn-src/src/gpu.h"
+#include "ncnn-src/src/pipelinecache.h"
 
 namespace onnxruntime {
 
@@ -64,13 +66,109 @@ std::shared_ptr<KernelRegistry> GetVulkanKernelRegistry() {
   return kernel_registry;
 }
 
+namespace {
+ncnn::VulkanDevice& GetVulkanDevice() {
+  // get_gpu_count/get_default_gpu_index/get_gpu_device all implicitly create the gpu instance if it doesn't exist yet.
+  // there is also `create_gpu_instance(const char* driver_path = 0);` if we need/want
+
+  int gpu_count = ncnn::get_gpu_count();
+  LOGS_DEFAULT(INFO) << "Vulkan capable GPU count:" << gpu_count;
+
+  if (gpu_count == 0) {
+    ORT_THROW("No Vulkan capable GPU detected.");
+  }
+
+  auto device_index = ncnn::get_default_gpu_index();  // TODO: Make device id configurable.
+
+  // TODO: info on the available devices is logged with NCNN_LOGE by create_gpu_instance if NCNN_STDIO is defined.
+  // we could maybe look at doing that via ORT logging so the ORT log severity applies.
+  auto* device = ncnn::get_gpu_device(device_index);
+  ORT_ENFORCE(device, "Failed to get Vulkan device.");
+
+  return *device;
+}
+}  // namespace
+
+std::unordered_map<std::string, VulkanExecutionProvider::IsSupportedFn>
+    VulkanExecutionProvider::node_is_supported_checkers_ = {
+        {"Sigmoid", vulkan::Sigmoid::IsSupported},
+};
+
 VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& /*info*/)
-    : IExecutionProvider(kVulkanExecutionProvider) {
-  // TODO: Find device/queues/etc
+    : IExecutionProvider(kVulkanExecutionProvider),
+      vulkan_device_{GetVulkanDevice()},
+      weight_staging_allocator_{&vulkan_device_},
+      weight_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 8 MB. should it be different or configurable?
+      staging_allocator_{&vulkan_device_},
+      blob_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
+      data_transfer_{vulkan_device_, weight_staging_allocator_, weight_allocator_},
+      pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)} {
+  ncnn_options_.use_vulkan_compute = true;
+
+  // allocators used for initializers and transfers between GPU and CPU
+  ncnn_options_.pipeline_cache = pipeline_cache_.get();
+}
+
+common::Status VulkanExecutionProvider::OnSessionInitializationEnd() {
+  data_transfer_.UpdateAllocators(staging_allocator_, blob_allocator_);
+}
+
+common::Status VulkanExecutionProvider::OnRunStart(const RunOptions& /*run_options*/) {
+  // https://github.com/Tencent/ncnn/wiki/vulkan-notes
+  // Do we need to acquire/reclaim on a per-Run basis or could we use staging_allocator_/blob_allocator_?
+  // TODO: Figure out how this looks with underlying larger memory allocations to determine what is optional.
+  // Assuming we want a small number of large allocations that are bound to buffers. The buffers may come and go
+  // more frequently.
+  ncnn_options_.blob_vkallocator = vulkan_device_.acquire_blob_allocator();
+  ncnn_options_.workspace_vkallocator = ncnn_options_.blob_vkallocator;
+  ncnn_options_.staging_vkallocator = vulkan_device_.acquire_staging_allocator();
+}
+common::Status VulkanExecutionProvider::OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) {
+  vulkan_device_.reclaim_blob_allocator(ncnn_options_.blob_vkallocator);
+  vulkan_device_.reclaim_staging_allocator(ncnn_options_.staging_vkallocator);
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
+  // TODO: Is there any explicit release of NCNN owned resources required?
 }
+
+std::vector<std::unique_ptr<ComputeCapability>>
+VulkanExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                       const IKernelLookup& kernel_lookup) const {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
+        kernel_create_info != nullptr) {
+      auto entry = node_is_supported_checkers_.find(node.OpType());
+      if (entry != node_is_supported_checkers_.end()) {
+        bool is_supported = entry->second(node);
+        if (!is_supported) {
+          continue;
+        }
+      }
+
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+  }
+
+  return result;
+}
+
+// common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+//                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
+//   // see Net::load_model
+//   // NCNN execution setup involves looping through all the layers defined in the model to create a pipeline for each.
+//
+//   // initial thought is we want to create a Net or something similar for each group of nodes.
+//   // TBD does that change execution though? if not we could just execute each kernel standalone
+//   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+//     // create a Net for the fused_node_and_graph
+//     // loop through the layers in the Net and create a pipeline for each
+//   }
+//
+// }
 
 std::shared_ptr<KernelRegistry> VulkanExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry = GetVulkanKernelRegistry();
@@ -78,15 +176,23 @@ std::shared_ptr<KernelRegistry> VulkanExecutionProvider::GetKernelRegistry() con
 }
 
 std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
-  // TODO: Need pinned memory handling
-  AllocatorCreationInfo device_memory_info(
-      [](OrtDevice::DeviceId) {  // ignoring device id for now. may need to plugin the Vulkan device info somewhere
-        return std::make_unique<vulkan::VulkanBufferAllocator>();
-      });
+  // TODO: We may want to utilize VMA to ensure the preferred memory is used as this could be used for either
+  // discrete or integrated GPUs.
+  // VMA is from AMD
+  // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+  // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/choosing_memory_type.html
 
-  return std::vector<AllocatorPtr>{
-      CreateAllocator(device_memory_info),  // this plugs in arena usage. assuming we want that.
+  std::vector<AllocatorPtr> allocators{
+      std::make_unique<vulkan::VulkanBufferAllocator>(
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, /*device_id*/ 0),
+          *ncnn_options_.blob_vkallocator),
+      // using 'CUDA_PINNED' for staging memory
+      std::make_unique<vulkan::VulkanBufferAllocator>(
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, /*device_id*/ 0),
+          *ncnn_options_.staging_vkallocator),
   };
+
+  return allocators;
 }
 
 }  // namespace onnxruntime

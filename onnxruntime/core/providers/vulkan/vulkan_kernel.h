@@ -14,11 +14,15 @@ class VulkanKernel : public OpKernel {
  public:
   explicit VulkanKernel(const OpKernelInfo& info)
       : OpKernel(info),
-        exec_{*VULKAN_EXEC_PROVIDER_FROM_INFO(info)} {
+        vulkan_ep_{GetVulkanExecutionProvider(info)} {
   }
 
+ protected:
+  const ncnn::Option& NcnnOptions() const { return vulkan_ep_.NcnnOptions(); }
+  const ncnn::VulkanDevice& Device() const { return vulkan_ep_.Device(); }
+
  private:
-  const VulkanExecutionProvider& exec_;
+  const VulkanExecutionProvider& vulkan_ep_;
 };
 
 }  // namespace vulkan

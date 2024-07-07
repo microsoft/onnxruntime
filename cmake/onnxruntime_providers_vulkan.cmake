@@ -24,6 +24,11 @@ file(GLOB_RECURSE onnxruntime_providers_vulkan_cc_srcs
   "${ONNXRUNTIME_ROOT}/core/providers/vulkan/math/*.cc"
 )
 
+# Add the _deps directory as an include. NCNN doesn't have a subdirectory for the source so the default addition
+# to the include path is _deps/ncnn-src/src, and would result in for example `#include "layer.h"`, which doesn't convey
+# that the file comes from NCNN and is also likely to clash with other header filenames.
+# By adding _deps we can at least do #include "ncnn-src/src/layer.h" which is more explicit and unique.
+target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR}>)
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vulkan_cc_srcs})
 onnxruntime_add_static_library(onnxruntime_providers_vulkan ${onnxruntime_providers_vulkan_cc_srcs})
