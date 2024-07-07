@@ -894,6 +894,46 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CopyOutputsToCpu, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator, _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count) {
+  API_IMPL_BEGIN
+
+  // const auto& dtm = io_binding->GetInferenceSession()->GetDataTransferManager();
+
+  // const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
+
+  const auto& outputs = binding_ptr->binding_->GetOutputs();
+  if (outputs.empty()) {
+    *output = nullptr;
+    *output_count = 0U;
+    return nullptr;
+  }
+
+  // Used to destroy and de-allocate on exception
+  IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
+                                                 [allocator](OrtValue** p) { if (p) allocator->Free(allocator, p); });
+  if (!ortvalues_alloc) {
+    return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
+  }
+
+  InlinedVector<std::unique_ptr<OrtValue>> value_dups;
+  value_dups.reserve(outputs.size());
+
+  for (const auto& out_value : outputs) {
+    value_dups.push_back(std::make_unique<OrtValue>(out_value));
+  }
+
+  // The rest is noexcept
+  OrtValue** out_ptr = ortvalues_alloc.get();
+  for (auto& v : value_dups) {
+    *out_ptr++ = v.release();
+  }
+
+  *output = ortvalues_alloc.release();
+  *output_count = outputs.size();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_ OrtIoBinding** out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
