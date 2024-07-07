@@ -453,8 +453,7 @@ stages:
         python tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Full \
-          --skip_macos_test
+          --variant Full
       displayName: "Test pod with iOS framework"
 
 - stage: IosMinimalTrainingBuild
