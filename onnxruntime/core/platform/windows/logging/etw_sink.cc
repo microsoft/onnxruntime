@@ -144,16 +144,11 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() {
-  if (!initialized_) {
-    std::lock_guard<OrtMutex> lock(init_mutex_);
-    if (!initialized_) {  // Double-check locking pattern
-      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-      if (FAILED(etw_status_)) {
-        ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
-      }
-      initialized_ = true;
+    static HRESULT etw_status = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+    etw_status_ = etw_status;
+    if (FAILED(etw_status_)) {
+      ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
     }
-  }
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
