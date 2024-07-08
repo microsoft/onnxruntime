@@ -621,7 +621,7 @@ void addObjectMethodsForTraining(py::module& m) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder_->Build());
       })
       .def("save", [](PyGradientGraphBuilderContext* gradient_graph_builder, const std::string& path) {
-        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model_), path));
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model_), ToPathString(path)));
       })
       .def("get_model", [](PyGradientGraphBuilderContext* gradient_graph_builder) {
         std::string model_str;

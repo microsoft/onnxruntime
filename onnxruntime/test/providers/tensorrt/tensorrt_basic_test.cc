@@ -66,7 +66,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *     /
  *   "M"
  */
-void CreateBaseModel(std::string model_name,
+void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,
                      std::vector<int> dims,
                      bool add_non_zero_node = false) {
@@ -165,7 +165,7 @@ void RunSession2(InferenceSession& session_object,
   VerifyOutputs(fetches, expected_dims, expected_values);
 }
 
-void RunWithOneSessionSingleThreadInference(std::string model_name, std::string sess_log_id) {
+void RunWithOneSessionSingleThreadInference(PathString model_name, std::string sess_log_id) {
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
@@ -222,7 +222,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 }
 
-void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
+void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string sess_log_id, bool has_non_zero_node = false) {
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
@@ -289,7 +289,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
-  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionSingleThread";
   std::vector<int> dims = {1, 3, 2};
@@ -305,7 +305,7 @@ TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceW
 }
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceWithMultiThreads) {
-  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
   std::string graph_name = "multithreading_test";
   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionMultiThreads";
   std::vector<int> dims = {1, 3, 2};
@@ -360,7 +360,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
 }
 
 TEST(TensorrtExecutionProviderTest, EPContextNode) {
-  std::string model_name = "EPContextNode_test.onnx";
+  PathString model_name = ORT_TSTR("EPContextNode_test.onnx");
   std::string graph_name = "EPContextNode_test";
   std::string sess_log_id = "EPContextNode_test";
   std::vector<int> dims = {1, 3, 2};
@@ -461,7 +461,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
-  model_name = params.trt_ep_context_file_path;
+  model_name = ToPathString(params.trt_ep_context_file_path);
   params3.trt_engine_cache_enable = 1;
   execution_provider = TensorrtExecutionProviderWithOptions(&params3);
   EXPECT_TRUE(session_object3.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -490,7 +490,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object4{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params4;
-  model_name = "./context_model_folder/EPContextNode_test_ctx.onnx";
+  model_name = ORT_TSTR("./context_model_folder/EPContextNode_test_ctx.onnx");
   execution_provider = TensorrtExecutionProviderWithOptions(&params4);
   EXPECT_TRUE(session_object4.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object4.Load(model_name);
@@ -514,7 +514,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params5.trt_dump_ep_context_model = 1;
   params5.trt_ep_context_embed_mode = 1;
   params5.trt_ep_context_file_path = "EP_Context_model_2.onnx";
-  model_name = "EPContextNode_test.onnx";
+  model_name = ORT_TSTR("EPContextNode_test.onnx");
   execution_provider = TensorrtExecutionProviderWithOptions(&params5);
   EXPECT_TRUE(session_object5.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object5.Load(model_name);
@@ -528,7 +528,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   InferenceSession session_object6{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params6;
   params6.trt_ep_context_embed_mode = 1;
-  model_name = params5.trt_ep_context_file_path;
+  model_name = ToPathString(params5.trt_ep_context_file_path);
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object6.Load(model_name);
@@ -546,7 +546,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
-  std::string model_name = "testdata/trt_plugin_custom_op_test.onnx";
+  PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");
   SessionOptions so;
   so.session_logid = "TensorrtExecutionProviderTRTPluginsTest";
   RunOptions run_options;
@@ -575,7 +575,6 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   OrtTensorRTProviderOptionsV2 params;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  std::cout << model_name << std::endl;
   auto status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
@@ -591,9 +590,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   size_t pos = param.find("_");
   std::string input_type = param.substr(pos + 1);
   ASSERT_NE(pos, std::string::npos);
-  std::string cache_type = ToUTF8String(param.substr(0, pos));
-
-  std::string model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
+  std::string cache_type_mbs = param.substr(0, pos);
+  PathString cache_type = ToPathString(cache_type_mbs);
+  std::basic_ostringstream<ORTCHAR_T> oss;
+  oss << ORT_TSTR("trt_execution_provider_") << cache_type << ORT_TSTR("_caching_test_") << ToPathString(input_type)
+      << ORT_TSTR(".onnx");
+  PathString model_name = oss.str();
   std::vector<int> dims;
   if (input_type.compare("dynamic") == 0) {
     dims = {1, -1, -1};  // dynamic shape input
@@ -601,10 +603,10 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     dims = {1, 3, 2};
   }
 
-  CreateBaseModel(model_name, cache_type + "cachingtest", dims);
+  CreateBaseModel(model_name, cache_type_mbs + "cachingtest", dims);
 
   SessionOptions so;
-  so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
+  so.session_logid = "TensorrtExecutionProvider" + cache_type_mbs + "cacheTest";
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
@@ -633,7 +635,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
   OrtTensorRTProviderOptionsV2 params;
-  if (cache_type.compare("engine") == 0) {
+  if (cache_type_mbs.compare("engine") == 0) {
     /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
      * - engine cache serialization/de-serialization
      * - profile cache serialization/de-serialization
@@ -807,7 +809,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       }
     }
 
-  } else if (cache_type.compare("timing") == 0) {
+  } else if (cache_type_mbs.compare("timing") == 0) {
     /* Following code block tests the functionality of timing cache, including:
      * - timing cache cache serialization/de-serialization
      * - TODO: benefir of usign a timing cache no matter if dynamic / static input
@@ -917,7 +919,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_function_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_function_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1019,7 +1021,7 @@ TEST(TensorrtExecutionProviderTest, DISABLED_NodeIndexMappingTest) {  //  [W:onn
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_nodeindexmapping_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_nodeindexmapping_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1131,7 +1133,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "trt_execution_provider_removecycle_test.onnx";
+  PathString model_file_name = ORT_TSTR("trt_execution_provider_removecycle_test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
 
   std::vector<int64_t> dims_mul_x = {1, 3, 2};

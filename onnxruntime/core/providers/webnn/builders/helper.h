@@ -209,16 +209,16 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Pow", {"pow", true}},
     {"PRelu", {"prelu", true}},
     {"Reciprocal", {"reciprocal", true}},
-    {"ReduceL1", {"reduceL1", false}},
-    {"ReduceL2", {"reduceL2", false}},
-    {"ReduceLogSum", {"reduceLogSum", false}},
-    {"ReduceLogSumExp", {"reduceLogSumExp", false}},
+    {"ReduceL1", {"reduceL1", true}},
+    {"ReduceL2", {"reduceL2", true}},
+    {"ReduceLogSum", {"reduceLogSum", true}},
+    {"ReduceLogSumExp", {"reduceLogSumExp", true}},
     {"ReduceMax", {"reduceMax", true}},
     {"ReduceMean", {"reduceMean", true}},
     {"ReduceMin", {"reduceMin", true}},
     {"ReduceProd", {"reduceProduct", true}},
     {"ReduceSum", {"reduceSum", true}},
-    {"ReduceSumSquare", {"reduceSumSquare", false}},
+    {"ReduceSumSquare", {"reduceSumSquare", true}},
     {"Relu", {"relu", true}},
     {"Reshape", {"reshape", true}},
     {"Resize", {"resample2d", true}},
@@ -277,9 +277,9 @@ static const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> webnn_supp
 bool IsSupportedDataType(const int32_t data_type,
                          const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types);
 
-bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
-                                      std::vector<int64_t>& shape_b,
-                                      const logging::Logger& logger);
+bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
+                                    std::vector<int64_t>& shape_b,
+                                    std::vector<int64_t>& output_shape);
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
