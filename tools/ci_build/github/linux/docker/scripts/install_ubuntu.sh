@@ -67,7 +67,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
   # The defaul version of python is 3.8
     major=$(echo $PYTHON_VER | cut -d. -f1)
     minor=$(echo $PYTHON_VER | cut -d. -f2)
-    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 8 ]; }; then
+    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 8 ]; then
       PYTHON_VER="3.8"
     fi
     if [ "$PYTHON_VER" != "3.8" ]; then
@@ -87,7 +87,7 @@ elif [ "$OS_VERSION" = "22.04" ] && ; then
   # The defaul version of python is 3.10
     major=$(echo $PYTHON_VER | cut -d. -f1)
     minor=$(echo $PYTHON_VER | cut -d. -f2)
-    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 10 ]; }; then
+    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 10 ]; then
       PYTHON_VER="3.10"
     fi
     if [ "$PYTHON_VER" != "3.10" ]; then
