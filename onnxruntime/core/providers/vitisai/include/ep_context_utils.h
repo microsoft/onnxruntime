@@ -12,6 +12,10 @@ namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
+constexpr const uint8_t kXCCode = 1;
+constexpr const uint8_t kDDCode = 2;
+constexpr const uint8_t kVCode = 4;
+
 static constexpr const char* kEPContextOp = "EPContext";
 static constexpr const char* kMainContextAttr = "main_context";
 static constexpr const char* kEPCacheContextAttr = "ep_cache_context";
@@ -71,9 +75,9 @@ bool GetEPContextModelFileLocation(
 // The file for EP context cache is in the same folder as the EP context model file.
 PathString GetEPContextCacheFileLocation(const PathString&, const PathString&);
 
-std::string Slurp(const fs::path&);
+std::string Slurp(const fs::path&, bool binary_mode = false);
 
-std::string GetBackendCompileCache(const fs::path&);
+std::string GetBackendCompileCache(const fs::path&, bool binary_mode = false);
 
 void RestoreBackendCompileCache(const fs::path&, const std::string&);
 

@@ -9,6 +9,8 @@
 #include <nlohmann/json.hpp>
 #include "./md5.h"
 
+#include "vaip/global_api.h"
+
 #include "ep_context_utils.h"
 
 namespace onnxruntime {
@@ -516,6 +518,10 @@ std::string RetrieveEPContextCache(
 void RetrieveBackendCacheInfo(const Graph& graph, std::string& cache_dir, std::string& cache_key) {
   // TODO: Support for multi-node EP context model.
   const auto* p_node = GetEPContextNodePtr(graph);
+  if (p_node == nullptr) {
+    LOGS_DEFAULT(WARNING) << "Failed to retrieve cache info due to no EP context nodes";
+    return;
+  }
   const auto& attrs = p_node->GetAttributes();
   const auto& notes_str = attrs.at(kNotesAttr).s();
   nlohmann::json j_obj = nlohmann::json::parse(notes_str);
@@ -676,7 +682,7 @@ PathString GetEPContextCacheFileLocation(
   return ToPathString(ep_ctx_cache_fs_path.string());
 }
 
-std::string Slurp(const fs::path& file_location) {
+std::string Slurp(const fs::path& file_location, bool binary_mode) {
   // std::filesystem::value_type == onnxruntime::PathChar == ORTCHAR_T
   // std::filesystem::string_type == onnxruntime::PathString
   // const char* location_str = PathToUTF8String(file_location.native()).c_str();
@@ -684,7 +690,8 @@ std::string Slurp(const fs::path& file_location) {
   ifs.exceptions(std::ifstream::failbit | std::ifstream::badbit);
   std::stringstream ss;
   try {
-    ifs.open(file_location.string().c_str(), std::ifstream::in);
+    auto open_mode = binary_mode ? (std::ios::in | std::ios::binary) : std::ios::in;
+    ifs.open(file_location.string().c_str(), open_mode);
     ss << ifs.rdbuf();
     if (!ss.good()) {
       LOGS_DEFAULT(WARNING) << "Failed to write to stream";
@@ -696,14 +703,14 @@ std::string Slurp(const fs::path& file_location) {
   return ss.str();
 }
 
-std::string GetBackendCompileCache(const fs::path& backend_cache_file_location) {
+std::string GetBackendCompileCache(const fs::path& backend_cache_file_location, bool binary_mode) {
   if (!fs::exists(backend_cache_file_location) || !fs::is_regular_file(backend_cache_file_location)) {
     LOGS_DEFAULT(WARNING) << "[VitisAI EP]Bad file for compilation cache: "
                           << backend_cache_file_location;
     return "";
   }
   LOGS_DEFAULT(VERBOSE) << "Reading backend compilation cache from " << backend_cache_file_location;
-  return Slurp(backend_cache_file_location);
+  return Slurp(backend_cache_file_location, binary_mode);
 }
 
 void RestoreBackendCompileCache(
@@ -724,36 +731,6 @@ void RestoreBackendCompileCache(
   }
   ofs.close();
 }
-
-#if 0
-// TODO: To be removed.
-// `onnxruntime::GraphViewer::GetNodesInTopologicalOrder()`
-static std::vector<NodeIndex> GetNodeIndicesInTopologicalOrder(const GraphViewer& graph_viewer) {
-  const auto& node_arg_ptrs = graph_viewer.GetOutputs();
-  std::vector<const Node*> leaf_node_ptrs;
-  leaf_node_ptrs.reserve(node_arg_ptrs.size());
-  for (const auto* p : node_arg_ptrs) {
-    if (p != nullptr) {
-      auto* p_node = graph_viewer.GetProducerNode(p->Name());
-      if (p_node != nullptr) {
-        leaf_node_ptrs.push_back(p_node);
-      }
-    }
-  }
-  std::vector<NodeIndex> node_indices;
-  const auto& graph = graph_viewer.GetGraph();
-  graph.ReverseDFSFrom(
-      leaf_node_ptrs,  // from
-      nullptr,         // enter
-      [&node_indices](const Node* p_node) mutable {
-        node_indices.push_back(p_node->Index());
-      },        // leave
-      nullptr,  // comp
-      nullptr   // stop
-  );
-  return node_indices;
-}
-#endif
 
 std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
   auto node_arg_ptrs = node.OutputDefs();
