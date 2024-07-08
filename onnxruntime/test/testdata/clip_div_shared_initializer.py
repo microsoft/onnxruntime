@@ -1,5 +1,4 @@
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, checker, helper, save
 
 graph_proto = helper.make_graph(
     [
@@ -30,5 +29,5 @@ graph_proto = helper.make_graph(
 )
 
 model = helper.make_model(graph_proto)
-onnx.checker.check_model(model, True)
-onnx.save(model, "clip_div_shared_initializer.onnx")
+checker.check_model(model, True)
+save(model, "clip_div_shared_initializer.onnx")
