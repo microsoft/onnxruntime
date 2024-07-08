@@ -8,7 +8,7 @@
 #include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/framework/torch/python_common.h"
 
-namespace onnxruntime.training.framework.torch {
+namespace onnxruntime::training::framework::torch {
 
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.
@@ -19,4 +19,4 @@ PyObject* ToDlpack(OrtValue ort_value);
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
-}  // namespace onnxruntime.training.framework. torch
+}  // namespace onnxruntime::training::framework::torch

@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace onnxruntime.language_interop_ops.torch {
+namespace onnxruntime::language_interop_ops::torch {
 
 typedef std::vector<PyObject*> (*CustomFunctionRunnerType)(const char* func_name_char,
                                                            void* callback,
@@ -122,4 +122,4 @@ class OrtTorchFunctionPool final {
 
   std::mutex mutex_;
 };
-}  // namespace onnxruntime.language_interop_ops. torch
+}  // namespace onnxruntime::language_interop_ops::torch

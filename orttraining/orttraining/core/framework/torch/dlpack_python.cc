@@ -3,7 +3,7 @@
 
 #include "orttraining/core/framework/torch/dlpack_python.h"
 
-namespace onnxruntime.training.framework.torch {
+namespace onnxruntime::training::framework::torch {
 
 static void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
@@ -32,4 +32,4 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
   return ort_value;
 }
 
-}  // namespace onnxruntime.training.framework. torch
+}  // namespace onnxruntime::training::framework::torch
