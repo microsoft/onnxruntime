@@ -142,7 +142,7 @@ fi
 # Though this command has a yocto version argument, none of our ci build pipelines use yocto.
 $DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
-    -e "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV" \
+    -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-    -d "$BUILD_DEVICE" -x "$BUILD_EXTR_PAR" -o "$BUILD_OS" -y "$YOCTO_VERSION"
+    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION
