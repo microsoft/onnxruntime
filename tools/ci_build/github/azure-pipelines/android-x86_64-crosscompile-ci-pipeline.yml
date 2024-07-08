@@ -233,10 +233,7 @@ stages:
   dependsOn: [BUILD_CPU_STAGE, BUILD_NNAPI_STAGE]
   jobs:
   - job: Test_CPU_EP
-    pool:
-      # We need macOS-12 to run the Android emulator for now.
-      # https://github.com/actions/runner-images/issues/7671
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     workspace:
       clean: all
     condition: succeeded()
@@ -307,8 +304,7 @@ stages:
       - template: templates/clean-agent-build-directory-step.yml
 
   - job: Test_NNAPI_EP
-    pool:
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -382,8 +378,7 @@ stages:
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   jobs:
   - job: NNAPI_EP_MASTER
-    pool:
-      vmImage: onnxruntime-Ubuntu2204-AMD-CPU
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: 180
     workspace:
       clean: all
