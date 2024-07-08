@@ -1178,6 +1178,51 @@ TEST(QDQTransformerTests, ExpandDropQDQ) {
   RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);      // Use int16 ONNX QDQ ops
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Tile -> Q.
+template <typename QuantType>
+static void RunTileDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                   const std::vector<int64_t>& repeats,
+                                   bool use_contrib_qdq = false,
+                                   int opset = 21) {
+  auto build_test_case = [input_shape, repeats, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* repeats_arg = builder.Make1DInitializer(repeats);
+    auto* tile_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Tile", {input_arg_dq, repeats_arg}, {tile_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(tile_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Tile"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Tile -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, TileDropQDQ) {
+  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3});
+  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);     // Use com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);    // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);       // Use int16 ONNX QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);      // Use int16 ONNX QDQ ops
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;
