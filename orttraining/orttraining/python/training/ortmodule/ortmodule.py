@@ -124,7 +124,7 @@ class ORTModule(torch.nn.Module):
         The first call to forward performs setup and checking steps. During this call,
         ORTModule determines whether the module can be trained with ONNX Runtime. For
         this reason, the first forward call execution takes longer than subsequent calls.
-        Execution is interupted if ONNX Runtime cannot process the model for training.
+        Execution is interrupted if ONNX Runtime cannot process the model for training.
 
         Args:
             inputs:  positional, variable positional inputs to the PyTorch module's forward method.

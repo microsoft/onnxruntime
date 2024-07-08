@@ -6953,3 +6953,41 @@ def test_layerwise_recompute_pythonop_determinstic():
     else:
         if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+
+
+class NeuralNetTupleInt(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super().__init__()
+
+        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(hidden_size, num_classes)
+
+    def forward(self, input1):
+        out = self.fc1(input1)
+        t = out.shape[0]
+        out = self.relu(out)
+
+        out = out + t
+        out = self.fc2(out)
+        return out
+
+
+
+def test_forward_call_tuple_int():
+    device = "cuda"
+
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
+    model = NeuralNetTupleInt(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model, DebugOptions(save_onnx=True, onnx_prefix="tuple_int"))
+
+    # Check that the original forward signature is preserved.
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
+    x = torch.randn(N, D_in, device=device)
+
+    # Make sure model runs without any exception
+    prediction = ort_model(x)
+    assert prediction is not None
+    prediction = prediction.sum()
+    prediction.backward()

@@ -312,7 +312,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def __getstate__(self):
         state = copy.copy(self.__dict__)
-        # Remove any re-contructible/pybound object from the state
+        # Remove any re-constructible/pybound object from the state
         serialization_deny_list = [
             "_onnx_models",
             "_graph_builder",
