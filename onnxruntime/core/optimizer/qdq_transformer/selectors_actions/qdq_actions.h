@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/optimizer/selectors_actions/actions.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
