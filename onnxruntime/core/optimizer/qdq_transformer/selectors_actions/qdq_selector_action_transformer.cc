@@ -85,6 +85,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(drop_action_no_nonpositive_scale));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true);
+  // DepthToSpace and SpaceToDepth not included because there is no integer implementations.
+  // https://github.com/microsoft/onnxruntime/issues/21287
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
                                                          {{"Gather", {}},
                                                           {"Reshape", {}},
@@ -95,9 +97,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Expand", {}},
                                                           {"Tile", {}},
                                                           {"Slice", {}},
-                                                          {"GatherElements", {}},
-                                                          {"DepthToSpace", {}},
-                                                          {"SpaceToDepth", {}}},
+                                                          {"GatherElements", {}}},
                                                          std::move(selector),
                                                          std::move(drop_action));
 #else
