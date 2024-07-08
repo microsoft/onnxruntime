@@ -421,7 +421,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   ORT_UNUSED_PARAMETER(q_nodes);
   const auto& graph = graph_viewer.GetGraph();
 
-// MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
+  // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
   if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
     return false;
   }
