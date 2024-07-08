@@ -69,8 +69,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(selector_disallow_16bit),
                                                          std::move(drop_action_no_int16));
 
-  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale = (
-    std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false));
+  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale = std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_nor_nonpositive_scale_name,
                                                          {{"MaxPool", {12}}},
                                                          std::move(selector_disallow_16bit_and_nonpositive_scale),
