@@ -3,7 +3,7 @@ set -e
 while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
-p) PYTHON_VER=${OPTARG:="3.8"};;
+p) PYTHON_VER=${OPTARG:=3.8};;
 d) DEVICE_TYPE=${OPTARG};;
 esac
 done
@@ -64,7 +64,12 @@ locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
 if [ "$OS_VERSION" = "20.04" ]; then
-    PYTHON_VER=${PYTHON_VER:=3.8}
+  # The defaul version of python is 3.8
+    major=$(echo $PYTHON_VER | cut -d. -f1)
+    minor=$(echo $PYTHON_VER | cut -d. -f2)
+    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 8 ]; }; then
+      PYTHON_VER="3.8"
+    fi
     if [ "$PYTHON_VER" != "3.8" ]; then
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
@@ -78,8 +83,13 @@ if [ "$OS_VERSION" = "20.04" ]; then
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
-elif [ "$OS_VERSION" = "22.04" ]; then
-    PYTHON_VER=${PYTHON_VER:=3.10}
+elif [ "$OS_VERSION" = "22.04" ] && ; then
+  # The defaul version of python is 3.10
+    major=$(echo $PYTHON_VER | cut -d. -f1)
+    minor=$(echo $PYTHON_VER | cut -d. -f2)
+    if [ "$major" -lt 3 ] || [ "$major" -eq 3 ] && [ "$minor" -lt 10 ]; }; then
+      PYTHON_VER="3.10"
+    fi
     if [ "$PYTHON_VER" != "3.10" ]; then
         add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
