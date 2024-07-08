@@ -37,7 +37,6 @@ void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   // skip the weight for conv as we need to transpose for preferred layout NHWC.
   if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // W
-    model_builder.AddInputToSkip(node.InputDefs()[1]->Name());
   }
 }
 
@@ -168,7 +167,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   if (is_conv == 1)
     dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
   else
-    dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
+    dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv and convTranspose weight
 
   SafeInt<size_t> num_elements = SafeInt<size_t>(Product(dest_shape));
 
@@ -185,7 +184,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       element_size = sizeof(float);
-      break;
       break;
     default:
       break;
@@ -232,9 +230,11 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+
   const auto& op_type = node.OpType();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val output = emscripten::val::object();
+  const auto& initializers(model_builder.GetInitializerTensors());
 
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
@@ -249,6 +249,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   const bool is_conv1d = input_shape.size() == 3 && weight_shape.size() == 3;
+  const bool is_constant_weight = Contains(initializers, weight_name);
   // Support conv1d by prepending a 1 or 2 size dimensions.
   if (is_conv1d) {
     // Reshape input.
@@ -274,12 +275,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   emscripten::val options = emscripten::val::object();
   ORT_RETURN_IF_ERROR(SetConvBaseOptions(
       model_builder, node, options, input_shape, weight_shape, strides, dilations, pads, is_nhwc, is_conv1d, logger));
+  bool depthwise = false;
   if (op_type == "Conv" || op_type == "ConvInteger") {
     int groups = options["groups"].as<int>();
     if (is_nhwc) {
-      bool depthwise = (groups == input_shape[3] && groups != 1);
+      depthwise = (groups == input_shape[3] && groups != 1);
       options.set("inputLayout", emscripten::val("nhwc"));
-      ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, !depthwise, is_conv1d));
+      if (is_constant_weight) {
+        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, !depthwise, is_conv1d));
+      }
       if (!depthwise) {
         options.set("filterLayout", emscripten::val("ohwi"));
       } else {
@@ -290,15 +294,37 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (is_nhwc) {
       options.set("inputLayout", emscripten::val("nhwc"));
       options.set("filterLayout", emscripten::val("ohwi"));
-      ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, false, is_conv1d));
+      if (is_constant_weight) {
+        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, true, is_conv1d));
+      }
     }
   }
 
   emscripten::val filter = model_builder.GetOperand(weight_name);
-  if (!is_nhwc && is_conv1d) {
-    // Reshape weight to 4D for conv1d with NCHW preferred layout.
-    std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(weight_shape);
-    filter = model_builder.GetBuilder().call<emscripten::val>("reshape", filter, emscripten::val::array(new_shape));
+
+  if (is_conv1d) {
+    // Reshape weight to 4D for conv1d.
+    if (!is_nhwc || !is_constant_weight) {
+      // The weight_shape has been appended 1's, reshape weight operand.
+      std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(weight_shape);
+      filter = model_builder.GetBuilder().call<emscripten::val>("reshape", filter, emscripten::val::array(new_shape));
+    }
+  }
+
+  emscripten::val transpose_options = emscripten::val::object();
+  if (is_nhwc && !is_constant_weight) {
+    // For NHWC preferred layout, if the weight is input:
+    // - Transpose it from iohw -> ohwi for convTranspose.
+    // - Transpose it from oihw -> ihwo for depthwise conv.
+    // - Transpose it from oihw -> ohwi for conv.
+    std::vector<uint32_t> perm(4);
+    if (op_type == "ConvTranspose" || depthwise) {
+      perm = {1, 2, 3, 0};  // L_1230 for depthwise conv and convTranspose weight
+    } else {
+      perm = {0, 2, 3, 1};  // L_0231
+    }
+    transpose_options.set("permutation", emscripten::val::array(perm));
+    filter = model_builder.GetBuilder().call<emscripten::val>("transpose", filter, transpose_options);
   }
 
   if (op_type == "Conv") {
@@ -368,13 +394,6 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   if (weight_size != 4 && weight_size != 3) {
     LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s weight dimension: " << weight_size
                           << ". Only conv 1d / 2d is supported.";
-    return false;
-  }
-
-  // WebNN CPU backend (XNNPACK) requires the filter operand to be a constant.
-  // https://github.com/google/XNNPACK/blob/master/src/subgraph/convolution-2d.c#L739
-  if (device_type == WebnnDeviceType::CPU && !Contains(initializers, input_defs[1]->Name())) {
-    LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
     return false;
   }
 
