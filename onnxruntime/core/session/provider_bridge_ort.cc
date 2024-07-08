@@ -659,12 +659,14 @@ struct ProviderHostImpl : ProviderHost {
     }
     auto* shape = ctx.getAttribute(shape_attr_str);
     auto* data_type = ctx.getAttribute(data_type_attr_str);
-    int32_t elemType = xir_elem_type(data_type->s());
-    if (elemType == 0) {
-      std::cerr << "unknow element type of xilinx op" << std::endl;
-      return;
+    int32_t elemType = 0;
+    if (data_type != nullptr) {
+      elemType = xir_elem_type(data_type->s());
+    } else {
+      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
     }
     ONNX_NAMESPACE::updateOutputElemType(ctx, idx, elemType);
+
     if (shape != nullptr) {
       for (auto i = 0; i < shape->ints_size(); ++i) {
         ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
@@ -676,9 +678,6 @@ struct ProviderHostImpl : ProviderHost {
   }
   static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
     auto num_output = ctx.getNumOutputs();
-    if (num_output > 1) {
-      std::cerr << "===== xilinx custom ops number of outputs : " << num_output << std::endl;
-    }
     for (auto i = 0u; i < num_output; i++) {
       xir_shape_infer_2(ctx, i);
     }
