@@ -168,7 +168,7 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
 
 bool IsQOrDQScalePositiveConstantScalar(
     const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path) {
+    const std::filesystem::path& model_path) {
   auto q_or_dq_input_defs = q_or_dq_node.InputDefs();
 
   ORT_ENFORCE(q_or_dq_input_defs.size() >= 2);
