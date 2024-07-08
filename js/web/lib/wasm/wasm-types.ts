@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// WebNN API currently does not have a TypeScript definition file. This file is a workaround with types generated from
+// WebNN API specification.
+// https://github.com/webmachinelearning/webnn/issues/677
+/// <reference path="jsep/webnn/webnn.d.ts" />
+
 import type {Tensor} from 'onnxruntime-common';
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -19,7 +24,7 @@ export declare namespace JSEP {
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
 
-  export interface Module extends WebGpuModule {
+  export interface Module extends WebGpuModule, WebNnModule {
     /**
      * Mount the external data file to an internal map, which will be used during session initialization.
      *
@@ -105,6 +110,13 @@ export declare namespace JSEP {
      * @returns
      */
     jsepOnReleaseSession: (sessionId: number) => void;
+  }
+
+  export interface WebNnModule {
+    /**
+     * Active MLContext used to create WebNN EP.
+     */
+    currentContext: MLContext;
   }
 }
 

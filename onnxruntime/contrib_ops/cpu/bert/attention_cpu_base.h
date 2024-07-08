@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "attention_base.h"
-#include "attention_helper.h"
-
+#include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/attention_helper.h"
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
