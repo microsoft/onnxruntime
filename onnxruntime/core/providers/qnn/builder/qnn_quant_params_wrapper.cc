@@ -143,7 +143,8 @@ Status QnnQuantParamsWrapper::Init(const QnnModelWrapper& qnn_model_wrapper, con
 
   if (ort_quant_params->zero_point != nullptr) {
     int32_t onnx_tp_type = 0;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points, onnx_tp_type));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackZeroPoints(ort_quant_params->zero_point->Name(), zero_points,
+                                                           onnx_tp_type));
 
     is_int4_type = (onnx_tp_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
                    (onnx_tp_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4);

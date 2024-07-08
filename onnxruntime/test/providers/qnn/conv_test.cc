@@ -761,7 +761,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
 }
 
 // Test per-channel QDQ Conv with INT4 weights. in0: u16, in1 (weight): s4, in2 (bias): s32, out: u8
-// TODO: Investigate inaccuracy for QNN EP.
+// TODO(adrianlizarraga): Investigate inaccuracy for QNN EP.
 //
 // Output values for all EPs:
 // CPU EP (f32 model): 25.143 21.554 17.964 10.785 7.195 3.605  -3.574  -7.164  -10.753

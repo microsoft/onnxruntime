@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <numeric>
+#include <utility>
+#include <vector>
 
 #include "qnn_model_wrapper.h"
 #include "core/common/safeint.h"
@@ -587,7 +589,8 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                               std::vector<uint8_t>& unpacked_tensor) const {
   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(), unpacked_tensor));
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(),
+                                                                  unpacked_tensor));
   } else {
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor));
   }
