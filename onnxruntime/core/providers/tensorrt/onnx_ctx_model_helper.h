@@ -24,7 +24,7 @@ static const std::string EPCONTEXT_WARNING =
                                               for the best model loading time";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
-const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
+const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
 ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string engine_cache_path,

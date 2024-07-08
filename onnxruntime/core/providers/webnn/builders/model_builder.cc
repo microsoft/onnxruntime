@@ -104,8 +104,7 @@ Status ModelBuilder::RegisterInitializers() {
       if (tensor.has_raw_data()) {
         tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
       } else {
-        unpacked_tensors_.push_back({});
-        std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
+        std::vector<uint8_t> unpacked_tensor;
         ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
         tensor_ptr = reinterpret_cast<std::byte*>(unpacked_tensor.data());
       }

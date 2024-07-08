@@ -123,11 +123,11 @@ static std::string config_to_json_str(const onnxruntime::ProviderOptions& config
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger, const ProviderOptions& options) {
 #ifndef _WIN32
-  auto model_path = graph_viewer.ModelPath().ToPathString();
+  auto model_path = graph_viewer.ModelPath().string();
 #else
   using convert_t = std::codecvt_utf8<wchar_t>;
   std::wstring_convert<convert_t, wchar_t> strconverter;
-  auto model_path = strconverter.to_bytes(graph_viewer.ModelPath().ToPathString());
+  auto model_path = strconverter.to_bytes(graph_viewer.ModelPath().string());
 #endif
   if (s_library_vitisaiep.compile_onnx_model_with_options) {
     return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph_viewer.GetGraph(), options));
@@ -218,7 +218,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     auto& logger = logging::LoggingManager::DefaultLogger();
     auto& model = const_cast<onnxruntime::Model&>(const_model);
     auto model_proto = model.ToProto();
-    auto file_path = model.MainGraph().ModelPath().ToPathString();
+    auto file_path = model.MainGraph().ModelPath().string();
     auto local_registries = IOnnxRuntimeOpSchemaRegistryList{model.MainGraph().GetSchemaRegistry()};
     auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
     auto status = ret->MainGraph().Resolve();
@@ -270,6 +270,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
       graph.SetGraphResolveNeeded();
     }
     auto status = graph.Resolve();
+    if (!status.IsOK()) {
+      std::cerr << "graph resolve error:" << status.ErrorMessage() << std::endl;
+    }
     return status.Code();
   };
   the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {
