@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"

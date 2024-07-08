@@ -8,7 +8,7 @@
 #include <unordered_set>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"

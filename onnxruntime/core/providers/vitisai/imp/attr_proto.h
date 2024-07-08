@@ -3,7 +3,7 @@
 #pragma once
 #include <functional>
 #include "vaip/my_ort.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace vaip {
 
