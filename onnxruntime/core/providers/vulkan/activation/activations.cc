@@ -12,20 +12,22 @@
 namespace onnxruntime {
 namespace vulkan {
 
-#define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(op, since_version, end_version) \
-  REGISTER_ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL(                                   \
-      op, since_version, end_version,                                               \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
+#define REGISTER_VERSIONED_KERNEL(op, since_version, end_version)                                    \
+  REGISTER_ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL(                                                    \
+      op, since_version, end_version,                                                                \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+      op);
 
-#define REGISTER_UNARY_ELEMENTWISE_KERNEL(op, since_version) \
-  REGISTER_ONNX_OPERATOR_VULKAN_KERNEL(                      \
-      op, since_version,                                     \
-      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
+#define REGISTER_KERNEL(op, since_version)                                                           \
+  REGISTER_ONNX_OPERATOR_VULKAN_KERNEL(                                                              \
+      op, since_version,                                                                             \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+      op);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Sigmoid, 6);
-REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(Sigmoid, 6, 13);
+REGISTER_VERSIONED_KERNEL(Sigmoid, 6, 12);
+REGISTER_KERNEL(Sigmoid, 13);
 
-explicit Sigmoid::Sigmoid(const OpKernelInfo& info)
+Sigmoid::Sigmoid(const OpKernelInfo& info)
     : VulkanKernel(info),
       data_type_{info.GetInputType(0)->tensor_type().elem_type()},
       ncnn_index_{GetNcnnLayerIndex("Sigmoid")},
@@ -41,8 +43,7 @@ explicit Sigmoid::Sigmoid(const OpKernelInfo& info)
   if (tensorproto_shape) {
     TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*tensorproto_shape);
     if (shape.Size() > 0) {
-      fixed_size_input_ = true;
-      SetupLayer();
+      fixed_size_pipeline_ = LayerPipeline(*ncnn_layer_, NcnnOptions());
     }
   }
 }
@@ -66,7 +67,8 @@ Status Sigmoid::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  if (!fixed_size_input_) {
+  std::optional<LayerPipeline> layer_pipeline;
+  if (!fixed_size_pipeline_) {
     // TODO: We can optimize looking up an existing pipeline in the cache here
     // Currently we go through Layer::create_pipeline which sets up a lot of things based on the input shape
     // followed by the pipeline cache lookup which hashes the GLSL, the x/y/z values and the specializations.
@@ -74,32 +76,25 @@ Status Sigmoid::Compute(OpKernelContext* context) const {
     // This also needs thought about how we'll structure things to ship with bytecode. The matching might be
     // input shape + data type. We may also want to make the cache key configurable on a per operator basis
     // so we can make it as simple as possible whilst also supported more complex operators.
-    SetupLayer();
+    layer_pipeline = LayerPipeline(*ncnn_layer_, NcnnOptions());
   }
-
-  const float* input_data = X.Data<float>();
-  float* output_data = Y.MutableData<float>();
 
   const auto& ncnn_options = NcnnOptions();
   ncnn::VkMat src = TensorToVkMat(X, *ncnn_options.blob_vkallocator);
   ncnn::VkMat dst = TensorToVkMat(Y, *ncnn_options.blob_vkallocator);
 
   ncnn::VkCompute cmd(&Device());
-  ncnn_layer_->forward(src, dst, cmd, ncnn_options);
+
+  RETURN_IF_NCNN_ERROR(ncnn_layer_->forward, src, dst, cmd, ncnn_options);
 
   // TODO: Investigate when/where we need barriers/waits.
   // c.f. with CUDA where we submit all the operations and only wait when we need to go back to CPU.
-  cmd.submit_and_wait();
+  RETURN_IF_NCNN_ERROR(cmd.submit_and_wait);
 
-  if (!fixed_size_input_) {
-    ncnn_layer_->destroy_pipeline(NcnnOptions());
-  }
+  return Status::OK();
 }
 
 Sigmoid::~Sigmoid() {
-  if (fixed_size_input_) {
-    ncnn_layer_->destroy_pipeline(NcnnOptions());
-  }
 }
 
 }  // namespace vulkan

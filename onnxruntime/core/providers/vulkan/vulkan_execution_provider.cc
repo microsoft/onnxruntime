@@ -1,27 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #include <array>
-// #include <utility>
-
-#include "core/common/logging/logging.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/memcpy.h"
-#include "core/framework/op_kernel.h"
-
-#include "core/providers/vulkan/vulkan_execution_provider.h"
-#include "core/providers/vulkan/vulkan_allocator.h"
-#include "core/providers/vulkan/vulkan_data_transfer.h"
-
-#include "core/providers/vulkan/activation/activations.h"
-
 #include "ncnn-src/src/gpu.h"
 #include "ncnn-src/src/pipelinecache.h"
 
-namespace onnxruntime {
+#include "core/common/logging/logging.h"
+#include "core/framework/compute_capability.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/memcpy.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/vulkan/vulkan_execution_provider.h"
+#include "core/providers/vulkan/vulkan_allocator.h"
+#include "core/providers/vulkan/vulkan_data_transfer.h"
+#include "core/providers/vulkan/vulkan_utils.h"
 
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
+#include "core/providers/vulkan/activation/activations.h"
+
+namespace onnxruntime {
+namespace vulkan {
+
+template <>
+KernelCreateInfo BuildKernelCreateInfo<void>() {
+  KernelCreateInfo info;
+  return info;
+}
+
+// forward declarations of the kernel classes
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyToHost, 1);
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyFromHost, 1);
+class ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 6, 12);
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 13);
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
@@ -45,9 +53,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status RegisterVulkanKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
-
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyToHost, 1)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyFromHost, 1)>,
+      BuildKernelCreateInfo<ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 6, 12)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 13)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -65,6 +75,7 @@ std::shared_ptr<KernelRegistry> GetVulkanKernelRegistry() {
   ORT_THROW_IF_ERROR(RegisterVulkanKernels(*kernel_registry));
   return kernel_registry;
 }
+}  // namespace vulkan
 
 namespace {
 ncnn::VulkanDevice& GetVulkanDevice() {
@@ -111,6 +122,7 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
 
 common::Status VulkanExecutionProvider::OnSessionInitializationEnd() {
   data_transfer_.UpdateAllocators(staging_allocator_, blob_allocator_);
+  return Status::OK();
 }
 
 common::Status VulkanExecutionProvider::OnRunStart(const RunOptions& /*run_options*/) {
@@ -122,10 +134,14 @@ common::Status VulkanExecutionProvider::OnRunStart(const RunOptions& /*run_optio
   ncnn_options_.blob_vkallocator = vulkan_device_.acquire_blob_allocator();
   ncnn_options_.workspace_vkallocator = ncnn_options_.blob_vkallocator;
   ncnn_options_.staging_vkallocator = vulkan_device_.acquire_staging_allocator();
+  return Status::OK();
 }
+
 common::Status VulkanExecutionProvider::OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) {
   vulkan_device_.reclaim_blob_allocator(ncnn_options_.blob_vkallocator);
   vulkan_device_.reclaim_staging_allocator(ncnn_options_.staging_vkallocator);
+
+  return Status::OK();
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
@@ -139,9 +155,25 @@ VulkanExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   for (const auto& node : graph_viewer.Nodes()) {
     if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
         kernel_create_info != nullptr) {
+      bool is_supported = true;
+      // NCNN only supports 4D or less
+      for (const auto& def : node.InputDefs()) {
+        if (def->Exists()) {
+          const auto* shape = def->Shape();
+          if (!shape || shape->dim_size() > 4) {
+            is_supported = false;
+            break;
+          }
+        }
+      }
+
+      if (!is_supported) {
+        continue;
+      }
+
       auto entry = node_is_supported_checkers_.find(node.OpType());
       if (entry != node_is_supported_checkers_.end()) {
-        bool is_supported = entry->second(node);
+        is_supported = entry->second(node);
         if (!is_supported) {
           continue;
         }
@@ -171,7 +203,7 @@ VulkanExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 // }
 
 std::shared_ptr<KernelRegistry> VulkanExecutionProvider::GetKernelRegistry() const {
-  static std::shared_ptr<KernelRegistry> kernel_registry = GetVulkanKernelRegistry();
+  static std::shared_ptr<KernelRegistry> kernel_registry = vulkan::GetVulkanKernelRegistry();
   return kernel_registry;
 }
 

@@ -14,7 +14,7 @@ endif()
 
 message(STATUS "Vulkan_INCLUDE_DIRS: ${Vulkan_INCLUDE_DIRS}")
 message(STATUS "Vulkan_LIBRARIES: ${Vulkan_LIBRARIES}")
-message(STATUS "Vulkan_dxc_EXECUTABLE: ${Vulkan_dxc_EXECUTABLE}")
+# message(STATUS "Vulkan_dxc_EXECUTABLE: ${Vulkan_dxc_EXECUTABLE}")
 
 add_compile_definitions(USE_VULKAN=1)
 file(GLOB_RECURSE onnxruntime_providers_vulkan_cc_srcs
@@ -32,11 +32,15 @@ target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vulkan_cc_srcs})
 onnxruntime_add_static_library(onnxruntime_providers_vulkan ${onnxruntime_providers_vulkan_cc_srcs})
+
 onnxruntime_add_include_to_target(onnxruntime_providers_vulkan
   onnxruntime_common onnxruntime_framework
-  onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface
   ncnn Vulkan::Headers
+  onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface
 )
+
+target_include_directories(onnxruntime_providers_vulkan PRIVATE "$<TARGET_PROPERTY:ncnn,SOURCE_DIR>/layer")
+target_include_directories(onnxruntime_providers_vulkan PRIVATE "$<TARGET_PROPERTY:ncnn,SOURCE_DIR>/layer/vulkan")
 
 target_link_libraries(onnxruntime_providers_vulkan ncnn Vulkan::Vulkan)
 add_dependencies(onnxruntime_providers_vulkan ${onnxruntime_EXTERNAL_DEPENDENCIES})
