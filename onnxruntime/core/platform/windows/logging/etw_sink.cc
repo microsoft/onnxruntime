@@ -140,10 +140,10 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() {
-    static HRESULT etw_status = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-    if (FAILED(etw_status)) {
-      ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
-    }
+  static HRESULT etw_status = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+  if (FAILED(etw_status)) {
+    ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
+  }
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
