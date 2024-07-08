@@ -83,7 +83,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
-elif [ "$OS_VERSION" = "22.04" ] && ; then
+elif [ "$OS_VERSION" = "22.04" ] ; then
   # The defaul version of python is 3.10
     major=$(echo $PYTHON_VER | cut -d. -f1)
     minor=$(echo $PYTHON_VER | cut -d. -f2)
