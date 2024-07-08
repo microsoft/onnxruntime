@@ -30,7 +30,7 @@ o) BUILD_OS=${OPTARG};;
 #gpu, tensorrt or openvino. It is ignored when BUILD_OS is yocto.
 d) BUILD_DEVICE=${OPTARG};;
 #python version: 3.8 3.9 3.10 3.11 3.12 (absence means default 3.8)
-p) PYTHON_VER=${OPTARG:="3.8"};;
+p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
@@ -54,7 +54,9 @@ done
 
 # shellcheck disable=SC2034
 EXIT_CODE=1
+DEFAULT_PYTHON_VER="3.8"
 
+PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
