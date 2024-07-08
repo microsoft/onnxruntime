@@ -6964,7 +6964,9 @@ def test_aten_attention():
     ort_prediction = run_step(ort_model, ort_input)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+    _test_helpers.assert_values_are_close(ort_input[0].grad, pt_input[0].grad)
+    _test_helpers.assert_values_are_close(ort_input[1].grad, pt_input[1].grad)
+    _test_helpers.assert_values_are_close(ort_input[2].grad, pt_input[2].grad)
 
     execution_mgr = ort_model._torch_module._execution_manager._training_manager
     from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
@@ -6981,8 +6983,10 @@ def test_aten_attention():
 
     mem_eff_attn_nodes = 0
     for node in onnx_nodes:
-        if "_scaled_dot_product_efficient_attention" in node.attributes.operator:
-            mem_eff_attn_nodes += 1
+        if "ATen" in node.name:
+            for attr in node.attribute:
+                if "_scaled_dot_product_efficient_attention" in attr.s:
+                    mem_eff_attn_nodes += 1
 
     assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
 
