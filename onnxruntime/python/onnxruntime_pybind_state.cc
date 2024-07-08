@@ -7,8 +7,7 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
-
+#include "python/numpy_helper.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -1085,7 +1084,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
-            &OV_provider_options_map)) {
+            &OV_provider_options_map, &session_options)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();

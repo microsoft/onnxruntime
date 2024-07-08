@@ -61,13 +61,13 @@ TEST_F(ResNet50FusionTests, FuseConvIntegrationTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr_32.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr_32.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr_32.ApplyTransformers(fp32_graph, TransformerLevel::Level3, *logger));
-  ASSERT_STATUS_OK(Model::Save(*fp32_model, "resnet50_fused.onnx"));
+  ASSERT_STATUS_OK(Model::Save(*fp32_model, ORT_TSTR("resnet50_fused.onnx")));
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_16{5};
   ASSERT_STATUS_OK(graph_transformation_mgr_16.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr_16.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr_16.ApplyTransformers(fp16_graph, TransformerLevel::Level3, *logger));
-  ASSERT_STATUS_OK(Model::Save(*fp16_model, "resnet50_fp16_fused.onnx"));
+  ASSERT_STATUS_OK(Model::Save(*fp16_model, ORT_TSTR("resnet50_fp16_fused.onnx")));
   //  std::cout << "-------Op Counts After Fusion---------" << std::endl;
   fp32_op_count = CountOpsInGraph(fp32_graph);
   fp16_op_count = CountOpsInGraph(fp16_graph);
@@ -91,7 +91,7 @@ TEST_F(ResNet50FusionTests, FuseConvAddReluUnitTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_STATUS_OK(Model::Save(*p_model, "conv_add_relu_fp16_fused.onnx"));
+  ASSERT_STATUS_OK(Model::Save(*p_model, ORT_TSTR("conv_add_relu_fp16_fused.onnx")));
   ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
 }
@@ -109,7 +109,7 @@ TEST_F(ResNet50FusionTests, FuseConvAddUnitTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_STATUS_OK(Model::Save(*p_model, "conv_add_fp16_fused.onnx"));
+  ASSERT_STATUS_OK(Model::Save(*p_model, ORT_TSTR("conv_add_fp16_fused.onnx")));
   ASSERT_TRUE(op_to_count["Add"] == 0);  // Add removed from graph
 }
 TEST_F(ResNet50FusionTests, FuseConvReluUnitTest) {
@@ -126,7 +126,7 @@ TEST_F(ResNet50FusionTests, FuseConvReluUnitTest) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level3));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_STATUS_OK(Model::Save(*p_model, "conv_relu_fp16_fused.onnx"));
+  ASSERT_STATUS_OK(Model::Save(*p_model, ORT_TSTR("conv_relu_fp16_fused.onnx")));
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Add removed from graph
 }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(DISABLE_CONTRIB_OPS)

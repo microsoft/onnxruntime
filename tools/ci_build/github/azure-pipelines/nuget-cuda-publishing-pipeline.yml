@@ -1,7 +1,7 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Nuget-CUDA-Packaging-Pipeline'
+    source: 'CUDA-Zip-Nuget-Java-Packaging-Pipeline'
     trigger: 
       branches:
         include:

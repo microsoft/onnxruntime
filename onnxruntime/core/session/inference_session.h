@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -34,6 +35,10 @@
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
+#endif
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/platform/windows/telemetry.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -124,6 +129,8 @@ class InferenceSession {
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
 
  public:
@@ -615,7 +622,7 @@ class InferenceSession {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveToOrtFormat(const PathString& filepath) const;
+  common::Status SaveToOrtFormat(const std::filesystem::path& filepath) const;
 #endif
 
   /**

@@ -166,11 +166,14 @@ if (cmakeBuildDir != null) {
 	}
 
 	tasks.register('cmakeCheck', Copy) {
+		group = 'verification'
 		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
 		dependsOn(check)
 	}
+} else {
+	println "cmakeBuildDir is not set. Skipping cmake tasks."
 }
 
 dependencies {
