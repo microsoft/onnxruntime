@@ -3,11 +3,12 @@ set -e
 while getopts p:d: parameter_Option
 do case "${parameter_Option}"
 in
-p) PYTHON_VER=${OPTARG:=3.8};;
+p) PYTHON_VER=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 esac
 done
 
+PYTHON_VER=${PYTHON_VER:=3.8}
 # Some Edge devices only have limited disk space, use this option to exclude some package
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
