@@ -288,7 +288,6 @@ DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_
       }()},
       intra_op_thread_pool_{intra_op_thread_pool} {
   ORT_ENFORCE(accuracy_level_ >= 0 && accuracy_level_ <= 4, "MatMulNBits accuracy level must be between 0 and 4");
-  ORT_ENFORCE(intra_op_thread_pool_, "Intra op thread pool cannot be null");
 }
 
 NodeAttributes
@@ -312,6 +311,8 @@ DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const RuntimeState& runtime_stat
 Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
                                                       const NodesToOptimize& selected_nodes,
                                                       Node& replacement_node) const {
+  ORT_ENFORCE(intra_op_thread_pool_, "Intra op thread pool cannot be null");
+
   const auto* dq_node = selected_nodes.Input(0);
   const auto* weight_arg = dq_node->InputDefs()[0];
   const auto* scale_arg = dq_node->InputDefs()[1];
