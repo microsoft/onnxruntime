@@ -68,19 +68,19 @@ if [[ $BUILD_OS == ubuntu* ]]; then
 fi
 
 NEED_BUILD_SHARED_LIB=true
-cd "$SCRIPT_DIR"/docker
-if [ "$BUILD_OS" = "yocto" ]; then
+cd $SCRIPT_DIR/docker
+if [ $BUILD_OS = "yocto" ]; then
     IMAGE="arm-yocto-$YOCTO_VERSION"
     DOCKER_FILE=Dockerfile.ubuntu_for_arm
     # ACL 19.05 need yocto 4.19
     TOOL_CHAIN_SCRIPT=fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4.19-warrior.sh
-    if [ "$YOCTO_VERSION" = "4.14" ]; then
+    if [ $YOCTO_VERSION = "4.14" ]; then
         TOOL_CHAIN_SCRIPT=fsl-imx-xwayland-glibc-x86_64-fsl-image-qt5-aarch64-toolchain-4.14-sumo.sh
     fi
     $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
         --docker-build-args="--build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
-elif [ "$BUILD_DEVICE" = "gpu" ]; then
+elif [ $BUILD_DEVICE = "gpu" ]; then
         # This code path is only for training. Inferecing pipeline uses CentOS
         IMAGE="$BUILD_OS-gpu_training"
         # Current build script doesn't support building shared lib with Python dependency. To enable building with PythonOp,
@@ -121,10 +121,10 @@ set +e
 mkdir -p ~/.onnx
 
 if [ -z "$NIGHTLY_BUILD" ]; then
-    export NIGHTLY_BUILD=0
+    set NIGHTLY_BUILD=0
 fi
 
-if [ "$BUILD_DEVICE" = "cpu" ] || [ "$BUILD_DEVICE" = "openvino" ] || [ "$BUILD_DEVICE" = "arm" ]; then
+if [ $BUILD_DEVICE = "cpu" ] || [ $BUILD_DEVICE = "openvino" ] || [ $BUILD_DEVICE = "arm" ]; then
     RUNTIME=
 else
     RUNTIME="--gpus all"
@@ -136,11 +136,11 @@ DOCKER_RUN_PARAMETER="--volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume /data/onnx:/data/onnx:ro \
                       --volume $HOME/.cache/onnxruntime:/home/onnxruntimedev/.cache/onnxruntime \
                       --volume $HOME/.onnx:/home/onnxruntimedev/.onnx"
-if [ "$BUILD_DEVICE" = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
+if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
 # Though this command has a yocto version argument, none of our ci build pipelines use yocto.
-$DOCKER_CMD run "$RUNTIME" --rm "$DOCKER_RUN_PARAMETER" \
+$DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     -e "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV" \
     "onnxruntime-$IMAGE" \
