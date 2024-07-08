@@ -5,10 +5,11 @@
 void
 MLASCALL
 MlasFlashAttentionThreaded(
-    std::ptrdiff_t thread_id,
-    const MlasFlashAttentionThreadedArgs* args
+    void* argptr,
+    std::ptrdiff_t thread_id
 )
 {
+    const MlasFlashAttentionThreadedArgs* args = reinterpret_cast<MlasFlashAttentionThreadedArgs*>(argptr);
     ptrdiff_t block_size_q = static_cast<ptrdiff_t>(args->block_size_q);
     ptrdiff_t block_size_kv = static_cast<ptrdiff_t>(args->block_size_kv);
     ptrdiff_t batch_size = static_cast<ptrdiff_t>(args->batch_size);
@@ -151,4 +152,18 @@ MlasFlashAttentionThreaded(
             output_row += num_heads * v_head_size;
         }
     }
+}
+
+void
+MLASCALL
+MlasFlashAttention(
+    MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    MlasExecuteThreaded(
+        MlasFlashAttentionThreaded,
+        static_cast<void *>(args),
+        static_cast<std::ptrdiff_t>(args->thread_count),
+        ThreadPool);
 }

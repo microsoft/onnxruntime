@@ -1853,7 +1853,7 @@ struct MlasFlashAttentionThreadedArgs {
 */
 void
 MLASCALL
-MlasFlashAttentionThreaded(
-    std::ptrdiff_t thread_id,
-    const MlasFlashAttentionThreadedArgs* args
+MlasFlashAttention(
+    MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
 );

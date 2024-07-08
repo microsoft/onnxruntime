@@ -212,9 +212,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.value = V.Get<Tensor>().Data<float>();
     args.output = output->MutableData<float>();
 
-    concurrency::ThreadPool::TrySimpleParallelFor(tp, args.thread_count, [&](std::ptrdiff_t thread_id) {
-      MlasFlashAttentionThreaded(thread_id, &args);
-    });
+    MlasFlashAttention(&args, tp);
     return Status::OK();
   }
 
