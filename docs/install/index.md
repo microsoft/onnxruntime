@@ -60,6 +60,12 @@ For Cuda 12.x, please use the following instructions to install from [ORT Azure 
 pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 ```
 
+#### Install ONNX Runtime GPU (ROCm)
+For ROCm, please follow instructions to install it at the [AMD ROCm install docs](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/). The ROCm execution provider for ONNX Runtime is built and tested with ROCm 6.0.0
+
+To build from source on Linux, follow the instructions [here](https://onnxruntime.ai/docs/build/eps.html#amd-rocm). Alternatively, each major ORT release has a corresponding C/C++ ROCm package, found [here](https://github.com/microsoft/onnxruntime/releases/). 
+
+
 ### Install ONNX to export the model
 
 ```bash
