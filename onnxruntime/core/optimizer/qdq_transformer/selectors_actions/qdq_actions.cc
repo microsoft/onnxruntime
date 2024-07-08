@@ -288,6 +288,12 @@ DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_
       }()},
       intra_op_thread_pool_{intra_op_thread_pool} {
   ORT_ENFORCE(accuracy_level_ >= 0 && accuracy_level_ <= 4, "MatMulNBits accuracy level must be between 0 and 4");
+
+  if (!intra_op_thread_pool) {
+    OrtThreadPoolParams to;
+    intra_op_thread_pool_optional_ = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                                                   concurrency::ThreadPoolType::INTRA_OP);
+  }
 }
 
 NodeAttributes
@@ -311,8 +317,6 @@ DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const RuntimeState& runtime_stat
 Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
                                                       const NodesToOptimize& selected_nodes,
                                                       Node& replacement_node) const {
-  ORT_ENFORCE(intra_op_thread_pool_, "Intra op thread pool cannot be null");
-
   const auto* dq_node = selected_nodes.Input(0);
   const auto* weight_arg = dq_node->InputDefs()[0];
   const auto* scale_arg = dq_node->InputDefs()[1];
@@ -373,7 +377,7 @@ Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          intra_op_thread_pool_);
+          intra_op_thread_pool_ ? intra_op_thread_pool_ : intra_op_thread_pool_optional_.value().get());
     } else {
       MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
           weight_src.DataAsByteSpan().data(),
@@ -386,7 +390,7 @@ Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          intra_op_thread_pool_);
+          intra_op_thread_pool_ ? intra_op_thread_pool_ : intra_op_thread_pool_optional_.value().get());
     }
   } else {
     if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
@@ -401,7 +405,7 @@ Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          intra_op_thread_pool_);
+          intra_op_thread_pool_ ? intra_op_thread_pool_ : intra_op_thread_pool_optional_.value().get());
 
     } else {
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(
@@ -415,7 +419,7 @@ Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          intra_op_thread_pool_);
+          intra_op_thread_pool_ ? intra_op_thread_pool_ : intra_op_thread_pool_optional_.value().get());
     }
   }
 
