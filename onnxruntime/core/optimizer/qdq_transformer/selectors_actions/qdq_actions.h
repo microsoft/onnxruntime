@@ -103,6 +103,7 @@ struct DQMatMulReplaceWithMatMulNBits : public ReplaceWithNew {
   const std::string op_type_;
   const std::vector<NodeAndMoveInfo> value_moves_;
   concurrency::ThreadPool* intra_op_thread_pool_;
+  std::optional<std::unique_ptr<concurrency::ThreadPool>> intra_op_thread_pool_optional_;
 };
 
 struct GemmReplaceWithQuant : public Action {
