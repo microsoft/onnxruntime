@@ -14,6 +14,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
@@ -66,7 +67,7 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -90,7 +91,7 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds, {ExpectedEPNodeAssignment::None} /* params */);
 #else
@@ -118,7 +119,7 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -148,7 +149,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -213,7 +214,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -279,7 +280,7 @@ static void RunQDQModelTest(
 
 #if defined(__ANDROID__)
   RunAndVerifyOutputsWithEP(model_data_span,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
@@ -548,7 +549,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   feeds.insert(std::make_pair("Input3", ml_value));
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -586,7 +587,7 @@ TEST(NnapiExecutionProviderTest, SharedInitializersDoNotGetSkipped) {
   NameMLValMap feeds{{"input_0", ml_value_x}};
 
   RunAndVerifyOutputsWithEP(model_file_name,
-                            testing::UnitTest::GetInstance()->current_test_info()->name(),
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds,
                             {ExpectedEPNodeAssignment::All});
