@@ -44,9 +44,7 @@ bool CanNodePropagate(const Node& node) {
 Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& insertion_edges,
                       NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
                       const std::string& qdq_domain, const logging::Logger& logger) {
-  if (insertion_edges.empty()) {
-    return Status::OK();
-  }
+  ORT_RETURN_IF(insertion_edges.empty(), "Expected at least one edge into which to insert QDQ pair.");
 
   const auto& src_info = insertion_edges[0].GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
   Node* src_node = src_info.has_value() ? graph.GetNode(src_info->node_idx) : nullptr;
@@ -60,7 +58,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
                            (src_info->node_idx == edge_src_info->node_idx && src_info->arg_idx == edge_src_info->arg_idx)),
                       "Expect all insertion edges to come from the same source node's output slot.");
 
-    has_some_dst_nodes = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination) != nullptr;
+    has_some_dst_nodes = insertion_edge.GetNodeInfoAtEnd(ExtendedGraphEdge::End::Destination).has_value();
   }
 
   ORT_RETURN_IF_NOT(src_node || has_some_dst_nodes,
