@@ -520,6 +520,31 @@ TEST(NnapiExecutionProviderTest, TestGather) {
                   {ExpectedEPNodeAssignment::All});
 }
 
+TEST(NnapiExecutionProviderTest, SharedInitializersDoNotGetSkipped) {
+  // NNAPI EP's Clip op builder will mark the max initializer as skipped but it is also used by the Div op.
+  // Test that the shared initializer is still present in the NNAPI model for the Div op.
+  constexpr auto* model_file_name = ORT_TSTR("testdata/clip_div_shared_initializer.onnx");
+
+#if defined(__ANDROID__)
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+
+  std::vector<int64_t> x_dims{3, 2};
+  std::vector<float> x_values(3.0f, 3 * 2);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, x_dims, x_values, &ml_value_x);
+
+  NameMLValMap feeds{{"input_0", ml_value_x}};
+
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds,
+                            {ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_file_name, std::make_unique<NnapiExecutionProvider>(0), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -569,31 +594,6 @@ TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
       // expect one NNAPI partition
       [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
                                    << "Exactly one node should have been taken by the NNAPI EP"; });
-}
-
-TEST(NnapiExecutionProviderTest, SharedInitializersDoNotGetSkipped) {
-  // NNAPI EP's Clip op builder will mark the max initializer as skipped but it is also used by the Div op.
-  // Test that the shared initializer is still present in the NNAPI model for the Div op.
-  constexpr auto* model_file_name = ORT_TSTR("testdata/clip_div_shared_initializer.onnx");
-
-#if defined(__ANDROID__)
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-
-  std::vector<int64_t> x_dims{3, 2};
-  std::vector<float> x_values(3.0f, 3 * 2);
-  OrtValue ml_value_x;
-  CreateMLValue<float>(cpu_allocator, x_dims, x_values, &ml_value_x);
-
-  NameMLValMap feeds{{"input_0", ml_value_x}};
-
-  RunAndVerifyOutputsWithEP(model_file_name,
-                            CurrentTestName(),
-                            std::make_unique<NnapiExecutionProvider>(0),
-                            feeds,
-                            {ExpectedEPNodeAssignment::All});
-#else
-  TestModelLoad(model_file_name, std::make_unique<NnapiExecutionProvider>(0), ExpectedEPNodeAssignment::All);
-#endif
 }
 
 }  // namespace test
