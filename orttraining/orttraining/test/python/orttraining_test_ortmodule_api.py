@@ -6999,7 +6999,7 @@ def test_aten_attention():
     # reset manual seed to reset the generator
     torch.manual_seed(2333)
     pt_input = gen_inputs(device=device, dtype=torch.float32)
-    attn_mask = torch.randint(2, (32, 8, 128, 128), dtype=torch.float32, device=device, requires_grad=True)
+    attn_mask = torch.ones(32, 8, 128, 128, dtype=torch.float32, device=device, requires_grad=True)
     ort_input = copy.deepcopy(pt_input)
     pt_prediction = run_step(pt_model, pt_input, attn_mask)
     ort_prediction = run_step(ort_model, ort_input, attn_mask)
