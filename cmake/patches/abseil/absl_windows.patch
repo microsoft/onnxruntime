@@ -1,3 +1,16 @@
+diff --git a/absl/base/attributes.h b/absl/base/attributes.h
+index 5ea5ee3e..f4949898 100644
+--- a/absl/base/attributes.h
++++ b/absl/base/attributes.h
+@@ -559,7 +559,7 @@
+ #undef ABSL_ATTRIBUTE_UNUSED
+ #define ABSL_ATTRIBUTE_UNUSED __attribute__((__unused__))
+ #else
+-#define ABSL_ATTRIBUTE_UNUSED
++#define ABSL_ATTRIBUTE_UNUSED [[maybe_unused]]
+ #endif
+ 
+ // ABSL_ATTRIBUTE_INITIAL_EXEC
 diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
 index d4fe8f5c..27418d13 100644
 --- a/absl/container/internal/raw_hash_set.h
