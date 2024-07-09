@@ -16,6 +16,12 @@ cmake_policy(SET CMP0104 OLD)
 # Enable Hot Reload for MSVC compilers if supported.
 cmake_policy(SET CMP0141 NEW)
 
+# Avoid warning of Calling FetchContent_Populate(Lib) is deprecated temporarily
+# TODO: find a better way to handle the header-only 3rd party deps
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
+  cmake_policy(SET CMP0169 OLD)
+endif()
+
 # Project
 project(onnxruntime C CXX ASM)
 
