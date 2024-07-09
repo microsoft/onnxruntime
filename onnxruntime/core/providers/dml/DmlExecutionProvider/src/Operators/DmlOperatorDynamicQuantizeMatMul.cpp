@@ -40,16 +40,21 @@ public:
                 kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0)
             );
         }
+        MLOperatorTensorDataType ADatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::A).tensorDataType;
         MLOperatorTensorDataType BDatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::B).tensorDataType;
 
         std::vector<uint32_t> ATensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::A);
+        std::vector<uint32_t> BTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::B);
         std::vector<uint32_t> ExpectedAScaleTensorShape = {1, 1, 1, 1};
         std::vector<uint32_t> ExpectedAZeroPointTensorShape = {1, 1, 1, 1};
+        auto& outputSizes = m_outputTensorDescs[0].GetSizes();
+        auto AShapeBroadcasted = std::array<uint32_t, 4> { outputSizes[0], outputSizes[1], ATensorShape.rbegin()[1], ATensorShape.rbegin()[0] };
+        auto BShapeBroadcasted = std::array<uint32_t, 4> { outputSizes[0], outputSizes[1], BTensorShape.rbegin()[1], BTensorShape.rbegin()[0] };
 
         //  output edges between DynQL and MMItoFloat node
         TensorDesc intermediateQuantizedATensorDesc = TensorDesc(
                 BDatatype,
-                gsl::make_span(ATensorShape),
+                gsl::make_span(AShapeBroadcasted),
                 gsl::make_span(ATensorShape),
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
@@ -80,6 +85,30 @@ public:
                 0  // guaranteedBaseOffsetAlignment
             );
 
+        TensorDesc broadcastedATensorDesc = TensorDesc(
+            ADatatype,
+            AShapeBroadcasted, // Desired dimensions of tensor (after any broadcasting).
+            ATensorShape, // Original dimensions (before any broadcasting). Usually same as 'dimensions'.
+            TensorAxis::DoNotCoerce,
+            TensorAxis::W,
+            TensorAxis::RightAligned,
+            NchwDimensionCount,  // minDimensionCount
+            0  // guaranteedBaseOffsetAlignment
+            );
+
+        TensorDesc broadcastedBTensorDesc = TensorDesc(
+            BDatatype,
+            BShapeBroadcasted, // Desired dimensions of tensor (after any broadcasting).
+            BTensorShape, // Original dimensions (before any broadcasting). Usually same as 'dimensions'.
+            TensorAxis::DoNotCoerce,
+            TensorAxis::W,
+            TensorAxis::RightAligned,
+            NchwDimensionCount,  // minDimensionCount
+            0  // guaranteedBaseOffsetAlignment
+            );
+
+        DML_TENSOR_DESC namedBroadcastedATensorDesc = broadcastedATensorDesc.GetDmlDesc();
+        DML_TENSOR_DESC namedBroadcastedBTensorDesc = broadcastedBTensorDesc.GetDmlDesc();
         DML_TENSOR_DESC namedIntermediateQuantizedATensorDesc = intermediateQuantizedATensorDesc.GetDmlDesc();
         DML_TENSOR_DESC namedIntermediateQuantizedAScaleTensorDesc = intermediateQuantizedAScaleTensorDesc.GetDmlDesc();
         DML_TENSOR_DESC namedIntermediateQuantizedAZeroPointTensorDesc = intermediateQuantizedAZeroPointTensorDesc.GetDmlDesc();
@@ -88,7 +117,7 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_DYNAMIC_QUANTIZE_LINEAR_OPERATOR_DESC dynamicQuantizeLinearOperatorDesc = {};
-        dynamicQuantizeLinearOperatorDesc.InputTensor = &inputDescs[OnnxInputIndex::A];
+        dynamicQuantizeLinearOperatorDesc.InputTensor = &namedBroadcastedATensorDesc;
         dynamicQuantizeLinearOperatorDesc.OutputTensor = &namedIntermediateQuantizedATensorDesc;
         dynamicQuantizeLinearOperatorDesc.OutputScaleTensor = &namedIntermediateQuantizedAScaleTensorDesc;
         dynamicQuantizeLinearOperatorDesc.OutputZeroPointTensor = &namedIntermediateQuantizedAZeroPointTensorDesc;
@@ -99,7 +128,7 @@ public:
         matrixMultiplyIntergerToFloatOperatorDesc.ATensor = dynamicQuantizeLinearOperatorDesc.OutputTensor;
         matrixMultiplyIntergerToFloatOperatorDesc.AScaleTensor = dynamicQuantizeLinearOperatorDesc.OutputScaleTensor;
         matrixMultiplyIntergerToFloatOperatorDesc.AZeroPointTensor = dynamicQuantizeLinearOperatorDesc.OutputZeroPointTensor;
-        matrixMultiplyIntergerToFloatOperatorDesc.BTensor = &inputDescs[OnnxInputIndex::B];
+        matrixMultiplyIntergerToFloatOperatorDesc.BTensor = &namedBroadcastedBTensorDesc;
         matrixMultiplyIntergerToFloatOperatorDesc.BScaleTensor = &inputDescs[OnnxInputIndex::B_scale];
         matrixMultiplyIntergerToFloatOperatorDesc.BZeroPointTensor = hasBZP? &inputDescs[OnnxInputIndex::B_zero_point] : nullptr;
         matrixMultiplyIntergerToFloatOperatorDesc.BiasTensor = hasBias? &inputDescs[OnnxInputIndex::Bias] : nullptr;
