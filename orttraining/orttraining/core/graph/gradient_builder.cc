@@ -1797,7 +1797,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     for (size_t output_index = 0; output_index < node_def.outputs.size(); ++output_index) {
       // If the input is not used in the forward computation, we don't need it for gradient computation
       // Required for ORTMODULE_ATEN_SDPA_FALLBACK
-      if ((static_cast<int>(output_index) >= GetSrcNodeInputSize()) || !IsGradientRequiredForSrcNodeInput(output_index)) {
+      if (static_cast<int>(output_index) >= GetSrcNodeInputSize()) {
+        continue;
+      }
+
+      if (!IsGradientRequiredForSrcNodeInput(static_cast<int>(output_index))) {
         output_args.emplace_back(ArgDef());
         continue;
       }
