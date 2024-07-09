@@ -290,7 +290,7 @@ if ATEN_SDPA_FALLBACK:
                 "Constant",
                 [],
                 ["grad_input_mask"],
-                {"value": {"value": [1, 1, 1, 1], "dtype": "int", "is_tensor": True}},
+                {"value": {"value": [1, 1, 1, 0], "dtype": "int", "is_tensor": True}},
             ),
             (
                 ("ATen", "org.pytorch.aten"),
