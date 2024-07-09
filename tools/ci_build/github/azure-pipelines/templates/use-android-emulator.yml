@@ -13,14 +13,24 @@ parameters:
   type: boolean
   default: false
 
+- name: install_missing_packages
+  type: boolean
+  default: false
+
 steps:
-- ${{ if eq(parameters.create, true) }}:
+- ${{ if eq(parameters.install_missing_packages, true) }}:
   - script: |
       set -e -x
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "emulator"
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --list
       sudo apt install -y adb
+    displayName: Download emulator platform tools and adb
+    condition: always()
+
+- ${{ if eq(parameters.create, true) }}:
+  - script: |
+      set -e -x
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
         --create-avd --system-image "system-images;android-31;default;x86_64"
