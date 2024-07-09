@@ -37,10 +37,6 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 #if !defined(ORT_MINIMAL_BUILD)
 
 // Since NNAPI EP handles Reshape and Flatten differently,
