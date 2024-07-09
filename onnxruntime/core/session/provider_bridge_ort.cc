@@ -655,7 +655,7 @@ struct ProviderHostImpl : ProviderHost {
     auto data_type_attr_str = std::string("data_type");
     if (idx > 0) {
       shape_attr_str = shape_attr_str + std::string("_") + std::to_string(idx);
-      data_type_attr_str = shape_attr_str + std::string("_") + std::to_string(idx);
+      data_type_attr_str = data_type_attr_str + std::string("_") + std::to_string(idx);
     }
     auto* shape = ctx.getAttribute(shape_attr_str);
     auto* data_type = ctx.getAttribute(data_type_attr_str);
