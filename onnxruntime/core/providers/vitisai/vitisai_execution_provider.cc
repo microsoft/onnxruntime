@@ -86,11 +86,13 @@ void VitisAIExecutionProvider::PrepareEPContextEnablement(
   }
   std::string backend_cache_dir, backend_cache_key;
   get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
+  LOGS_DEFAULT(VERBOSE) << "Cache dir: " << backend_cache_dir << ". Cache key: " << backend_cache_key << ". Cache length: " << backend_cache_data_.length();
   info_["cacheDir"] = backend_cache_dir;
   info_["cacheKey"] = backend_cache_key;
   // Create a new model, reusing the graph name, the op-domain-to-opset-version map,
   // the op schema registry of the current graph, etc.
   p_ep_ctx_model_ = graph_viewer.CreateModel(*GetLogger());
+  LOGS_DEFAULT(VERBOSE) << "Container model created";
 }
 
 void VitisAIExecutionProvider::FulfillEPContextEnablement(
