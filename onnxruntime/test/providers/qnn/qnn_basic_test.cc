@@ -236,6 +236,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
   Ort::SessionOptions so;
 
@@ -278,6 +279,7 @@ TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
 
   EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
 }
+#endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
