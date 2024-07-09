@@ -23,8 +23,8 @@ class Gemm : public JsKernel {
                                  "transA" : $3,
                                  "transB" : $4
                                }),
-                               static_cast<double>(alpha),
-                               static_cast<double>(beta),
+                               static_cast<float>(alpha),
+                               static_cast<float>(beta),
                                static_cast<int32_t>(transA),
                                static_cast<int32_t>(transB));
   }

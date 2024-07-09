@@ -23,11 +23,11 @@ if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('./backend-wasm-inference').wasmBackend :
                                                     require('./backend-wasm-training').wasmBackend;
   if (!BUILD_DEFS.DISABLE_JSEP) {
-    registerBackend('webgpu', wasmBackend, 5);
-    registerBackend('webnn', wasmBackend, 5);
+    registerBackend('webgpu', wasmBackend, 1);
+    registerBackend('webnn', wasmBackend, 1);
   }
-  registerBackend('cpu', wasmBackend, 10);
-  registerBackend('wasm', wasmBackend, 10);
+  registerBackend('cpu', wasmBackend, 1);
+  registerBackend('wasm', wasmBackend, 1);
 }
 
 Object.defineProperty(env.versions, 'web', {value: version, enumerable: true});

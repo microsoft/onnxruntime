@@ -1041,7 +1041,7 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
                                  try {
                                    // Copy the file data (fileData,offset,length) into WebAssembly memory
                                    // (HEAPU8,buffer,length).
-                                   HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
+                                   HEAPU8.set(fileData.subarray(Number(offset), Number(offset) + length), buffer);
                                    return 0;
                                  } catch {
                                    return 4;

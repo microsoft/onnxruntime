@@ -209,10 +209,15 @@ export interface OrtTrainingAPIs {
  */
 export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<OrtTrainingAPIs>,
                                        Partial<JSEP.Module> {
+  HEAP64: BigInt64Array;
+  HEAPU64: BigUint64Array;
+  PTR_SIZE: number;
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;

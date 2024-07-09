@@ -31,6 +31,7 @@ export interface GpuData {
 export interface TensorInfo {
   dims: readonly number[];
   dataType: number;
+  outputIndex?: number;
 }
 
 export interface ProgramUniform {

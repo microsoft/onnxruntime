@@ -398,7 +398,7 @@ def parse_arguments():
         help="Build with a specific GDK edition. Defaults to the latest installed.",
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
-
+    parser.add_argument("--enable_wasm_memory64", action="store_true", help="Enable WebAssembly 64bit support")
     platform_group = parser.add_mutually_exclusive_group()
     platform_group.add_argument("--ios", action="store_true", help="build for ios")
     platform_group.add_argument("--visionos", action="store_true", help="build for visionOS")
@@ -1078,6 +1078,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_MEMORY64=" + ("ON" if args.enable_wasm_memory64 else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),

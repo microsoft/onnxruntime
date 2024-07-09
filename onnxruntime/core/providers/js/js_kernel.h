@@ -110,16 +110,28 @@ class JsKernel : public OpKernel {
         temp_data_size += sizeof(size_t) * 3;
       }
     }
+#ifdef WASM_MEMORY64
+    uintptr_t* p_serialized_kernel_context = reinterpret_cast<uintptr_t*>(alloc->Alloc(temp_data_size));
+#else
     uint32_t* p_serialized_kernel_context = reinterpret_cast<uint32_t*>(alloc->Alloc(temp_data_size));
+#endif
     if (p_serialized_kernel_context == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate memory for serialized kernel context.");
     }
 
+#ifdef WASM_MEMORY64
+    p_serialized_kernel_context[0] = reinterpret_cast<uintptr_t>(context);
+    p_serialized_kernel_context[1] = static_cast<uintptr_t>(context->InputCount());
+    p_serialized_kernel_context[2] = static_cast<uintptr_t>(context->OutputCount());
+    p_serialized_kernel_context[3] = reinterpret_cast<uintptr_t>(custom_data_ptr);
+    p_serialized_kernel_context[4] = static_cast<uintptr_t>(custom_data_size);
+#else
     p_serialized_kernel_context[0] = reinterpret_cast<uint32_t>(context);
     p_serialized_kernel_context[1] = static_cast<uint32_t>(context->InputCount());
     p_serialized_kernel_context[2] = static_cast<uint32_t>(context->OutputCount());
     p_serialized_kernel_context[3] = reinterpret_cast<uint32_t>(custom_data_ptr);
     p_serialized_kernel_context[4] = static_cast<uint32_t>(custom_data_size);
+#endif
     size_t index = 5;
     for (int i = 0; i < context->InputCount(); i++) {
       const auto* input_ptr = context->Input<Tensor>(i);
@@ -130,12 +142,21 @@ class JsKernel : public OpKernel {
         p_serialized_kernel_context[index++] = 0;
         continue;
       }
+#ifdef WASM_MEMORY64
+      p_serialized_kernel_context[index++] = static_cast<uintptr_t>(input_ptr->GetElementType());
+      p_serialized_kernel_context[index++] = reinterpret_cast<uintptr_t>(input_ptr->DataRaw());
+      p_serialized_kernel_context[index++] = static_cast<uintptr_t>(input_ptr->Shape().NumDimensions());
+      for (size_t d = 0; d < input_ptr->Shape().NumDimensions(); d++) {
+        p_serialized_kernel_context[index++] = static_cast<uintptr_t>(input_ptr->Shape()[d]);
+      }
+#else
       p_serialized_kernel_context[index++] = static_cast<uint32_t>(input_ptr->GetElementType());
       p_serialized_kernel_context[index++] = reinterpret_cast<uint32_t>(input_ptr->DataRaw());
       p_serialized_kernel_context[index++] = static_cast<uint32_t>(input_ptr->Shape().NumDimensions());
       for (size_t d = 0; d < input_ptr->Shape().NumDimensions(); d++) {
         p_serialized_kernel_context[index++] = static_cast<uint32_t>(input_ptr->Shape()[d]);
       }
+#endif
     }
 
 #ifndef NDEBUG
@@ -199,9 +220,15 @@ class JsKernel : public OpKernel {
       return status;
     }
 
+#ifdef WASM_MEMORY64
+    intptr_t status_code = EM_ASM_INT(
+        { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
+        this, reinterpret_cast<uintptr_t>(p_serialized_kernel_context));
+#else
     int status_code = EM_ASM_INT(
         { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
         this, reinterpret_cast<uint32_t>(p_serialized_kernel_context));
+#endif
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";

@@ -3,8 +3,8 @@
 
 import {Env} from 'onnxruntime-common';
 
-import type {OrtWasmModule} from '../wasm-types';
 import {DataType, getTensorElementSize} from '../wasm-common';
+import type {OrtWasmModule} from '../wasm-types';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
@@ -68,24 +68,24 @@ class ComputeContextImpl implements ComputeContext {
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     this.adapterInfo = backend.adapterInfo;
-    const heapU32 = module.HEAPU32;
+    const heap = module.PTR_SIZE === 4 ? module.HEAPU32 : module.HEAPU64;
 
     // extract context data
-    let dataIndex = (contextDataOffset >>> 2);
-    this.opKernelContext = heapU32[dataIndex++];
-    const inputCount = heapU32[dataIndex++];
-    this.outputCount = heapU32[dataIndex++];
-    this.customDataOffset = heapU32[dataIndex++];
-    this.customDataSize = heapU32[dataIndex++];
+    let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2 ** 3) : (contextDataOffset >> 2);
+    this.opKernelContext = Number(heap[dataIndex++]);
+    const inputCount = Number(heap[dataIndex++]);
+    this.outputCount = Number(heap[dataIndex++]);
+    this.customDataOffset = Number(heap[dataIndex++]);
+    this.customDataSize = Number(heap[dataIndex++]);
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = heapU32[dataIndex++];
-      const data = heapU32[dataIndex++];
-      const dim = heapU32[dataIndex++];
+      const dataType = Number(heap[dataIndex++]);
+      const data = Number(heap[dataIndex++]);
+      const dim = Number(heap[dataIndex++]);
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(heapU32[dataIndex++]);
+        dims.push(Number(heap[dataIndex++]));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -127,11 +127,11 @@ class ComputeContextImpl implements ComputeContext {
   output(index: number, dims: readonly number[]): number {
     const stack = this.module.stackSave();
     try {
-      const data = this.module.stackAlloc((1 + dims.length) * 4 /* sizeof(size_t) */);
-      let offset = data >> 2;
-      this.module.HEAPU32[offset++] = dims.length;
+      const ptrSize = this.module.PTR_SIZE;
+      const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
+      this.module.setValue(data, dims.length, '*');
       for (let i = 0; i < dims.length; i++) {
-        this.module.HEAPU32[offset++] = dims[i];
+        this.module.setValue(data + ptrSize * (i + 1), dims[i], '*');
       }
       return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {
@@ -193,10 +193,15 @@ export const init =
       // jsepCopy(src, dst, size, isSourceGpu)
       (src: number, dst: number, size: number, isSourceGpu = false) => {
         if (isSourceGpu) {
-          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+          LOG_DEBUG(
+              'verbose',
+              () => `[WebGPU] jsepCopyGpuToGpu: src=${Number(src)}, dst=${Number(dst)}, size=${Number(size)}`);
           backend.memcpy(src, dst);
         } else {
-          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+          LOG_DEBUG(
+              'verbose',
+              () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${Number(src)}, gpuDataId=${Number(dst)}, size=${
+                  Number(size)}`);
           const data = module.HEAPU8.subarray(src >>> 0, (src >>> 0) + size);
           backend.upload(dst, data);
         }
@@ -226,7 +231,7 @@ export const init =
             'verbose',
             () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
                 contextDataOffset}`);
-        const context = new ComputeContextImpl(module, backend, contextDataOffset);
+        const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
         return backend.computeKernel(kernel, context, errors);
       },
       // jsepCaptureBegin
