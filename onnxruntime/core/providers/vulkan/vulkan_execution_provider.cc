@@ -31,6 +31,20 @@ class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyFromHost, 1);
 class ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 6, 12);
 class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(Sigmoid, 13);
 
+//
+// TODO: Do we need to apply any NCNN channel alignment logic when copying to/from GPU? Each channel is aligned
+// to 16 bytes.
+//
+// See ncnn::Mat::reshape where channel alignment is implemented.
+// We could maybe leverage Mat::reshape - first create a 1D Mat from the OrtValue and then reshape
+// to change it to the NCNN format.
+//
+// We may not as VkTransfer::record_upload has a flag to flatten the data and the NCNN channel alignment may be for
+// CPU only. VkCompute::record_upload does not have a flag though
+//
+// Also need to consider whether this alignment potentially invalidates ORT allocation planning as the required
+// buffer size when used by NCNN may differ from ORT. That may be okay as it's CPU vs GPU usage,
+//
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
@@ -105,44 +119,70 @@ std::unordered_map<std::string, VulkanExecutionProvider::IsSupportedFn>
         {"Sigmoid", vulkan::Sigmoid::IsSupported},
 };
 
-VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& /*info*/)
-    : IExecutionProvider(kVulkanExecutionProvider),
+VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& info)
+    : IExecutionProvider(kVulkanExecutionProvider,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)),
+      ncnn_options_{},
       vulkan_device_{GetVulkanDevice()},
       weight_staging_allocator_{&vulkan_device_},
       weight_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 8 MB. should it be different or configurable?
       staging_allocator_{&vulkan_device_},
       blob_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
-      data_transfer_{vulkan_device_, weight_staging_allocator_, weight_allocator_},
+      // data_transfer_{vulkan_device_, weight_staging_allocator_, weight_allocator_},
+      data_transfer_{vulkan_device_, ncnn_options_},
       pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)} {
   ncnn_options_.use_vulkan_compute = true;
 
-  // allocators used for initializers and transfers between GPU and CPU
+  ncnn_options_.staging_vkallocator = &weight_staging_allocator_;
+  ncnn_options_.blob_vkallocator = &weight_allocator_;
   ncnn_options_.pipeline_cache = pipeline_cache_.get();
+
+  // start with fp32. NCNN can automatically convert from fp32 to fp16 if use_fp16_storage or use_fp16_packed is true.
+  // see VkTransfer::record_upload for details.
+  ncnn_options_.use_fp16_packed = false;
+  ncnn_options_.use_fp16_storage = false;
+  ncnn_options_.use_fp16_arithmetic = false;
+  ncnn_options_.use_int8_packed = false;
+  ncnn_options_.use_int8_storage = false;
+  ncnn_options_.use_int8_arithmetic = false;
+  ncnn_options_.use_packing_layout = false;
+  ncnn_options_.use_image_storage = false;
 }
 
 common::Status VulkanExecutionProvider::OnSessionInitializationEnd() {
-  data_transfer_.UpdateAllocators(staging_allocator_, blob_allocator_);
-  return Status::OK();
-}
+  // after session state initialization is done we switch from VkWeightStagingAllocator/VkWeightAllocator to
+  // VkStagingAllocator/VkBlobAllocator
+  // NOTE: We currently only support usage of the Vulkan EP in a single InferenceSession so we can use the approach
+  //       of switching allocators based on IExecutionProvider::OnSessionInitializationEnd being called.
 
-common::Status VulkanExecutionProvider::OnRunStart(const RunOptions& /*run_options*/) {
-  // https://github.com/Tencent/ncnn/wiki/vulkan-notes
-  // Do we need to acquire/reclaim on a per-Run basis or could we use staging_allocator_/blob_allocator_?
-  // TODO: Figure out how this looks with underlying larger memory allocations to determine what is optional.
-  // Assuming we want a small number of large allocations that are bound to buffers. The buffers may come and go
-  // more frequently.
-  ncnn_options_.blob_vkallocator = vulkan_device_.acquire_blob_allocator();
-  ncnn_options_.workspace_vkallocator = ncnn_options_.blob_vkallocator;
-  ncnn_options_.staging_vkallocator = vulkan_device_.acquire_staging_allocator();
-  return Status::OK();
-}
-
-common::Status VulkanExecutionProvider::OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) {
-  vulkan_device_.reclaim_blob_allocator(ncnn_options_.blob_vkallocator);
-  vulkan_device_.reclaim_staging_allocator(ncnn_options_.staging_vkallocator);
+  data_transfer_.SetSessionInitialized();
+  ncnn_options_.staging_vkallocator = &staging_allocator_;
+  ncnn_options_.blob_vkallocator = &blob_allocator_;
 
   return Status::OK();
 }
+
+// NCNN keeps a cache of allocations. not clear we need multiple of each allocator type. shouldn't matter unless we
+// need/want to support concurrent Run calls.
+//
+// common::Status VulkanExecutionProvider::OnRunStart(const RunOptions& /*run_options*/) {
+//  // https://github.com/Tencent/ncnn/wiki/vulkan-notes
+//  // Do we need to acquire/reclaim on a per-Run basis or could we use staging_allocator_/blob_allocator_?
+//  // TODO: Figure out how this looks with underlying larger memory allocations to determine what is optional.
+//  // Assuming we want a small number of large allocations that are bound to buffers. The buffers may come and go
+//  // more frequently.
+//  ncnn_options_.blob_vkallocator = vulkan_device_.acquire_blob_allocator();
+//  ncnn_options_.workspace_vkallocator = ncnn_options_.blob_vkallocator;
+//  ncnn_options_.staging_vkallocator = vulkan_device_.acquire_staging_allocator();
+//  return Status::OK();
+//}
+//
+// common::Status VulkanExecutionProvider::OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) {
+//  vulkan_device_.reclaim_blob_allocator(ncnn_options_.blob_vkallocator);
+//  vulkan_device_.reclaim_staging_allocator(ncnn_options_.staging_vkallocator);
+//
+//  return Status::OK();
+//}
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
   // TODO: Is there any explicit release of NCNN owned resources required?
@@ -214,14 +254,17 @@ std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
   // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
   // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/choosing_memory_type.html
 
+  // These allocators refer to the values in ncnn_options_ so that they see the change from OnSessionInitializationEnd
+  // TODO: This assumes we never free memory used to copy initializers to the device as we wouldn't have the matching
+  // allocator unless we have a way to swap back.
   std::vector<AllocatorPtr> allocators{
       std::make_unique<vulkan::VulkanBufferAllocator>(
           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, /*device_id*/ 0),
-          *ncnn_options_.blob_vkallocator),
+          ncnn_options_.blob_vkallocator),
       // using 'CUDA_PINNED' for staging memory
       std::make_unique<vulkan::VulkanBufferAllocator>(
           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, /*device_id*/ 0),
-          *ncnn_options_.staging_vkallocator),
+          ncnn_options_.staging_vkallocator),
   };
 
   return allocators;

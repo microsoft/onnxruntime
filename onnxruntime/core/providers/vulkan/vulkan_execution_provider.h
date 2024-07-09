@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ncnn-src/src/command.h"
 #include "ncnn-src/src/option.h"
 
 #include "core/framework/execution_provider.h"
@@ -36,10 +37,10 @@ struct VulkanExecutionProviderInfo {
 
   VulkanExecutionProviderInfo(const ProviderOptions& provider_options, const SessionOptions* sess_option)
       : session_options(sess_option),
-        device_id{GetProviderOptionWithDefault<int>(provider_options, "device_id", 0)} {
+        device_id{GetProviderOptionWithDefault<int16_t>(provider_options, "device_id", 0)} {
   }
 
-  const int device_id{0};
+  const int16_t device_id{0};
 };
 
 class VulkanExecutionProvider : public IExecutionProvider {
@@ -57,6 +58,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   const ncnn::VulkanDevice& Device() const { return vulkan_device_; }
   const ncnn::Option& NcnnOptions() const { return ncnn_options_; }
+  // ncnn::VkCompute Compute() const { return *compute_; }
 
  private:
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -66,8 +68,12 @@ class VulkanExecutionProvider : public IExecutionProvider {
   //                        std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   common::Status OnSessionInitializationEnd() override;
-  common::Status OnRunStart(const RunOptions& /*run_options*/) override;
-  common::Status OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) override;
+  //common::Status OnRunStart(const RunOptions& /*run_options*/) override {
+  //  compute_.emplace(vulkan_device_);
+  //}
+  //common::Status OnRunEnd(bool /*sync_stream*/, const RunOptions& /*run_options*/) override {
+  //  compute_.reset();
+  //}
 
   // in this initial version we allocate/release buffers based on OnRunStart/OnRunEnd using ncnn_options_, and that
   // approach doesn't work with a concurrent run.
@@ -93,6 +99,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
   ncnn::VkBlobAllocator blob_allocator_;
 
   vulkan::VulkanDataTransferImpl data_transfer_;
+  // std::optional<ncnn::VkCompute> compute_;
 
   std::unique_ptr<ncnn::PipelineCache> pipeline_cache_;
 };

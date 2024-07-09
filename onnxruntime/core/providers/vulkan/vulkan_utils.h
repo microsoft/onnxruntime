@@ -3,13 +3,14 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
-#include "core/providers/vulkan/vulkan_execution_provider.h"
-
 #include "ncnn-src/src/layer.h"
+#include "ncnn-src/src/command.h"
+
+#include "core/common/gsl.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/graph/constants.h"
+#include "core/providers/vulkan/vulkan_execution_provider.h"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -29,10 +30,10 @@ KernelCreateInfo BuildKernelCreateInfo();
 #define REGISTER_ONNX_OPERATOR_VULKAN_KERNEL(op, version, builder, ...) \
   ONNX_OPERATOR_KERNEL_EX(op, kOnnxDomain, version, kVulkanExecutionProvider, builder, __VA_ARGS__)
 
-#define RETURN_IF_NCNN_ERROR(function, ...)                              \
-  do {                                                                   \
-    auto ret = function(__VA_ARGS__);                                    \
-    ORT_RETURN_IF_NOT(ret == 0, "Error calling ", #function, ": ", ret); \
+#define RETURN_IF_NCNN_ERROR(function)                               \
+  do {                                                               \
+    int ret = function;                                              \
+    ORT_RETURN_IF(ret != 0, "Error calling ", #function, ": ", ret); \
   } while (0)
 
 const VulkanExecutionProvider& GetVulkanExecutionProvider(const onnxruntime::OpKernelInfo& info);
@@ -46,6 +47,12 @@ ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
 struct LayerPipeline {
   LayerPipeline(ncnn::Layer& layer, const ncnn::Option& options) : layer_(&layer), options_{&options} {
     ORT_ENFORCE(layer_->create_pipeline(*options_) == 0, "Failed to create pipeline");
+    // TODO: There's no check on the actual call to `create_pipeline` being successful in the NCNN code.
+    // e.g. sigmoid_vulkan.cpp has
+    //         pipeline_sigmoid->create(LayerShaderType::sigmoid, opt, specializations);
+    // We could override the create_pipeline in each layer (it's a virtual method) to plug in checks but it would need
+    // to be on a per-layer basis as the variable name/s for the pipeline/s is specific to the layer.
+    // A simple check would be that pipeline->shader_info is populated.
   }
 
   ~LayerPipeline() {

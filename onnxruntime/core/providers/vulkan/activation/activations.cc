@@ -33,6 +33,7 @@ Sigmoid::Sigmoid(const OpKernelInfo& info)
       ncnn_index_{GetNcnnLayerIndex("Sigmoid")},
       ncnn_layer_{ncnn::create_layer_vulkan(ncnn_index_)} {
   ORT_ENFORCE(ncnn_layer_, "Failed to create NCNN layer.");
+  ncnn_layer_->vkdev = &Device();
 
   // If the params don't rely on input data shapes we can set them here.
   // If for some reason an ONNX input values maps to a param we'd need to do this in SetupLayer and call from Compute
@@ -43,7 +44,7 @@ Sigmoid::Sigmoid(const OpKernelInfo& info)
   if (tensorproto_shape) {
     TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*tensorproto_shape);
     if (shape.Size() > 0) {
-      fixed_size_pipeline_ = LayerPipeline(*ncnn_layer_, NcnnOptions());
+      fixed_size_pipeline_.emplace(*ncnn_layer_, NcnnOptions());
     }
   }
 }
@@ -80,16 +81,20 @@ Status Sigmoid::Compute(OpKernelContext* context) const {
   }
 
   const auto& ncnn_options = NcnnOptions();
+  ncnn::VkCompute cmd(&Device());
+
+  if (X.DataRaw() == Y.DataRaw()) {
+  } else {
+  }
   ncnn::VkMat src = TensorToVkMat(X, *ncnn_options.blob_vkallocator);
   ncnn::VkMat dst = TensorToVkMat(Y, *ncnn_options.blob_vkallocator);
 
-  ncnn::VkCompute cmd(&Device());
-
-  RETURN_IF_NCNN_ERROR(ncnn_layer_->forward, src, dst, cmd, ncnn_options);
+  RETURN_IF_NCNN_ERROR(ncnn_layer_->forward(src, dst, cmd, ncnn_options));
 
   // TODO: Investigate when/where we need barriers/waits.
   // c.f. with CUDA where we submit all the operations and only wait when we need to go back to CPU.
-  RETURN_IF_NCNN_ERROR(cmd.submit_and_wait);
+  // Do we need a shared VkCompute instance in the EP to do that? Does the data transfer also need to use that?
+  RETURN_IF_NCNN_ERROR(cmd.submit_and_wait());
 
   return Status::OK();
 }

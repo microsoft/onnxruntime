@@ -51,20 +51,20 @@ OrtMemoryInfo CreateMemoryInfo(OrtDevice device) {
 }
 }  // namespace
 
-VulkanBufferAllocator::VulkanBufferAllocator(OrtDevice device, ncnn::VkAllocator& allocator)
+VulkanBufferAllocator::VulkanBufferAllocator(OrtDevice device, ncnn::VkAllocator*& allocator)
     : IAllocator(CreateMemoryInfo(device)), allocator_{allocator} {
 }
 
 void* VulkanBufferAllocator::Alloc(size_t size) {
   // pad to match NCNN behavior
   size_t aligned_size = ncnn::alignSize(size + NCNN_MALLOC_OVERREAD, 16);
-  ncnn::VkBufferMemory* mem = allocator_.fastMalloc(aligned_size);
+  ncnn::VkBufferMemory* mem = allocator_->fastMalloc(aligned_size);
 
   return mem;
 }
 
 void VulkanBufferAllocator::Free(void* p) {
-  return allocator_.fastFree(static_cast<ncnn::VkBufferMemory*>(p));
+  return allocator_->fastFree(static_cast<ncnn::VkBufferMemory*>(p));
 }
 
 }  // namespace vulkan

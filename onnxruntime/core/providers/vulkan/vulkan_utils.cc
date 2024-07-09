@@ -3,6 +3,8 @@
 
 #include "core/providers/vulkan/vulkan_utils.h"
 
+#include "core/common/safeint.h"
+
 namespace onnxruntime {
 namespace vulkan {
 namespace {
@@ -18,15 +20,16 @@ void InitMatFromTensor(const Tensor& tensor, TMat& mat) {
   mat.elemsize = element_size;
   mat.elempack = 1;
 
-  // NCNN doesn't support batches so the dims are C, D, H, W where 'D' is depth.
+  // NCNN doesn't support batches so the 4D dims are C, D, H, W where 'D' is depth.
   // For now map the same way (3D -> C, 1, H, W).
   mat.dims = gsl::narrow_cast<int32_t>(rank);
   mat.w = gsl::narrow_cast<int32_t>(shape[rank - 1]);
   mat.h = 1;
   mat.d = 1;
   mat.c = 1;
+  mat.cstep = num_elements;
 
-  switch (shape.NumDimensions()) {
+  switch (rank) {
     case 1:
       break;
     case 2:
@@ -45,8 +48,14 @@ void InitMatFromTensor(const Tensor& tensor, TMat& mat) {
       ORT_THROW("Tensor shape is not supported in Vulkan EP. Must be 4D or less. shape:", shape);
   }
 
-  mat.cstep = ncnn::alignSize(narrow<size_t>(num_elements * mat.elemsize), 16) / mat.elemsize;
   auto bytes_required = mat.cstep * mat.c;
+
+  // align channels data the same way NCNN does.
+  // TODO: not sure if this is necessary if all the 'pack' related ncnn::Option values are set to false
+  // as it's only really relevant for CPU implementations of the NCNN kernels
+  if (rank > 2) {
+    mat.cstep = ncnn::alignSize(SafeInt<size_t>(mat.w) * mat.h * mat.d * element_size, 16) / element_size;
+  }
 
   // NCNN uses a few bytes past the end of the allocation for the VkMat refernece counter.
   // we're not directly using the reference counter (we set it to nullptr) but it may happen if there are internal
@@ -81,6 +90,11 @@ ncnn::Mat TensorToMat(const Tensor& tensor) {
   ncnn::Mat mat;
 
   InitMatFromTensor(tensor, mat);
+  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
+  // and there's no real value having a `ncnn::Mat TensorToMat(Tensor& tensor)` overload to avoid the const_cast
+  // when writing.
+  mat.data = const_cast<void*>(tensor.DataRaw());
+
   return mat;
 }
 
@@ -89,8 +103,9 @@ ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator) {
 
   InitMatFromTensor(tensor, vkmat);
   vkmat.allocator = &allocator;
-  // regardless of whether we're going to use the VkMat to read or write we need to set the `data` member which is
-  // non-const, so the ugly const_cast is necessary.
+  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
+  // and there's no real value having a `ncnn::VkMat TensorToVkMat(Tensor& tensor)` overload to avoid the const_cast
+  // when writing.
   vkmat.data = static_cast<ncnn::VkBufferMemory*>(const_cast<void*>(tensor.DataRaw()));
 
   return vkmat;

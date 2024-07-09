@@ -52,6 +52,7 @@ if (onnxruntime_USE_VULKAN)
   )
 
   # glslang options
+  set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
   set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
   set(ENABLE_RTTI NOT ${onnxruntime_DISABLE_RTTI} CACHE BOOL "" FORCE)
   set(ENABLE_EXCEPTION NOT ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL "" FORCE)
@@ -95,7 +96,7 @@ if (onnxruntime_USE_VULKAN)
   set(NCNN_SYSTEM_GLSLANG ON CACHE BOOL "" FORCE)
   set(NCNN_ENABLE_LTO ${onnxruntime_ENABLE_LTO} CACHE BOOL "" FORCE)
   # set(NCNN_SHARED_LIB ON CACHE BOOL "" FORCE)
-  set(NCNN_STDIO OFF CACHE BOOL "" FORCE)
+  set(NCNN_STDIO ON CACHE BOOL "" FORCE)  # NCNN_LOGE output via stderr otherwise it's lost
   # set(NCNN_INSTALL_SDK OFF CACHE BOOL "" FORCE)
   set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
   set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
@@ -104,7 +105,16 @@ if (onnxruntime_USE_VULKAN)
   set(NCNN_DISABLE_EXCEPTION ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL "" FORCE)
   # TBD what to set the various NCNN_PIXEL* values to
 
-  onnxruntime_fetchcontent_makeavailable(glslang ncnn)
+  onnxruntime_fetchcontent_makeavailable(glslang)
+  if (NOT TARGET glslang)
+    message(FATAL_ERROR "glslang target not found")
+  elseif(NOT TARGET SPIRV)
+    message(FATAL_ERROR "SPIRV target not found")
+  else()
+    set(glslang_FOUND TRUE CACHE BOOL "" FORCE)
+  endif()
+
+  onnxruntime_fetchcontent_makeavailable(ncnn)
 
   # Create a symlink from the glslang-src to the ncnn-src/glslang directory that would be used if glslang was fetched
   # as a submodule of NCNN.
