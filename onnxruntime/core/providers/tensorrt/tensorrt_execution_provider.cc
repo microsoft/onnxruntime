@@ -18,7 +18,7 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <unordered_map>
 #include <utility>
 #include <limits>
