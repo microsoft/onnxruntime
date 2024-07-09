@@ -44,7 +44,7 @@ limitations under the License.
 #endif
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"

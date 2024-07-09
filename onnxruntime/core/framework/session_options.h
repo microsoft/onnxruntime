@@ -8,7 +8,7 @@
 #include <iostream>
 #include <codecvt>
 #include <filesystem>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/framework/config_options.h"
 #include "core/framework/ort_value.h"

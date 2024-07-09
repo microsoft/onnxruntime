@@ -5,7 +5,7 @@
 #include <memory>
 #include "QnnTypes.h"
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/node_unit.h"
 
 namespace onnxruntime {
