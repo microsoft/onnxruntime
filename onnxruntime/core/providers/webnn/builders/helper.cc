@@ -198,5 +198,10 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   }
 }
 
+bool IsMlBufferSupported() {
+  static bool is_supported = !emscripten::val::global("MLBuffer").isUndefined();
+  return is_supported;
+}
+
 }  // namespace webnn
 }  // namespace onnxruntime

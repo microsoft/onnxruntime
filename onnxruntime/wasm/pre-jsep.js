@@ -198,5 +198,46 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepOnRunStart'] = sessionId => {
       return backend['onRunStart'](sessionId);
     };
+  } else if(name === 'webnn') {
+    [Module.jsepBackend] = params;
+
+    // expose webnn backend functions
+    const backend = Module.jsepBackend;
+    Module['jsepOnRunStart'] = sessionId => {
+      return backend['onRunStart'](sessionId);
+    };
+    Module['jsepRegisterMlContext'] = (sessionId, mlContext) => {
+      backend['registerMlContext'](sessionId, mlContext);
+    };
+    Module['jsepOnReleaseSession'] = sessionId => {
+      backend['onReleaseSession'](sessionId);
+    };
+    Module['jsepGetMlContext'] = sessionId => {
+      return backend['getMlContext'](sessionId);
+    };
+    Module['jsepReserveBufferId'] = () => {
+      return backend['reserveBufferId']();
+    }
+    Module['jsepReleaseBufferId'] = (bufferId) => {
+      backend['releaseBufferId'](bufferId);
+    }
+    Module['jsepGetMlBuffer'] = (bufferId) => {
+      return backend['getBuffer'](bufferId);
+    }
+    Module['jsepEnsureBuffer'] = (bufferId, dataType, dimensions) => {
+      return backend['ensureBuffer'](bufferId, dataType, dimensions);
+    }
+    Module['jsepUploadBuffer'] = (bufferId, data) => {
+      backend['uploadBuffer'](bufferId, data);
+    }
+    Module['jsepDownloadBuffer'] = (bufferId) => {
+      return backend['downloadBuffer'](bufferId);
+    }
+    Module['jsepCreateMlBufferDownloader'] = (bufferId, type) => {
+      return backend['createMlBufferDownloader'](bufferId, type);
+    }
+    Module['jsepRegisterMlBuffer'] = (buffer) => {
+      return backend['registerMlBuffer'](buffer);
+    }
   }
 };

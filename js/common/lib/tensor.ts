@@ -43,6 +43,13 @@ interface TypedTensorBase<T extends Tensor.Type> {
   readonly gpuBuffer: Tensor.GpuBufferType;
 
   /**
+   * Get the WebNN buffer that holds the tensor data.
+   *
+   * If the data is not in a WebNN MLBuffer, throw error.
+   */
+  readonly mlBuffer: Tensor.MlBufferType;
+
+  /**
    * Get the buffer data of the tensor.
    *
    * If the data is on CPU, returns the data immediately.
@@ -133,6 +140,13 @@ export declare namespace Tensor {
   export type GpuBufferType = {size: number; mapState: 'unmapped' | 'pending' | 'mapped'};
 
   /**
+   * type alias for WebNN MLBuffer
+   *
+   * The specification for WebNN's ML Buffer is currently in flux.
+   */
+  export type MlBufferType = unknown;
+
+  /**
    * supported data types for constructing a tensor from a WebGPU buffer
    */
   export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'uint8'|'bool';
@@ -140,7 +154,7 @@ export declare namespace Tensor {
   /**
    * represent where the tensor data is stored
    */
-  export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
+  export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer'|'ml-buffer';
 
   /**
    * represent the data type of a tensor

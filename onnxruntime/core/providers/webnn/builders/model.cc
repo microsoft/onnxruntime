@@ -26,6 +26,16 @@ Model::~Model() {}
 
 Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  if (webnn::IsMlBufferSupported()) {
+    return Dispatch(inputs, outputs);
+
+  } else {
+    return Compute(inputs, outputs);
+  }
+}
+
+onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                           const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   for (const auto& input : inputs) {
     const std::string& name = input.first;
     const struct OnnxTensorData tensor = input.second;
@@ -142,6 +152,36 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
   return Status::OK();
 }
 
+onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                            const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  auto jsepEnsureBuffer = emscripten::val::module_property("jsepEnsureBuffer");
+  for (const auto& input : inputs) {
+    const std::string& name = input.first;
+    const struct OnnxTensorData tensor = input.second;
+    emscripten::val shape = emscripten::val::array();
+    for (const auto& dim : tensor.tensor_info.shape) {
+      uint32_t dim_val = SafeInt<uint32_t>(dim);
+      shape.call<void>("push", dim_val);
+    }
+    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
+    wnn_inputs_.set(name, buffer);
+  }
+  for (const auto& output : outputs) {
+    const std::string& name = output.first;
+    const struct OnnxTensorData tensor = output.second;
+    emscripten::val shape = emscripten::val::array();
+    for (const auto& dim : tensor.tensor_info.shape) {
+      uint32_t dim_val = SafeInt<uint32_t>(dim);
+      shape.call<void>("push", dim_val);
+    }
+    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
+    wnn_outputs_.set(name, buffer);
+  }
+  wnn_context_.call<void>("dispatch", wnn_graph_, wnn_inputs_, wnn_outputs_);
+
+  return Status::OK();
+}
+
 bool Model::IsScalarOutput(const std::string& output_name) const {
   return Contains(scalar_outputs_, output_name);
 }
@@ -160,6 +200,10 @@ void Model::SetOutputMap(InlinedHashMap<std::string, size_t>&& output_map) {
 
 // Pre-allocate the input and output buffers for the WebNN graph.
 void Model::AllocateInputOutputBuffers() {
+  // We don't need to allocate JS array buffers if the WebNN API supports MLBuffer.
+  if (webnn::IsMlBufferSupported()) {
+    return;
+  }
   for (const auto& input : inputs_) {
     const auto& input_info = input_output_info_.at(input);
     const auto input_shape = input_info.shape;

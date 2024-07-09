@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// WebNN API currently does not have a TypeScript definition file. This file is a workaround with types generated from
+// WebNN API specification.
+// https://github.com/webmachinelearning/webnn/issues/677
+/// <reference path="../lib/wasm/jsep/webnn/webnn.d.ts" />
+
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -143,13 +148,20 @@ async function initializeSession(
       `Start to load model from file: ${modelFilePath}${
           preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
 
+  let preferredOutputLocation: ort.Tensor.DataLocation|undefined;
+  if (ioBindingMode === 'gpu-location') {
+    preferredOutputLocation = 'gpu-buffer';
+  } else if (ioBindingMode === 'ml-location') {
+    preferredOutputLocation = 'ml-buffer';
+  }
+
   const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
   const sessionConfig = {
     ...sessionOptions,
     executionProviders: [backendHint],
     profiler: profilerConfig,
     enableProfiling: profile,
-    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    preferredOutputLocation,
     externalData
   };
 
@@ -553,6 +565,50 @@ function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]
   });
 }
 
+const getContext = (() => {
+  let context: MLContext|undefined;
+
+  return async(): Promise<MLContext> => {
+    if (!context) {
+      context = await navigator.ml.createContext();
+    }
+    return context;
+  };
+})();
+
+async function createMlTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]) {
+  if (!isGpuBufferSupportedType(type)) {
+    throw new Error(`createMlTensorForOutput can not work with ${type} tensor`);
+  }
+
+  const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(type))!;
+  const size = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+
+  const context = await getContext();
+  const mlBuffer = context.createBuffer({size});
+
+  return ort.Tensor.fromMlBuffer(mlBuffer, {
+    dataType: type,
+    dims,
+    dispose: () => mlBuffer.destroy(),
+    download: async () => {
+      const arrayBuffer = await context.readBuffer(mlBuffer);
+      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.GpuBufferDataTypes];
+    }
+  });
+}
+
+async function createMlTensorForInput(cpuTensor: ort.Tensor): Promise<ort.Tensor> {
+  if (!isGpuBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
+    throw new Error(`createMlTensorForInput can not work with ${cpuTensor.type} tensor`);
+  }
+  const context = await getContext();
+  const mlBuffer = context.createBuffer({size: cpuTensor.data.byteLength});
+  context.writeBuffer(mlBuffer, cpuTensor.data);
+  return ort.Tensor.fromMlBuffer(
+      mlBuffer, {dataType: cpuTensor.type, dims: cpuTensor.dims, dispose: () => mlBuffer.destroy()});
+}
+
 export async function sessionRun(options: {
   session: ort.InferenceSession; feeds: Record<string, ort.Tensor>;
   outputsMetaInfo: Record<string, Pick<ort.Tensor, 'dims'|'type'>>;
@@ -562,20 +618,25 @@ export async function sessionRun(options: {
   const feeds = options.feeds;
   const fetches: Record<string, ort.Tensor> = {};
 
-  // currently we only support IO Binding for WebGPU
+  // currently we only support IO Binding for WebGPU and WebNN
   //
-  // For inputs, we create GPU tensors on both 'gpu-tensor' and 'gpu-location' binding testing mode.
-  // For outputs, we create GPU tensors on 'gpu-tensor' binding testing mode only.
+  // For inputs, we create tensors on 'gpu-tensor', 'gpu-location', 'ml-tensor', and 'ml-location' binding testing
+  // modes.
+  // For outputs, we create tensors on 'gpu-tensor' and 'ml-tensor' binding testing modes.
   //              in 'gpu-device' binding mode, outputs are not pre-allocated.
-  const shouldUploadInput = options.ioBinding === 'gpu-tensor' || options.ioBinding === 'gpu-location';
-  const shouldUploadOutput = options.ioBinding === 'gpu-tensor';
+  const shouldUploadInput = ['gpu-tensor', 'gpu-location', 'ml-location', 'ml-tensor'].includes(options.ioBinding);
+  const shouldUploadOutput = options.ioBinding === 'gpu-tensor' || options.ioBinding === 'ml-tensor';
   try {
     if (shouldUploadInput) {
       // replace the CPU tensors in feeds into GPU tensors
       for (const name in feeds) {
         if (Object.hasOwnProperty.call(feeds, name)) {
           if (feeds[name].size > 0) {
-            feeds[name] = createGpuTensorForInput(feeds[name]);
+            if (options.ioBinding === 'ml-location' || options.ioBinding === 'ml-tensor') {
+              feeds[name] = await createMlTensorForInput(feeds[name]);
+            } else {
+              feeds[name] = createGpuTensorForInput(feeds[name]);
+            }
           }
         }
       }
@@ -588,7 +649,11 @@ export async function sessionRun(options: {
           if (dims.some(d => d === 0)) {
             fetches[name] = new ort.Tensor(type, [], dims);
           } else {
-            fetches[name] = createGpuTensorForOutput(type, dims);
+            if (options.ioBinding === 'ml-tensor') {
+              fetches[name] = await createMlTensorForOutput(type, dims);
+            } else {
+              fetches[name] = createGpuTensorForOutput(type, dims);
+            }
           }
         }
       }

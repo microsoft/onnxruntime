@@ -11,6 +11,7 @@ import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
 import {AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
+import {WebNNBackend} from './backend-webnn';
 
 /* eslint-disable no-bitwise */
 
@@ -237,6 +238,7 @@ export const init =
       () => backend.replay()
     ]);
   } else {
-    jsepInit('webnn');
+    const backend = new WebNNBackend();
+    jsepInit('webnn', [backend]);
   }
 };

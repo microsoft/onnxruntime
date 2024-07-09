@@ -10,6 +10,8 @@
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
+#include "core/providers/webnn/allocator.h"
+#include "core/providers/webnn/data_transfer.h"
 
 #include "builders/model.h"
 #include "builders/helper.h"
@@ -18,7 +20,10 @@
 namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
+    : IExecutionProvider{
+          onnxruntime::kWebNNExecutionProvider,
+          // If MLBuffer is supported, we force all the tensors to be allocated as MLBuffer.
+          OrtDevice(webnn::IsMlBufferSupported() ? OrtDevice::GPU : OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0)} {
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
@@ -377,6 +382,24 @@ WebNNExecutionProvider::GetKernelRegistry() const {
   static std::shared_ptr<KernelRegistry> kernel_registry =
       onnxruntime::GetWebNNKernelRegistry();
   return kernel_registry;
+}
+
+std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTransfer() const {
+  if (!webnn::IsMlBufferSupported()) {
+    return nullptr;
+  }
+  return std::make_unique<webnn::DataTransfer>(wnn_context_, this);
+}
+
+std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
+  if (!webnn::IsMlBufferSupported()) {
+    return {};
+  }
+  AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {
+    return std::make_unique<webnn::WebNNBufferAllocator>();
+  },
+                                                    0, false);
+  return {CreateAllocator(customAllocatorCreationInfo)};
 }
 
 }  // namespace onnxruntime

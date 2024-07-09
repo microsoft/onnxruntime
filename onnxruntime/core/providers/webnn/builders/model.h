@@ -58,6 +58,12 @@ class Model {
   size_t GetMappedOutputIdx(const std::string& name) const;
 
  private:
+  onnxruntime::common::Status Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                       const InlinedHashMap<std::string, OnnxTensorData>& outputs);
+
+  onnxruntime::common::Status Compute(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
+                                      const InlinedHashMap<std::string, OnnxTensorData>& outputs);
+
   emscripten::val wnn_context_ = emscripten::val::object();
   emscripten::val wnn_graph_ = emscripten::val::object();
   const logging::Logger& logger_;

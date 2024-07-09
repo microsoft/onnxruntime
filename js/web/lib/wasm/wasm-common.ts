@@ -194,6 +194,8 @@ export const dataLocationStringToEnum = (location: Tensor.DataLocation): number 
       return 3;
     case 'gpu-buffer':
       return 4;
+    case 'ml-buffer':
+      return 5;
     default:
       throw new Error(`unsupported data location: ${location}`);
   }
@@ -203,4 +205,4 @@ export const dataLocationStringToEnum = (location: Tensor.DataLocation): number 
  * Map integer data location to string value
  */
 export const dataLocationEnumToString = (location: number): Tensor.DataLocation|undefined =>
-    (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];
+    (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer', 'ml-buffer'] as const)[location];

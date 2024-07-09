@@ -15,6 +15,8 @@ export const encodeTensorMetadata = (tensor: Tensor, getName: () => string): Ten
       return [tensor.type, tensor.dims, tensor.data, 'cpu'];
     case 'gpu-buffer':
       return [tensor.type, tensor.dims, {gpuBuffer: tensor.gpuBuffer}, 'gpu-buffer'];
+    case 'ml-buffer':
+      return [tensor.type, tensor.dims, {mlBuffer: tensor.mlBuffer}, 'ml-buffer'];
     default:
       throw new Error(`invalid data location: ${tensor.location} for ${getName()}`);
   }
@@ -31,6 +33,14 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
       }
       const {gpuBuffer, download, dispose} = tensor[2];
       return Tensor.fromGpuBuffer(gpuBuffer, {dataType, dims: tensor[1], download, dispose});
+    }
+    case 'ml-buffer': {
+      const dataType = tensor[0];
+      if (!isGpuBufferSupportedType(dataType)) {
+        throw new Error(`not supported data type: ${dataType} for deserializing GPU tensor`);
+      }
+      const {mlBuffer, download, dispose} = tensor[2];
+      return Tensor.fromMlBuffer(mlBuffer, {dataType, dims: tensor[1], download, dispose});
     }
     default:
       throw new Error(`invalid data location: ${tensor[3]}`);

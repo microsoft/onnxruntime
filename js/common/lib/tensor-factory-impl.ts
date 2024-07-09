@@ -275,6 +275,15 @@ export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes
 };
 
 /**
+ * implementation of Tensor.fromMlBuffer().
+ */
+export const tensorFromMlBuffer = <T extends TensorInterface.GpuBufferDataTypes>(
+    mlBuffer: TensorInterface.MlBufferType, options: TensorFromGpuBufferOptions<T>): Tensor => {
+  const {dataType, dims, download, dispose} = options;
+  return new Tensor({location: 'ml-buffer', type: dataType ?? 'float32', mlBuffer, dims, download, dispose});
+};
+
+/**
  * implementation of Tensor.fromPinnedBuffer().
  */
 export const tensorFromPinnedBuffer = <T extends TensorInterface.CpuPinnedDataTypes>(
