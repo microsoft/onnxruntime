@@ -22,7 +22,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] (Chromium issue: https://issues.chromium.org/issues/326156496) |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight) |
-| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✗ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). |
+| ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU backend only supports default dilations and groups |
 | Cos | ai.onnx(7+) | cos | ✓ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
 | Elu | ai.onnx(7+) | elu | ✓ | ✓ | WebNN CPU backend only supports 'alpha' value is 1.0 |
