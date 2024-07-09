@@ -98,10 +98,6 @@ ULONGLONG EtwRegistrationManager::Keyword() const {
   return keyword_;
 }
 
-HRESULT EtwRegistrationManager::Status() const {
-  return etw_status_;
-}
-
 void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.push_back(callback);
@@ -133,15 +129,9 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() {
-  if (!initialized_) {
-    std::lock_guard<OrtMutex> lock(init_mutex_);
-    if (!initialized_) {  // Double-check locking pattern
-      initialized_ = true;
-      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-      if (FAILED(etw_status_)) {
-        ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
-      }
-    }
+  static HRESULT etw_status = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+  if (FAILED(etw_status)) {
+    ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
   }
 }
 
@@ -159,12 +149,6 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
 
   // register on first usage
   static EtwRegistrationManager& etw_manager = EtwRegistrationManager::Instance();
-
-  // do something (not that meaningful) with etw_manager so it doesn't get optimized out
-  // as we want an instance around to do the unregister
-  if (FAILED(etw_manager.Status())) {
-    return;
-  }
 
   // TODO: Validate if this filtering makes sense.
   if (message.DataType() == DataType::USER) {
