@@ -601,85 +601,89 @@ struct ProviderHostImpl : ProviderHost {
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
-  static int32_t xir_elem_type(const std::string& data_type) {
+  static int32_t convert_elem_type(const ONNX_NAMESPACE::AttributeProto* data_type) {
     int32_t elemType = 0;
-    if (data_type == "float32") {
+    if (data_type->s() == "float32") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    } else if (data_type == "int8") {
+    } else if (data_type->s() == "int8") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    } else if (data_type == "uint8") {
+    } else if (data_type->s() == "uint8") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-    } else if (data_type == "int32") {
+    } else if (data_type->s() == "int32") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    } else if (data_type == "uint32") {
+    } else if (data_type->s() == "uint32") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-    } else if (data_type == "int64") {
+    } else if (data_type->s() == "int64") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-    } else if (data_type == "uint64") {
+    } else if (data_type->s() == "uint64") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-    } else if (data_type == "int1") {
+    } else if (data_type->s() == "int1") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-    } else if (data_type == "bfloat16") {
+    } else if (data_type->s() == "bfloat16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-    } else if (data_type == "float16") {
+    } else if (data_type->s() == "float16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    } else if (data_type == "uint16") {
+    } else if (data_type->s() == "uint16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-    } else if (data_type == "int16") {
+    } else if (data_type->s() == "int16") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT16;
-    } else if (data_type == "double") {
+    } else if (data_type->s() == "double") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-    } else if (data_type == "string") {
+    } else if (data_type->s() == "string") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_STRING;
-    } else if (data_type == "complex64") {
+    } else if (data_type->s() == "complex64") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64;
-    } else if (data_type == "complex128") {
+    } else if (data_type->s() == "complex128") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128;
-    } else if (data_type == "float8e4m3fn") {
+    } else if (data_type->s() == "float8e4m3fn") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
-    } else if (data_type == "float8e4m3fnuz") {
+    } else if (data_type->s() == "float8e4m3fnuz") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ;
-    } else if (data_type == "float8e5m2") {
+    } else if (data_type->s() == "float8e5m2") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
-    } else if (data_type == "float8e5m2funz") {
+    } else if (data_type->s() == "float8e5m2funz") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
-    } else if (data_type == "uint4") {
+    } else if (data_type->s() == "uint4") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
-    } else if (data_type == "int4") {
+    } else if (data_type->s() == "int4") {
       elemType = ONNX_NAMESPACE::TensorProto_DataType_INT4;
     }
     return elemType;
   }
-  static void xir_shape_infer_2(ONNX_NAMESPACE::InferenceContext& ctx, size_t idx) {
-    auto shape_attr_str = std::string("shape");
-    auto data_type_attr_str = std::string("data_type");
-    if (idx > 0) {
-      shape_attr_str = shape_attr_str + std::string("_") + std::to_string(idx);
-      data_type_attr_str = data_type_attr_str + std::string("_") + std::to_string(idx);
-    }
-    auto* shape = ctx.getAttribute(shape_attr_str);
-    auto* data_type = ctx.getAttribute(data_type_attr_str);
-    int32_t elemType = 0;
-    if (data_type != nullptr) {
-      elemType = xir_elem_type(data_type->s());
-    } else {
-      elemType = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    }
-    ONNX_NAMESPACE::updateOutputElemType(ctx, idx, elemType);
 
-    if (shape != nullptr) {
-      for (auto i = 0; i < shape->ints_size(); ++i) {
-        ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
-      }
-    } else {
-      // set scalar type.
-      ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->clear_dim();
-    }
-  }
   static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
     auto num_output = ctx.getNumOutputs();
-    for (auto i = 0u; i < num_output; i++) {
-      xir_shape_infer_2(ctx, i);
+    if (num_output == 1) {
+      auto* shape = ctx.getAttribute("shape");
+      auto* data_type = ctx.getAttribute("data_type");
+      if (data_type == nullptr) {
+        std::cerr << "[VitisAI] custom op is missing `data_type` attr." << std::endl;
+        return;
+      }
+      int32_t elemType = convert_elem_type(data_type);
+      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, elemType);
+      if (shape != nullptr) {
+        for (auto i = 0; i < shape->ints_size(); ++i) {
+          ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
+        }
+      } else {
+        // set scalar type.
+        ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->clear_dim();
+      }
+    } else {
+      for (auto idx = 0u; idx < num_output; idx++) {
+        auto* shape = ctx.getAttribute("shape_" + idx);
+        auto* data_type = ctx.getAttribute("data_type_" + idx);
+        if (shape == nullptr || data_type == nullptr) {
+          // this output is optional
+        } else {
+          int32_t elemType = convert_elem_type(data_type);
+          ONNX_NAMESPACE::updateOutputElemType(ctx, idx, elemType);
+          for (auto i = 0; i < shape->ints_size(); ++i) {
+            ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
+          }
+        }
+      }
     }
   }
 
