@@ -6930,15 +6930,13 @@ def test_layerwise_recompute_pythonop_determinstic():
 def test_aten_attention():
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
-    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1"
-
     class _NeuralNetAttention(torch.nn.Module):
         def __init__(self):
             super().__init__()
 
-        def forward(self, q, k, v):
+        def forward(self, q, k, v, attn_mask=None):
             with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
-                return torch.nn.functional.scaled_dot_product_attention(q, k, v)
+                return torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask)
 
     def gen_inputs(device, dtype):
         return [
@@ -6947,14 +6945,17 @@ def test_aten_attention():
             torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
         ]
 
-    device = "cuda"
-    pt_model = _NeuralNetAttention().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
-
-    def run_step(model, inputs):
-        prediction = model(*inputs)
+    def run_step(model, inputs, attn_mask=None):
+        prediction = model(*inputs, attn_mask)
         prediction.sum().backward()
         return prediction
+
+    device = "cuda"
+
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1" # TESTING WITHOUT ATTN_MASK
+
+    pt_model = _NeuralNetAttention().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
 
     # reset manual seed to reset the generator
     torch.manual_seed(2333)
@@ -6962,6 +6963,46 @@ def test_aten_attention():
     ort_input = copy.deepcopy(pt_input)
     pt_prediction = run_step(pt_model, pt_input)
     ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input[0].grad, pt_input[0].grad)
+    _test_helpers.assert_values_are_close(ort_input[1].grad, pt_input[1].grad)
+    _test_helpers.assert_values_are_close(ort_input[2].grad, pt_input[2].grad)
+
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    mem_eff_attn_nodes = 0
+    for node in onnx_nodes:
+        if "ATen" in node.name:
+            for attr in node.attribute:
+                if b"_scaled_dot_product_efficient_attention" in attr.s:
+                    mem_eff_attn_nodes += 1
+
+    assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
+
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "MASKED" # TESTING WITH ATTN_MASK
+    
+    pt_model = _NeuralNetAttention().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn_masked"))
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = gen_inputs(device=device, dtype=torch.float32)
+    attn_mask = torch.randint(2, (32, 8, 128, 128), dtype=torch.float32, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input, attn_mask)
+    ort_prediction = run_step(ort_model, ort_input, attn_mask)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input[0].grad, pt_input[0].grad)

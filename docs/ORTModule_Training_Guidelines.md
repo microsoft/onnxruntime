@@ -310,7 +310,9 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 - **Description**: By default, this is disabled. This env var can be used for enabling pre-export attention fall back to PyTorch's efficient_attention ATen kernel for execution.
 
     ```bash
-    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE
+    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE **WITHOUT** ATTN_MASK INPUT
+    export ORTMODULE_ATEN_SDPA_FALLBACK=MASKED # ENABLE **WITH** ATTN_MASK INPUT
+    unset ORTMODULE_ATEN_SDPA_FALLBACK # DISABLE
     ```
 
 ### 2.2 Memory Optimization
