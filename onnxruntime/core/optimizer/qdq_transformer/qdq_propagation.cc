@@ -250,8 +250,7 @@ InlinedVector<ExtendedGraphEdge> GetNextPropagationEdges(const Graph& graph,
   const auto* dst_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
   ORT_ENFORCE(dst_node != nullptr);
 
-  const bool can_prop = CanNodePropagate(*dst_node);
-  if (!can_prop) {
+  if (!CanNodePropagate(*dst_node)) {
     return {};
   }
 
@@ -315,26 +314,21 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    InlinedVector<InlinedVector<ExtendedGraphEdge>> edge_groups;
-    InlinedVector<ExtendedGraphEdge> first_edge_group = GetNextPropagationEdges(graph, *edge_after_dq);
-
-    if (!first_edge_group.empty()) {
-      edge_groups.push_back(std::move(first_edge_group));
-    }
+    InlinedVector<InlinedVector<ExtendedGraphEdge>> edge_groups = {GetNextPropagationEdges(graph, *edge_after_dq)};
 
     while (!edge_groups.empty()) {
-      InlinedVector<ExtendedGraphEdge> prop_edges = edge_groups.back();
+      InlinedVector<ExtendedGraphEdge> edges = edge_groups.back();
       edge_groups.pop_back();
 
-      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, prop_edges, dq_scale, dq_zero_point, dq_node.Domain(), logger));
+      if (edges.empty()) {
+        continue;
+      }
+
+      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, edges, dq_scale, dq_zero_point, dq_node.Domain(), logger));
       modified = true;
 
-      for (const auto& prop_edge : prop_edges) {
-        InlinedVector<ExtendedGraphEdge> next_edge_group = GetNextPropagationEdges(graph, prop_edge);
-
-        if (!next_edge_group.empty()) {
-          edge_groups.push_back(std::move(next_edge_group));
-        }
+      for (const auto& edge : edges) {
+        edge_groups.push_back(GetNextPropagationEdges(graph, edge));
       }
     }
   }
