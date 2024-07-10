@@ -17,7 +17,7 @@ parameters:
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
-  default: false
+  default: true
 
 # these 2 parameters are used for debugging.
 - name: SpecificArtifact
