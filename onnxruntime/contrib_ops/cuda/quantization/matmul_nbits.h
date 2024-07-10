@@ -16,7 +16,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class MatMulNBits final : public CudaKernel {
+class MatMulNBits final : public onnxruntime::cuda::CudaKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));

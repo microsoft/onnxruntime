@@ -44,7 +44,7 @@ Status MatMulNBits<MLFloat16>::PrepackedGemm(
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
-  using CudaT = typename ToCudaType<T>::MappedType;
+  using CudaT = typename onnxruntime::cuda::ToCudaType<T>::MappedType;
 
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = ctx->Input<Tensor>(1);
@@ -155,8 +155,8 @@ cudaMemcpy(b_data_cpu, b_data, K_ * N_ * sizeof(T), cudaMemcpyDeviceToHost);
 delete[] b_data_cpu;
 #endif
 
-  const CudaT alpha = ToCudaType<T>::FromFloat(1.f);
-  const CudaT zero = ToCudaType<T>::FromFloat(0.f);
+  const CudaT alpha = onnxruntime::cuda::ToCudaType<T>::FromFloat(1.f);
+  const CudaT zero = onnxruntime::cuda::ToCudaType<T>::FromFloat(0.f);
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
