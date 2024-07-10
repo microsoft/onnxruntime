@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <optional>
 #include <queue>
+#include <sstream>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/extended_graph_edge.h"
@@ -27,6 +28,62 @@ bool CanNodePropagate(const Node& node) {
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11, 13});
 }
 
+// Validates edges into which to insert Q -> DQ ops.
+// - Must have at least one edge.
+// - All edges with a source node must originate from the same source node's output.
+// - All edges must be attached to either a source node or a destination node.
+Status ValidateQDQInsertionEdges(Graph& graph, const InlinedVector<ExtendedGraphEdge>& insertion_edges) {
+  ORT_RETURN_IF(insertion_edges.empty(), "Expected at least one edge into which to insert QDQ pair.");
+
+  const auto& src_info = insertion_edges[0].GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
+  const Node* src_node = src_info.has_value() ? graph.GetNode(src_info->node_idx) : nullptr;
+
+  for (const auto& insertion_edge : insertion_edges) {
+    const auto& edge_src_info = insertion_edge.GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
+
+    ORT_RETURN_IF_NOT((edge_src_info.has_value() == src_info.has_value()) &&
+                          (!src_info.has_value() ||
+                           (src_info->node_idx == edge_src_info->node_idx && src_info->arg_idx == edge_src_info->arg_idx)),
+                      "Expect all insertion edges to come from the same source node's output slot.");
+
+    const Node* edge_dst_node = insertion_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+    ORT_RETURN_IF_NOT(src_node != nullptr || edge_dst_node != nullptr,
+                      "At least one graph node must be specified in the propagation edges.");
+  }
+
+  return Status::OK();
+}
+
+// Logs information about the edges into which Q/DQ nodes will be inserted in InsertQDQPairs().
+// Assumes the edges have already been validated.
+void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity,
+                     const Graph& graph, const InlinedVector<ExtendedGraphEdge>& edges) {
+  if (!logger.OutputIsEnabled(severity, logging::DataType::SYSTEM)) {
+    return;
+  }
+
+  const Node* src_node = edges[0].GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
+  const auto& node_arg_name = edges[0].arg_name;
+  std::string src_label = src_node ? MakeString("node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
+                                   : "input";
+  std::ostringstream dst_labels;
+  const size_t num_edges = edges.size();
+
+  for (size_t i = 0; i < num_edges; ++i) {
+    const ExtendedGraphEdge& edge = edges[i];
+    const Node* dst_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+    dst_labels << (dst_node ? MakeString("dst node (\"", dst_node->Name(), "\", index: ", dst_node->Index(), ")")
+                            : "output")
+               << (i == num_edges - 1 ? "" : ",");
+  }
+
+  LOGS(logger, VERBOSE) << "Inserting Q/DQ pair between "
+                        << (src_node ? MakeString("src node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
+                                     : "input")
+                        << " and " << dst_labels.str()
+                        << " at NodeArg \"" << node_arg_name << "\".";
+}
+
 // convert this: src_node --+--> dst_node_0
 //                          |
 //                          +--> dst_node_1
@@ -39,47 +96,21 @@ bool CanNodePropagate(const Node& node) {
 //                          |    ...
 //                          +--> DQ -> dst_node_n
 // assumptions:
-// 1. insertion_edges are valid - insertion edges have the same source node, node indexes refer to valid nodes,
-//    arg name refers to a valid NodeArg, and it corresponds to an actual graph relationship
-// 2. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
+// 1. All insertion edges have the same source node and the same source node output index.
+// 2. Insertion_edges are valid: node indices refer to valid nodes, and arg names refer to valid NodeArgs in the graph.
+// 3. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
 Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& insertion_edges,
                       NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
                       const std::string& qdq_domain, const logging::Logger& logger) {
-  ORT_RETURN_IF(insertion_edges.empty(), "Expected at least one edge into which to insert QDQ pair.");
+  ORT_RETURN_IF_ERROR(ValidateQDQInsertionEdges(graph, insertion_edges));
 
-  const auto& src_info = insertion_edges[0].GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
-  Node* src_node = src_info.has_value() ? graph.GetNode(src_info->node_idx) : nullptr;
-  bool has_some_dst_nodes = false;
+  const ExtendedGraphEdge& first_edge = insertion_edges[0];  // ValidateQDQInsertionEdges() guarantees at least one edge
 
-  for (const auto& insertion_edge : insertion_edges) {
-    const auto& edge_src_info = insertion_edge.GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
-
-    ORT_RETURN_IF_NOT((edge_src_info.has_value() == src_info.has_value()) &&
-                          (!src_info.has_value() ||
-                           (src_info->node_idx == edge_src_info->node_idx && src_info->arg_idx == edge_src_info->arg_idx)),
-                      "Expect all insertion edges to come from the same source node's output slot.");
-
-    has_some_dst_nodes = insertion_edge.GetNodeInfoAtEnd(ExtendedGraphEdge::End::Destination).has_value();
-  }
-
-  ORT_RETURN_IF_NOT(src_node || has_some_dst_nodes,
-                    "At least one graph node must be specified in the propagation edge.");
-
-  const auto& base_name = insertion_edges[0].arg_name;
+  Node* src_node = first_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);  // nullptr for graph input
+  const auto& base_name = first_edge.arg_name;
   auto& base_node_arg = *graph.GetNodeArg(base_name);
 
-#if 0
-  // TODO: Fix logging for multiple dst nodes
-  LOGS(logger, VERBOSE) << "Inserting Q/DQ pair between "
-                        << (src_node ? MakeString("node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
-                                     : "input")
-                        << " and "
-                        << (dst_node ? MakeString("node (\"", dst_node->Name(), "\", index: ", dst_node->Index(), ")")
-                                     : "output")
-                        << " at NodeArg \"" << base_name << "\".";
-#else
-  ORT_UNUSED_PARAMETER(logger);
-#endif
+  LogQDQInsertion(logger, logging::Severity::kVERBOSE, graph, insertion_edges);
 
   auto make_q_or_dq_inputs = [](NodeArg& data, NodeArg& scale, NodeArg* zero_point) {
     return zero_point ? InlinedVector<NodeArg*>{&data, &scale, zero_point}
@@ -87,7 +118,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
   };
 
   // Create Q node that will be inserted after src_node
-  auto& pre_q_nodearg = insertion_edges[0].HasGraphInputOrInitializer()
+  auto& pre_q_nodearg = first_edge.HasGraphInputOrInitializer()
                             ? base_node_arg
                             : graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_name + "_pre_q"),
                                                        nullptr);
@@ -120,8 +151,8 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
 
   // Add edge from src to Q node.
   if (src_node) {
-    src_node->MutableOutputDefs()[insertion_edges[0].src->arg_idx] = &pre_q_nodearg;
-    graph.AddEdge(src_node->Index(), q_node.Index(), insertion_edges[0].src->arg_idx, 0);
+    src_node->MutableOutputDefs()[first_edge.src->arg_idx] = &pre_q_nodearg;
+    graph.AddEdge(src_node->Index(), q_node.Index(), first_edge.src->arg_idx, 0);
   }
 
   // Create a DQ node for each dst node and connect remaining edges.
@@ -146,7 +177,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
 
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
 
-    auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+    Node* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
 
     // Add edge from Q to DQ
     graph.AddEdge(q_node.Index(), dq_node.Index(), 0, 0);
