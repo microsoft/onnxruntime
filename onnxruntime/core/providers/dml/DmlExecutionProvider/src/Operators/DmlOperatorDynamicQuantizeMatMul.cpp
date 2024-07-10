@@ -51,8 +51,14 @@ public:
         ML_CHECK_VALID_ARGUMENT(outputSizes.size() >= 4);
         ML_CHECK_VALID_ARGUMENT(ATensorShape.size() >= 2);
         ML_CHECK_VALID_ARGUMENT(BTensorShape.size() >= 2);
-        std::array<uint32_t, 4> AShapeBroadcasted = { outputSizes[0], outputSizes[1], ATensorShape.rbegin()[1], ATensorShape.rbegin()[0] };
-        std::array<uint32_t, 4> BShapeBroadcasted = { outputSizes[0], outputSizes[1], BTensorShape.rbegin()[1], BTensorShape.rbegin()[0] };
+        std::vector<uint32_t> AShapeBroadcasted(outputSizes.begin(), outputSizes.end());
+        std::copy(ATensorShape.begin() + ATensorShape.size() - (outputSizes.size() - 2),
+                  ATensorShape.end(),
+                  AShapeBroadcasted.begin() + 2);
+        std::vector<uint32_t> BShapeBroadcasted(outputSizes.begin(), outputSizes.end());
+        std::copy(BTensorShape.begin() + BTensorShape.size() - (outputSizes.size() - 2),
+                  BTensorShape.end(),
+                  BShapeBroadcasted.begin() + 2);
 
         //  output edges between DynQL and MMItoFloat node
         TensorDesc intermediateQuantizedATensorDesc = TensorDesc(
