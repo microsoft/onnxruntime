@@ -71,7 +71,6 @@ MlasFlashAttentionThreaded(
                 l = exp(diff) * l + rowsum(S)
                 O = diag(exp(diff)) * O + S * V[batch_idx, head_idx, ir:ir+block_size_kv, :]
             */
-            // TODO: Need to concat if past_k is present
             ptrdiff_t h = batch_idx * num_heads + head_idx;
             const float* inputQ = query + (h * q_sequence_length + q_idx) * qk_head_size;
             const float* inputK = key + (h * kv_sequence_length + ir) * qk_head_size;
