@@ -16,21 +16,31 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
+from mpi4py import MPI
 from onnx import TensorProto, helper
 from torch import nn
 from typing import Tuple
 
+
 import onnxruntime
 import onnx
+
+comm = MPI.COMM_WORLD
 
 torch.manual_seed(42)
 numpy.random.seed(42)
 
-ORT_DTYPE = TensorProto.BFLOAT16
-NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.BFLOAT16 else numpy.float32
-THRESHOLD = 3e-2
+def get_rank():
+    return comm.Get_rank()
 
 
+def get_size():
+    return comm.Get_size()
+
+
+def print_out(*args):
+    if get_rank() == 0:
+        print(*args)
 
 
 def value_string_of(numpy_array):
@@ -41,6 +51,13 @@ def value_string_of(numpy_array):
 
 def print_tensor(name, numpy_array):
     print(f"const std::vector<float> {name} = {value_string_of(numpy_array)};")
+
+ORT_DTYPE = TensorProto.FLOAT16
+NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
+THRESHOLD = 3e-2
+THRESHOLD_EP = 1e-6
+
+local_rank = get_rank()
 
 
 def create_moe_onnx_graph(
@@ -74,13 +91,21 @@ def create_moe_onnx_graph(
         ),
     ]
 
+    print("fc1_experts_weights shape:", fc1_experts_weights.shape)
+    print("fc2_experts_weights shape:", fc2_experts_weights.shape)
+    print("fc3_experts_weights shape:", fc3_experts_weights.shape)
+
 
     fc1_shape = [num_experts, num_experts * inter_size, hidden_size]
     fc2_shape = [num_experts, num_experts * inter_size, hidden_size]
     fc3_shape = [num_experts, num_experts * inter_size, hidden_size]
 
+    print("Expected fc1_shape:", fc1_shape)
+    print("Expected fc2_shape:", fc2_shape)
+    print("Expected fc3_shape:", fc3_shape)
 
-    torch_type = torch.bfloat16 if ORT_DTYPE == TensorProto.BFLOAT16 else torch.float32
+
+    torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
 
 
     initializers = [
@@ -156,7 +181,7 @@ class DBRXConfig:
     def __init__(
         self,
         hidden_size=6144,
-        intermediate_size=10752,
+        intermediate_size=1500,
         num_hidden_layers=40,
         num_attention_heads=48,
         num_key_value_heads=8,
@@ -198,9 +223,9 @@ class DbrxExpertGLU(nn.Module):
         self.moe_num_experts = config.num_local_experts
         ffn_act_fn = {"name": config.hidden_act}
 
-        self.w1 = nn.Parameter(torch.empty(moe_num_experts * ffn_hidden_size, hidden_size))
-        self.v1 = nn.Parameter(torch.empty(moe_num_experts * ffn_hidden_size, hidden_size))
-        self.w2 = nn.Parameter(torch.empty(moe_num_experts * ffn_hidden_size, hidden_size))
+        self.w1 = nn.Parameter(torch.empty(moe_num_experts, moe_num_experts * ffn_hidden_size, hidden_size))
+        self.v1 = nn.Parameter(torch.empty(moe_num_experts, moe_num_experts * ffn_hidden_size, hidden_size))
+        self.w2 = nn.Parameter(torch.empty(moe_num_experts, moe_num_experts * ffn_hidden_size, hidden_size))
 
         act_fn_name = ffn_act_fn.get("name", "silu")
         self.activation_fn = ACT2FN[act_fn_name]
@@ -217,87 +242,28 @@ class DbrxExpertGLU(nn.Module):
 
 
 class DbrxExperts(nn.Module):
-    def __init__(self, hidden_size: int, ffn_hidden_size: int, moe_num_experts: int, ffn_act_fn: dict, config: DBRXConfig):
+    def __init__(self, hidden_size: int, ffn_hidden_size: int, moe_num_experts: int, ffn_act_fn: dict, batch_size: int, sequence_length: int, config: DBRXConfig):
         super().__init__()
         self.moe_num_experts = config.num_local_experts
-        self.mlp = DbrxExpertGLU(
-            hidden_size=hidden_size,
-            ffn_hidden_size=config.intermediate_size,
-            moe_num_experts=moe_num_experts,
-            ffn_act_fn=config.hidden_act,
-        )
-
-    def forward(
-        self, x: torch.Tensor, weights: torch.Tensor, top_weights: torch.Tensor, top_experts: torch.LongTensor
-    ) -> torch.Tensor:
-        bsz, q_len, hidden_size = x.shape
-        x = x.view(-1, hidden_size)
-        out = torch.zeros_like(x)
-
-        expert_mask = nn.functional.one_hot(top_experts, num_classes=self.moe_num_experts).permute(2, 1, 0)
-        # Chunk experts at once to avoid storing full parameter multiple times in autograd
-        w1_chunked = self.mlp.w1.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
-            self.moe_num_experts, dim=0
-        )
-        v1_chunked = self.mlp.v1.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
-            self.moe_num_experts, dim=0
-        )
-        w2_chunked = self.mlp.w2.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
-            self.moe_num_experts, dim=0
-        )
-        w1_chunked = [w1.squeeze(dim=0) for w1 in w1_chunked]
-        v1_chunked = [v1.squeeze(dim=0) for v1 in v1_chunked]
-        w2_chunked = [w2.squeeze(dim=0) for w2 in w2_chunked]
-        for expert_idx in range(0, self.moe_num_experts):
-            topk_idx, token_idx = torch.where(expert_mask[expert_idx])
-            if token_idx.shape[0] == 0:
-                continue
-
-            token_list = token_idx
-            topk_list = topk_idx
-
-            expert_tokens = x[None, token_list].reshape(-1, hidden_size)
-            expert_out = (
-                self.mlp(expert_tokens, w1_chunked[expert_idx], v1_chunked[expert_idx], w2_chunked[expert_idx])
-                * top_weights[token_list, topk_list, None]
-            )
-
-            out.index_add_(0, token_idx, expert_out)
-
-        out = out.reshape(bsz, q_len, hidden_size)
-        return out
-
-
-class DbrxRouter(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        config: DBRXConfig,
-        moe_num_experts: int,
-        moe_top_k: int,
-        batch_size: int,
-        sequence_length: int,
-        ffn_hidden_size: int,
-        ffn_act_fn: dict
-    ):
-        super().__init__()
+        self.config = DBRXConfig()
         self.hidden_size = hidden_size
-        self.moe_num_experts = config.num_local_experts
-        self.moe_top_k = config.num_experts_per_tok
         self.ffn_hidden_size = config.intermediate_size
-        self.ffn_act_fn = {"name", config.hidden_act}
-
-        self.layer = nn.Linear(self.hidden_size, self.moe_num_experts, bias=False)
-        self.experts = nn.ModuleList([DbrxExpertGLU(hidden_size, ffn_hidden_size, moe_num_experts, ffn_act_fn, config) for _ in range(self.moe_num_experts)])
-
+        self.moe_top_k = config.num_experts_per_tok
+        self.mlp = DbrxExpertGLU(
+                    hidden_size=hidden_size,
+                    ffn_hidden_size=ffn_hidden_size,
+                    moe_num_experts=moe_num_experts,
+                    ffn_act_fn=config.hidden_act,
+                    config=config
+                    )
 
         w1_list = []
         v1_list = []
         w2_list = []
         for i in range(self.moe_num_experts):
-            w1_list.append(self.experts[i].w1)
-            v1_list.append(self.experts[i].v1)
-            w2_list.append(self.experts[i].w2)
+            w1_list.append(self.mlp.w1[i])
+            v1_list.append(self.mlp.v1[i])
+            w2_list.append(self.mlp.w2[i])
         self.moe_experts_weight1 = torch.stack(w1_list, dim=0)
         self.moe_experts_weight2 = torch.stack(v1_list, dim=0)
         self.moe_experts_weight3 = torch.stack(w2_list, dim=0)
@@ -315,6 +281,146 @@ class DbrxRouter(nn.Module):
         )
 
         self.ort_sess = self.create_ort_session()
+
+
+    def test_moe_with_tensor_parallelism(
+        self,
+        hidden_size,
+        inter_size,
+        num_experts,
+        num_rows,
+        threshold=THRESHOLD,
+    ):
+        assert inter_size % get_size() == 0
+
+        (
+            onnx_model_full,
+            fc1_experts_weights_all,
+            fc2_experts_weights_all,
+            fc3_experts_weights_all,
+        ) = self.generate_weights_and_initial_model(
+            num_rows,
+            num_experts,
+            hidden_size,
+            inter_size,
+        )
+
+        def get_fc1_tensor_shards(expert_weights):
+            return (
+                expert_weights.reshape(-1, inter_size, hidden_size)
+                .transpose(0, 2, 1)[
+                    :, :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size()
+                ]
+                .transpose(0, 2, 1)
+            )
+
+        def get_fc2_tensor_shards(expert_weights):
+            return (
+                expert_weights.reshape(-1, hidden_size, inter_size)
+                .transpose(0, 2, 1)[
+                    :, local_rank * inter_size // get_size() : (local_rank + 1) * inter_size // get_size(), :
+                ]
+                .transpose(0, 2, 1)
+            )
+
+        fc1_experts_weights = get_fc1_tensor_shards(fc1_experts_weights_all)
+        fc2_experts_weights = get_fc2_tensor_shards(fc2_experts_weights_all)
+        fc3_experts_weights = get_fc1_tensor_shards(fc3_experts_weights_all)
+
+        onnx_model_local = create_moe_onnx_graph(
+            num_rows,
+            num_experts,
+            num_experts,
+            hidden_size,
+            inter_size // get_size(),
+            fc1_experts_weights,
+            fc2_experts_weights,
+            fc3_experts_weights,
+            tensor_shards=get_size(),
+        )
+
+        self.run_ort_with_parity_check(
+            onnx_model_full,
+            onnx_model_local,
+            num_rows,
+            hidden_size,
+            num_experts,
+            inter_size,
+            threshold,
+        )
+
+    def run_ort_with_parity_check(
+        self,
+        onnx_model_full,
+        onnx_model_local,
+        num_rows,
+        hidden_size,
+        num_experts,
+        inter_size,
+        threshold,
+    ):
+        sess_options = onnxruntime.SessionOptions()
+        cuda_provider_options = {"device_id": local_rank}
+        execution_providers = [("CUDAExecutionProvider", cuda_provider_options)]
+
+        ort_session = onnxruntime.InferenceSession(onnx_model_full, sess_options, providers=execution_providers)
+        ort_session_local = onnxruntime.InferenceSession(onnx_model_local, sess_options, providers=execution_providers)
+
+        ort_inputs = {
+            ort_session.get_inputs()[0].name: numpy.random.rand(num_rows, hidden_size).astype(NP_TYPE),
+            ort_session.get_inputs()[1].name: numpy.random.rand(num_rows, num_experts).astype(NP_TYPE),
+        }
+
+        output = ort_session.run(None, ort_inputs)
+        sharded_output = ort_session_local.run(None, ort_inputs)
+
+        print_out("max diff:", numpy.max(numpy.abs(output[0] - sharded_output[0])))
+        assert numpy.allclose(output[0], sharded_output[0], atol=threshold, rtol=threshold)
+
+        print_out(
+            "hidden_size:",
+            hidden_size,
+            " inter_size:",
+            inter_size,
+            " num_experts:",
+            num_experts,
+            " num_rows:",
+            num_rows,
+            " world_size:",
+            get_size(),
+            " Parity: OK",
+        )
+
+
+    def generate_weights_and_initial_model(
+        self,
+        num_rows,
+        num_experts,
+        hidden_size,
+        inter_size,
+    ):
+        #s = 0.1
+        fc1_experts_weights_all = self.moe_experts_weight1
+        fc2_experts_weights_all = self.moe_experts_weight2
+        fc3_experts_weights_all = self.moe_experts_weight3
+
+        onnx_model_full = create_moe_onnx_graph(
+            num_rows,
+            num_experts,
+            num_experts,
+            hidden_size,
+            inter_size,
+            fc1_experts_weights_all,
+            fc2_experts_weights_all,
+            fc3_experts_weights_all,
+        )
+
+        return (
+            onnx_model_full,
+            fc1_experts_weights_all,
+            fc2_experts_weights_all,
+            fc3_experts_weights_all,
+        )
 
 
     def create_ort_session(self):
@@ -373,21 +479,46 @@ class DbrxRouter(nn.Module):
         e = time.time()
         print(f"MoE cuda kernel time: {(e - s) / repeat * 1000} ms")
 
-    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.LongTensor]:
-        hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
-        weights = self.layer(hidden_states).softmax(dim=-1, dtype=torch.float32)
-        top_weights, top_experts = torch.topk(weights, self.moe_top_k, dim=-1)
+    def forward(
+        self, x: torch.Tensor, weights: torch.Tensor, top_weights: torch.Tensor, top_experts: torch.LongTensor
+    ) -> torch.Tensor:
+        bsz, q_len, hidden_size = x.shape
+        x = x.view(-1, hidden_size)
+        out = torch.zeros_like(x)
 
-        top_weights_scale = (
-            torch.norm(top_weights, p=self.moe_normalize_expert_weights, dim=-1, keepdim=True)
-            if self.moe_normalize_expert_weights is not None
-            else 1.0
+        expert_mask = nn.functional.one_hot(top_experts, num_classes=self.moe_num_experts).permute(2, 1, 0)
+        # Chunk experts at once to avoid storing full parameter multiple times in autograd
+        w1_chunked = self.mlp.w1.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
+            self.moe_num_experts, dim=0
         )
-        top_weights = top_weights / top_weights_scale
+        v1_chunked = self.mlp.v1.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
+            self.moe_num_experts, dim=0
+        )
+        w2_chunked = self.mlp.w2.view(self.mlp.moe_num_experts, self.mlp.ffn_hidden_size, self.mlp.hidden_size).chunk(
+            self.moe_num_experts, dim=0
+        )
+        w1_chunked = [w1.squeeze(dim=0) for w1 in w1_chunked]
+        v1_chunked = [v1.squeeze(dim=0) for v1 in v1_chunked]
+        w2_chunked = [w2.squeeze(dim=0) for w2 in w2_chunked]
+        for expert_idx in range(0, self.moe_num_experts):
+            topk_idx, token_idx = torch.where(expert_mask[expert_idx])
+            if token_idx.shape[0] == 0:
+                continue
 
-        weights = weights.to(hidden_states.dtype)
-        top_weights = top_weights.to(hidden_states.dtype)
-        return weights, top_weights, top_experts
+            token_list = token_idx
+            topk_list = topk_idx
+
+            expert_tokens = x[None, token_list].reshape(-1, hidden_size)
+            expert_out = (
+                self.mlp(expert_tokens, w1_chunked[expert_idx], v1_chunked[expert_idx], w2_chunked[expert_idx])
+                * top_weights[token_list, topk_list, None]
+            )
+
+            out.index_add_(0, token_idx, expert_out)
+
+        out = out.reshape(bsz, q_len, hidden_size)
+        return out
+
 
     def ort_forward(self, hidden_states: torch.Tensor, iobinding=False) -> torch.Tensor:
         batch_size, sequence_length, hidden_dim = hidden_states.shape
@@ -435,6 +566,70 @@ class DbrxRouter(nn.Module):
             )
 
 
+
+class DbrxFFN(nn.Module):
+    def __init__(self, config: DBRXConfig):
+        super().__init__()
+
+        self.router = DbrxRouter(
+            hidden_size=config.hidden_size,
+            moe_num_experts=config.num_local_experts,
+            moe_top_k=config.num_experts_per_tok,
+        )
+
+        self.experts = DbrxExperts(
+            hidden_size=config.hidden_size,
+            ffn_hidden_size=config.intermediate_size,
+            moe_num_experts=config.num_local_experts,
+            ffn_act_fn=config.hidden_act,
+        )
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        weights, top_weights, top_experts = self.router(x)
+        out = self.experts(x, weights, top_weights, top_experts)
+        return out, weights
+
+
+
+class DbrxRouter(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        config: DBRXConfig,
+        moe_num_experts: int,
+        moe_top_k: int,
+        batch_size: int,
+        sequence_length: int,
+        ffn_hidden_size: int,
+        ffn_act_fn: dict
+    ):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.moe_num_experts = config.num_local_experts
+        self.moe_top_k = config.num_experts_per_tok
+        self.ffn_hidden_size = config.intermediate_size
+        self.ffn_act_fn = {"name", config.hidden_act}
+
+        self.layer = nn.Linear(self.hidden_size, self.moe_num_experts, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.LongTensor]:
+        hidden_states = hidden_states.view(-1, hidden_states.shape[-1])
+        weights = self.layer(hidden_states).softmax(dim=-1, dtype=torch.float32)
+        top_weights, top_experts = torch.topk(weights, self.moe_top_k, dim=-1)
+
+        top_weights_scale = (
+            torch.norm(top_weights, p=self.moe_normalize_expert_weights, dim=-1, keepdim=True)
+            if self.moe_normalize_expert_weights is not None
+            else 1.0
+        )
+        top_weights = top_weights / top_weights_scale
+
+        weights = weights.to(hidden_states.dtype)
+        top_weights = top_weights.to(hidden_states.dtype)
+        return weights, top_weights, top_experts
+
+
+
 class TestDBRXMoE(unittest.TestCase):
     def test_dbrx_moe_parity(self):
         for batch_size in [1, 16]:
@@ -443,18 +638,21 @@ class TestDBRXMoE(unittest.TestCase):
                 config = DBRXConfig()
                 hidden_size = config.hidden_size
                 moe_num_experts = config.num_local_experts
-                moe_top_k = config.num_experts_per_tok
+                #moe_top_k = config.num_experts_per_tok
                 ffn_hidden_size = config.intermediate_size
                 ffn_act_fn = {"name", config.hidden_act}
-                dbrx_moe = DbrxRouter(hidden_size,
-                                      config,
+                dbrx_moe = DbrxExperts(hidden_size,
+                                      ffn_hidden_size,
                                       moe_num_experts,
-                                      moe_top_k,
+                                      ffn_act_fn,
                                       batch_size,
                                       sequence_length,
-                                      ffn_hidden_size,
-                                      ffn_act_fn,)
-                dbrx_moe.parity_check()
+                                      config)
+                dbrx_moe.test_moe_with_tensor_parallelism(hidden_size,
+                                                          ffn_hidden_size,
+                                                          moe_num_experts,
+                                                          num_rows=batch_size * sequence_length,
+                                                          threshold=THRESHOLD)
 
 
 if __name__ == "__main__":
