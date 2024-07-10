@@ -19,7 +19,7 @@
 #include <cudnn.h>
 #endif
 
-#include "core/providers/cuda/cuda_context.h"
+#include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/custom_op_context.h"
 
 namespace Ort {
