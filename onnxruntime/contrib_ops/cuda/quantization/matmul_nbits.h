@@ -32,7 +32,7 @@ class MatMulNBits final : public onnxruntime::cuda::CudaKernel {
     info.GetAttrOrDefault<int64_t>("prepacked", &prepack_, int64_t(0));
   }
 
-#ifndef USE_ROCM
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
   Status PrepackedGemm([[maybe_unused]] cudaStream_t stream,
                        [[maybe_unused]] int M,
                        [[maybe_unused]] const Tensor* a,
@@ -42,7 +42,7 @@ class MatMulNBits final : public onnxruntime::cuda::CudaKernel {
                        [[maybe_unused]] Tensor* Y) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Prepacked gemm is not supported for MatMulNBits op.");
   }
-#endif  // !USE_ROCM
+#endif  // !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 
   Status ComputeInternal(OpKernelContext* context) const override;
 

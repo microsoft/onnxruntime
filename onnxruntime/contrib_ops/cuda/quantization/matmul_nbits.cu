@@ -10,8 +10,10 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "matmul_nbits.cuh"
 
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 #include "blk_q4/f16_gemm_sm80.h"
 #include "gemm/device/quant_b4_gemm.h"
+#endif  // !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -352,6 +354,9 @@ template bool TryMatMul4Bits<half>(
     int shared_mem_per_block,
     cudaStream_t stream);
 
+
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
+
 /**
  * @brief Helper function to run the GEMM kernel for 4bits quantized gemm on SM80.
  * Only support fp16 for now.
@@ -687,6 +692,8 @@ Status blkq4_fp16_gemm_sm80_dispatch<onnxruntime::MLFloat16>(
   onnxruntime::MLFloat16 const* scales_ptr, size_t scales_size,
   uint8_t const* offsets_ptr, size_t offsets_size,
   onnxruntime::MLFloat16* output_ptr, size_t output_size);
+
+#endif  // !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 
 }  // namespace cuda
 }  // namespace contrib

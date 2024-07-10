@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#ifndef USE_ROCM
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 template <>
 Status MatMulNBits<MLFloat16>::PrepackedGemm(
     cudaStream_t stream,
@@ -40,7 +40,7 @@ Status MatMulNBits<MLFloat16>::PrepackedGemm(
       zero_points_ptr, zero_points_size,
       Y->MutableData<MLFloat16>(), Y->Shape().Size());
 }
-#endif  // !USE_ROCM
+#endif  // !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -64,7 +64,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (Y->Shape().Size() == 0) return Status::OK();
 
   if (prepack_ > 0) {
-#ifndef USE_ROCM
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
     ORT_RETURN_IF(reorder_idx != nullptr,
                   "Internal Error: Prepacked gemm does not support reorder index. Fix the prepacking logic!");
     ORT_RETURN_IF(zero_points != nullptr && zero_points->IsDataType<T>(),
@@ -74,7 +74,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.M()), a, b, scales, zero_points, Y);
 #else
     ORT_RETURN_IF(true, "Prepacked gemm is not supported for MatMulNBits op.");
-#endif  // !USE_ROCM
+#endif  // !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
   }
 
   const auto* a_data = a->Data<T>();

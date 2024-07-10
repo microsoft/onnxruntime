@@ -22,6 +22,9 @@ bool TryMatMul4Bits(
     int shared_mem_per_block,
     cudaStream_t stream);
 
+
+#if !defined(USE_MIGRAPHX) && !defined(USE_ROCM)
+
 template <typename ElementT>
 Status blkq4_fp16_gemm_sm80_dispatch(
   int block_size,
@@ -32,6 +35,8 @@ Status blkq4_fp16_gemm_sm80_dispatch(
   ElementT const* scales_ptr, size_t scales_size,
   uint8_t const* offsets_ptr, size_t offsets_size,
   ElementT* output_ptr, size_t output_size);
+
+#endif
 
 }  // namespace cuda
 }  // namespace contrib
