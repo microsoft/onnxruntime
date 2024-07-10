@@ -43,10 +43,11 @@ public:
         MLOperatorTensorDataType ADatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::A).tensorDataType;
         MLOperatorTensorDataType BDatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::B).tensorDataType;
 
+        gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
         std::vector<uint32_t> ATensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::A);
         std::vector<uint32_t> BTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::B);
-        std::vector<uint32_t> ExpectedAScaleTensorShape = {1, 1, 1, 1};
-        std::vector<uint32_t> ExpectedAZeroPointTensorShape = {1, 1, 1, 1};
+        std::vector<uint32_t> ExpectedAScaleTensorShape(outputSizes.size(), 1);
+        std::vector<uint32_t> ExpectedAZeroPointTensorShape(outputSizes.size(), 1);
         gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
         ML_CHECK_VALID_ARGUMENT(outputSizes.size() >= 4);
         ML_CHECK_VALID_ARGUMENT(ATensorShape.size() >= 2);
