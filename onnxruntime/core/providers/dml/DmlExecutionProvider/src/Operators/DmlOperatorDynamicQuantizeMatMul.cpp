@@ -47,9 +47,12 @@ public:
         std::vector<uint32_t> BTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::B);
         std::vector<uint32_t> ExpectedAScaleTensorShape = {1, 1, 1, 1};
         std::vector<uint32_t> ExpectedAZeroPointTensorShape = {1, 1, 1, 1};
-        auto& outputSizes = m_outputTensorDescs[0].GetSizes();
-        auto AShapeBroadcasted = std::array<uint32_t, 4> { outputSizes[0], outputSizes[1], ATensorShape.rbegin()[1], ATensorShape.rbegin()[0] };
-        auto BShapeBroadcasted = std::array<uint32_t, 4> { outputSizes[0], outputSizes[1], BTensorShape.rbegin()[1], BTensorShape.rbegin()[0] };
+        std::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
+        ML_CHECK_VALID_ARGUMENT(outputSizes.size() >= 4);
+        ML_CHECK_VALID_ARGUMENT(ATensorShape.size() >= 2);
+        ML_CHECK_VALID_ARGUMENT(BTensorShape.size() >= 2);
+        std::array<uint32_t, 4> AShapeBroadcasted = { outputSizes[0], outputSizes[1], ATensorShape.rbegin()[1], ATensorShape.rbegin()[0] };
+        std::array<uint32_t, 4> BShapeBroadcasted = { outputSizes[0], outputSizes[1], BTensorShape.rbegin()[1], BTensorShape.rbegin()[0] };
 
         //  output edges between DynQL and MMItoFloat node
         TensorDesc intermediateQuantizedATensorDesc = TensorDesc(
