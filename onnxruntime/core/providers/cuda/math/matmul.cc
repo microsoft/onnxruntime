@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/math/matmul.h"
+#include "core/framework/ort_value.h"
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -277,25 +278,33 @@ template Status FuncMatMul<MLFloat16>(
     bool trans_batch_B,
     Tensor* Y);
 
+void NoOpDeleter(void* [[maybe_unused]] ptr) {
+  (void)(ptr);
+}
+
 template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
+
+  const TensorShape& shape_A = left_X->Shape();
+  const TensorShape& shape_B = right_X->Shape();
+  const TensorShape& shape_Y = Y->Shape();
 
   // Ignore the transpose flag if rank of input being 1.
   // Be noted: numpy.transpose on vector does not change anything.
   bool transa = trans_A_;
   bool transb = trans_B_;
-  if (left_X->Shape().NumDimensions() == 1) {
+  if (shape_A.NumDimensions() == 1) {
     transa = false;
   }
-  if (right_X->Shape().NumDimensions() == 1) {
+  if (shape_B.NumDimensions() == 1) {
     transb = false;
   }
 
-  Tensor* Y = ctx->Output(0, helper.OutputShape());
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -375,7 +384,7 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, transa ? K : M, transa ? M : K, lda));
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, transb ? N : K, transb ? K : N, ldb));
 
-    const int ldy = M; // leading dimension of output Y, which has dimensions M x N.
+    const int ldy = ldc;
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ydesc, y_cuda_type, M, N, ldy));
 
     int64_t sm_count_ = device_prop.multiProcessorCount;
@@ -389,47 +398,59 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     }
 #endif
 
-    int n_inputs = ctx->InputCount();
-    bool has_scales = n_inputs > 4;
-    if (!has_scales) {
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldc));
-    } else {
-      // gemm float 8
+    // gemm float 8
 #if CUDA_VERSION >= 11080
-      // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
-      // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
-      const int8_t ifast_accumulation_mode = 1;
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-          operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
-          &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
-      const Tensor* p_scale_a = ctx->Input<Tensor>(3);
-      const Tensor* p_scale_b = ctx->Input<Tensor>(4);
-      const Tensor* p_scale_y = n_inputs < 6 ? nullptr : ctx->Input<Tensor>(5);
-      ORT_ENFORCE(p_scale_a->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-      ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-      ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-      const void* sa(p_scale_a);
-      const void* sb(p_scale_b);
-      const void* sy(p_scale_y);
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-          operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
-      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-          operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &sb, sizeof(sb)));
-      if (sy) {
-        CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-            operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &sy, sizeof(sy)));
-      }
-#endif
-    // float 8
-#if !defined(DISABLE_FLOAT8_TYPES)
-    // For E4M3FN FP8 output, cuBLAS requires C_type to be same as bias_type
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, M, N, ldy));
+    // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+    // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
+    const int8_t ifast_accumulation_mode = 1;
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-        operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type, sizeof(c_cuda_type)));
-#else
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldy));
+        operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+        &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
+
+    // Create the the scale tensors
+    const std::vector<int64_t> dimensions = {1, 1};
+    const TensorShape scalar_shape({1, 1});
+    MLDataType float_type = onnxruntime::DataTypeImpl::GetType<float>();
+    std::unique_ptr<Tensor> p_scale_a = Tensor::Create(float_type, scalar_shape, allocator_);
+    std::unique_ptr<Tensor> p_scale_b = Tensor::Create(float_type, scalar_shape, allocator_);
+    std::unique_ptr<Tensor> p_scale_y = Tensor::Create(float_type, scalar_shape, allocator_);
+    ORT_ENFORCE(p_scale_a->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+    // TODO Compute and populate the scale values
+    float scale_a = 1.0;
+    float scale_b = 1.0;
+    float scale_y = 1.0;
+    void* scale_a_data = &scale_a;
+    void* scale_b_data = &scale_b;
+    void* scale_y_data = &scale_y;
+    OrtValue ort_value_a(scale_a_data, float_type, NoOpDeleter);
+    OrtValue ort_value_b(scale_b_data, float_type, NoOpDeleter);
+    OrtValue ort_value_y(scale_y_data, float_type, NoOpDeleter);
+    p_scale_a->InitOrtValue(float_type, scalar_shape, allocator_, ort_value_a);
+    p_scale_b->InitOrtValue(float_type, scalar_shape, allocator_, ort_value_b);
+    p_scale_y->InitOrtValue(float_type, scalar_shape, allocator_, ort_value_y);
+
+    const void* sa(p_scale_a.get());
+    const void* sb(p_scale_b.get());
+    const void* sy(p_scale_y.get());
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &sb, sizeof(sb)));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+        operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &sy, sizeof(sy)));
 #endif
-    }
+  // float 8
+#if !defined(DISABLE_FLOAT8_TYPES)
+  // For E4M3FN FP8 output, cuBLAS requires C_type to be same as bias_type
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, M, N, ldy));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+      operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type, sizeof(c_cuda_type)));
+#else
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy));
+#endif
 
     cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue_, sizeof(epilogue_));
 
@@ -448,9 +469,7 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     cublasStatus_t cuda_status = cublasLtMatmulAlgoGetHeuristic(
         cublasLt, operationDesc, Adesc, Bdesc, Cdesc, Ydesc, preference, 1, &heuristicResult, &returnedResults);
 
-    const TensorShape& shape_A = left_X->Shape();
-    const TensorShape& shape_B = right_X->Shape();
-    const TensorShape& shape_Y = Y->Shape();
+    int n_inputs = ctx->InputCount();
     ORT_ENFORCE(
         returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
         " Unable to find any suitable algorithm due to ", onnxruntime::cuda::cublasGetErrorEnum(cuda_status),
