@@ -20,7 +20,7 @@
 #endif
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/platform/env.h"
 

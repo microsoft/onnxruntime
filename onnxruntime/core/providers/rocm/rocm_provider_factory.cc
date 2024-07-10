@@ -5,7 +5,7 @@
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
