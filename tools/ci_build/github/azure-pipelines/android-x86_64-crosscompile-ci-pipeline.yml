@@ -277,6 +277,8 @@ stages:
         parameters:
           create: true
           start: true
+          install_missing_packages: true
+
 
       - script: |
           set -e -x \
@@ -342,6 +344,7 @@ stages:
         parameters:
           create: true
           start: true
+          install_missing_packages: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -406,6 +409,7 @@ stages:
         parameters:
           create: true
           start: true
+          install_missing_packages: true
 
       - script: |
           python3 tools/ci_build/build.py \
