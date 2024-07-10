@@ -64,9 +64,22 @@ jobs:
       createLogFile: true
 
   - task: CmdLine@2
-    displayName: 'Run fuzz testing '
+    displayName: 'Run fuzz testing ONNX models'
     inputs:
-      script: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t  /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx"  1 m'
+      script: |
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx" 1 m'
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\ort_github_issue_4031.onnx" 1 m'
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\bert_toy_optimized.onnx" 1 m'
+      workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+      failOnStderr: false # Optional
+
+  - task: CmdLine@2
+    displayName: 'Run fuzz testing ORT models'
+    inputs:
+      script: |
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\mnist.onnx" 1 m'
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\ort_github_issue_4031.onnx" 1 m'
+        '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime_security_fuzz.exe /t /f "$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\testdata\bert_toy_optimized.onnx" 1 m'
       workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
       failOnStderr: false # Optional
 
