@@ -76,7 +76,7 @@ void weightsMinuEight2Half(uint32_t const &weights,
 */
 CUTLASS_DEVICE
 void weights2Half([[maybe_unused]] uint32_t const &weights,
-                  cutlass::Array<cutlass::half_t, 8>& dest)
+                  [[maybe_unused]] cutlass::Array<cutlass::half_t, 8>& dest)
 {
   // 4b weights are arranged as [0, 2, 4, 6, 1, 3, 5, 7], so that adjacent
   // weights are in adjacent 16b half words.
@@ -97,10 +97,10 @@ void weights2Half([[maybe_unused]] uint32_t const &weights,
   //
   // 1.125 instruction per weight, 9 instructions in total.
 
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   uint32_t*      b32s   = reinterpret_cast<uint32_t*>(dest.data());
   const uint32_t high_8s = weights >> 8;
 
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 500))
   asm volatile(
     "  lop3.b32      %0, %4, 0x000f000f, %6, 0xea;\n"
     "  lop3.b32      %1, %4, 0x00f000f0, %7, 0xea;\n"
