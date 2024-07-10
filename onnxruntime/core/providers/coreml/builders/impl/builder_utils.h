@@ -7,7 +7,7 @@
 
 #include <optional>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/common.h"

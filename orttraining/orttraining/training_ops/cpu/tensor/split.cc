@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/tensor/split.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
