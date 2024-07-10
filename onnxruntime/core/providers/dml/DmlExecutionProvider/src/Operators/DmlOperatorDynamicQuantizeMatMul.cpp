@@ -51,6 +51,8 @@ public:
         ML_CHECK_VALID_ARGUMENT(outputSizes.size() >= 4);
         ML_CHECK_VALID_ARGUMENT(ATensorShape.size() >= 2);
         ML_CHECK_VALID_ARGUMENT(BTensorShape.size() >= 2);
+        ML_CHECK_VALID_ARGUMENT(ATensorShape.size() + 2 >=  outputSizes.size());
+        ML_CHECK_VALID_ARGUMENT(BTensorShape.size() + 2 >=  outputSizes.size());
         std::vector<uint32_t> AShapeBroadcasted(outputSizes.begin(), outputSizes.end());
         std::copy(ATensorShape.end() - (outputSizes.size() - 2),
                   ATensorShape.end(),
