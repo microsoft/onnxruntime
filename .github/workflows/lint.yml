@@ -104,6 +104,8 @@ jobs:
             --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
             --exclude=orttraining/orttraining/test/*
             --exclude=onnxruntime/test/*
+            --exclude=winml/test/*
+            --exclude=winml/lib/*
           filter: "-runtime/references"
 
   lint-js:
