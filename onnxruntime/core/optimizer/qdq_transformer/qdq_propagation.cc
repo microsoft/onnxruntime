@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <queue>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/extended_graph_edge.h"
@@ -117,7 +118,13 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
     }
   }
 
-  // Create a DQ node for each dst node and connect all edges.
+  // Add edge from src to Q node.
+  if (src_node) {
+    src_node->MutableOutputDefs()[insertion_edges[0].src->arg_idx] = &pre_q_nodearg;
+    graph.AddEdge(src_node->Index(), q_node.Index(), insertion_edges[0].src->arg_idx, 0);
+  }
+
+  // Create a DQ node for each dst node and connect remaining edges.
   for (size_t edge_idx = 0; edge_idx < insertion_edges.size(); ++edge_idx) {
     const auto& insertion_edge = insertion_edges[edge_idx];
     const std::string edge_suffix = edge_idx == 0 ? "" : std::to_string(edge_idx);
@@ -140,12 +147,6 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
 
     auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-
-    // Add edge from src to Q node. Only do this in the first iteration of this loop.
-    if (src_node && edge_idx == 0) {
-      src_node->MutableOutputDefs()[insertion_edge.src->arg_idx] = &pre_q_nodearg;
-      graph.AddEdge(src_node->Index(), q_node.Index(), insertion_edge.src->arg_idx, 0);
-    }
 
     // Add edge from Q to DQ
     graph.AddEdge(q_node.Index(), dq_node.Index(), 0, 0);
@@ -199,23 +200,6 @@ std::optional<ExtendedGraphEdge> GetPreviousPropagationEdge(const Graph& graph,
   }
 
   return GetPreviousEdge(graph, *src_node);
-}
-
-std::optional<ExtendedGraphEdge> GetNextEdge(const Graph& graph, const Node& node) {
-  // for now we can just consider the first output (index 0)
-
-  const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, 0);
-  if (output_edges.empty()) {
-    // maybe edge to output
-    return ExtendedGraphEdge::TryCreateFromNodeToOutput(graph, node, 0);
-  }
-
-  if (!graph.IsOutput(node.OutputDefs()[0]) && output_edges.size() == 1) {
-    // single edge to next node
-    return ExtendedGraphEdge::CreateFromValidGraphEdge(output_edges.front());
-  }
-
-  return std::nullopt;
 }
 
 InlinedVector<ExtendedGraphEdge> GetNextEdges(const Graph& graph, const Node& node) {
@@ -307,16 +291,17 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
                               ? dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID]
                               : nullptr;
 
-    const auto edge_after_dq = GetNextEdge(graph, dq_node);
-    if (!edge_after_dq) {
+    InlinedVector<ExtendedGraphEdge> edges_after_dq = GetNextEdges(graph, dq_node);
+    if (edges_after_dq.size() != 1) {
       continue;
     }
 
-    InlinedVector<InlinedVector<ExtendedGraphEdge>> edge_groups = {GetNextPropagationEdges(graph, *edge_after_dq)};
+    std::queue<InlinedVector<ExtendedGraphEdge>> edge_groups;
+    edge_groups.push(GetNextPropagationEdges(graph, edges_after_dq[0]));
 
     while (!edge_groups.empty()) {
-      InlinedVector<ExtendedGraphEdge> edges = edge_groups.back();
-      edge_groups.pop_back();
+      const InlinedVector<ExtendedGraphEdge> edges = std::move(edge_groups.front());
+      edge_groups.pop();
 
       if (edges.empty()) {
         continue;
@@ -326,7 +311,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       modified = true;
 
       for (const auto& edge : edges) {
-        edge_groups.push_back(GetNextPropagationEdges(graph, edge));
+        edge_groups.push(GetNextPropagationEdges(graph, edge));
       }
     }
   }
