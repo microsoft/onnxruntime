@@ -47,7 +47,7 @@ public:
         std::vector<uint32_t> BTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(OnnxInputIndex::B);
         std::vector<uint32_t> ExpectedAScaleTensorShape = {1, 1, 1, 1};
         std::vector<uint32_t> ExpectedAZeroPointTensorShape = {1, 1, 1, 1};
-        std::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
+        gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
         ML_CHECK_VALID_ARGUMENT(outputSizes.size() >= 4);
         ML_CHECK_VALID_ARGUMENT(ATensorShape.size() >= 2);
         ML_CHECK_VALID_ARGUMENT(BTensorShape.size() >= 2);
