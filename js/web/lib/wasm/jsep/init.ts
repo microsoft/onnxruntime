@@ -4,6 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {DataType, getTensorElementSize} from '../wasm-common';
+
 import type {OrtWasmModule} from '../wasm-types';
 
 import {WebGpuBackend} from './backend-webgpu';
