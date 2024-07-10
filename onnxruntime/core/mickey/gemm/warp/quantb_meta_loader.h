@@ -556,7 +556,8 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
   CUTLASS_DEVICE
   static void load_fragment(const int lane_idx,
       FragmentScales &frag_scales, const ElementT* smem,
-      FragmentOffsets &frag_offsets, const OffsetT* offset_smem) {
+      [[maybe_unused]] FragmentOffsets &frag_offsets,
+      [[maybe_unused]] const OffsetT* offset_smem) {
     // Row-wise quantization, every row has its own scale/offset, elements have been rearraged
     // such that we can load two tile at a time.
     // T0        T0
@@ -580,6 +581,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
       frag_ptr[0] = scales_ptr[0];
       frag_ptr[1] = scales_ptr[1];
       scales_ptr += 8;
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
       if constexpr(has_offsets) {
         // offsets are always 4 a group, this give us an opportunity to use
         // a little trick to reduce the number of instructions.
@@ -600,6 +602,7 @@ struct QuantBScaleLoader<cutlass::MatrixShape<1, block_size_>, WarpShape_, Eleme
         }
         offsets_ptr += 4;
       }
+#endif
     }
   }
 
