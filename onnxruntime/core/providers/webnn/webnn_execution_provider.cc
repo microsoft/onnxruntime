@@ -388,7 +388,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTrans
   if (!webnn::IsMlBufferSupported()) {
     return nullptr;
   }
-  return std::make_unique<webnn::DataTransfer>(wnn_context_, this);
+  return std::make_unique<webnn::DataTransfer>();
 }
 
 std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {

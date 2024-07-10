@@ -52,32 +52,6 @@ let bufferGuid = 1;
 const createNewBufferId = (): BufferId => bufferGuid++;
 
 /**
- * Calculate the size of a data type in bytes.
- */
-const mlDataTypeSizeOf = (dataType: MLOperandDataType): number => {
-  switch (dataType) {
-    case 'float32':
-      return 4;
-    case 'int32':
-      return 4;
-    case 'uint32':
-      return 4;
-    case 'float16':
-      return 2;
-    case 'int8':
-      return 1;
-    case 'uint8':
-      return 1;
-    case 'int64':
-      return 8;
-    case 'uint64':
-      return 8;
-    default:
-      throw new Error(`Unknown data type: ${dataType}.`);
-  }
-};
-
-/**
  * BufferTracker tracks the MLBuffer and pending upload data.
  *
  * We need to track the MLBuffer and pending upload data because we delay the creation of MLBuffer until
@@ -120,10 +94,7 @@ class BufferTracker {
       return this.mlBuffer;
     }
 
-    // Unlike the current specification, the current implementation of WebNN does not support creating buffer with
-    // dataTypes and dimensions.
-    const size = dimensions.reduce((a, b) => a * b, 1) * mlDataTypeSizeOf(dataType);
-    const buffer = this.context.createBuffer({size});
+    const buffer = this.context.createBuffer({dataType, dimensions});
     this.mlBuffer = buffer;
 
     if (this.activeUpload) {

@@ -178,7 +178,7 @@ export declare namespace JSEP {
      */
     jsepCreateMlBufferDownloader:
         (bufferId: number,
-         type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+         type: Tensor.MlBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.MlBufferDataTypes]>;
     /**
      * [exported from pre-jsep.js] Register MLBuffer for a session.
      * @param mlBuffer - specify the MLBuffer.

@@ -152,6 +152,11 @@ export declare namespace Tensor {
   export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'uint8'|'bool';
 
   /**
+   * supported data types for constructing a tensor from a WebNN MLBuffer
+   */
+  export type MlBufferDataTypes = 'float32'|'float16'|'int8'|'uint8'|'int32'|'uint32'|'int64'|'uint64'|'bool';
+
+  /**
    * represent where the tensor data is stored
    */
   export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer'|'ml-buffer';

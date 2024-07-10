@@ -11,7 +11,7 @@ import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
-import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
+import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, isMlBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 import {loadFile} from './wasm-utils-load-file';
@@ -697,7 +697,7 @@ export const run = async(
             }
             const mlBuffer = getMlBuffer(dataOffset);
             const elementSize = getTensorElementSize(dataType);
-            if (elementSize === undefined || !isGpuBufferSupportedType(type)) {
+            if (elementSize === undefined || !isMlBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
 

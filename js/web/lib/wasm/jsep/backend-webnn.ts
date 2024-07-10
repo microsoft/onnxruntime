@@ -20,6 +20,7 @@ enum TensorProtoDataType {
   int8 = 3,
   int32 = 6,
   int64 = 7,
+  bool = 9,
   float16 = 10,
   uint32 = 12,
   uint64 = 13,
@@ -37,6 +38,7 @@ const onnxDataTypeToWebnnDataType = new Map<TensorProtoDataType, MLOperandDataTy
   [TensorProtoDataType.uint64, 'uint64'],
   [TensorProtoDataType.int8, 'int8'],
   [TensorProtoDataType.uint8, 'uint8'],
+  [TensorProtoDataType.bool, 'uint8'],
 ]);
 
 /**

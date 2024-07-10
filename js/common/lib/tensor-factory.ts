@@ -84,7 +84,7 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
   readonly gpuBuffer: Tensor.GpuBufferType;
 }
 
-export interface MlBufferConstructorParameters<T extends Tensor.GpuBufferDataTypes = Tensor.GpuBufferDataTypes> extends
+export interface MlBufferConstructorParameters<T extends Tensor.MlBufferDataTypes = Tensor.MlBufferDataTypes> extends
     CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'ml-buffer'.
@@ -205,6 +205,14 @@ export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes> ext
     Required<OptionsDimensions>, OptionsFormat, GpuResourceConstructorParameters<T>/* TODO: add more */ {}
 
 export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends
+    Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
+  /**
+   * Describes the data type of the tensor.
+   */
+  dataType?: T;
+}
+
+export interface TensorFromMlBufferOptions<T extends Tensor.MlBufferDataTypes> extends
     Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
@@ -337,8 +345,8 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromMlBuffer<T extends Tensor.GpuBufferDataTypes>(
-      buffer: Tensor.MlBufferType, options: TensorFromGpuBufferOptions<T>): TypedTensor<T>;
+  fromMlBuffer<T extends Tensor.MlBufferDataTypes>(buffer: Tensor.MlBufferType, options: TensorFromMlBufferOptions<T>):
+      TypedTensor<T>;
 
   /**
    * create a tensor from a pre-allocated buffer. The buffer will be used as a pinned buffer.

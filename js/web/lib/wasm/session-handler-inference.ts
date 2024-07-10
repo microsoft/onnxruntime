@@ -5,7 +5,7 @@ import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor, TRACE
 
 import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {copyFromExternalBuffer, createSession, endProfiling, releaseSession, run} from './proxy-wrapper';
-import {isGpuBufferSupportedType} from './wasm-common';
+import {isGpuBufferSupportedType, isMlBufferSupportedType} from './wasm-common';
 import {isNode} from './wasm-utils-env';
 import {loadFile} from './wasm-utils-load-file';
 
@@ -36,7 +36,7 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
     }
     case 'ml-buffer': {
       const dataType = tensor[0];
-      if (!isGpuBufferSupportedType(dataType)) {
+      if (!isMlBufferSupportedType(dataType)) {
         throw new Error(`not supported data type: ${dataType} for deserializing GPU tensor`);
       }
       const {mlBuffer, download, dispose} = tensor[2];

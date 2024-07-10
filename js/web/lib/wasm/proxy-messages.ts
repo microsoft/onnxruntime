@@ -17,7 +17,7 @@ export type GpuBufferMetadata = {
 
 export type MlBufferMetadata = {
   mlBuffer: Tensor.MlBufferType;
-  download?: () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+  download?: () => Promise<Tensor.DataTypeMap[Tensor.MlBufferDataTypes]>;
   dispose?: () => void;
 };
 

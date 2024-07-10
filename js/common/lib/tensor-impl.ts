@@ -122,8 +122,8 @@ export class Tensor implements TensorInterface {
           break;
         }
         case 'ml-buffer': {
-          if ((type !== 'float32' && type !== 'float16' && type !== 'int32' && type !== 'int64' && type !== 'uint32' &&
-               type !== 'uint8' && type !== 'bool')) {
+          if (type !== 'float32' && type !== 'float16' && type !== 'int32' && type !== 'int64' && type !== 'uint32' &&
+              type !== 'uint64' && type !== 'int8' && type !== 'uint8' && type !== 'bool') {
             throw new TypeError(`unsupported type "${type}" to create tensor from MLBuffer`);
           }
           this.mlBufferData = arg0.mlBuffer;
@@ -324,7 +324,7 @@ export class Tensor implements TensorInterface {
   private gpuBufferData?: TensorGpuBufferType;
 
   /**
-   * stores the underlying GPU buffer when location is 'ml-buffer'. otherwise empty.
+   * stores the underlying WebNN MLBuffer when location is 'ml-buffer'. otherwise empty.
    */
   private mlBufferData?: TensorMlBufferType;
 
