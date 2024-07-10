@@ -44,8 +44,17 @@ int GetNcnnLayerIndex(const std::string& layer_name);
 ncnn::Mat TensorToMat(const Tensor& tensor);
 ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
 
+// apply packing logic that VkCompute::record_upload uses
+ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
+                                     const ncnn::VulkanDevice& device, const ncnn::Option& options);
+
 struct LayerPipeline {
-  LayerPipeline(ncnn::Layer& layer, const ncnn::Option& options) : layer_(&layer), options_{&options} {
+  LayerPipeline(ncnn::Layer& layer, const ncnn::Option& options,
+                const std::vector<ncnn::Mat>& input_shape_hints = {},
+                const std::vector<ncnn::Mat>& output_shape_hints = {}) : layer_(&layer), options_{&options} {
+    layer_->bottom_shapes = input_shape_hints;
+    layer_->top_shapes = output_shape_hints;
+
     ORT_ENFORCE(layer_->create_pipeline(*options_) == 0, "Failed to create pipeline");
     // TODO: There's no check on the actual call to `create_pipeline` being successful in the NCNN code.
     // e.g. sigmoid_vulkan.cpp has

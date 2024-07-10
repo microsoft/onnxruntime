@@ -52,17 +52,34 @@ Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst,
     ORT_RETURN_IF_NOT(src.ByteOffset() == 0, "Copy with byte offset is not supported");
 
     ncnn::Mat src_mat = TensorToMat(src);
-    ncnn::VkMat dst_vkmat = TensorToVkMat(dst, *ncnn_options_.blob_vkallocator);
+    ncnn::VkMat dst_vkmat = TensorToVkMatWithPacking(dst, *ncnn_options_.blob_vkallocator,
+                                                     vulkan_device_, ncnn_options_);
+
+    ORT_ENFORCE(src_mat.total() * src_mat.elemsize == dst_vkmat.total() * dst_vkmat.elemsize,
+                "Buffer sizes don't match.");
+
+    const auto* dst_data = dst_vkmat.data;
+
     if (transfer) {
+      // this optionally flattens, but besides that does not change the packing of the data unless it's a 32-bit
+      // type and `(opt.use_fp16_storage || (opt.use_fp16_packed && src.elempack % 4 == 0))` is true
+      // in which case it casts to fp16
       transfer->record_upload(src_mat, dst_vkmat, ncnn_options_, /*flatten*/ false);
     } else {
       compute->record_upload(src_mat, dst_vkmat, ncnn_options_);
     }
 
+    // if NCNN allocates a new buffer it won't match the address in the tensor that the kernel Compute will receive
+    ORT_ENFORCE(dst_data == dst_vkmat.data, "VkMat data changed during copy.");
+
   } else if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) {
     ORT_RETURN_IF_NOT(dst.ByteOffset() == 0, "Copy with byte offset is not supported");
 
-    ncnn::VkMat src_vkmat = TensorToVkMat(src, *ncnn_options_.blob_vkallocator);
+    // TODO: validation assumption that the 'with packaging' info is consistent across the NCNN layers so that it's
+    // valid to setup src_vkmat with that logic. It probably doesn't matter unless we actually change data types
+    // when going between CPU and GPU (i.e. automatic fp32 <-> fp16 conversion)
+    ncnn::VkMat src_vkmat = TensorToVkMatWithPacking(src, *ncnn_options_.blob_vkallocator,
+                                                     vulkan_device_, ncnn_options_);
     ncnn::Mat dst_mat = TensorToMat(dst);
     RETURN_IF_NCNN_ERROR(compute->record_download(src_vkmat, dst_mat, ncnn_options_));
 

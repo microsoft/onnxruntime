@@ -11,7 +11,6 @@ if (NOT VULKAN_FOUND)
   message(FATAL_ERROR "Vulkan SDK was not found. onnxruntime_VULKAN_SDK_PATH is set to ${onnxruntime_VULKAN_SDK_PATH}")
 endif()
 
-
 message(STATUS "Vulkan_INCLUDE_DIRS: ${Vulkan_INCLUDE_DIRS}")
 message(STATUS "Vulkan_LIBRARIES: ${Vulkan_LIBRARIES}")
 # message(STATUS "Vulkan_dxc_EXECUTABLE: ${Vulkan_dxc_EXECUTABLE}")

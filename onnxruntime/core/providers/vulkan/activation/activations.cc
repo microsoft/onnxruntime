@@ -81,13 +81,12 @@ Status Sigmoid::Compute(OpKernelContext* context) const {
   }
 
   const auto& ncnn_options = NcnnOptions();
-  ncnn::VkCompute cmd(&Device());
+  const ncnn::VulkanDevice& device = Device();
 
-  if (X.DataRaw() == Y.DataRaw()) {
-  } else {
-  }
-  ncnn::VkMat src = TensorToVkMat(X, *ncnn_options.blob_vkallocator);
-  ncnn::VkMat dst = TensorToVkMat(Y, *ncnn_options.blob_vkallocator);
+  ncnn::VkCompute cmd(&device);  // TODO: This needs to be at a higher level so we can delay the submit_and_wait
+
+  ncnn::VkMat src = TensorToVkMatWithPacking(X, *ncnn_options.blob_vkallocator, device, ncnn_options);
+  ncnn::VkMat dst = TensorToVkMatWithPacking(Y, *ncnn_options.blob_vkallocator, device, ncnn_options);
 
   RETURN_IF_NCNN_ERROR(ncnn_layer_->forward(src, dst, cmd, ncnn_options));
 
