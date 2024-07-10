@@ -124,13 +124,13 @@ stages:
         artifactName: 'drop-signed-nuget-qnn'
         targetPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
 
-    - template: templates/publish-nuget-steps.yml
-      parameters:
-        download_artifacts_steps:
-          - template: templates/flex-downloadPipelineArtifact.yml
-            parameters:
-              StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
-              ArtifactName: 'drop-signed-nuget-qnn'
-              targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-              SpecificArtifact: ${{ parameters.specificArtifact }}
-              BuildId: ${{ parameters.BuildId }}
+- template: templates/publish-nuget-steps.yml
+  parameters:
+    download_artifacts_steps:
+      - template: templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
+          ArtifactName: 'drop-signed-nuget-qnn'
+          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+          SpecificArtifact: ${{ parameters.specificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
