@@ -98,7 +98,8 @@ jobs:
             --exclude=onnxruntime/core/mlas/inc/*
             --exclude=onnxruntime/core/mlas/lib/*
             --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
-          filter: "-runtime/references"
+          filter: "-runtime/references\
+            ,-build/Debug"
 
   lint-js:
     name: Lint JavaScript
