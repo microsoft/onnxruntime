@@ -359,10 +359,6 @@ stages:
           --test
         displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
-      # used by Build Minimal ORT
-      - script: sudo apt install -y coreutils ninja-build
-        displayName: Install coreutils and ninja
-
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
@@ -400,10 +396,6 @@ stages:
           jdkSourceOption: 'PreInstalled'
 
       - template: "templates/use-android-ndk.yml"
-
-      # used by Build Minimal ORT
-      - script: sudo apt install -y coreutils ninja-build
-        displayName: Install coreutils and ninja
 
       - template: templates/use-android-emulator.yml
         parameters:
