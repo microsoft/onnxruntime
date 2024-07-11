@@ -948,59 +948,6 @@ TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
                   0.008f);
 }
 
-TEST_F(QnnHTPBackendTests, SliceQDQPropagation_MultConsumers) {
-  Ort::SessionOptions so;
-
-  // Ensure all type/shape inference warnings result in errors!
-  // so.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1");
-  // so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
-  so.AddConfigEntry(kDebugLayoutTransformation, "1");
-  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-  // so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
-  // ort_env->UpdateEnvWithCustomLogLevel(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE);
-  onnxruntime::ProviderOptions options;
-
-#if defined(_WIN32)
-  options["backend_path"] = "QnnHtp.dll";
-#else
-  options["backend_path"] = "libQnnHtp.so";
-#endif
-
-  so.AppendExecutionProvider("QNN", options);
-
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "slice_qdq_propagation_mult_consumers.onnx";
-  Ort::Session session(*ort_env, ort_model_path, so);
-
-  // image: 1,3,640,640
-  std::vector<uint8_t> input0_data(1 * 3 * 640 * 640);
-
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-  std::vector<Ort::Value> ort_inputs;
-  std::vector<const char*> ort_input_names;
-
-  // Add input0
-  std::array<int64_t, 4> inputs_shape{1, 3, 640, 640};
-  ort_inputs.emplace_back(Ort::Value::CreateTensor<uint8_t>(
-      memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
-  ort_input_names.push_back("image");
-
-  // Run session and get outputs
-  std::array<const char*, 3> output_names{"output_0", "output_1", "output_2"};
-  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
-                                                    ort_inputs.size(), output_names.data(), output_names.size());
-
-  // Check output shape.
-  Ort::Value& ort_output = ort_outputs[0];
-  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
-  std::vector<int64_t> output_shape = typeshape.GetShape();
-
-  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 8400, 4));
-  const uint8_t* results = ort_output.GetTensorData<uint8_t>();
-
-  for (size_t i = 0; i < typeshape.GetElementCount() && i < 10; i++) {
-    std::cout << i << ": " << results[i] << std::endl;
-  }
-}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

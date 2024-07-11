@@ -12,6 +12,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+#include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -3367,6 +3368,102 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
 #if !defined(DISABLE_CONTRIB_OPS)
   test_case({1, 13, 13, 23}, true /*use_contrib_qdq*/);
 #endif
+}
+
+// Test propagating a DQ forward through a chain of Slice and Transpose operators that have multiple consumers.
+// original model:
+//   in0 -> DQ -> Slice --+--> Add -> out0
+//                        |
+//                        +--> TP --+--> Pow -> out1
+//                        |         |
+//                        |         +--> Pow -> out2
+//                        |
+//                        +--> TP --+--> Pow -> out3
+//                                  |
+//                                  +--> Pow -> out4
+// expected model:
+//   in0 -> DQ -> Slice -> Q --+--> DQ -> Add -> out0
+//                             |
+//                             +--> DQ -> TP -> Q --+--> DQ -> Pow -> out1
+//                             |                    |
+//                             |                    +--> DQ -> Pow -> out2
+//                             |
+//                             +--> DQ -> TP -> Q --+--> DQ -> Pow -> out3
+//                                                  |
+//                                                  +--> DQ -> Pow -> out4
+TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<int64_t> input0_shape = {1, 2, 2, 2};
+    std::vector<int64_t> input1_shape = {1, 1, 1, 1};
+    auto* input0_arg = builder.MakeInput<uint8_t>(input0_shape,
+                                                  std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+    auto* input1_arg = builder.MakeInput<float>(input1_shape, {0.0f});
+    auto* output0_arg = builder.MakeOutput();
+    auto* output1_arg = builder.MakeOutput();
+    auto* output2_arg = builder.MakeOutput();
+    auto* output3_arg = builder.MakeOutput();
+    auto* output4_arg = builder.MakeOutput();
+
+    // DQ
+    constexpr float qdq_scale = 1.0f;
+    constexpr uint8_t qdq_zero_point = 128;
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input0_arg, qdq_scale, qdq_zero_point, dq_output);
+
+    // Slice
+    auto* slice_output = builder.MakeIntermediate();
+    auto* slice_starts = builder.Make1DInitializer(std::vector<int64_t>{0, 0, 0, 0});
+    auto* slice_ends = builder.Make1DInitializer(std::vector<int64_t>{1, 1, 1, 1});
+    builder.AddNode("Slice", {dq_output, slice_starts, slice_ends}, {slice_output});
+
+    // Add
+    builder.AddNode("Add", {slice_output, input1_arg}, {output0_arg});
+
+    // Transpose
+    auto* transpose0_output = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {slice_output}, {transpose0_output});
+
+    // Transpose
+    auto* transpose1_output = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {slice_output}, {transpose1_output});
+
+    // Pows
+    auto* pow_exp = builder.MakeScalarInitializer(2.0f);
+    builder.AddNode("Pow", {transpose0_output, pow_exp}, {output1_arg});
+    builder.AddNode("Pow", {transpose0_output, pow_exp}, {output2_arg});
+    builder.AddNode("Pow", {transpose1_output, pow_exp}, {output3_arg});
+    builder.AddNode("Pow", {transpose1_output, pow_exp}, {output4_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+    std::vector<std::string> expected_op_types_in_order{
+        qdq_keys.dequantize_linear,
+        "Slice",
+        qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
+        "Add",
+        qdq_keys.dequantize_linear,
+        "Transpose",
+        qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
+        "Pow",
+        qdq_keys.dequantize_linear,
+        "Pow",
+        qdq_keys.dequantize_linear,
+        "Transpose",
+        qdq_keys.quantize_linear, qdq_keys.dequantize_linear,
+        "Pow",
+        qdq_keys.dequantize_linear,
+        "Pow"};
+    const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+    EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    18, 0.0, 0.0, std::make_unique<QDQPropagationTransformer>());
 }
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
