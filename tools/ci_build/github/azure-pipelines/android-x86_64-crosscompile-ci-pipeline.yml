@@ -85,6 +85,7 @@ stages:
 
     - script: |
         python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build \
           --android_sdk_path $ANDROID_HOME \
@@ -169,6 +170,7 @@ stages:
 
     - script: |
         python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
@@ -264,6 +266,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build \
           --android_sdk_path $ANDROID_HOME \
@@ -329,6 +332,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
@@ -401,6 +405,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
