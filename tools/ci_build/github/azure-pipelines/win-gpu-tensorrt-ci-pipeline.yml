@@ -35,18 +35,18 @@ parameters:
       - 11.8
       - 12.2
   - name: OverwriteTrtVersion
-    displayName: (Optional) overwrite TRT folder i.e TensorRT-10.2.0.19.Windows10.x86_64.cuda-12.5
+    displayName: Overwrite TRT folder if needed. i.e TensorRT-10.2.0.19.Windows10.x86_64.cuda-12.5
     type: string
-    default: ''
+    default: 'NULL'
 
 variables:
   - template: templates/common-variables.yml
   - name: win_trt_folder
-    ${{ if ne(parameters.OverwriteTrtVersion, '') }}:
+    ${{ if ne(parameters.OverwriteTrtVersion, 'NULL') }}:
       value: ${{ parameters.OverwriteTrtVersion }}
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    ${{ if and(eq(parameters.OverwriteTrtVersion, 'NULL'), eq(parameters.CudaVersion, '11.8')) }}:
       value: ${{ variables.win_trt_folder_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    ${{ if and(eq(parameters.OverwriteTrtVersion, 'NULL'), eq(parameters.CudaVersion, '12.2')) }}:
       value: ${{ variables.win_trt_folder_cuda12 }}
 
 jobs:
