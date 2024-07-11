@@ -79,14 +79,13 @@ stages:
       - task: AzureCLI@2
         displayName: 'Azure CLI'
         #Only report binary sizes to database if the build build was auto-triggered from the main branch
-        condition: and (succeeded(), and(eq(variables['resources.pipeline.build.sourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
         inputs:
           azureSubscription: AIInfraBuildOnnxRuntimeOSS
           scriptLocation: inlineScript
           scriptType: batch
           inlineScript: |
-            python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
-            python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
+            python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt
+            python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(resources.pipeline.build.sourceCommit) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(resources.pipeline.build.runID)
           workingDirectory: '$(Build.BinariesDirectory)'
 
     - ${{ parameters.download_artifacts_steps }}
