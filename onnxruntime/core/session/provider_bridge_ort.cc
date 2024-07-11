@@ -672,8 +672,8 @@ struct ProviderHostImpl : ProviderHost {
       }
     } else {
       for (auto idx = 0u; idx < num_output; idx++) {
-        auto* shape = ctx.getAttribute("shape_" + idx);
-        auto* data_type = ctx.getAttribute("data_type_" + idx);
+        auto* shape = ctx.getAttribute("shape_" + std::to_string(idx));
+        auto* data_type = ctx.getAttribute("data_type_" + std::to_string(idx));
         if (shape == nullptr || data_type == nullptr) {
           // this output is optional
         } else {
