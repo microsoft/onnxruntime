@@ -317,11 +317,10 @@ float MatMul<T>::ComputeScale(const Tensor* tensor) const
   std::sort(coef.begin(), coef.end());
 
   const auto coef_count = coef.size();
-  std::vector<float> coef_abs_vec(coef_count);
-  std::transform(coef.begin(), coef.end(), coef_abs_vec.begin(), [](float x) {
+  std::vector<float> coef_abs(coef_count);
+  std::transform(coef.begin(), coef.end(), coef_abs.begin(), [](float x) {
     return std::abs(x);
   });
-  gsl::span<float> coef_abs(coef_abs_vec);
 
   std::vector<float> result;
   const float power = 1.0f / 3.0f;
