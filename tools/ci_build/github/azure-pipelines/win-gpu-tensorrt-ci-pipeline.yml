@@ -26,6 +26,28 @@ pr:
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
+parameters:
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
+  - name: OverwriteTrtVersion
+    displayName: (Optional) overwrite TRT folder i.e TensorRT-10.2.0.19.Windows10.x86_64.cuda-12.5
+    type: string
+    default: ''
+
+variables:
+  - template: templates/common-variables.yml
+  - name: win_trt_folder
+    ${{ if ne(parameters.OverwriteTrtVersion, '') }}:
+      value: ${{ parameters.OverwriteTrtVersion }}
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: ${{ variables.win_trt_folder_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: ${{ variables.win_trt_folder_cuda12 }}
 
 jobs:
 - job: 'build'
@@ -56,7 +78,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "gpu-tensorrt | RelWithDebInfo"
-      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}" --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
+      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: 'x64'
       Platform: 'x64'
@@ -76,7 +98,7 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo;%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}"  --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"  --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
 
     workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
     displayName: 'Run tests'

@@ -2,7 +2,7 @@ variables:
   common_cuda_version: '11.8'
   common_cuda_baseimg: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
   # Variables below are for TensorRT EP
-  #    Please update these three variables simulaneously by latest trt binary filename, 
+  #    Please refer latest trt binary filename to update these three variables simulaneously: 
   #    i.e TensorRT-10.2.0.19.Linux.x86_64-gnu.cuda-12.5.tar.gz
   common_trt_version: '10.0.1.6'
   trt_supported_latest_cuda11_version: "11.8"

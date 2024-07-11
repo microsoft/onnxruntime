@@ -34,6 +34,10 @@ parameters:
     values:
       - 11.8
       - 12.2
+  - name: OverwriteTrtVersion
+    displayName: (Optional) overwrite TRT binary name i.e 10.2.0.19-1.cuda12.5
+    type: string
+    default: ''
 
 variables:
   - template: templates/common-variables.yml
@@ -43,6 +47,8 @@ variables:
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
   - name: linux_trt_version
+    ${{ if ne(parameters.OverwriteTrtVersion, '') }}:
+      value: ${{ parameters.OverwriteTrtVersion }}
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: ${{ variables.linux_trt_version_cuda11 }}
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
