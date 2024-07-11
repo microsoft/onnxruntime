@@ -1270,6 +1270,52 @@ TEST(QDQTransformerTests, SliceDropQDQ) {
   RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);      // Use int16 ONNX QDQ ops
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> GatherElements -> Q.
+template <typename QuantType>
+static void RunGatherElementsDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                             const std::vector<int64_t>& indices_shape,
+                                             const std::vector<int64_t>& indices_data,
+                                             bool use_contrib_qdq = false,
+                                             int opset = 21) {
+  auto build_test_case = [input_shape, indices_shape, indices_data, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* indices_arg = builder.MakeInitializer<int64_t>(indices_shape, indices_data);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* gather_elements_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("GatherElements", {input_arg_dq, indices_arg}, {gather_elements_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(gather_elements_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["GatherElements"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> GatherElements -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, GatherElementsDropQDQ) {
+  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0});
+  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);     // Use com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);    // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);       // Use int16 ONNX QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);      // Use int16 ONNX QDQ ops
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;

@@ -89,6 +89,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // https://github.com/microsoft/onnxruntime/issues/21287
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
                                                          {{"Gather", {}},
+                                                          {"GatherElements", {}},
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"Squeeze", {}},
@@ -96,8 +97,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Flatten", {}},
                                                           {"Expand", {}},
                                                           {"Tile", {}},
-                                                          {"Slice", {}},
-                                                          {"GatherElements", {}}},
+                                                          {"Slice", {}}},
                                                          std::move(selector),
                                                          std::move(drop_action));
 #else
