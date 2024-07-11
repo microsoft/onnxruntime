@@ -76,7 +76,7 @@ void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity,
                << (i == num_edges - 1 ? "" : ",");
   }
 
-  LOGS(logger, VERBOSE) << "Inserting Q/DQ pair between "
+  LOGS(logger, severity) << "Inserting Q/DQ pair between "
                         << (src_node ? MakeString("src node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
                                      : "input")
                         << " and " << dst_labels.str()
