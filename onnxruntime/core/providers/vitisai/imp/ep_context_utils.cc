@@ -19,7 +19,6 @@ constexpr const char* kVitisAI = "vitisai";
 
 std::unique_ptr<ONNX_NAMESPACE::FunctionProto> ConvertIndexedSubGraphToFunctionProto(
     const IndexedSubGraph& sub_graph, const Graph& parent_graph) {
-  LOGS_DEFAULT(VERBOSE) << "Function-proto-ing compute capabilities";
   auto p_func_proto = ONNX_NAMESPACE::FunctionProto::Create();
   auto* p_meta_def = const_cast<IndexedSubGraph_MetaDef*>(sub_graph.GetMetaDef());
   if (p_meta_def) {
@@ -151,7 +150,6 @@ std::string SerializeCapabilities(
   if (!ss.good()) {
     ORT_THROW("Serialization stream bad");
   }
-  LOGS_DEFAULT(VERBOSE) << "Done serializing compute capabilites: " << capability_ptrs.size();
   return ss.str();
 }
 
@@ -171,7 +169,6 @@ void DeserializeCapabilities(const std::string& ser_capabilities,
 }
 
 std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
-  LOGS_DEFAULT(VERBOSE) << "Opset import size of original graph: " << graph_viewer.DomainToVersionMap().size();
   // XXX: Will Steps 1/2/3 suffice for restoring a model/graph later?
   // Any information loss or mismatch?
   // Step 1
@@ -181,7 +178,6 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   // Step 3
   auto p_orig_model_proto = const_cast<Model&>(orig_model).ToProto();
   if (p_orig_model_proto->opset_import_size() == 0) {
-    LOGS_DEFAULT(VERBOSE) << "Adding op domain version mapping: " << graph_viewer.DomainToVersionMap().size();
     for (const auto& it : graph_viewer.DomainToVersionMap()) {
       auto* p_opset_import = p_orig_model_proto->add_opset_import();
       *(p_opset_import->mutable_domain()) = it.first;
@@ -191,11 +187,9 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
 
   nlohmann::json j_obj;
   if (p_orig_model_proto->opset_import_size() > 0) {
-    LOGS_DEFAULT(VERBOSE) << "Adding op domain version mapping to JSON";
     for (int i = 0, n = p_orig_model_proto->opset_import_size(); i < n; ++i) {
       auto& op_set_id_proto = const_cast<ONNX_NAMESPACE::OperatorSetIdProto&>(p_orig_model_proto->opset_import(i));
       j_obj[*op_set_id_proto.mutable_domain()] = std::to_string(op_set_id_proto.version());
-      LOGS_DEFAULT(VERBOSE) << "Added domain: " << *op_set_id_proto.mutable_domain() << ", version: " << op_set_id_proto.version();
     }
   }
   j_obj["orig_graph_name"] = graph_viewer.Name();
@@ -205,10 +199,8 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
   // e.g., ModelProto.opset_import.
   std::string ser_buf;
   p_orig_model_proto->SerializeToString(ser_buf);
-  LOGS_DEFAULT(VERBOSE) << "Done serializing original model";
   j_obj["orig_model_proto_ser_str"] = ser_buf;
 
-  LOGS_DEFAULT(VERBOSE) << "Model proto JSON dumping";
   return j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
@@ -283,13 +275,11 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
   // FIXME: 2G-limit of ProtoBuf.
   if (saving_orig_graph) {
     p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
-    LOGS_DEFAULT(VERBOSE) << "Saved serialized graph to attr proto";
   } else {
     nlohmann::json j_obj;
     j_obj["backend_cache_dir"] = backend_cache_dir;
     j_obj["backend_cache_key"] = backend_cache_key;
     p_attr_4->set_s(j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
-    LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
   }
 
   auto p_node_attrs = NodeAttributes::Create();
@@ -329,7 +319,6 @@ void DumpEPContextModel(
 
 const Node* GetEPContextNodePtr(const Graph& graph) {
   // TODO: Support for multi-node EP context model.
-  LOGS_DEFAULT(VERBOSE) << "Number of nodes of EP context model: " << graph.Nodes().size();
   for (const auto* p_node : graph.Nodes()) {
     if (p_node->OpType() == kEPContextOp) {
       return p_node;
@@ -411,13 +400,11 @@ void CreateEPContexNodes(
       // FIXME: 2G-limit of ProtoBuf.
       if (saving_orig_graph) {
         p_attr_4->set_s(SerializeOrigialGraph(graph_viewer));
-        LOGS_DEFAULT(VERBOSE) << "Saved serialized graph to attr proto";
       } else {
         nlohmann::json j_obj;
         j_obj["backend_cache_dir"] = backend_cache_dir;
         j_obj["backend_cache_key"] = backend_cache_key;
         p_attr_4->set_s(j_obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
-        LOGS_DEFAULT(VERBOSE) << "Saved backend cache key to attr proto";
       }
       p_node_attrs->emplace(kNotesAttr, *p_attr_4);
       // Attr "main_context".
@@ -482,7 +469,6 @@ std::string RetrieveEPContextCache(
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
   // Attr "ep_cache_context" stores a relative path.
   ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
-  LOGS_DEFAULT(VERBOSE) << "EP context cache path: " << ep_ctx_fs_path.string();
   // TODO: Validaion of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
@@ -548,19 +534,14 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   if (!orig_model_path.empty() && fs::exists(orig_model_path) && fs::is_regular_file(orig_model_path)) {
     auto load_status = Model::Load(ToPathString(orig_model_path), *p_model_proto);
     model_loaded = load_status.IsOK();
-    LOGS_DEFAULT(VERBOSE) << "Done loading model proto from file";
   }
   if (!model_loaded) {
     p_model_proto->ParseFromString(j_obj["orig_model_proto_ser_str"].get<std::string>());
-    LOGS_DEFAULT(VERBOSE) << "Done parsing model proto from string";
     if (p_model_proto->opset_import_size() == 0) {
-      LOGS_DEFAULT(VERBOSE) << "Recoverying ModelProto.opset_import";
       for (auto& elem : j_obj.items()) {
-        LOGS_DEFAULT(VERBOSE) << "Iterating at parsed JSON key: " << elem.key();
         if (elem.key() == "orig_model_path" || elem.key() == "orig_graph_name" || elem.key() == "orig_model_proto_ser_str") {
           continue;
         }
-        LOGS_DEFAULT(VERBOSE) << "Accessing parsed JSON op domain: " << elem.key();
         auto* p_op_set_id_proto = p_model_proto->add_opset_import();
         *(p_op_set_id_proto->mutable_domain()) = elem.key();
         p_op_set_id_proto->set_version(std::stoll(elem.value().get<std::string>()));
@@ -569,7 +550,6 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
   }
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto p_model = Model::Create(std::move(*p_model_proto), ToPathString(orig_model_path), nullptr, logger);
-  LOGS_DEFAULT(VERBOSE) << "Done creating model from model proto";
   auto& graph = p_model->MainGraph();
   graph.ToGraphProto()->set_name(j_obj["orig_graph_name"].get<std::string>());
 
@@ -578,7 +558,6 @@ std::unique_ptr<GraphViewer> RetrieveOriginalGraph(const Graph& ep_ctx_graph) {
 
 bool GraphHasEPContextNode(const Graph& graph) {
   size_t vitisai_len = std::strlen(kVitisAI);
-  LOGS_DEFAULT(VERBOSE) << "Checking graph with EP context nodes: " << graph.Nodes().size();
   for (const auto* p_node : graph.Nodes()) {
     if (p_node->OpType() != kEPContextOp) {
       continue;
@@ -701,108 +680,6 @@ std::string Slurp(const fs::path& file_location, bool binary_mode) {
     LOGS_DEFAULT(WARNING) << "Failed to read " << file_location << ": " << se.code().message();
   }
   return ss.str();
-}
-
-std::string GetBackendCompileCache(const fs::path& backend_cache_file_location, bool binary_mode) {
-  if (!fs::exists(backend_cache_file_location) || !fs::is_regular_file(backend_cache_file_location)) {
-    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Bad file for compilation cache: "
-                          << backend_cache_file_location;
-    return "";
-  }
-  LOGS_DEFAULT(VERBOSE) << "Reading backend compilation cache from " << backend_cache_file_location;
-  return Slurp(backend_cache_file_location, binary_mode);
-}
-
-void RestoreBackendCompileCache(
-    const fs::path& backend_cache_file_location, const std::string& compile_cache) {
-  std::ofstream ofs(backend_cache_file_location, std::ios::out | std::ios::trunc);
-  if (!ofs.is_open()) {
-    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Failed to open a file for restoring backend compilation cache: "
-                          << backend_cache_file_location;
-    return;
-  }
-  ofs.write(compile_cache.data(), compile_cache.length());
-  if (!ofs.good()) {
-    LOGS_DEFAULT(WARNING) << "[VitisAI EP]Failed to restore backend compilation cache: "
-                          << backend_cache_file_location;
-  } else {
-    LOGS_DEFAULT(VERBOSE) << "[VitisAI EP]Succeeded to restore backend compilation cache: "
-                          << backend_cache_file_location;
-  }
-  ofs.close();
-}
-
-std::vector<const NodeArg*> FilterOutputNodeArgs(const Node& node) {
-  auto node_arg_ptrs = node.OutputDefs();
-  auto num_ptrs = node_arg_ptrs.size();
-  std::vector<const NodeArg*> res(num_ptrs);
-  for (auto i = 0u; i < num_ptrs; i++) {
-    // Some operators have outputs that are optional.
-    // When an actual output parameter of an operator is not specified,
-    // the operator implementation MAY forgo computing values for such outputs.
-    // There are two ways to leave an optional input or output unspecified:
-    // the first, available only for trailing inputs and outputs, is to simply not provide that input;
-    // the second is to use an empty string in place of an input or output name.
-    // So optional output maybe output != null && false output->Exists().
-    // Our processing: nullptr means an optional output, and client code needs to handle nullptr.
-    assert(node_arg_ptrs[i] != nullptr);
-    if (node_arg_ptrs[i]->Exists()) {
-      res[i] = node_arg_ptrs[i];
-    } else {
-      res[i] = nullptr;
-    }
-  }
-  return res;
-}
-
-std::vector<int64_t> GetNodeArgShape_I64(const NodeArg& node_arg) {
-  const auto* p_shape_proto = node_arg.Shape();
-  if (p_shape_proto == nullptr) {
-    return std::vector<int64_t>();
-  }
-  int num_dims = p_shape_proto->dim_size();
-  std::vector<int64_t> shape_vec;
-  shape_vec.reserve(num_dims);
-  for (auto i = 0; i < num_dims; i++) {
-    auto& curr_dim = p_shape_proto->dim(i);
-    shape_vec.push_back(curr_dim.has_dim_value() ? curr_dim.dim_value() : (int64_t)-1);
-  }
-  return shape_vec;
-}
-
-std::string GetModelSignature(const GraphViewer& graph_viewer) {
-  MD5 md5_obj;
-  for (auto ni : graph_viewer.GetNodesInTopologicalOrder()) {
-    auto* p_node = graph_viewer.GetNode(ni);
-    for (const auto* p_node_arg : FilterOutputNodeArgs(*p_node)) {
-      auto node_arg_name = p_node_arg->Name();
-      md5_obj.add(node_arg_name.data(), node_arg_name.length());
-      auto node_arg_shape = GetNodeArgShape_I64(*p_node_arg);
-      if (!node_arg_shape.empty()) {
-        md5_obj.add(node_arg_shape.data(), node_arg_shape.size() * sizeof(node_arg_shape.at(0)));
-      }
-    }
-  }
-  return md5_obj.getHash();
-}
-
-std::string HashFileContentWithMD5(const std::string& file_location) {
-  std::ifstream ifs(file_location, std::ios::in | std::ios::binary);
-  if (!ifs.is_open()) {
-    LOGS_DEFAULT(ERROR) << "Failed to open file for checksum: " << file_location;
-    ORT_THROW("Failed to open file for checksum");
-  }
-  constexpr const std::uint32_t kBufferSize = 1024;
-  char* buffer = new char[kBufferSize];
-  MD5 md5_obj;
-  while (ifs.read(buffer, kBufferSize)) {
-    md5_obj.add(buffer, kBufferSize);
-  }
-  auto num_last_read = ifs.gcount();
-  md5_obj.add(buffer, num_last_read);
-  delete[] buffer;
-  ifs.close();
-  return md5_obj.getHash();
 }
 
 }  // namespace onnxruntime

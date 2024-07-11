@@ -77,16 +77,4 @@ PathString GetEPContextCacheFileLocation(const PathString&, const PathString&);
 
 std::string Slurp(const fs::path&, bool binary_mode = false);
 
-std::string GetBackendCompileCache(const fs::path&, bool binary_mode = false);
-
-void RestoreBackendCompileCache(const fs::path&, const std::string&);
-
-std::vector<const NodeArg*> FilterOutputNodeArgs(const Node&);
-
-std::vector<int64_t> GetNodeArgShape_I64(const NodeArg&);
-
-std::string GetModelSignature(const GraphViewer&);
-
-std::string HashFileContentWithMD5(const std::string&);
-
 }  // namespace onnxruntime

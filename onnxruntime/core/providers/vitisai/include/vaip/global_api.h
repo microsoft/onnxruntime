@@ -15,4 +15,4 @@ vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> c
 std::shared_ptr<onnxruntime::KernelRegistry> get_kernel_registry_vitisaiep();
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep();
 void get_backend_compilation_cache(const onnxruntime::PathString& model_path_str, const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::ProviderOptions& options, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
-void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data);
+void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);

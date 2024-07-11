@@ -54,7 +54,7 @@ struct OrtVitisAIEpAPI {
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
   uint32_t (*vaip_get_version)();
   void (*get_backend_compilation_cache)(const std::string& model_path, const onnxruntime::Graph& graph, const char* json_config, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
-  void (*restore_backend_compilation_cache)(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data);
+  void (*restore_backend_compilation_cache)(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);
   void Ensure() {
     if (handle_)
       return;
@@ -148,8 +148,8 @@ void get_backend_compilation_cache(const onnxruntime::PathString& model_path_str
   s_library_vitisaiep.get_backend_compilation_cache(model_path, graph, json_str.c_str(), compiler_codes, cache_dir, cache_key, cache_data);
 }
 
-void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data) {
-  s_library_vitisaiep.restore_backend_compilation_cache(cache_dir, cache_key, cache_data);
+void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path) {
+  s_library_vitisaiep.restore_backend_compilation_cache(cache_dir, cache_key, cache_data, model_path);
 }
 
 struct MyCustomOpKernel : OpKernel {
