@@ -25,7 +25,7 @@ namespace onnxruntime {
  *
  * This transformer is implemented in the following steps:
  * 1. Iterate the graph and find the Embedding node that matches these requirements:
- *    1.1 The 2nd input is a graph input and its rank > 2, with the first two dimensions, are:
+ *    1.1 Following a PythonOp(FlagAndPrintDensity) node, and its rank > 2, with the first two dimensions, are:
  *        [batch_size, sequence_length]. Both dimensions can be symbolic or concrete dim values.
  *    1.2 The 3rd input(padding idx) is a scalar constant initializer, and should >= 0.
  * 2. Append embedding node in node_to_scan_list.
@@ -54,6 +54,8 @@ namespace onnxruntime {
  *         \                 \                           /                /                      /
  *          \_________________\_________________________/________________/______________________/
  *                                         |
+ *                              PythonOp (FlagAndPrintDensity)
+ *                                         |
  *                                   ATen:embedding
  *                                         |
  *                  - - - - - - - - - - - -|
@@ -68,7 +70,7 @@ namespace onnxruntime {
  *                                       output
  *
  *
- * After the transformation:
+ * After the transformation (PythonOp (FlagAndPrintDensity) is removed unless user need to print density for each step):
  *
  *             input_ids [batch_size, seq_length]
  *                |      \

@@ -74,7 +74,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
 };
 
 /**
- * intialize runtime environment.
+ * initialize runtime environment.
  * @param env passed in the environment config object.
  */
 export const initRuntime = async(env: Env): Promise<void> => {
