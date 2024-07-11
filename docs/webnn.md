@@ -1,8 +1,6 @@
 
 # WebNN Overview
 
-The Web Neural Network (WebNN) API is an emerging web standard that allows web apps and frameworks to accelerate deep neural networks with GPUs, CPUs, or purpose-built AI accelerators such as NPUs. The WebNN API leverages the DirectML API on Windows to access the native hardware capabilities and optimize the execution of neural network models. 
-
 As the use of AI/ML in apps become more popular, the WebNN API provides the following benefits: 
 
 * *Performance Optimizations* – By utilizing DirectML, WebNN helps to enable web apps and frameworks to take advantage of the best available hardware and software optimizations for each platform and device, without requiring complex and platform-specific code. 
@@ -16,18 +14,11 @@ AI/ML scenarios supported by WebNN include generative AI, person detection, face
 > [!NOTE]
 > The WebNN API is still in progress, with GPU support in a preview state and NPU support coming soon. The WebNN API should not currently be used in a production environment.
 
-## Framework support
-
-WebNN is designed as a backend API for web frameworks. For Windows, we recommend using [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/). This gives a familiar experience to using DirectML and ONNX Runtime natively so you can have a consistent experience deploying AI in ONNX format across web and native applications.
-
 ## WebNN requirements
 
 You can check information about your browser by navigating to about://version in your chromium browser's address bar.
 
-| Hardware | Web Browsers | Windows version | ONNX Runtime Web version | Driver Version |
-| --- | --- | --- | --- | --- | 
-| **GPU** | WebNN requires a Chromium browser*. Please use the most recent version of Microsoft Edge Beta. | Minimum version: Windows 11, version 21H2. |Minimum version: 1.18 | Install the latest driver for your hardware. | 
-| **NPU** | WebNN requires a Chromium browser*. Please use the most recent version of Microsoft Edge Canary. | Minimum version: Windows 11, version 21H2. |Minimum version: 1.18 | Intel driver version: 32.0.100.2381. See FAQ for steps on how to update the driver. | 
+To view WebNN hardware and OS requirements, visit the [WebNN Overview Doc](https://learn.microsoft.com/en-us/windows/ai/directml/webnn-overview#webnn-requirements).
 
 ![Diagram of the structure behind integrating WebNN into your web app](images/webnn-diagram.png)
 
@@ -35,6 +26,8 @@ You can check information about your browser by navigating to about://version in
 > Chromium based browsers can currently support WebNN, but will depend on the individual browser's implementation status.
 
 ## Model support 
+
+You can a set of demos and examples applications on our [Developer Preview Site](https://microsoft.github.io/webnn-developer-preview/).
 
 ### GPU (Preview):
 When running on GPUs, WebNN currently supports the following models:
@@ -62,13 +55,13 @@ On Intel’s® Core™ Ultra processors with Intel® AI Boost NPU, WebNN aims to
 
 ## FAQ
 
-#### **How do I file an issue with WebNN?**
+#### **How do I file an issue with WebNN or WebNN execution provider?**
 
 For general issues with WebNN, please file an issue on our [WebNN Developer Preview GitHub](https://github.com/microsoft/webnn-developer-preview/issues)
 
 For issues with ONNX Runtime Web or the WebNN Execution Provider, go to the [ONNXRuntime Github](https://github.com/microsoft/onnxruntime/issues).
 
-#### **How do I debug issues with WebNN?**
+#### **How do I debug issues with WebNN or WebNN execution provider?**
 
 The [WebNN W3C Spec](https://www.w3.org/TR/webnn/) has information on error propagation, typically through DOM exceptions. The log at the end of about://gpu may also have helpful information. For further issues please file an issue as linked above.
 
