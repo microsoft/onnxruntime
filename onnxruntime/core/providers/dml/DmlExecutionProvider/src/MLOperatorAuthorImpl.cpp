@@ -1550,9 +1550,8 @@ namespace Windows::AI::MachineLearning::Adapter
         // The tensor may be stored as raw data or in typed fields.
         if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
         {
-            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor));
-            m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.data());
-            m_tensorByteSize = m_unpackedExternalTensor.size();
+            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*impl, modelPath, m_unpackedExternalTensor, m_tensorByteSize));
+            m_dataPtr = reinterpret_cast<std::byte*>(m_unpackedExternalTensor.get());
         }
         else if (impl->has_raw_data())
         {

@@ -49,16 +49,18 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     std::copy(initializer.string_data().cbegin(), initializer.string_data().cend(), string_data_vec.begin());
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+    std::unique_ptr<uint8_t[]> unpacked_tensor;
+    size_t unpacked_tensor_size;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor, unpacked_tensor_size));
+    raw_data = builder.CreateVector(unpacked_tensor.get(), unpacked_tensor_size);
 
-    if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
+    if (external_writer && unpacked_tensor_size >= kMinimumSizeForExternalData) {
       // write bytes to external buffer/file and record offset for the start of the data
       uint64_t offset = 0;
-      ORT_RETURN_IF_ERROR(external_writer(src_type, unpacked_tensor, offset));
+      ORT_RETURN_IF_ERROR(external_writer(src_type, gsl::span(unpacked_tensor.get(), unpacked_tensor.get() + unpacked_tensor_size), offset));
       external_data_offset = onnxruntime::narrow<int64_t>(offset);  // offset in fb is int64_t so -1 can mark not in use
     } else {
-      raw_data = builder.CreateVector(unpacked_tensor.data(), unpacked_tensor.size());
+      raw_data = builder.CreateVector(unpacked_tensor.get(), unpacked_tensor_size);
     }
   }
 

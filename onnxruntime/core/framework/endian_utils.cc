@@ -57,7 +57,9 @@ Status CopyLittleEndian(size_t element_size_in_bytes,
                 "source and destination buffer size mismatch");
 
   if constexpr (endian::native == endian::little) {
-    std::memcpy(destination_bytes.data(), source_bytes.data(), source_bytes.size_bytes());
+    if (source_bytes.data() != destination_bytes.data()) {
+      std::memcpy(destination_bytes.data(), source_bytes.data(), source_bytes.size_bytes());
+    }
   } else {
     SwapByteOrderCopy(element_size_in_bytes, source_bytes, destination_bytes);
   }

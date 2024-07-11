@@ -211,7 +211,7 @@ struct ProviderHost {
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) = 0;
   virtual Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
-                                       /*out*/ std::vector<uint8_t>& unpacked_tensor) = 0;
+                                       /*out*/ std::unique_ptr<uint8_t[]>& unpacked_tensor, size_t& unpacked_tensor_size) = 0;
 
   virtual uint16_t math__floatToHalf(float f) = 0;
   virtual float math__halfToFloat(uint16_t h) = 0;

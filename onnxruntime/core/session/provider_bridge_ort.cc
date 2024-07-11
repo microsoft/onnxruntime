@@ -286,8 +286,8 @@ struct ProviderHostImpl : ProviderHost {
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
-                               /*out*/ std::vector<uint8_t>& unpacked_tensor) override {
-    return utils::UnpackInitializerData(tensor, model_path, unpacked_tensor);
+                               /*out*/ std::unique_ptr<uint8_t[]>& unpacked_tensor, size_t& unpacked_tensor_size) override {
+    return utils::UnpackInitializerData(tensor, model_path, unpacked_tensor, unpacked_tensor_size);
   }
   uint16_t math__floatToHalf(float f) override { return math::floatToHalf(f); }
   float math__halfToFloat(uint16_t h) override { return math::halfToFloat(h); }
