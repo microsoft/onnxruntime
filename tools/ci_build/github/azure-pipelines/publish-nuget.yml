@@ -12,6 +12,7 @@ resources:
 stages:
   - template: templates/publish-nuget-steps.yml
     parameters:
+      stage_name: 'Publish_NuGet_Packag_And_Report'
       include_cpu_ep: true
       download_artifacts_steps:
         - download: build
@@ -28,8 +29,3 @@ stages:
           displayName: 'Download Pipeline Artifact - Signed NuGet Package'
           artifact: 'drop-signed-nuget-GPU'
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
-
-        - download: build
-          displayName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
-          artifact: 'drop-signed-nuget-qnn'
-        - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-qnn\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
