@@ -294,7 +294,7 @@ else()
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
-      "SHELL:-s ASYNCIFY=${ASYNCIFY}"
+      "SHELL:-s ASYNCIFY=1"
       #"SHELL:-s JSPI"
       #"SHELL:-s ASYNCIFY_IGNORE_INDIRECT=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
@@ -336,7 +336,7 @@ else()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
+    # target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
   else()
     target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
   endif()
