@@ -13,7 +13,7 @@ parameters:
   BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
-  AgentPool: 'onnxruntime-Win-CPU-2022'
+  AgentPool: 'onnxruntime-Win-CPU-2022-beta'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo

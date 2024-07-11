@@ -71,7 +71,7 @@ stages:
     dependsOn: []
     jobs:
     - job: Windows_py_Wheels
-      pool: 'onnxruntime-Win-CPU-2022'
+      pool: 'onnxruntime-Win-CPU-2022-beta'
       strategy:
         matrix:
           Python38_x64:

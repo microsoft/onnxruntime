@@ -50,10 +50,10 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
     - job: build_x64_asan
-      pool: 'onnxruntime-Win-CPU-2022'
+      pool: 'onnxruntime-Win-CPU-2022-beta'
       timeoutInMinutes:  300
       steps:
       - checkout: self
@@ -66,7 +66,7 @@ stages:
           DownloadCUDA: false
           BuildArch: x64
           BuildConfig: Debug
-          MachinePool: 'onnxruntime-Win-CPU-2022'
+          MachinePool: 'onnxruntime-Win-CPU-2022-beta'
           WithCache: false
           InstallONNX: false
           Today: $(TODAY)
@@ -97,7 +97,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: x64_release_dnnl
   dependsOn: []
@@ -135,7 +135,7 @@ stages:
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 # Build only. Does not run any tests.
 - stage: x64_release_vitisai
@@ -174,7 +174,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: x86_release
   dependsOn: []
@@ -193,7 +193,7 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: training_x64_debug
   dependsOn: []
@@ -275,4 +275,4 @@ stages:
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win-CPU-2022'
+        MachinePool: 'onnxruntime-Win-CPU-2022-beta'

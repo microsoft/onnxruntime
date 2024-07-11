@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-Win-CPU-2022'
+  pool: 'onnxruntime-Win-CPU-2022-beta'
   strategy:
     maxParallel: 2
     matrix:
@@ -30,7 +30,7 @@ jobs:
       DownloadCUDA: false
       BuildArch: x64
       BuildConfig: $(BuildConfig)
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
       WithCache: true
       Today: $(Today)
 

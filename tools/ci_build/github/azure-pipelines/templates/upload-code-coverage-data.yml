@@ -2,7 +2,7 @@ jobs:
   - job: Upload
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win-CPU-2022-beta'
     variables:
     - name: runCodesignValidationInjection
       value: false

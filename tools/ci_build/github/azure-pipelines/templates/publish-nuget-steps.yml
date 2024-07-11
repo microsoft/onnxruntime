@@ -17,7 +17,7 @@ stages:
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Agent.TempDirectory)\binfiles'
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win-CPU-2022-beta'
 
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

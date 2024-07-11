@@ -17,7 +17,7 @@ stages:
   - job: Jar_Packaging_GPU
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win-CPU-2022-beta'
     dependsOn: []
     condition: succeeded()
     steps:

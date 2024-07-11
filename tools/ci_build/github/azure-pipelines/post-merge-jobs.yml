@@ -32,7 +32,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -46,7 +46,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -60,7 +60,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -74,7 +74,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -89,7 +89,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -104,7 +104,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -119,7 +119,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -134,7 +134,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -149,7 +149,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -164,7 +164,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 #- template: templates/win-ci.yml
 #  parameters:
@@ -179,7 +179,7 @@ stages:
 #    runTests: false
 #    buildJava: false
 #    buildNodejs: false
-#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - template: templates/win-ci.yml
   parameters:
@@ -194,7 +194,7 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022-beta'
 
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
   # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
@@ -253,7 +253,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: MemoryProfiling
   dependsOn: [ ]
@@ -272,7 +272,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -291,7 +291,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -310,7 +310,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 - stage: NeuralSpeed
   dependsOn: [ ]
@@ -329,7 +329,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'onnxruntime-Win-CPU-2022'
+      MachinePool: 'onnxruntime-Win-CPU-2022-beta'
 
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage

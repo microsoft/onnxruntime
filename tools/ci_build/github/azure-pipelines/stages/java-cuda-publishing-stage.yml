@@ -11,7 +11,7 @@ stages:
     condition: ${{ eq(parameters.artifact_feed, 'onnxruntime-cuda-12') }}
     workspace:
       clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
+    pool: 'onnxruntime-Win-CPU-2022-beta'
     variables:
     - name: SYSTEM_ACCESSTOKEN
       value: $(System.AccessToken)
