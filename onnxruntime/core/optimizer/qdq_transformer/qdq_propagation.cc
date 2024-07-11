@@ -139,18 +139,18 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(q_node), "Failed to set op schema for added Q node.");
 
-  // Remove original edges between src and dst nodes.
-  for (const auto& insertion_edge : insertion_edges) {
-    auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-
-    if (src_node && dst_node) {
-      graph.RemoveEdge(src_node->Index(), dst_node->Index(),
-                       insertion_edge.src->arg_idx, insertion_edge.dst->arg_idx);
-    }
-  }
-
-  // Add edge from src to Q node.
   if (src_node) {
+    // Remove original edges between src and dst nodes.
+    for (const auto& insertion_edge : insertion_edges) {
+      auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+
+      if (dst_node) {
+        graph.RemoveEdge(src_node->Index(), dst_node->Index(),
+                         insertion_edge.src->arg_idx, insertion_edge.dst->arg_idx);
+      }
+    }
+
+    // Add edge from src to Q node.
     src_node->MutableOutputDefs()[first_edge.src->arg_idx] = &pre_q_nodearg;
     graph.AddEdge(src_node->Index(), q_node.Index(), first_edge.src->arg_idx, 0);
   }
@@ -161,10 +161,12 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
     const std::string edge_suffix = edge_idx == 0 ? "" : std::to_string(edge_idx);
     auto& post_dq_nodearg = insertion_edge.HasGraphOutput()
                                 ? base_node_arg
-                                : graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_name + "_post_dq" + edge_suffix),
+                                : graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(MakeString(base_name,
+                                                                                                "_post_dq",
+                                                                                                edge_suffix)),
                                                            nullptr);
 
-    auto& dq_node = graph.AddNode(graph.GenerateNodeName(base_name + "_dq" + edge_suffix),
+    auto& dq_node = graph.AddNode(graph.GenerateNodeName(MakeString(base_name, "_dq", edge_suffix)),
                                   QDQ::DQOpName,
                                   "Inserted by QDQPropagationTransformer",
                                   // inputs
@@ -234,21 +236,19 @@ std::optional<ExtendedGraphEdge> GetPreviousPropagationEdge(const Graph& graph,
 }
 
 InlinedVector<ExtendedGraphEdge> GetNextEdges(const Graph& graph, const Node& node) {
-  // for now we can just consider the first output (index 0)
+  constexpr int node_output_index = 0;  // for now we can just consider the first output (index 0)
   InlinedVector<ExtendedGraphEdge> next_edges;
+  const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, static_cast<size_t>(node_output_index));
 
-  const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, 0);
-  if (output_edges.empty()) {
-    // maybe edge to output
-    auto edge = ExtendedGraphEdge::TryCreateFromNodeToOutput(graph, node, 0);
-    if (edge.has_value()) {
-      next_edges.push_back(edge.value());
-    }
-  } else if (!graph.IsOutput(node.OutputDefs()[0])) {
-    // edges to next nodes
-    for (const auto& output_edge : output_edges) {
-      next_edges.push_back(ExtendedGraphEdge::CreateFromValidGraphEdge(output_edge));
-    }
+  // edges to next nodes
+  for (const auto& output_edge : output_edges) {
+    next_edges.push_back(ExtendedGraphEdge::CreateFromValidGraphEdge(output_edge));
+  }
+
+  // maybe edge to graph output
+  auto edge_to_output = ExtendedGraphEdge::TryCreateFromNodeToOutput(graph, node, node_output_index);
+  if (edge_to_output.has_value()) {
+    next_edges.push_back(edge_to_output.value());
   }
 
   return next_edges;
@@ -322,7 +322,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
                               ? dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID]
                               : nullptr;
 
-    InlinedVector<ExtendedGraphEdge> edges_after_dq = GetNextEdges(graph, dq_node);
+    const InlinedVector<ExtendedGraphEdge> edges_after_dq = GetNextEdges(graph, dq_node);
     if (edges_after_dq.size() != 1) {
       continue;
     }
