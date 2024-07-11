@@ -657,7 +657,7 @@ struct ProviderHostImpl : ProviderHost {
       auto* shape = ctx.getAttribute("shape");
       auto* data_type = ctx.getAttribute("data_type");
       if (data_type == nullptr) {
-        std::cerr << "[VitisAI] custom op is missing `data_type` attr." << std::endl;
+        std::cerr << "Custom op is missing `data_type` attr." << std::endl;
         return;
       }
       int32_t elemType = convert_elem_type(data_type);
