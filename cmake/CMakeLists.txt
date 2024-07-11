@@ -551,7 +551,7 @@ if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 find_package(Patch)
-if (WIN32 AND NOT Patch_FOUND)
+if (CMAKE_HOST_WIN32 AND NOT Patch_FOUND)
     # work around CI machines missing patch from the git install by falling back to the binary in this repo.
     # replicate what happens in https://github.com/Kitware/CMake/blob/master/Modules/FindPatch.cmake but without
     # the hardcoded suffixes in the path to the patch binary.
