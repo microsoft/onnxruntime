@@ -283,6 +283,58 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
 }
 
 template <typename T>
+float MatMul<T>::ComputeStandardDeviation(const std::vector<float>& v) const
+{
+  if (v.empty()) {
+    return 0.0f;
+  }
+
+  // Calculate the mean
+  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
+  float mean = sum / v.size();
+
+  // Calculate the sum of squared differences from the mean
+  float squaredSum = 0.0f;
+  for (float value : v) {
+    float diff = value - mean;
+    squaredSum += diff * diff;
+  }
+
+  // Calculate the variance
+  float variance = squaredSum / v.size();
+
+  // Return the square root of variance as standard deviation
+  return std::sqrt(variance);
+}
+
+template <typename T>
+float MatMul<T>::ComputeScale(const Tensor* tensor) const
+{
+  // TODO is there a way to sort without making a copy? Is sorting necessary?
+  gsl::span<const float> coef_span = tensor->DataAsSpan<float>();
+  std::vector<float> coef(coef_span.size());
+  std::copy(coef_span.begin(), coef_span.end(), coef.begin());
+  std::sort(coef.begin(), coef.end());
+
+  const auto coef_count = coef.size();
+  std::vector<float> coef_abs_vec(coef_count);
+  std::transform(coef.begin(), coef.end(), coef_abs_vec.begin(), [](float x) {
+    return std::abs(x);
+  });
+  gsl::span<float> coef_abs(coef_abs_vec);
+
+  std::vector<float> result;
+  const float power = 1.0f / 3.0f;
+  for (size_t i = 0; i < coef_count; i ++)
+  {
+    result[i] = std::pow(coef_abs[i], power) * float(coef[i]) / coef_abs[i];
+  }
+  float std_coef = ComputeStandardDeviation(result);
+
+  return std_quant_ / std_coef;
+}
+
+template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -418,10 +470,11 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-    // TODO Compute and populate the scale values
-    float scale_a = 1.0;
-    float scale_b = 1.0;
-    float scale_y = 1.0;
+    // Get the weights of the model
+    float scale_a = ComputeScale(left_X);
+    float scale_b = ComputeScale(right_X);
+    float scale_y = 1.0f;
+
     void* scale_a_data = &scale_a;
     void* scale_b_data = &scale_b;
     void* scale_y_data = &scale_y;

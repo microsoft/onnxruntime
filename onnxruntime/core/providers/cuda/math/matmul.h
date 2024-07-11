@@ -23,6 +23,13 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
         use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)),
         allocator_(info.GetAllocator(OrtMemType::OrtMemTypeDefault)) {
+          std::vector<float> quant_float(256);
+          for (int i = 0; i < 256; i ++)
+          {
+            quant_float[i] = Float8e4m3ToFloat32(i);
+          }
+          std_quant_ = ComputeStandardDeviation(quant_float);
+
           std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
           if (activation == "NONE") {
             epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
@@ -45,8 +52,17 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   const bool use_fp8_;
+  float std_quant_;
   AllocatorPtr allocator_;
   cublasLtEpilogue_t epilogue_;
+
+  float ComputeStandardDeviation(const std::vector<float>& v) const;
+  float ComputeScale(const Tensor* tensor) const;
+  float Float8e4m3ToFloat32(int i)
+  {
+    // TODO implement
+    return float(i);
+  }
 };
 
 template <typename T>
