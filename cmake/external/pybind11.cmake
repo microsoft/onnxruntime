@@ -1,4 +1,4 @@
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     pybind11_project
     URL ${DEP_URL_pybind11}
 	URL_HASH SHA1=${DEP_SHA1_pybind11}

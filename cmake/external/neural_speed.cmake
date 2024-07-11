@@ -5,7 +5,7 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" AND onnxruntime_target_platfo
 endif()
 
 if(USE_NEURAL_SPEED)
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
       neural_speed
       URL ${DEP_URL_neural_speed}
       URL_HASH SHA1=${DEP_SHA1_neural_speed}

@@ -22,7 +22,7 @@ endif()
 # currently absl::lts_20240116 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
 # that namespace at build time.
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     abseil_cpp
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}

@@ -100,7 +100,7 @@ else()
   endif()
 endif()
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     directx_headers
     URL ${DEP_URL_directx_headers}
     URL_HASH SHA1=${DEP_SHA1_directx_headers}
