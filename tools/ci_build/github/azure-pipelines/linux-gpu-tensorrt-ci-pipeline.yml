@@ -49,9 +49,9 @@ variables:
   - name: linux_trt_version
     ${{ if ne(parameters.OverwriteTrtVersion, '') }}:
       value: ${{ parameters.OverwriteTrtVersion }}
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    ${{ if and(eq(parameters.OverwriteTrtVersion, ''), eq(parameters.CudaVersion, '11.8')) }}:
       value: ${{ variables.linux_trt_version_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    ${{ if and(eq(parameters.OverwriteTrtVersion, ''), eq(parameters.CudaVersion, '12.2')) }}:
       value: ${{ variables.linux_trt_version_cuda12 }}
 
 jobs:
