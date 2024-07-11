@@ -2574,7 +2574,9 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                                                       bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
-  onnx_model_path.append(onnx_model_filename);
+  if (!onnx_model_filename.empty()) {
+    onnx_model_path.append(onnx_model_filename);
+  }
   if (path_check && IsAbsolutePath(onnx_model_path.string())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "For security purpose, the ONNX model path should be set with "
@@ -2587,7 +2589,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                            "allowed to point outside the directory.");
   }
 
-  if (!std::filesystem::exists(onnx_model_path)) {
+  if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "The ONNX model " + onnx_model_path.string() +
                                " does not exist.");
