@@ -3,7 +3,6 @@
 
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 
-#include <algorithm>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -267,20 +266,19 @@ InlinedVector<ExtendedGraphEdge> GetNextPropagationEdges(const Graph& graph,
     return {};
   }
 
-  auto all_next_edges = GetNextEdges(graph, *dst_node);
-  InlinedVector<ExtendedGraphEdge> next_prop_edges;
-  next_prop_edges.reserve(all_next_edges.size());
+  auto next_edges = GetNextEdges(graph, *dst_node);
+  bool any_edge_to_q = false;
 
-  // Filter out edges that end in Q nodes.
-  // There is no need to insert a Q node in an edge that already ends in a Q node.
-  std::copy_if(all_next_edges.begin(), all_next_edges.end(), std::back_inserter(next_prop_edges),
-               [&graph](const ExtendedGraphEdge& e) -> bool {
-                 const auto* dst_node = e.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-                 const bool is_q_node = dst_node && QDQ::MatchQNode(*dst_node);
-                 return !is_q_node;
-               });
+  // Check if any edge ends a Q node. If so, we don't propagate.
+  for (const auto& next_edge : next_edges) {
+    const auto* edge_dst_node = next_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+    if (edge_dst_node && QDQ::MatchQNode(*edge_dst_node)) {
+      any_edge_to_q = true;
+      break;
+    }
+  }
 
-  return next_prop_edges;
+  return any_edge_to_q ? InlinedVector<ExtendedGraphEdge>{} : next_edges;
 }
 
 class GraphConstantInitializerGetter {
