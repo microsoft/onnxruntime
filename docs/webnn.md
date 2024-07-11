@@ -11,7 +11,7 @@ As the use of AI/ML in apps become more popular, the WebNN API provides the foll
 * *High Availability* - No reliance on the network after initial asset caching for offline case, as web apps and frameworks can run neural network models locally even when the internet connection is unavailable or unreliable. 
 * *Low Server Cost* - Computing on client devices means no servers needed, which helps web apps to reduce the operational and maintenance costs of running AI/ML services in the cloud. 
 
-AI/ML supported by WebNN include generative AI, person detection, face detection, semantic segmentation, skeleton detection, style transfer, super resolution, image captioning, machine translation, and noise suppression.
+AI/ML scenarios supported by WebNN include generative AI, person detection, face detection, semantic segmentation, skeleton detection, style transfer, super resolution, image captioning, machine translation, and noise suppression.
 
 > [!NOTE]
 > The WebNN API is still in progress, with GPU support in a preview state and NPU support coming soon. The WebNN API should not currently be used in a production environment.
@@ -27,6 +27,7 @@ You can check information about your browser by navigating to about://version in
 | Hardware | Web Browsers | Windows version | ONNX Runtime Web version | Driver Version |
 | --- | --- | --- | --- | --- | 
 | **GPU** | WebNN requires a Chromium browser*. Please use the most recent version of Microsoft Edge Beta. | Minimum version: Windows 11, version 21H2. |Minimum version: 1.18 | Install the latest driver for your hardware. | 
+| **NPU** | WebNN requires a Chromium browser*. Please use the most recent version of Microsoft Edge Canary. | Minimum version: Windows 11, version 21H2. |Minimum version: 1.18 | Intel driver version: 32.0.100.2381. See FAQ for steps on how to update the driver. | 
 
 ![Diagram of the structure behind integrating WebNN into your web app](images/webnn-diagram.png)
 
@@ -49,6 +50,16 @@ When running on GPUs, WebNN currently supports the following models:
 
 WebNN also works with custom models as long as operator support is sufficient. Check status of operators [here](https://webmachinelearning.github.io/webnn-status/).
 
+### NPU (Coming Soon): 
+On Intel’s® Core™ Ultra processors with Intel® AI Boost NPU, WebNN aims to support: 
+
+* [Whisper-base](https://microsoft.github.io/webnn-developer-preview/demos/whisper-base/)
+* [MobileNetV2](https://microsoft.github.io/webnn-developer-preview/demos/image-classification/)
+* [ResNet](https://microsoft.github.io/webnn-developer-preview/demos/image-classification/?provider=webnn&devicetype=npu&model=resnet-50&run=5)
+* [EfficientNet](https://microsoft.github.io/webnn-developer-preview/demos/image-classification/?provider=webnn&devicetype=npu&model=efficientnet-lite4&run=5)
+* ESRGAN 
+ 
+
 ## FAQ
 
 #### **How do I file an issue with WebNN?**
@@ -63,23 +74,34 @@ The [WebNN W3C Spec](https://www.w3.org/TR/webnn/) has information on error prop
 
 #### Does WebNN support other operating systems?
 
-Currently, WebNN best supports the Windows operating system. A version for Mac operating systems is in progress.
+Currently, WebNN best supports the Windows operating system. Versions for other operating systems are in progress.
 
 #### What hardware back-ends are currently available? Are certain models only supported with specific hardware back-ends?
 
 You can find information about operator support in WebNN at [Implementation Status of WebNN Operations | Web Machine Learning](https://webmachinelearning.github.io/webnn-status/).
 
+#### What are the steps to update the Intel driver for NPU Support (Coming Soon)? 
+
+1. Uncompress the ZIP file. 
+2. Press Win+R to open the Run dialog box. 
+3. Type devmgmt.msc into the text field. 
+4. Press Enter or click OK. 
+5. In the Device Manager, open the "Neural processors" node 
+6. Right click on the NPU who's driver you wish to update. 
+7. Select "Update Driver" from the context menu 
+8. Select "Browse my computer for drivers" 
+9. Select "Let me pick from a list of available drivers on my computer" 
+10. Press the "Have disk" button 
+11. Press the "Browse" button 
+12. Navigate to the place where you decompressed the aforementioned zip file. 
+13. Press OK.
+
 
 # WebNN API Tutorial
 
-For an intro to WebNN, including information about operating system support, model support, and more, visit the [WebNN Overview](webnn-overview.md). 
-
-This tutorial will show you how to use the WebNN API to build an image classification system on the web that is hardware accelerated using on-device GPU. We will be leveraging the **MobileNetv2** model, which is an open source model on [Hugging Face](https://huggingface.co/docs/transformers/model_doc/mobilenet_v2) used to classify images. 
+This tutorial will show you how to use WebNN with onnxruntime-web to build an image classification system on the web that is hardware accelerated using on-device GPU. We will be leveraging the **MobileNetv2** model, which is an open source model on [Hugging Face](https://huggingface.co/docs/transformers/model_doc/mobilenet_v2) used to classify images. 
 
 If you want to view and run the final code of this tutorial, you can find it on our [WebNN Developer Preview GitHub](https://github.com/microsoft/webnn-developer-preview/tree/main/Get%20Started/WebNN%20Tutorial).
- 
-> [!NOTE]
-> The WebNN API is a W3C Candidate Recommendation and is in early stages of a developer preview. Some functionality is limited. We have a list of current support and [implementation status](https://webmachinelearning.github.io/webnn-status/).
 
 ## Requirements and set-up: 
 
@@ -205,7 +227,7 @@ async function classifyImage(pathToImage){
   }
 ```
 
-## Step 4: Call WebNN
+## Step 4: Call ONNX Runtime Web
 
 1. You've now added all the functions needed to retrieve your image and render it as a tensor. Now, using the ONNX Runtime Web library that you loaded above, you'll run your model. Note that to use WebNN here, you simply specify `executionProvider = "webnn"` - ONNX Runtime's support makes it very straightforward to enable WebNN.
 
@@ -214,16 +236,20 @@ async function classifyImage(pathToImage){
     // Set up environment.
     ort.env.wasm.numThreads = 1; 
     ort.env.wasm.simd = true; 
-    ort.env.wasm.proxy = true; 
-    ort.env.logLevel = "verbose";  
-    ort.env.debug = true; 
+    // Uncomment for additional information in debug builds:
+    // ort.env.wasm.proxy = true; 
+    // ort.env.logLevel = "verbose";  
+    // ort.env.debug = true; 
 
     // Configure WebNN.
-    const executionProvider = "webnn"; // Other options: webgpu 
-    const modelPath = "./mobilenetv2-7.onnx" 
+    const modelPath = "./mobilenetv2-7.onnx";
+    const devicePref =  "gpu"; // other option include "npu"
     const options = {
-	    executionProviders: [{ name: executionProvider, deviceType: "gpu", powerPreference: "default" }],
+	    executionProviders: [{ name: "webnn", deviceType: devicePref, powerPreference: "default" }],
       freeDimensionOverrides: {"batch": 1, "channels": 3, "height": 224, "width": 224}
+      // the key names in freeDimensionOverrides should map to the real input dim names in the model.
+      // For example, if a model's only key is batch_size, you only need to set
+      // freeDimensionOverrides: {"batch_size": 1}
     };
     modelSession = await ort.InferenceSession.create(modelPath, options); 
 
@@ -299,3 +325,4 @@ function imagenetClassesTopK(classProbabilities, k = 5) {
 ```
 
 2. You've now added all the scripting needed to run image classification with WebNN in your basic web app. Using the Live Server extension for VS Code, you can now launch your basic webpage in-app to see the results of the classification for yourself.
+
