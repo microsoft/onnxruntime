@@ -74,7 +74,6 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
                                                   const logging::Logger& logger) const {
-
   const auto& op_type(node.OpType());
 
 #if defined(COREML_ENABLE_MLPROGRAM)
@@ -90,13 +89,13 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_op_type = "relu";
     } else if (op_type == "PRelu") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                            "ActivationOpBuilder::AddToModelBuilderImpl, PRelu is not supported in CoreML MLProgram.");
+                             "ActivationOpBuilder::AddToModelBuilderImpl, PRelu is not supported in CoreML MLProgram.");
     } else if (op_type == "LeakyRelu") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                            "ActivationOpBuilder::AddToModelBuilderImpl, LeakyRelu is not supported in CoreML MLProgram.");
+                             "ActivationOpBuilder::AddToModelBuilderImpl, LeakyRelu is not supported in CoreML MLProgram.");
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+                             "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
@@ -106,7 +105,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     model_builder.AddOperation(std::move(op));
 
   } else
-#endif // (COREML_ENABLE_MLPROGRAM)
+#endif  // (COREML_ENABLE_MLPROGRAM)
   {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
@@ -127,7 +126,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       leaky_relu->set_alpha(alpha);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+                             "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
     }
 
     *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
