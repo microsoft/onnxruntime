@@ -1,6 +1,3 @@
-# Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
-
 # This file contains some wrappers for cmake's FetchContent functions. The wrappers added the following functionalities:
 # 1. Group the VC projects into the "external" folder. We can do it at there in a centralized way instead
 #    of doing it one by one.
