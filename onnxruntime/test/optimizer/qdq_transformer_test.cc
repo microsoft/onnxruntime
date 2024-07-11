@@ -1123,13 +1123,13 @@ static void RunFlattenDropQDQTestCase(const std::vector<int64_t>& input_shape,
 
 // Checks that Q/DQ nodes are dropped from DQ -> Reshape -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, FlattenDropQDQ) {
-  for (int64_t axis: {0, 1, 3}) {
+  for (int64_t axis : {0, 1, 3}) {
     RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis);
-    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis, true, 13);     // Use com.microsoft QDQ ops
-    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, true, 13);    // Use int16 com.microsoft QDQ ops
-    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, true, 13);   // Use int16 com.microsoft QDQ ops
-    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, false);       // Use int16 ONNX QDQ ops
-    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, false);      // Use int16 ONNX QDQ ops
+    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis, true, 13);    // Use com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, true, 13);   // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, true, 13);  // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, false);      // Use int16 ONNX QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, false);     // Use int16 ONNX QDQ ops
   }
 }
 
@@ -1171,11 +1171,11 @@ static void RunExpandDropQDQTestCase(const std::vector<int64_t>& input_shape,
 // Checks that Q/DQ nodes are dropped from DQ -> Expand -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, ExpandDropQDQ) {
   RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13});
-  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);     // Use com.microsoft QDQ ops
-  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);    // Use int16 com.microsoft QDQ ops
-  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);   // Use int16 com.microsoft QDQ ops
-  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);       // Use int16 ONNX QDQ ops
-  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);      // Use int16 ONNX QDQ ops
+  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);    // Use com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);      // Use int16 ONNX QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);     // Use int16 ONNX QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Tile -> Q.
@@ -1216,11 +1216,11 @@ static void RunTileDropQDQTestCase(const std::vector<int64_t>& input_shape,
 // Checks that Q/DQ nodes are dropped from DQ -> Tile -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, TileDropQDQ) {
   RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3});
-  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);     // Use com.microsoft QDQ ops
-  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);    // Use int16 com.microsoft QDQ ops
-  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);   // Use int16 com.microsoft QDQ ops
-  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);       // Use int16 ONNX QDQ ops
-  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);      // Use int16 ONNX QDQ ops
+  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);    // Use com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);      // Use int16 ONNX QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);     // Use int16 ONNX QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Slice -> Q.
@@ -1263,11 +1263,11 @@ static void RunSliceDropQDQTestCase(const std::vector<int64_t>& input_shape,
 // Checks that Q/DQ nodes are dropped from DQ -> Slice -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, SliceDropQDQ) {
   RunSliceDropQDQTestCase<int8_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4});
-  RunSliceDropQDQTestCase<int8_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);     // Use com.microsoft QDQ ops
-  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);    // Use int16 com.microsoft QDQ ops
-  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);   // Use int16 com.microsoft QDQ ops
-  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);       // Use int16 ONNX QDQ ops
-  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);      // Use int16 ONNX QDQ ops
+  RunSliceDropQDQTestCase<int8_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);    // Use com.microsoft QDQ ops
+  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);      // Use int16 ONNX QDQ ops
+  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);     // Use int16 ONNX QDQ ops
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> GatherElements -> Q.
@@ -1309,11 +1309,11 @@ static void RunGatherElementsDropQDQTestCase(const std::vector<int64_t>& input_s
 // Checks that Q/DQ nodes are dropped from DQ -> GatherElements -> Q. Uses 8-bit and 16-bit Q/DQ ops.
 TEST(QDQTransformerTests, GatherElementsDropQDQ) {
   RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0});
-  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);     // Use com.microsoft QDQ ops
-  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);    // Use int16 com.microsoft QDQ ops
-  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);   // Use int16 com.microsoft QDQ ops
-  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);       // Use int16 ONNX QDQ ops
-  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);      // Use int16 ONNX QDQ ops
+  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);    // Use com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);      // Use int16 ONNX QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);     // Use int16 ONNX QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
