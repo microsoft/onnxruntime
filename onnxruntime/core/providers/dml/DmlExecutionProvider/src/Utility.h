@@ -6,7 +6,7 @@
 #include <string_view>
 #include <locale>
 #include <codecvt>
-        
+#include <filesystem>        
 
 namespace Dml
 {
@@ -16,21 +16,14 @@ namespace Dml
         return g_converterToUtf16.from_bytes(str.data());
     }
 
-    static inline std::wstring GetModelName(const onnxruntime::Path& modelPath)
+    static inline std::wstring GetModelName(const std::filesystem::path& modelPath)
     {
-        if (modelPath.GetComponents().empty())
+        if (modelPath.empty() || !modelPath.has_filename() || !modelPath.has_extension())
         {
             return L"";
         }
         
-        const onnxruntime::PathString& pathString = modelPath.GetComponents().back();
-        size_t dotPosition = pathString.find_last_of('.');
-        if (dotPosition == std::string::npos)
-        {
-            return L"";
-        }
-
-        return pathString.substr(0, dotPosition);
+	return modelPath.stem().native();
     }
 
     static inline std::wstring GetSanitizedFileName(std::wstring_view name)

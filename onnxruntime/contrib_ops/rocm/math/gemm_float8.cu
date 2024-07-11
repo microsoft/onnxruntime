@@ -78,7 +78,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
 
   auto m = !transA_ ? a_shape[0] : a_shape[1];
   auto k = !transA_ ? a_shape[1] : a_shape[0];
-  ORT_ENFORCE(k == (!transB_ ? b_shape[0] : b_shape[1]));  // k is compatiable
+  ORT_ENFORCE(k == (!transB_ ? b_shape[0] : b_shape[1]));  // k is compatible
   auto n = !transB_ ? b_shape[1] : b_shape[0];
 
   TensorShapeVector output_shape = {m, n};

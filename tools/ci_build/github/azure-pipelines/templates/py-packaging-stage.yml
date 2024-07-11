@@ -63,7 +63,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.22.0.240425
+  default: 2.23.0.240531
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -152,17 +152,6 @@ stages:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
-
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            import sys
-            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.24.2'
-            import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Install python modules'
 
       - template: download-deps.yml
 

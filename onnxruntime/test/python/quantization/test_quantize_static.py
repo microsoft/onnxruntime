@@ -13,8 +13,15 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one
+from op_test_utils import (
+    StridedDataReader,
+    check_model_correctness,
+    generate_random_initializer,
+    input_feeds_neg_one_zero_one,
+    input_feeds_neg_one_zero_one_list,
+)
 
+import onnxruntime as ort
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 
@@ -88,6 +95,51 @@ class TestStaticQuantization(unittest.TestCase):
             data_reader.rewind()
             check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
             data_reader.rewind()
+
+    def run_inference(self, model_path, input_data):
+        session = ort.InferenceSession(model_path)
+        input_name = session.get_inputs()[0].name
+        output_name = session.get_outputs()[0].name
+        result = session.run([output_name], {input_name: input_data})
+        return result
+
+    def test_stride_effect_on_data_collection(self):
+        # Define the stride and test quantize_static with different stride values
+        stride = 5
+        input_shapes = [1, self._channel_size, 1, 3]
+        data_list = input_feeds_neg_one_zero_one_list(10, {"input": [1, self._channel_size, 1, 3]}, 123)
+        input_nodes = ["input"]
+        in_dtypes = [np.float32]  # Example dtype, adjust as needed
+
+        # strided calibration
+        quant_model_path_1 = str(Path(self._tmp_model_dir.name) / "quant.strided.onnx")
+        data_reader_1 = StridedDataReader(
+            data_list, input_nodes, input_shapes, no_tensor_num=0, in_dtypes=in_dtypes, stride=stride
+        )
+        quant_config_1 = StaticQuantConfig(data_reader_1, extra_options={"CalibStridedMinMax": stride})
+        quantize(str(self._model_fp32_path), str(quant_model_path_1), quant_config_1)
+
+        # non-strided calibration
+        quant_model_path_2 = str(Path(self._tmp_model_dir.name) / "quant.non.strided.onnx")
+        data_reader_2 = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]}, 123)
+        quant_config_2 = StaticQuantConfig(data_reader_2)
+        quantize(str(self._model_fp32_path), str(quant_model_path_2), quant_config_2)
+
+        # Inference with both models and assert output closeness
+        np.random.seed(123)
+        input_data = np.random.choice([-1, 0, 1], size=[1, self._channel_size, 1, 3]).astype(np.float32)
+
+        result_1 = self.run_inference(quant_model_path_1, input_data)
+        result_2 = self.run_inference(quant_model_path_2, input_data)
+
+        # Assert that the outputs are close
+        np.testing.assert_allclose(
+            result_1,
+            result_2,
+            rtol=0.01,
+            atol=0.01,
+            err_msg="Outputs from strided and non-strided models are not close enough.",
+        )
 
     def test_static_quant_config(self):
         data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})

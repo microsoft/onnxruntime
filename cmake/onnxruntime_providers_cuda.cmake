@@ -33,19 +33,21 @@
   )
 
 
-  if (onnxruntime_CUDA_MINIMAL)
-    set(onnxruntime_providers_cuda_shared_srcs "")
-  else()
+  if (NOT onnxruntime_CUDA_MINIMAL)
     file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     )
+  else()
+    set(onnxruntime_providers_cuda_cu_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        )
   endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"

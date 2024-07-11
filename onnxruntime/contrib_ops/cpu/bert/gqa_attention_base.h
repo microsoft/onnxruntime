@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "attention_base.h"
-#include "attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/attention_helper.h"
 
 #include "core/common/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -14,14 +14,31 @@
 namespace onnxruntime {
 namespace contrib {
 
-class GQAAttentionBase : public AttentionBase {
+class GQAAttentionBase {
  protected:
-  GQAAttentionBase(const OpKernelInfo& info, bool require_same_hidden_size)
-      : AttentionBase(info, require_same_hidden_size) {}
+  GQAAttentionBase(const OpKernelInfo& info, bool has_local) {
+    int64_t num_heads = 0;
+    ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+    num_heads_ = static_cast<int>(num_heads);
 
-  int local_window_size_;
-  bool do_rotary_;
+    int64_t kv_num_heads = 0;
+    ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0);
+    kv_num_heads_ = static_cast<int>(kv_num_heads);
+
+    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
+    do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
+    rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
+
+    local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
+  }
+
+  int num_heads_;     // number of attention heads of Q
+  int kv_num_heads_;  // number of attention heads of K or V
+  float scale_;       // the scaling factor applied before softmax
+  bool do_rotary_;    // whether or not to use rotary embeddings
   bool rotary_interleaved_;
+  int local_window_size_;
 
   template <typename T>
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH

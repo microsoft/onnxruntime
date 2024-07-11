@@ -250,6 +250,7 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -374,15 +375,14 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   active_sessions_[global_session_id_++] = this;
 
   // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
-  WindowsTelemetry::RegisterInternalCallback(
-      [this](
-          LPCGUID SourceId,
-          ULONG IsEnabled,
-          UCHAR Level,
-          ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
+  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
+      [this](LPCGUID SourceId,
+             ULONG IsEnabled,
+             UCHAR Level,
+             ULONGLONG MatchAnyKeyword,
+             ULONGLONG MatchAllKeyword,
+             PEVENT_FILTER_DESCRIPTOR FilterData,
+             PVOID CallbackContext) {
         (void)SourceId;
         (void)Level;
         (void)MatchAnyKeyword;
@@ -396,19 +396,18 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           LogAllSessions();
         }
       });
+  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(
-      [&etwRegistrationManager, this](
-          LPCGUID SourceId,
-          ULONG IsEnabled,
-          UCHAR Level,
-          ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+      [&etwRegistrationManager, this](LPCGUID SourceId,
+                                      ULONG IsEnabled,
+                                      UCHAR Level,
+                                      ULONGLONG MatchAnyKeyword,
+                                      ULONGLONG MatchAllKeyword,
+                                      PEVENT_FILTER_DESCRIPTOR FilterData,
+                                      PVOID CallbackContext) {
         (void)SourceId;
         (void)Level;
         (void)MatchAnyKeyword;
@@ -439,6 +438,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           }
         }
       });
+
+  // Register callback for ETW capture state (rundown)
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+
 #endif
 
   SetLoggingManager(session_options, session_env);
@@ -720,9 +723,11 @@ InferenceSession::~InferenceSession() {
     }
   }
 
-  // Unregister the session
+  // Unregister the session and ETW callbacks
 #ifdef _WIN32
   std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
+  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
 #endif
   active_sessions_.erase(global_session_id_);
 
@@ -875,7 +880,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformer_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) const {
+common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& filepath) const {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-endian machines");
 
   // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
@@ -915,7 +920,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
     uint8_t* buf = builder.GetBufferPointer();
     int size = builder.GetSize();
     file.write(reinterpret_cast<const char*>(buf), size);
-    ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(filepath));
+    ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(filepath.native()));
   }
 
   return Status::OK();
@@ -1267,8 +1272,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       // for the result of the first step in layout transformation
       debug_graph_fn = [counter = 1, this](const Graph& graph) mutable {
         if (graph.GraphProtoSyncNeeded()) {
-          ORT_THROW_IF_ERROR(
-              Model::Save(*model_, "post_layout_transform_step_" + std::to_string(counter) + ".onnx"));
+          std::basic_ostringstream<ORTCHAR_T> modelpath;
+          modelpath << ORT_TSTR("post_layout_transform_step_") << counter << ORT_TSTR(".onnx");
+          ORT_THROW_IF_ERROR(Model::Save(*model_, modelpath.str()));
         }
 
         // counter is used to denote the step, so increment regardless of whether we wrote out the model in this step.

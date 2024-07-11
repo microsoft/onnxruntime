@@ -815,5 +815,62 @@ TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 
+TEST(SplitOperatorTest, Split3Inner) {
+  constexpr int64_t axis = -1;
+  using ShapeAndDataT = ShapeAndData<uint8_t>;
+  std::vector<ShapeAndDataT> outputs;
+  int64_t num_outputs = -1;  // when provides split_sizes, then num_outputs should not be provided
+  const int batch = 16;
+  const int data_len = 96;  // should be multiple of 3
+
+  // create input with shape {b, l}, and data from 1 ~ b*l
+  auto input = CreateInput<uint8_t>({batch, data_len});  // input is 1.f ~ 48.f
+
+  // slice the input data by start and end in axis of -1
+  auto gen_output = [&](int start, int end) {
+    std::vector<uint8_t> data0;
+    auto input_data = input.second;
+    for (int b = 0; b < batch; b++) {
+      for (int i = start; i < end; i++) {
+        data0.push_back(input_data[b * data_len + i]);
+      }
+    }
+    return ShapeAndDataT{{batch, end - start}, data0};
+  };
+
+  auto do_test = [&](std::vector<int>& splits) {
+    outputs.clear();
+    outputs.push_back(gen_output(0, splits[0]));
+    outputs.push_back(gen_output(splits[0], splits[1]));
+    outputs.push_back(gen_output(splits[1], data_len));
+
+    RunTest<uint8_t>(axis, {splits[0], splits[1] - splits[0], data_len - splits[1]}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs);
+  };
+
+  // split into 3 same size, and aligned to 16
+  std::vector<int> splits{data_len / 3, data_len / 3 * 2};
+  do_test(splits);
+
+  // test split with data alignment is 8
+  splits[0] = splits[0] + 8;
+  splits[1] = splits[1] + 8;
+  do_test(splits);
+
+  // test split with data alignment is 4
+  splits[0] = splits[0] + 4;
+  splits[1] = splits[1] + 4;
+  do_test(splits);
+
+  // test split with data alignment is 2
+  splits[0] = splits[0] + 2;
+  splits[1] = splits[1] + 2;
+  do_test(splits);
+
+  // test split with data alignment is 1
+  splits[0] = splits[0] + 1;
+  splits[1] = splits[1] + 1;
+  do_test(splits);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

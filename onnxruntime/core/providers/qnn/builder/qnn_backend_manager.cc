@@ -13,7 +13,7 @@
 // #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"

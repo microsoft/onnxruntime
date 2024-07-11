@@ -13,7 +13,7 @@ struct OrtApi;
 namespace vaip_core {
 
 #define VAIP_ORT_API_MAJOR (3u)
-#define VAIP_ORT_API_MINOR (0u)
+#define VAIP_ORT_API_MINOR (1u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
   uint32_t magic;  // 'VAIP' or something else to make sure the following field

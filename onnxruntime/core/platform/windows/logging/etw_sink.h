@@ -66,10 +66,9 @@ class EtwRegistrationManager {
   // Get the current keyword
   uint64_t Keyword() const;
 
-  // Get the ETW registration status
-  HRESULT Status() const;
-
   void RegisterInternalCallback(const EtwInternalCallback& callback);
+
+  void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   EtwRegistrationManager();
@@ -90,7 +89,7 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::vector<EtwInternalCallback> callbacks_;
+  std::vector<const EtwInternalCallback*> callbacks_;
   OrtMutex callbacks_mutex_;
   mutable OrtMutex provider_change_mutex_;
   OrtMutex init_mutex_;
@@ -98,7 +97,6 @@ class EtwRegistrationManager {
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
-  HRESULT etw_status_;
 };
 
 }  // namespace logging
