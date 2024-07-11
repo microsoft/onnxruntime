@@ -3193,7 +3193,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: Creating an execution context from an engine is thread safe per TRT doc
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     if (context_memory_sharing_enable_) {
+#if NV_TENSORRT_MAJOR < 10 || NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR < 1
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#else
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
@@ -3734,7 +3737,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 10 || NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR < 1
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#else
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
@@ -3865,7 +3871,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   if (context_memory_sharing_enable_) {
+#if NV_TENSORRT_MAJOR < 10 || NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR < 1
     size_t mem_size = trt_engine->getDeviceMemorySize();
+#else
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
@@ -4038,7 +4047,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 10 || NV_TENSORRT_MAJOR == 10 && NV_TENSORRT_MINOR < 1
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#else
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
