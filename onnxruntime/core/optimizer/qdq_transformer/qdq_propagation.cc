@@ -266,19 +266,7 @@ InlinedVector<ExtendedGraphEdge> GetNextPropagationEdges(const Graph& graph,
     return {};
   }
 
-  auto next_edges = GetNextEdges(graph, *dst_node);
-  bool any_edge_to_q = false;
-
-  // Check if any edge ends a Q node. If so, we don't propagate.
-  for (const auto& next_edge : next_edges) {
-    const auto* edge_dst_node = next_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-    if (edge_dst_node && QDQ::MatchQNode(*edge_dst_node)) {
-      any_edge_to_q = true;
-      break;
-    }
-  }
-
-  return any_edge_to_q ? InlinedVector<ExtendedGraphEdge>{} : next_edges;
+  return GetNextEdges(graph, *dst_node);
 }
 
 class GraphConstantInitializerGetter {
@@ -325,6 +313,21 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
+    // Utility function to check if any edge out of a node (e.g., Transpose) ends a Q node.
+    // If so, we don't propagate.
+    auto any_edge_ends_in_q = [](Graph& graph, const InlinedVector<ExtendedGraphEdge>& edges) -> bool {
+      bool any_edge_to_q = false;
+
+      for (const auto& edge : edges) {
+        const auto* edge_dst_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+        if (edge_dst_node && QDQ::MatchQNode(*edge_dst_node)) {
+          any_edge_to_q = true;
+          break;
+        }
+      }
+      return any_edge_to_q;
+    };
+
     std::queue<InlinedVector<ExtendedGraphEdge>> edge_groups;
     edge_groups.push(GetNextPropagationEdges(graph, edges_after_dq[0]));
 
@@ -332,7 +335,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       const InlinedVector<ExtendedGraphEdge> edges = std::move(edge_groups.front());
       edge_groups.pop();
 
-      if (edges.empty()) {
+      if (edges.empty() || any_edge_ends_in_q(graph, edges)) {
         continue;
       }
 
