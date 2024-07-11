@@ -27,7 +27,7 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
         )
 
     def override_function(self):
-        warnings.warn("Megatron-LM fp16_optimizer functions are overrided with faster implementation.", UserWarning)
+        warnings.warn("Megatron-LM fp16_optimizer functions are overridden with faster implementation.", UserWarning)
 
         def clip_master_grads(target, max_norm, norm_type=2):
             """

@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"

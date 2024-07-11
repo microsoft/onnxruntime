@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>

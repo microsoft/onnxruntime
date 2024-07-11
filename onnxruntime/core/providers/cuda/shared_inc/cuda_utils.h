@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 

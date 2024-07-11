@@ -102,7 +102,7 @@ class TrainingAgent:
     ):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param fw_feed_names: Feed names for foward pass.
+        :param fw_feed_names: Feed names for forward pass.
         :param fw_outputs_device_info: Device info for fetches in forward pass.
         :param bw_fetches_names: Fetch names for backward pass.
         :param bw_outputs_device_info: Device info for fetches in backward pass.

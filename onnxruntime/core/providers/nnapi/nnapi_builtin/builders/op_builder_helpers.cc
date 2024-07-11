@@ -8,7 +8,7 @@
 #include <optional>
 #include <utility>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"

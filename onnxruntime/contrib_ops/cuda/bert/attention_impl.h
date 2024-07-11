@@ -5,7 +5,7 @@
 
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/allocator.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
