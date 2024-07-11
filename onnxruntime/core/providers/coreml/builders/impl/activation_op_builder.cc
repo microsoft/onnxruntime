@@ -87,12 +87,6 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_op_type = "tanh";
     } else if (op_type == "Relu") {
       coreml_op_type = "relu";
-    } else if (op_type == "PRelu") {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "ActivationOpBuilder::AddToModelBuilderImpl, PRelu is not supported in CoreML MLProgram.");
-    } else if (op_type == "LeakyRelu") {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "ActivationOpBuilder::AddToModelBuilderImpl, LeakyRelu is not supported in CoreML MLProgram.");
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -199,9 +193,20 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
 bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                             const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
-  if (op_type == "PRelu") {
-    return IsPReluOpSupported(node, input_params, logger);
+
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    if (op_type == "PRelu" || op_type == "LeakyRelu") {
+      return false;
+    }
+  } else
+#endif  // (COREML_ENABLE_MLPROGRAM)
+  {
+    if (op_type == "PRelu") {
+      return IsPReluOpSupported(node, input_params, logger);
+    }
   }
+
   return true;
 }
 
