@@ -313,36 +313,41 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    // Utility function to check if any edge out of a node (e.g., Transpose) ends a Q node.
-    // If so, we don't propagate.
+    // Utility function to check if any edge out of a node (e.g., Transpose) ends in a Q node.
     auto any_edge_ends_in_q = [](Graph& graph, const InlinedVector<ExtendedGraphEdge>& edges) -> bool {
-      bool any_edge_to_q = false;
-
       for (const auto& edge : edges) {
         const auto* edge_dst_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
         if (edge_dst_node && QDQ::MatchQNode(*edge_dst_node)) {
-          any_edge_to_q = true;
-          break;
+          return true;
         }
       }
-      return any_edge_to_q;
+      return false;
     };
 
+    // Propagate DQ forward in a BFS traversal of "edge groups". A single edge group consists of one or more edges
+    // that all begin at a unique source node and end at one or more destination nodes. Ex: The subgraph below shows
+    // an edge group (containing 3 edges) that begins at a Transpose, ends at two destination nodes, and produces a
+    // graph output.
+    //    DQ -> Transpose --+--> Sigmoid -> ...
+    //                      |
+    //                      +--> Slice -> ...
+    //                      |
+    //                      +--> graph_output
     std::queue<InlinedVector<ExtendedGraphEdge>> edge_groups;
     edge_groups.push(GetNextPropagationEdges(graph, edges_after_dq[0]));
 
     while (!edge_groups.empty()) {
-      const InlinedVector<ExtendedGraphEdge> edges = std::move(edge_groups.front());
+      const InlinedVector<ExtendedGraphEdge> curr_edge_group = std::move(edge_groups.front());
       edge_groups.pop();
 
-      if (edges.empty() || any_edge_ends_in_q(graph, edges)) {
+      if (curr_edge_group.empty() || any_edge_ends_in_q(graph, curr_edge_group)) {
         continue;
       }
 
-      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, edges, dq_scale, dq_zero_point, dq_node.Domain(), logger));
+      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, curr_edge_group, dq_scale, dq_zero_point, dq_node.Domain(), logger));
       modified = true;
 
-      for (const auto& edge : edges) {
+      for (const auto& edge : curr_edge_group) {
         edge_groups.push(GetNextPropagationEdges(graph, edge));
       }
     }
