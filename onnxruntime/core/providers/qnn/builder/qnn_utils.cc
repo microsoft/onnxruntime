@@ -333,6 +333,8 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
   }
   out << ")";
   out << " memType=" << GetQnnTensorMemType(tensor);
+// TODO: the code below has compilation errors with the latest ABSL
+#if 0
   if (GetQnnTensorMemType(tensor) == QNN_TENSORMEMTYPE_RAW) {
     if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_FLOAT_32) {
       operator<< <float>(out, GetQnnTensorClientBuf(tensor));
@@ -355,6 +357,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
       operator<< <int8_t>(out, GetQnnTensorClientBuf(tensor));
     }
   }
+#endif
   out << " quantizeParams:" << GetQnnTensorQParams(tensor);
   return out;
 }

@@ -30,28 +30,28 @@
 namespace onnxruntime {
 namespace vsi {
 namespace npu {
-#define ELEMENTWISE_OP_BUILDER(onnx_op_type, vsinpu_op_kind)                                     \
-  class onnx_op_type##OpBuilder : public BaseOpBuilder {                                         \
-    bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer,                             \
-                       const Node* node) const override {                                        \
-      for (auto input : node->InputDefs()) {                                                     \
-        if (*input->Type() == "tensor(int64)") {                                                 \
-          LOGS_DEFAULT(WARNING) << "Int64 type is not suppoted as elementwise operation input."; \
-          return false;                                                                          \
-        }                                                                                        \
-      }                                                                                          \
-      return true;                                                                               \
-    }                                                                                            \
-    bool HandleBuildOp(vsi::npu::GraphEP* graph_ep,                                              \
-                       std::vector<std::shared_ptr<tim::vx::Tensor>>& inputs,                    \
-                       std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,                   \
-                       const NodeUnit& node_unit) override {                                     \
-      LOGS_DEFAULT(INFO) << "Creating " << #onnx_op_type << " Op";                               \
-      auto op = graph_ep->GetGraph() -> CreateOperation<tim::vx::ops::vsinpu_op_kind>();         \
-      (*op).BindInputs(inputs).BindOutputs(outputs);                                             \
-      return true;                                                                               \
-      ;                                                                                          \
-    }                                                                                            \
+#define ELEMENTWISE_OP_BUILDER(onnx_op_type, vsinpu_op_kind)                                      \
+  class onnx_op_type##OpBuilder : public BaseOpBuilder {                                          \
+    bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer,                              \
+                       const Node* node) const override {                                         \
+      for (auto input : node->InputDefs()) {                                                      \
+        if (*input->Type() == "tensor(int64)") {                                                  \
+          LOGS_DEFAULT(WARNING) << "Int64 type is not supported as elementwise operation input."; \
+          return false;                                                                           \
+        }                                                                                         \
+      }                                                                                           \
+      return true;                                                                                \
+    }                                                                                             \
+    bool HandleBuildOp(vsi::npu::GraphEP* graph_ep,                                               \
+                       std::vector<std::shared_ptr<tim::vx::Tensor>>& inputs,                     \
+                       std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,                    \
+                       const NodeUnit& node_unit) override {                                      \
+      LOGS_DEFAULT(INFO) << "Creating " << #onnx_op_type << " Op";                                \
+      auto op = graph_ep->GetGraph() -> CreateOperation<tim::vx::ops::vsinpu_op_kind>();          \
+      (*op).BindInputs(inputs).BindOutputs(outputs);                                              \
+      return true;                                                                                \
+      ;                                                                                           \
+    }                                                                                             \
   };
 
 ELEMENTWISE_OP_BUILDER(Add, Add);
