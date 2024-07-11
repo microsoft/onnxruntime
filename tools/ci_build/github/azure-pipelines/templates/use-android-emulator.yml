@@ -24,7 +24,6 @@ steps:
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "emulator"
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --list
-      sudo apt install -y adb
     displayName: Download emulator platform tools and adb
     condition: always()
 
