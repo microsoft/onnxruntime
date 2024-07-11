@@ -60,24 +60,7 @@ struct PackedQuantBDataStruct {
         PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
         QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
         QuantBBlkSum = (float*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
-
         PackedQuantBScale = (float*)((std::byte*)QuantBBlkSum + BlkSumSize);
-
-        //PackedQuantBScale = (float*)PackedQuantBWorkspace;
-        //PackedQuantBData = (std::byte*)(PackedQuantBScale) + ScaleSize;
-        //QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
-
-
-        //PackedQuantBScale = (float*)PackedQuantBWorkspace;
-
-        //PackedQuantBData = (std::byte*)PackedQuantBWorkspace + ScaleSize;
-        //QuantBBlkSum = (float*)(PackedQuantBData + PackedQuantBDataSize);
-        ////PackedQuantBData = (std::byte*)MlasAlignAddress64(PackedQuantBData);
-        ////QuantBBlkSum = (float*)MlasAlignAddress64(QuantBBlkSum);
-
-        //constexpr size_t Alignment = MlasQNBitQuantBBlkSumAlignment();
-        //const uintptr_t QuantBBlkSumAddr = reinterpret_cast<uintptr_t>(QuantBBlkSum);
-        //QuantBBlkSum = reinterpret_cast<float*>((QuantBBlkSumAddr + Alignment - 1) & (~(Alignment - 1)));
     }
     std::byte* PackedQuantBData;
     float* PackedQuantBScale;

@@ -14,22 +14,101 @@ SQ4BitGemmPackQuantBDataSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+    constexpr size_t BlkBitWidth = 4;
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    if (ComputeType == CompInt8) {
+        size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        const size_t ScaleSize = N * BlockCountK * sizeof(float);
+        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
+        // _mm256_load_si256 requires alignment on a 32-byte boundary
+        constexpr size_t PackedQuantBDataAlignment = 32;
+        PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
+        constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
+        BlkSumSize += BlkSumAlignment - 1;
+
+        return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+    } else {
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        return PackedQuantBDataSize;
+    }
+}
+
+static void
+SQ4BitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
     constexpr size_t BlkBitWidth = 4;
 
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
+
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t ScaleSize = N * BlockCountK * sizeof(float);
-    size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    // _mm256_load_si256 requires alignment on a 32-byte boundary
-    constexpr size_t PackedQuantBDataAlignment = 32;
-    PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
-    constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-    BlkSumSize += BlkSumAlignment - 1;
+    size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
 
-    return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+    const size_t SubBlkDataSize = SubBlkLen / 2;
+    const size_t SubBlkBytePairCount = SubBlkLen / 4;
+
+    //
+    // For SubBlkLen == 16, pack 16 4-bit values (8 bytes) at a time like this:
+    //
+    // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
+    //   =>
+    // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+    //
+
+    //
+    // For SubBlkLen == 32, pack 32 4-bit values (16 bytes) at a time like this:
+    //
+    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
+    //   =>
+    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+    //
+
+    //
+    // For SubBlkLen == 64, pack 32 4-bit values (16 bytes) at a time like this:
+    //
+    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 | v32 v33 | v34 v33 |
+    //   =>
+    // dst: | v0  v32 | v1  v33 | ... | v30 v62 | v31 v63 |
+    //
+
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            const size_t n = tid / BlockCountK;
+            const size_t k_blk = tid % BlockCountK;
+
+            const size_t data_offset = n * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
+            const std::byte* QuantBData = QuantBDataBegin + data_offset;
+            std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
+
+            for (size_t kk = 0; kk < BlkLen; kk += SubBlkLen) {
+                for (size_t byte_pair_idx = 0; byte_pair_idx < SubBlkBytePairCount; ++byte_pair_idx) {
+                    const std::byte src0 = QuantBData[byte_pair_idx];
+                    const std::byte src1 = QuantBData[byte_pair_idx + SubBlkDataSize / 2];
+
+                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+
+                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+                }
+
+                QuantBData += SubBlkDataSize;
+                PackedQuantBData += SubBlkDataSize;
+            }
+        }
+    );
 }
 
 static size_t
@@ -198,14 +277,8 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-//#define BlockSumM1Layout 1
-#if defined(BlockSumM1Layout)
-          // BlockSum is a regular row major matrix
-        const size_t dst_offset = k_blk * N + n;
-#else
           // BlockSum is a width 16 row major matrix
           const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-#endif
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         if (BlkLen == 16) {  // TODO
 
@@ -219,10 +292,6 @@ ComputePackBlkSum(
         }
     }
     );
-
-    //for (int i = 0; i < N * BlockCountK; i++) {
-    //    std::cout << *(QuantBScaleBegin + i) << "\n";
-    //}
 }
 
 static void
