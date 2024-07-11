@@ -1,11 +1,16 @@
 variables:
   common_cuda_version: '11.8'
   common_cuda_baseimg: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
-  # variables below are for TensorRT EP
+  # Variables below are for TensorRT EP
+  #    Please update these three variables simulaneously by latest trt binary filename, 
+  #    i.e TensorRT-10.2.0.19.Linux.x86_64-gnu.cuda-12.5.tar.gz
   common_trt_version: '10.0.1.6'
-  linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda11.8
-  linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda12.4
+  trt_supported_latest_cuda11_version: "11.8"
+  trt_supported_latest_cuda12_version: "12.4"
+  # TRT CIs call variables below to fetch latest TRT info
+  linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda${{ variables.trt_supported_latest_cuda11_version }}
+  linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda${{ variables.trt_supported_latest_cuda12_version }}
   common_linux_trt_version: ${{ variables.linux_trt_version_cuda11 }}
-  win_trt_folder_cuda11: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-11.8
-  win_trt_folder_cuda12: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-12.4
+  win_trt_folder_cuda11: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-${{ variables.trt_supported_latest_cuda11_version }}
+  win_trt_folder_cuda12: TensorRT-${{ variables.common_trt_version }}.Windows10.x86_64.cuda-${{ variables.trt_supported_latest_cuda12_version }}
   common_win_trt_folder: ${{ variables.win_trt_folder_cuda11 }}
