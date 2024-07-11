@@ -12,6 +12,12 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+LayerNormFusion::LayerNormFusion(int level, const InlinedHashSet<std::string_view>& compatible_execution_providers
+                        ) noexcept
+    : GraphTransformer("LayerNormFusionL2", compatible_execution_providers),
+      optimize_level(level) {
+}
+
 // LayerNorm supports limited data types.
 static constexpr std::array<std::string_view, 4> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"};
 // Default epsilon
@@ -139,6 +145,14 @@ data are casted to float/double to calculate for precision, so if there is any C
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  bool layernorm_fusion_flag = (onnx_version != version_map.end() && onnx_version->second >= 16);
+  const auto compatible_providers = GetCompatibleExecutionProviders();
+  if ((optimize_level == 1 && !layernorm_fusion_flag) || (optimize_level == 2 && layernorm_fusion_flag)) {
+    return Status::OK();
+  }
+
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;

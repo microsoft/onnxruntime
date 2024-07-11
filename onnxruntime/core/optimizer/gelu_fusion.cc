@@ -12,6 +12,13 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+GeluFusion::GeluFusion(int level,
+                        const InlinedHashSet<std::string_view>& compatible_execution_providers
+                        ) noexcept
+    : GraphTransformer("GeluFusionL2", compatible_execution_providers),
+      optimize_level(level) {
+}
+
 // Gelu supports limited data types.
 static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 
@@ -44,6 +51,14 @@ static bool IsSupportedDataType(const Node& node) {
                 [root]--> Gelu ==>
 */
 Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  bool gelu_fusion_flag = (onnx_version != version_map.end() && onnx_version->second >= 20);
+  const auto compatible_providers = GetCompatibleExecutionProviders();
+  if ((optimize_level == 1 && !gelu_fusion_flag) || (optimize_level == 2 && gelu_fusion_flag)) {
+    return Status::OK();
+  }
+
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
