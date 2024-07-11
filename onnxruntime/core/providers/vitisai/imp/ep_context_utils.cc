@@ -7,9 +7,6 @@
 
 // 3rd-party headers/libs.
 #include <nlohmann/json.hpp>
-#include "./md5.h"
-
-#include "vaip/global_api.h"
 
 #include "ep_context_utils.h"
 
