@@ -38,7 +38,22 @@ RUN version="10.0.1.6-1+cuda12.4" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \
-    tensorrt=${version}
+    libnvinfer-dev=${version} \
+    libnvinfer-dispatch-dev=${version} \
+    libnvinfer-dispatch10=${version} \
+    libnvinfer-headers-dev=${version} \
+    libnvinfer-headers-plugin-dev=${version} \
+    libnvinfer-lean-dev=${version} \
+    libnvinfer-lean10=${version} \
+    libnvinfer-plugin-dev=${version} \
+    libnvinfer-plugin10=${version} \
+    libnvinfer-vc-plugin-dev=${version} \
+    libnvinfer-vc-plugin10=${version} \
+    libnvinfer10=${version} \
+    libnvonnxparsers-dev=${version} \
+    libnvonnxparsers10=${version} \
+    tensorrt-dev=${version} \
+    libnvinfer-bin=${version}
 
 # Compile trtexec if not installed
 RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ]; then \
