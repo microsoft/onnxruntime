@@ -25,7 +25,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }

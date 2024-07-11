@@ -8,7 +8,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
