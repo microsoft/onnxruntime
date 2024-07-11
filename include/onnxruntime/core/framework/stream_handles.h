@@ -54,14 +54,14 @@ class Stream {
   //    update its lookup table with the table snapshot in notification.
   // The memory reusing strategy is:
   // A kernel in current stream is safe to reuse another stream's memory chunk
-  // as long as the reused chunk's timestamp is less than the last synchonized
+  // as long as the reused chunk's timestamp is less than the last synchronized
   // timestamp recorded in the lookup table.
 
   // Get the current timestamp
   uint64_t GetCurrentTimestamp() const { return timestamp_; }
 
   // return the timestamp when the last synchronization happened between target stream and current stream.
-  // return 0 if no synchonization happened.
+  // return 0 if no synchronization happened.
   // if target_stream is nullptr, it means it is a sequence running on device doesn't support Stream (i.e. CPU)
   // we can safely return 0 in that case to save a lookup.
   uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
