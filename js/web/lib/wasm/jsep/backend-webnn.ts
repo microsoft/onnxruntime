@@ -82,8 +82,11 @@ export class WebNNBackend {
   }
 
   public unregisterMlContext(sessionId: number): void {
-    this.mlContextBySessionId.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
+    if (!mlContext) {
+      throw new Error(`No MLContext found for session ${sessionId}`);
+    }
+    this.mlContextBySessionId.delete(sessionId);
     const sessionIds = this.sessionIdsByMlContext.get(mlContext)!;
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
