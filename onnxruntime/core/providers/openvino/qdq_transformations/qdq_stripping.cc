@@ -205,7 +205,7 @@ static bool IsConnectedQAConstantInitializer(const Node* dq_node, const onnxrunt
 
 // Check required because in some cases, when a NodeUnit cannot be formed with this standalone DQ
 // we still need to check if it feeds into a supported Op
-static bool DQFeedsASupportedOp(const Node* dq_node, const onnxruntime::GraphViewer& src_graph) {
+static bool DQFeedsASupportedOp(const Node* dq_node) {
   if (!dq_node->GetOutputEdgesCount()) return false;  // Only feeds the graph output, and not any node
 
   const auto& target_node = *dq_node->OutputNodesBegin();
@@ -469,7 +469,7 @@ static void AddStandaloneNodeUnit(onnxruntime::Graph& dst_graph, const onnxrunti
       add_identity_op(true);
     else if (IsConnectedQPresent(src_graph, dst_graph.Nodes(), &node_unit.GetNode(), node_unit.GetNode().InputDefs()))
       AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
-    else if (DQFeedsASupportedOp(&node_unit.GetNode(), src_graph))
+    else if (DQFeedsASupportedOp(&node_unit.GetNode()))
       AddNode(initializers_to_keep, src_graph, dst_graph, node_unit.GetNode());
     else
       add_identity_op(false);
