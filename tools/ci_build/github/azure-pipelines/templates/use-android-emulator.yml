@@ -26,7 +26,7 @@ steps:
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --list
       ls -R ${ANDROID_SDK_ROOT}/platform-tools
       # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-      set -x
+      set +x
       echo "##vso[task.setvariable variable=PATH]$PATH:${ANDROID_SDK_ROOT}/platform-tools"
     displayName: Download emulator platform tools
     condition: always()
