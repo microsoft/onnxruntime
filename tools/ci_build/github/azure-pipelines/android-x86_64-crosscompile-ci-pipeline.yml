@@ -79,7 +79,7 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: templates/use-android-ndk.yml
-    - template: template/run-with-android-emulator-steps.yml
+    - template: templates/run-with-android-emulator-steps.yml
       parameters:
         steps:
         - script: |
@@ -137,7 +137,7 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: templates/use-android-ndk.yml
-    - template: template/run-with-android-emulator-steps.yml
+    - template: templates/run-with-android-emulator-steps.yml
       parameters:
         steps:
         - script: |
@@ -193,9 +193,9 @@ stages:
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
-      - template: "templates/use-android-ndk.yml"
+      - template: templates/use-android-ndk.yml
 
-      - template: template/run-with-android-emulator-steps.yml
+      - template: templates/run-with-android-emulator-steps.yml
         parameters:
           steps:
           - script: |
