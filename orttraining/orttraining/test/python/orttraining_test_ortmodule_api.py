@@ -6980,7 +6980,7 @@ def test_aten_attention():
 
     device = "cuda"
 
-    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1" # TESTING WITHOUT ATTN_MASK
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1"  # TESTING WITHOUT ATTN_MASK
 
     pt_model = _NeuralNetAttention().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
@@ -7019,8 +7019,8 @@ def test_aten_attention():
 
     assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
 
-    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "MASKED" # TESTING WITH ATTN_MASK
-    
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "MASKED"  # TESTING WITH ATTN_MASK
+
     pt_model = _NeuralNetAttention().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn_masked"))
 
