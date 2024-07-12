@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/execution_provider.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ort_value.h"

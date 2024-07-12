@@ -694,7 +694,7 @@ class T5OnnxModel(BertOnnxModel):
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.layer_norm_fusion = FusionSimplifiedLayerNormalization(self)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
-        # TODO: consider retrive max_distance from model.
+        # TODO: consider retrieve max_distance from model.
         # math.log(max_distance / (num_buckets // 2))
         self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 

@@ -5,7 +5,7 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <optional>
 
 #ifdef ORT_NO_EXCEPTIONS

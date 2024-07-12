@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-// In the cell computation, we don't have the "direction" dimention and sequence dimension,
+// In the cell computation, we don't have the "direction" dimension and sequence dimension,
 // which have been processed outside of the cell.
 // Here we implement an LTSM cell.
 // For those args (inputs/outputs) of hidden states we put AFTER regular args (inputs/outputs)

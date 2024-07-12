@@ -15,7 +15,7 @@
 #pragma once
 
 #include <cstdint>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #if defined(_MSC_VER)
 #define ORT_FORCEINLINE __forceinline

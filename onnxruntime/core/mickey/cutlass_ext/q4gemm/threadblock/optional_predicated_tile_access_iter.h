@@ -22,7 +22,6 @@ namespace cutlass {
 namespace transform {
 namespace threadblock {
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Optional 2-D matrix data loader, when element is std::monostate, the
@@ -43,9 +42,8 @@ template <
     /// Number of threads in the threadblock, when provided, the iterator
     /// will utilize the higher numbered threads
     int kThreadBlockSize_ = -1>
-class OptionalPredicatedTileAccessIterator{
+class OptionalPredicatedTileAccessIterator {
  public:
-
   using Shape = Shape_;
   using Element = Element_;
   using Layout = Layout_;
@@ -56,9 +54,9 @@ class OptionalPredicatedTileAccessIterator{
   static constexpr int kThreadblockSize = kThreadBlockSize_;
 
   static_assert(!std::is_same<Element, std::monostate>::value,
-      "Disabled Iterator failed to match the specialized version below.");
+                "Disabled Iterator failed to match the specialized version below.");
   static_assert(kThreadblockSize == -1 || kThreadblockSize >= ThreadMap::kThreads,
-      "kThreadblockSize must be no smaller than ThreadMap::kThreads");
+                "kThreadblockSize must be no smaller than ThreadMap::kThreads");
 
   using Base = PredicatedTileAccessIterator<Shape, Element, Layout, kAdvanceRank, ThreadMap, AccessType>;
 
@@ -72,7 +70,7 @@ class OptionalPredicatedTileAccessIterator{
   static constexpr int kAccessesPerVector = Base::kAccessesPerVector;
 
   CUTLASS_HOST_DEVICE
-  static int flip_thread_id(int thread_id){
+  static int flip_thread_id(int thread_id) {
     if constexpr (kThreadblockSize > 0) {
       return kThreadblockSize - 1 - thread_id;
     }
@@ -80,17 +78,17 @@ class OptionalPredicatedTileAccessIterator{
   }
 
  public:
-   Base base_;
+  Base base_;
 
   /// Default constructor
-  OptionalPredicatedTileAccessIterator(): base_() {};
+  OptionalPredicatedTileAccessIterator() : base_(){};
 
   /// Constructs a TileIterator from its precomputed state, threadblock offset,
   /// and thread ID
   CUTLASS_HOST_DEVICE
   OptionalPredicatedTileAccessIterator(
       /// Precomputed parameters object
-      Params const &params,
+      Params const& params,
       /// Pointer to start of tensor
       Pointer pointer,
       /// Extent of tensor
@@ -98,14 +96,14 @@ class OptionalPredicatedTileAccessIterator{
       /// ID of each participating thread
       int thread_id,
       /// Initial offset of threadblock
-      TensorCoord const &threadblock_offset)
+      TensorCoord const& threadblock_offset)
       : base_(params, pointer, extent, flip_thread_id(thread_id), threadblock_offset) {}
 
   /// Construct a PredicatedTileAccessIterator with zero threadblock offset
   CUTLASS_HOST_DEVICE
   OptionalPredicatedTileAccessIterator(
       /// Precomputed parameters object
-      Params const &params,
+      Params const& params,
       /// Pointer to start of tensor
       Pointer pointer,
       /// Extent of tensor
@@ -129,19 +127,19 @@ class OptionalPredicatedTileAccessIterator{
   /// Advances an iterator along logical dimensions of matrix in units of whole tiles
   CUTLASS_DEVICE
   void add_tile_offset(
-      TensorCoord const &tile_offset) {
+      TensorCoord const& tile_offset) {
     base_.add_tile_offset(tile_offset);
   }
 
   /// Returns a pointer
   CUTLASS_HOST_DEVICE
-  AccessType *get() const {
+  AccessType* get() const {
     return base_.get();
   }
 
   /// Increment and return an instance to self.
   CUTLASS_HOST_DEVICE
-  OptionalPredicatedTileAccessIterator &operator++() {
+  OptionalPredicatedTileAccessIterator& operator++() {
     ++base_;
     return *this;
   }
@@ -168,13 +166,13 @@ class OptionalPredicatedTileAccessIterator{
 
   /// Sets the predicate mask, overriding value stored in predicate iterator
   CUTLASS_HOST_DEVICE
-  void set_mask(Mask const &mask) {
+  void set_mask(Mask const& mask) {
     base_.set_mask(mask);
   }
 
   /// Gets the mask
   CUTLASS_HOST_DEVICE
-  void get_mask(Mask &mask) {
+  void get_mask(Mask& mask) {
     base_.get_mask(mask);
   }
 
@@ -198,9 +196,8 @@ template <
     typename ThreadMap_,
     typename AccessType_,
     int kThreadBlockSize_>
-class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, AdvanceRank_, ThreadMap_, AccessType_, kThreadBlockSize_>{
+class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, AdvanceRank_, ThreadMap_, AccessType_, kThreadBlockSize_> {
  public:
-
   using Shape = Shape_;
   using Element = std::monostate;
   using Layout = Layout_;
@@ -225,14 +222,14 @@ class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, Adva
   std::monostate base_;
 
   /// Default constructor
-  OptionalPredicatedTileAccessIterator(): base_() {};
+  OptionalPredicatedTileAccessIterator() : base_(){};
 
   /// Constructs a TileIterator from its precomputed state, threadblock offset,
   /// and thread ID
   CUTLASS_HOST_DEVICE
   OptionalPredicatedTileAccessIterator(
       /// Precomputed parameters object
-      Params const &params,
+      Params const& params,
       /// Pointer to start of tensor
       Pointer pointer,
       /// Extent of tensor
@@ -240,14 +237,14 @@ class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, Adva
       /// ID of each participating thread
       int thread_id,
       /// Initial offset of threadblock
-      TensorCoord const &threadblock_offset)
+      TensorCoord const& threadblock_offset)
       : base_() {}
 
   /// Construct a PredicatedTileAccessIterator with zero threadblock offset
   CUTLASS_HOST_DEVICE
   OptionalPredicatedTileAccessIterator(
       /// Precomputed parameters object
-      Params const &params,
+      Params const& params,
       /// Pointer to start of tensor
       Pointer pointer,
       /// Extent of tensor
@@ -267,17 +264,17 @@ class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, Adva
   /// Advances an iterator along logical dimensions of matrix in units of whole tiles
   CUTLASS_DEVICE
   void add_tile_offset(
-      TensorCoord const &tile_offset) {}
+      TensorCoord const& tile_offset) {}
 
   /// Returns a pointer
   CUTLASS_HOST_DEVICE
-  AccessType *get() const {
+  AccessType* get() const {
     return nullptr;
   }
 
   /// Increment and return an instance to self.
   CUTLASS_HOST_DEVICE
-  OptionalPredicatedTileAccessIterator &operator++() {
+  OptionalPredicatedTileAccessIterator& operator++() {
     return *this;
   }
 
@@ -297,11 +294,11 @@ class OptionalPredicatedTileAccessIterator<Shape_, std::monostate, Layout_, Adva
 
   /// Sets the predicate mask, overriding value stored in predicate iterator
   CUTLASS_HOST_DEVICE
-  void set_mask(Mask const &mask) {}
+  void set_mask(Mask const& mask) {}
 
   /// Gets the mask
   CUTLASS_HOST_DEVICE
-  void get_mask(Mask &mask) {}
+  void get_mask(Mask& mask) {}
 
   /// Returns whether access is valid or not
   CUTLASS_HOST_DEVICE

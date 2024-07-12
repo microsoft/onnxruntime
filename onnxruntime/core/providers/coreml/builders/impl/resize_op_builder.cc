@@ -259,13 +259,13 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       // Onnx spec requires output sizes to be a positive integer, so we are not checking that here
       if (output_size_h % input_size_h != 0) {
         LOGS(logger, VERBOSE) << "Resize: output_size_h: " << output_size_h
-                              << " is not a mutliple of input_size_h: " << input_size_h;
+                              << " is not a multiple of input_size_h: " << input_size_h;
         return false;
       }
 
       if (output_size_w % input_size_w != 0) {
         LOGS(logger, VERBOSE) << "Resize: output_size_w: " << output_size_w
-                              << " is not a mutliple of input_size_w: " << input_size_w;
+                              << " is not a multiple of input_size_w: " << input_size_w;
         return false;
       }
     }
