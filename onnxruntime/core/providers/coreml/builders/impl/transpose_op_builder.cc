@@ -3,6 +3,7 @@
 
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
@@ -14,6 +15,8 @@ namespace coreml {
 class TransposeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
+
+  bool SupportsMLProgram() const override { return true; }
 };
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -33,12 +36,26 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ORT_RETURN_IF_NOT(perm.size() == input_dims, "Perm and input should have same dimension");
   }
 
-  *layer->mutable_transpose()->mutable_axes() = {perm.cbegin(), perm.cend()};
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
 
-  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "transpose");
+    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    AddOperationInput(*op, "perm", model_builder.AddConstant(op->type(), "perm", perm));
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.AddOperation(std::move(op));
 
-  model_builder.AddLayer(std::move(layer));
+  } else
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
+  {
+    *layer->mutable_transpose()->mutable_axes() = {perm.cbegin(), perm.cend()};
+
+    *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+    model_builder.AddLayer(std::move(layer));
+  }
   return Status::OK();
 }
 
