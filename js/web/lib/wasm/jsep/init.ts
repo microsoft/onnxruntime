@@ -203,7 +203,7 @@ export const init =
               'verbose',
               () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${Number(src)}, gpuDataId=${Number(dst)}, size=${
                   Number(size)}`);
-          const data = module.HEAPU8.subarray(src >>> 0, (src >>> 0) + size);
+          const data = module.HEAPU8.subarray(Number(src >>> 0), Number((src >>> 0) + size));
           backend.upload(dst, data);
         }
       },
@@ -216,7 +216,7 @@ export const init =
                 () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
             await backend.download(
-                gpuDataId, () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
+                gpuDataId, () => module.HEAPU8.subarray(Number(dataOffset >>> 0), Number((dataOffset >>> 0) + size)));
           },
 
       // jsepCreateKernel
