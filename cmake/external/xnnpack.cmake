@@ -16,22 +16,23 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
 endif()
 
 # fp16 depends on psimd
-onnxruntime_fetchcontent_declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
+onnxruntime_fetchcontent_declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd} EXCLUDE_FROM_ALL)
 onnxruntime_fetchcontent_makeavailable(psimd)
-set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-onnxruntime_fetchcontent_declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
+set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR} EXCLUDE_FROM_ALL)
+onnxruntime_fetchcontent_declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16} EXCLUDE_FROM_ALL)
 onnxruntime_fetchcontent_makeavailable(fp16)
 
 # pthreadpool depends on fxdiv
-onnxruntime_fetchcontent_declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
+onnxruntime_fetchcontent_declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv} EXCLUDE_FROM_ALL)
 onnxruntime_fetchcontent_makeavailable(fxdiv)
 set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
-onnxruntime_fetchcontent_declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
+onnxruntime_fetchcontent_declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool} EXCLUDE_FROM_ALL)
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
 onnxruntime_fetchcontent_declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
+                     EXCLUDE_FROM_ALL
                     )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})

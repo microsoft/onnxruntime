@@ -27,6 +27,7 @@ onnxruntime_fetchcontent_declare(
     URL ${DEP_URL_abseil_cpp}
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 20240116 NAMES absl
 )
 

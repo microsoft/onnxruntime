@@ -7,6 +7,7 @@ else ()
         eigen
         URL ${DEP_URL_eigen}
         URL_HASH SHA1=${DEP_SHA1_eigen}
+        EXCLUDE_FROM_ALL
     )
 
     FetchContent_Populate(eigen)

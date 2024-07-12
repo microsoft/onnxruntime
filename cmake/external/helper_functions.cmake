@@ -16,6 +16,8 @@ endfunction()
 macro(onnxruntime_fetchcontent_makeavailable)
     set(ONNXRUNTIME_CMAKE_SKIP_INSTALL_RULES_OLD_VALUE
       "${CMAKE_SKIP_INSTALL_RULES}")
+    # If we don't skip the install rules we will hit errors from re2 like:
+    # CMake Error: install(EXPORT "re2Targets" ...) includes target "re2" which requires target "absl_base" that is not in any export set.
     set(CMAKE_SKIP_INSTALL_RULES TRUE)
     FetchContent_MakeAvailable(${ARGV})
     foreach(contentName IN ITEMS ${ARGV})
