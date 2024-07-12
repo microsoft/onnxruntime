@@ -19,8 +19,8 @@ constexpr bool alwaysFalse() {
   return false;
 }
 #define WINML_SUPPRESS_UNREACHABLE_BELOW(statement) \
-  if (alwaysTrue()) {                              \
-    statement;                                     \
+  if (alwaysTrue()) {                               \
+    statement;                                      \
   }
 
 #ifdef BUILD_TAEF_TEST
