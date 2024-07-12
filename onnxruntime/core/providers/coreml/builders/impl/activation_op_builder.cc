@@ -26,6 +26,8 @@ class ActivationOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 
   int GetMinSupportedOpSet(const Node& node) const override;
+
+  bool SupportsMLProgram() const override { return true; }
 };
 
 void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -195,7 +197,7 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
   const auto& op_type = node.OpType();
 
 #if defined(COREML_ENABLE_MLPROGRAM)
-  if (model_builder.CreateMLProgram()) {
+  if (input_params.create_mlprogram) {
     if (op_type == "PRelu" || op_type == "LeakyRelu") {
       return false;
     }
