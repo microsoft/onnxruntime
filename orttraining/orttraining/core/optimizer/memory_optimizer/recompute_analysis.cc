@@ -476,9 +476,8 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
 
   ORT_ENFORCE(recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end(),
               "Cannot get recomputable op table, probe level: ", probe_op_level);
-  if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
-    recomputable_op_table_map.at(probe_op_level);
-  }
+
+  return recomputable_op_table_map.at(probe_op_level);
 }
 
 /**
