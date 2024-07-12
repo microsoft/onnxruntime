@@ -218,7 +218,7 @@ target_link_libraries(onnxruntime PRIVATE
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT MACROS)
+if(NOT APPLE AND NOT WIN32)
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}
@@ -226,7 +226,7 @@ if(NOT MACROS)
     SOVERSION 1
     FOLDER "ONNXRuntime")
 else()
-  # Omit the SOVERSION setting in macOS/iOS/.. build
+  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}
