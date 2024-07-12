@@ -353,16 +353,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
-  return g_host->CreateROCMPinnedAllocator(name);
-}
-
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
 #endif
 

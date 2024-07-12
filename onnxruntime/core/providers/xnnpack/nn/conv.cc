@@ -5,7 +5,7 @@
 
 #include <cassert>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"

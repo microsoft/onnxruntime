@@ -11,7 +11,7 @@
 #include <emscripten.h>
 #endif
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"

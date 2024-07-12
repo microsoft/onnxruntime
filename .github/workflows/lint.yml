@@ -98,6 +98,13 @@ jobs:
             --exclude=onnxruntime/core/mlas/inc/*
             --exclude=onnxruntime/core/mlas/lib/*
             --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
+            --exclude=build/Debug/*
+            --exclude=cmake/*
+            --exclude=csharp/test/*
+            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
+            --exclude=orttraining/orttraining/test/*
+            --exclude=onnxruntime/test/*
+            --exclude=winml/*
           filter: "-runtime/references"
 
   lint-js:
