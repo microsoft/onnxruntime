@@ -6,11 +6,12 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 
 using onnxruntime::concurrency::ThreadPool;
+using onnxruntime::MLFloat16;
 
 namespace onnxruntime {
 namespace contrib {
 
-// Reshape Q/K/V from BxSxD to BxSxNxH
+    // Reshape Q/K/V from BxSxD to BxSxNxH
 inline Status Reshape_BSD_to_BSNH(Tensor* qkv,
                                   int batch_size,
                                   int sequence_length,
@@ -219,6 +220,10 @@ template Status MaybeTransposeToBNSHAndAddBias<float>(OpKernelContext* context, 
                                                       int batch_size, int num_heads, int sequence_length, int head_size,
                                                       const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
 
+template Status MaybeTransposeToBNSHAndAddBias<MLFloat16>(OpKernelContext* context, AllocatorPtr allocator,
+                                                      int batch_size, int num_heads, int sequence_length, int head_size,
+                                                      const Tensor* in, const Tensor* bias, int bias_offset, OrtValue& out);
+
 template <typename T>
 Status MaybeTransposeToBNSH(AllocatorPtr allocator,
                             int batch_size, int num_heads, int sequence_length, int head_size,
@@ -239,6 +244,10 @@ Status MaybeTransposeToBNSH(AllocatorPtr allocator,
 };
 
 template Status MaybeTransposeToBNSH<float>(AllocatorPtr allocator,
+                                            int batch_size, int num_heads, int sequence_length, int head_size,
+                                            const Tensor* in, OrtValue& out);
+
+template Status MaybeTransposeToBNSH<MLFloat16>(AllocatorPtr allocator,
                                             int batch_size, int num_heads, int sequence_length, int head_size,
                                             const Tensor* in, OrtValue& out);
 

@@ -80,11 +80,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       for (int i = 0; i < rotary_emb_dim; i++) {
         if (interleaved) {
           cache_idx = (i / 2) % half_rotary_emb_dim;
-          sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
+          sign = (i % 2 == 0) ? static_cast<T>(-1.f) : static_cast<T>(1.f);
           j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
         } else {
           cache_idx = i % half_rotary_emb_dim;
-          sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1) : static_cast<T>(1);
+          sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1.f) : static_cast<T>(1.f);
           j = (i + half_rotary_emb_dim) % rotary_emb_dim;
         }
         output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
@@ -101,6 +101,10 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
                                           const int64_t* position_ids, const float* cos_cache, const float* sin_cache, float* output,
                                           bool interleaved);
+
+template Status RunRotaryEmbedding<MLFloat16>(concurrency::ThreadPool* tp, RotaryParameters parameters, const MLFloat16* input,
+                                              const int64_t* position_ids, const MLFloat16* cos_cache, const MLFloat16* sin_cache, MLFloat16* output,
+                                              bool interleaved);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {

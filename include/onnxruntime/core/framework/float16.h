@@ -39,7 +39,7 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
 
   // Using inherited implementation instead of math floatToHalf allows us to use this
   // in other shared providers without having to implement the bridge
-  explicit MLFloat16(float v) noexcept { val = Base::ToUint16Impl(v); }
+  MLFloat16(float v) noexcept { val = Base::ToUint16Impl(v); }
 
   static const MLFloat16 NaN;
   static const MLFloat16 NegativeNaN;

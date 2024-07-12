@@ -24,9 +24,9 @@ class GQAAttentionBase : public AttentionBase {
   bool rotary_interleaved_;
 
   template <typename T>
-  Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
-                        const T* K,                                 // K data with shape BxN_kvxSxH
-                        const T* V,                                 // V data with shape BxN_kvxSxH
+  Status ApplyAttention(const float* Q,                                 // Q data with shape BxNxSxH
+                        const float* K,                                 // K data with shape BxN_kvxSxH
+                        const float* V,                                 // V data with shape BxN_kvxSxH
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
                         Tensor* output,                             // output tensor
@@ -51,7 +51,7 @@ class GQAAttentionBase : public AttentionBase {
     int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
 
     // Compute the attention score.
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache * sizeof(T);
+    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache * sizeof(float);
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
@@ -62,14 +62,14 @@ class GQAAttentionBase : public AttentionBase {
 
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
-    const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
+    const float* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+    ComputeAttentionProbs<T>(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
                              sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
                              present_key_data, past_present_share_buffer, packed_qkv, tp);
 
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
-    const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
-    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(attention_probs), v, seqlens_k->Data<int32_t>(),
+    const float* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v, seqlens_k->Data<int32_t>(),
                             batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                             hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
                             tp);
@@ -82,9 +82,9 @@ class GQAAttentionBase : public AttentionBase {
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                  // output buffer with size BxNxSxT
-                             const T* Q,                          // Q data. Its size is BxNxSxH
-                             const T* K,                          // k data. Its size is BxNxLxH
+  void ComputeAttentionProbs(float* attention_probs,                  // output buffer with size BxNxSxT
+                             const float* Q,                          // Q data. Its size is BxNxSxH
+                             const float* K,                          // k data. Its size is BxNxLxH
                              const int32_t* seqlens_k,            // past sequence lengths tensor
                              int batch_size,                      // batch size of self-attention
                              int sequence_length,                 // sequence length of self-attention (S)
@@ -141,9 +141,9 @@ class GQAAttentionBase : public AttentionBase {
         const int total_seqlen = seqlens_k[batch_index] + 1;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
-        T* output = attention_probs + output_offset;
+        float* output = attention_probs + output_offset;
 
-        const T* k;
+        const float* k;
         if (packed_qkv) {
           k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
         } else {
@@ -166,8 +166,8 @@ class GQAAttentionBase : public AttentionBase {
         } else {
           q = Q + q_input_chunk_length * i;
         }
-        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
-                                    head_size, k, head_size, 0.0f /*bata*/, output, present_buffer_sequence_length,
+        math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, T(alpha), q,
+                                    head_size, k, head_size, T(0.0f) /*bata*/, output, present_buffer_sequence_length,
                                     nullptr);
 
         // compute Softmax
@@ -176,7 +176,7 @@ class GQAAttentionBase : public AttentionBase {
           int seq_causal_length = sequence_length == 1 ? total_seqlen : seq + 1;
           if (local_window_size_ > 0 && seq_causal_length > local_window_size_ + 1) {
             for (int total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
-              output_softmax[total_seq_id] = 0.f;
+              output_softmax[total_seq_id] = T(0.f);
             }
             ComputeAttentionSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1,
                                            local_window_size_ + 1, nullptr);
@@ -186,7 +186,7 @@ class GQAAttentionBase : public AttentionBase {
 
           // set causal [seq_causal_length, total_seqlen) to 0.f
           for (int total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
-            output_softmax[total_seq_id] = 0.f;
+            output_softmax[total_seq_id] = T(0.f);
           }
 
           output_softmax += present_buffer_sequence_length;
@@ -269,9 +269,9 @@ class GQAAttentionBase : public AttentionBase {
             ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
             math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
-                                        1.f, /*alpha*/
+                                        T(1.f) /*alpha*/,
                                         attention_probs + attention_probs_offset, present_buffer_sequence_length, v,
-                                        head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+                                        head_size, T(0.0f) /*beta*/, output_current, hidden_size, nullptr);
           }
         });
   }

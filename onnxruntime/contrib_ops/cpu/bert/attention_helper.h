@@ -20,8 +20,8 @@ template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t j = begin; j != end; ++j) {
-      float* x = reinterpret_cast<T*>(score) + j * D;
-      float* y = x;
+      T* x = score + j * D;
+      T* y = x;
 
       // e^x is represented as infinity if x is large enough, like 100.f.
       // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if
@@ -30,26 +30,26 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
       // max) / (e^(x1 - max) + ... + e^(xn - max))
       float max = -std::numeric_limits<float>::infinity();
       for (int i = 0; i < D; i++) {
-        if (max < x[i])
-          max = x[i];
+        if (max < float(x[i]))
+          max = float(x[i]);
       }
       for (int i = 0; i < D; i++) {
-        y[i] = expf(x[i] - max);
+        y[i] = T(expf(float(x[i]) - max));
       }
 
       double sum = 0.0;
 
       for (int i = 0; i < D; i++) {
-        sum += x[i];
+        sum += float(x[i]);
       }
 
       if (sum == 0) {
         for (int i = 0; i < D; i++) {
-          y[i] = 1.0f / (float)D;
+          y[i] = T(1.0f / (float)D);
         }
       } else {
         for (int i = 0; i < D; i++) {
-          y[i] = x[i] / (float)sum;
+          y[i] = T(float(x[i]) / (float)sum);
         }
       }
     }
@@ -178,7 +178,7 @@ T* ConcatStateChunk(const T* past,
 // GQA version of ConcatStateChunk
 template <typename T>
 T* ConcatStateChunkGQA(const T* past,
-                       const T* chunk,
+                       const float* chunk,
                        T* present,
                        size_t present_buff_chunk_length,
                        size_t past_buff_chunk_length,

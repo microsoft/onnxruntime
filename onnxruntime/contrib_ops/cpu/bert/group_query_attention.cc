@@ -32,6 +32,17 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     GroupQueryAttention<float>);
 
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    GroupQueryAttention,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
+    GroupQueryAttention<MLFloat16>);
+
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel(info), GQAAttentionBase(info, false) {
   int64_t num_heads = 0;
