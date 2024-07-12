@@ -1488,9 +1488,6 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
-  if (WIN32)
-    message(FATAL_ERROR "MIGraphX does not support build in Windows!")
-  endif()
   set(AMD_MIGRAPHX_HOME ${onnxruntime_MIGRAPHX_HOME})
 endif()
 
@@ -1560,7 +1557,7 @@ if (UNIX OR onnxruntime_USE_NCCL)
   if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
       set(NCCL_LIBNAME "nccl")
-    elseif (onnxruntime_USE_ROCM)
+    elseif (onnxruntime_USE_ROCM OR onnxruntime_USE_MIGRAPHX)
       set(NCCL_LIBNAME "rccl")
     endif()
     find_path(NCCL_INCLUDE_DIR
