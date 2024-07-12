@@ -131,7 +131,7 @@ Examples:
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
   type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'webnn';
-  type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
+  type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs'|'canary';
   type BundleMode = 'dev'|'perf';
   type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
 }
@@ -384,7 +384,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // Option: -e=<...>, --env=<...>
   const envArg = args.env || args.e;
   const env = (typeof envArg !== 'string') ? 'chrome' : envArg;
-  if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs'].indexOf(env) === -1) {
+  if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs', 'canary'].indexOf(env) === -1) {
     throw new Error(`not supported env ${env}`);
   }
 

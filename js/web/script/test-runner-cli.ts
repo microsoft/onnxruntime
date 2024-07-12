@@ -673,6 +673,8 @@ async function main() {
     switch (env) {
       case 'chrome':
         return 'ChromeTest';
+      case 'canary':
+        return 'ChromeCanaryTest';
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
