@@ -472,11 +472,9 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
     });
   });
 
-  if (recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end()) {
-    return recomputable_op_table_map.at(probe_op_level);
-  }
-
-  return recomputable_op_table;
+  ORT_ENFORCE(recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end(),
+              "Cannot get recomputable op table, probe level: ", probe_op_level);
+  return recomputable_op_table_map.at(probe_op_level);
 }
 
 /**
