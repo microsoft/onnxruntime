@@ -68,15 +68,15 @@ using OpsetToIgnorableIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
  * 3. Some ops are not supported in older opsets, we need to check whether it is applicable to recompute or not.
  */
 const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecomputeOps(int probe_op_level) {
+  static std::once_flag is_initialized;
   static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
-  if (recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end()) {
-    return recomputable_op_table_map.at(probe_op_level);
-  }
 
-  recomputable_op_table_map.insert({probe_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
-  auto& recomputable_op_table = recomputable_op_table_map.at(probe_op_level);
-  if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
-    recomputable_op_table.insert({
+  std::call_once(is_initialized, [&]() {
+    const int basic_op_level = static_cast<int>(ProbeLevel::Basic);
+    recomputable_op_table_map.insert({basic_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
+    auto& basic_recomputable_op_table = recomputable_op_table_map.at(basic_op_level);
+
+    basic_recomputable_op_table.insert({
         {
             utils::GetFullQualifiedOpName("Add", kOnnxDomain),
             {
@@ -400,10 +400,12 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
         },
 
     });
-  }
 
-  if (probe_op_level >= static_cast<int>(ProbeLevel::Advanced)) {
-    recomputable_op_table.insert({
+    const int advanced_op_level = static_cast<int>(ProbeLevel::Advanced);
+    recomputable_op_table_map.insert({advanced_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
+    auto& advanced_recomputable_op_table = recomputable_op_table_map.at(advanced_op_level);
+
+    advanced_recomputable_op_table.insert({
         {
             utils::GetFullQualifiedOpName("BiasSoftmax", kMSDomain),
             {
@@ -468,6 +470,10 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
             },
         },
     });
+  });
+
+  if (recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end()) {
+    return recomputable_op_table_map.at(probe_op_level);
   }
 
   return recomputable_op_table;
