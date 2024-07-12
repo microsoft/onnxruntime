@@ -141,7 +141,7 @@ __global__ void EmbedLayerNormKernel(
   }
   __syncthreads();
 
-  // 2. load pos/segment/word embeddings and add them toghether
+  // 2. load pos/segment/word embeddings and add them together
   // offset into embeddings is given by word_id * hidden_size
   const int position_offset = position_id * hidden_size;
 

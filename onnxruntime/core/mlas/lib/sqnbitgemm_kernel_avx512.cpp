@@ -155,21 +155,23 @@ SQ4BitGemmM1Kernel_CompFp32_avx512(
 //
 
 MLAS_FORCEINLINE
-void
-SQ4BitGemmKernel_CompInt8_avx512(
+size_t
+SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
     const size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
     float* C,
     size_t CountM,
     size_t CountN,
     size_t /*CountK*/,
     size_t BlockCountK,
     const float* Bias,
-    size_t /*lda*/,
-    size_t ldc
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
 )
 {
     if (BlkLen == 16) {
@@ -227,6 +229,22 @@ SQ4BitGemmKernel_CompInt8_avx512(
             ldc
         );
     }
+
+    float* c_blk = C;
+    const float* b_blk_sum = QuantBBlkSum;
+
+    size_t RowsRemaining = CountM;
+    const float* a_blksum_row = ABlockSum;
+    while (RowsRemaining > 0) {
+        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+        );
+
+        c_blk += ldc * RowsHandled;
+        a_blksum_row += BlockCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+    return CountM;
 }
 
 void MLASCALL
@@ -347,8 +365,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32_avx512;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
-    d.SQ4BitGemmM1Kernel_CompInt8 = nullptr;
-    d.SQ4BitGemmKernel_CompInt8 = SQ4BitGemmKernel_CompInt8_avx512;
+    d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512;
     d.QuantizeARow_CompInt8_2 = QuantizeARow_CompInt8_avx512;
 
     return d;

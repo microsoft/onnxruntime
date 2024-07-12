@@ -6,8 +6,7 @@
 #include <functional>
 #include <memory>
 
-#include "core/common/gsl.h"
-#include "core/common/path.h"
+#include <gsl/gsl>
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/platform/env.h"
@@ -25,13 +24,13 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
   }
 }
 
-Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
+Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path) {
   ORT_ENFORCE(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
 #if !defined(__wasm__)
   // using full filepath is required by utils::TensorProtoToTensor(). One exception is WebAssembly platform, where
   // external data is not loaded from real file system.
   if (utils::HasExternalData(tensor_proto)) {
-    ORT_ENFORCE(!model_path.IsEmpty(),
+    ORT_ENFORCE(!model_path.empty(),
                 "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
 #endif
@@ -46,7 +45,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   // This must be pre-allocated
   Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
            std::make_shared<CPUAllocator>());
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path.ToPathString().c_str(), tensor_proto, w));
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path, tensor_proto, w));
   data_ = std::move(w);
 }
 

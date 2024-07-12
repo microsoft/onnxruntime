@@ -79,10 +79,10 @@ MlasIsSQNBitGemmAvailable(
             return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp32 != nullptr;
         }
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
+        case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
-              (Dispatch->SQ4BitGemmM1Kernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
-              (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8_2 != nullptr);
+              (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
+              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8_2 != nullptr);
         }
         default: {
             return false;
@@ -415,7 +415,7 @@ SQ4BitGemm_CompFp32(
             }
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
                     RowsHandled, CountN, ldc
                 );
             }
@@ -476,113 +476,59 @@ SQ4BitGemm_CompInt8(
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
-    if (RangeCountM == 1) {
-        if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8 == nullptr || (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 && BlkLen == 16))
-        {
-            size_t CountN;
-            for (size_t n = 0; n < RangeCountN; n += CountN) {
-                CountN = std::min(RangeCountN - n, size_t{128});
-                assert(n % 4 == 0);
-                const std::byte* b_col = QuantBData + n * ldb;
-                const float* b_col_scale = QuantBScale + n * k_blks;
-                float* c_blk = C + n;
-                const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-                GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
-                    BlkLen,
-                    QuantA,
-                    QuantAScale,
-                    b_col,
-                    b_col_scale,
-                    c_blk,
-                    RangeCountM,
-                    CountN,
-                    K,
-                    k_blks,
-                    bias,
-                    lda,
-                    ldc
-                );
-                const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-                GetMlasPlatform().GemmFloatKernel(
-                    ABlockSum, b_blk_sum, c_blk, k_blks, RangeCountM, CountN, k_blks, ldc, 1.f, false
-                );
-                if (DataParams->PostProcessor != nullptr) {
-                    DataParams->PostProcessor->Process(
-                        DataParams->C, RangeStartM, RangeStartN + n,
-                        RangeCountM, CountN, ldc
-                    );
-                }
-            }
-            return;
-        } else {
-            size_t CountN;
-            for (size_t n = 0; n < RangeCountN; n += CountN) {
-                CountN = std::min(RangeCountN - n, size_t{128});
+    size_t CountN;
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, size_t{128});
 
-                const std::byte* a_row = QuantA;
-                const std::byte* b_col = QuantBData + n * ldb;
-                const float* b_col_scale = QuantBScale + n * k_blks;
-                const std::byte* b_col_zp =
-                    (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-                float* c_blk = C + n;
-                const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col = QuantBData + n * ldb;
+        const float* b_col_scale = QuantBScale + n * k_blks;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        float* c_blk = C + n;
+        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-                GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+        if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 != nullptr) {
+            size_t RowsRemaining = RangeCountM;
+            while (RowsRemaining > 0) {
+                const auto RowsHandled = GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                     BlkLen,
-                    a_row, QuantAScale, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                    a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
                 );
 
                 if (DataParams->PostProcessor != nullptr) {
                     DataParams->PostProcessor->Process(
-                        DataParams->C, RangeStartM, RangeStartN + n,
-                        RangeCountM, CountN, ldc
+                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                        RowsHandled, CountN, ldc
                     );
                 }
+
+                c_blk += RowsHandled * ldc;
+                a_row += RowsHandled * lda;
+
+                RowsRemaining -= RowsHandled;
             }
         }
-        return;
-    }
-
-    if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8)
-    {
-        size_t CountN;
-        for (size_t n = 0; n < RangeCountN; n += CountN) {
-            CountN = std::min(RangeCountN - n, size_t{128});
-
-            const std::byte* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
+        else if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
+        {
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
                 BlkLen,
                 QuantA,
                 QuantAScale,
                 b_col,
                 b_col_scale,
+                b_col_zp, 
                 c_blk,
                 RangeCountM,
                 CountN,
                 K,
                 k_blks,
                 bias,
-                lda,
-                ldc
+                ldc,
+                ABlockSum,
+                b_blk_sum
             );
-
-            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-            if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmPackQuantBDataAndBlkSum) {
-                size_t RowsRemaining = RangeCountM;
-                const float* a_blksum_row = ABlockSum;
-                while (RowsRemaining > 0) {
-                    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-                        a_blksum_row, b_blk_sum, c_blk, k_blks, RowsRemaining, CountN, k_blks, ldc, 1.f, false
-                    );
-
-                    c_blk += ldc * RowsHandled;
-                    a_blksum_row += k_blks * RowsHandled;
-                    RowsRemaining -= RowsHandled;
-                }
-            }
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
@@ -590,9 +536,7 @@ SQ4BitGemm_CompInt8(
                     RangeCountM, CountN, ldc
                 );
             }
-
         }
-        return;
     }
 }
 

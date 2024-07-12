@@ -7,20 +7,6 @@
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_q8_block.h"
 
-void
-SQ4BitGemmM1Kernel_CompInt8_avx2(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB,
-    const float* Bias
-);
-
 template <size_t NCols, bool HasZeroPoint>
 MLAS_FORCEINLINE void
 ComputeDotProducts_BlkBitWidth4_CompInt8_SubBlkLen16(

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"

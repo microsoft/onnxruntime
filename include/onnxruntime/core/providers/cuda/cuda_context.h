@@ -12,14 +12,16 @@
 
 #define ORT_CUDA_CTX
 
-#include "cuda_resource.h"
-#include "core/providers/custom_op_context.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #ifndef USE_CUDA_MINIMAL
 #include <cublas_v2.h>
 #include <cudnn.h>
 #endif
+
+#include "core/providers/cuda/cuda_resource.h"
+#include "core/providers/custom_op_context.h"
+
 namespace Ort {
 
 namespace Custom {
