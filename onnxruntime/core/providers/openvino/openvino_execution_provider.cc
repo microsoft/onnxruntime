@@ -48,7 +48,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
       } else {
-        for (std::string device : available_devices) {
+        for (const std::string& device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
                                                                        info.precision_ == "FP16" ||

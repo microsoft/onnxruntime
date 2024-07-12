@@ -120,6 +120,14 @@ struct OpenVINO_Provider : Provider {
       std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                        "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                        "GPU.0_FP16", "GPU.1_FP16"};
+      OVDevices devices;
+      std::vector<std::string> available_devices = devices.get_ov_devices();
+
+      for (auto& device : available_devices) {
+        if (ov_supported_device_types.find(device) == ov_supported_device_types.end()) {
+          auto ov_supported_device_types_update = ov_supported_device_types.emplace(device);
+        }
+      }
       if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
         std::string deprecated_device = device_type;
         int delimit = device_type.find("_");
@@ -135,8 +143,8 @@ struct OpenVINO_Provider : Provider {
             (device_type.find("MULTI:") == 0) ||
             (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
-            "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-            "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
+            "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
+            "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
