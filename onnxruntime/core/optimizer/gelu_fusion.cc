@@ -13,8 +13,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 GeluFusion::GeluFusion(int level,
-                        const InlinedHashSet<std::string_view>& compatible_execution_providers
-                        ) noexcept
+                       const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
     : GraphTransformer("GeluFusionL2", compatible_execution_providers),
       optimize_level(level) {
 }

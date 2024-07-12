@@ -12,8 +12,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-LayerNormFusion::LayerNormFusion(int level, const InlinedHashSet<std::string_view>& compatible_execution_providers
-                        ) noexcept
+LayerNormFusion::LayerNormFusion(int level, const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
     : GraphTransformer("LayerNormFusionL2", compatible_execution_providers),
       optimize_level(level) {
 }

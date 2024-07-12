@@ -17,13 +17,14 @@ The formula corresponding to LayerNorm activation subgraph:
 
 */
 class LayerNormFusion : public GraphTransformer {
-  private:
-    int optimize_level = 1;
-  public:
+ private:
+  int optimize_level = 1;
+
+ public:
   LayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("LayerNormFusion", compatible_execution_providers) {}
   LayerNormFusion(int level,
-                const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept;
+                  const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept;
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
