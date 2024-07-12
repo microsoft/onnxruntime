@@ -871,7 +871,7 @@ class GraphTransitionManager:
                 enable_zero_stage3_support, stage3_param_handle, flattened_module
             ):
                 required_export_kwargs = {
-                    "input_names": model_info_for_export.onnx_graph_input_names,  # did not contains paramerter as its input yet
+                    "input_names": model_info_for_export.onnx_graph_input_names,  # did not contains parameters as its input yet
                     "output_names": output_names,
                     "opset_version": onnx_opset_version,
                     "do_constant_folding": False,

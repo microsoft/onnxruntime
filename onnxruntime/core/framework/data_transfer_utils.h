@@ -5,7 +5,7 @@
 
 #include <type_traits>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/framework/tensor.h"

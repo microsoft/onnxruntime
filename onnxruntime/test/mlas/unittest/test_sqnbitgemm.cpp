@@ -419,9 +419,10 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   return count;
 }
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
-  if (is_short_execute) {
-    return SQNBitGemmRegisterAllShortExecuteTests() > 0;
-  }
-  return false;
-});
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
+    [](bool is_short_execute) -> size_t {
+      if (is_short_execute) {
+        return SQNBitGemmRegisterAllShortExecuteTests();
+      }
+      return 0;
+    });

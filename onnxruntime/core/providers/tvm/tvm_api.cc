@@ -16,7 +16,7 @@
 #include <tvm/target/codegen.h>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "tvm_api.h"
 

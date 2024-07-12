@@ -92,7 +92,7 @@ export class ExecutionPlan {
         const inputTensors = inputList as Tensor[];
         Logger.verbose(
             'ExecPlan',
-            `Runing op:${thisOp.node.name} (${
+            `Running op:${thisOp.node.name} (${
                 inputTensors.map((t, i) => `'${thisOp.node.inputs[i]}': ${t.type}[${t.dims.join(',')}]`).join(', ')})`);
 
         const outputList = await this.profiler.event(
