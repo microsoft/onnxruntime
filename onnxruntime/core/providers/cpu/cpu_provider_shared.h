@@ -144,7 +144,6 @@ struct ProviderHostCPU {
   virtual void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
                                                       gsl::span<const int64_t> input_dims,
                                                       InlinedVector<float>& scales) const = 0;
-
 #ifndef DISABLE_CONTRIB_OPS
   virtual Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) = 0;
   virtual Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) = 0;
