@@ -12,14 +12,7 @@ namespace vaip {
 void register_xir_ops(const std::vector<OrtCustomOpDomain*>& domains) {
   for (auto domain : domains) {
     for (auto op : domain->custom_ops_) {
-      auto name = op->GetName(op);
-      if ((std::string)name == "super_layer") {
-        Provider_GetHost()->RegisterSchema(domain->domain_, op, 1);
-      } else if ((std::string)name == "FixNeuron") {
-        Provider_GetHost()->RegisterSchema(domain->domain_, op, 2);
-      } else {
-        Provider_GetHost()->RegisterSchema(domain->domain_, op, 3);
-      }
+      Provider_GetHost()->RegisterSchema(domain->domain_, op);
     }
   }
 }

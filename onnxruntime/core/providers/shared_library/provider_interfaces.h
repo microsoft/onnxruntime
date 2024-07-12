@@ -489,7 +489,7 @@ struct ProviderHost {
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
 
-  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
+  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
