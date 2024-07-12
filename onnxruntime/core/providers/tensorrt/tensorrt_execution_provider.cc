@@ -3197,6 +3197,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       size_t mem_size = trt_engine->getDeviceMemorySize();
 #else
       size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
@@ -3741,6 +3742,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       size_t mem_size = trt_engine->getDeviceMemorySize();
 #else
       size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
@@ -3875,6 +3877,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     size_t mem_size = trt_engine->getDeviceMemorySize();
 #else
     size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
@@ -4051,6 +4054,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
       size_t mem_size = trt_engine->getDeviceMemorySize();
 #else
       size_t mem_size = trt_engine->getDeviceMemorySizeV2();
+#endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
