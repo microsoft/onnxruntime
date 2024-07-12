@@ -10,6 +10,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/session_options.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/platform/threadpool.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/rule_based_graph_transformer.h"
