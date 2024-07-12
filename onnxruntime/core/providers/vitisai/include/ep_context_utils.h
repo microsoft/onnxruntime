@@ -1,6 +1,7 @@
 #pragma once
 
 // Standard headers/libs.
+#include <filesystem>
 #include <vector>
 #include <string>
 #include <memory>
@@ -67,7 +68,7 @@ bool GraphHasEPContextNode(const Graph&);
 bool FusedGraphHasEPContextNode(
     const std::vector<IExecutionProvider::FusedNodeAndGraph>&);
 
-const Path& GetTopLevelModelPath(const GraphViewer&);
+const fs::path& GetTopLevelModelPath(const GraphViewer&);
 
 bool GetEPContextModelFileLocation(
     const std::string&, const PathString&, bool, PathString&);

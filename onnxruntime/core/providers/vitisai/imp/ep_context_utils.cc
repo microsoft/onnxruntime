@@ -1,6 +1,5 @@
 // Standard headers/libs.
 #include <fstream>
-#include <filesystem>
 #include <sstream>
 #include <cctype>
 #include <cstring>
@@ -190,7 +189,8 @@ std::string SerializeOrigialGraph(const GraphViewer& graph_viewer) {
     }
   }
   j_obj["orig_graph_name"] = graph_viewer.Name();
-  j_obj["orig_model_path"] = PathToUTF8String(graph_viewer.ModelPath().ToPathString());
+  // TODO: platform dependency (Linux vs Windows).
+  j_obj["orig_model_path"] = graph_viewer.ModelPath().string();
 
   // XXX: `ModelProto::SerializeToString` will lose some info,
   // e.g., ModelProto.opset_import.
@@ -263,7 +263,7 @@ ONNX_NAMESPACE::ModelProto* CreateEPContexModel(
   p_attr_3->set_name(kONNXModelFileNameAttr);
   // p_attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
   p_attr_3->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
-  p_attr_3->set_s(fs::path(graph_viewer.ModelPath().ToPathString()).filename().string());
+  p_attr_3->set_s(graph_viewer.ModelPath().filename().string());
   // Attr "notes".
   auto p_attr_4 = ONNX_NAMESPACE::AttributeProto::Create();
   p_attr_4->set_name(kNotesAttr);
@@ -435,7 +435,7 @@ void CreateEPContexNodes(
     auto p_attr_3 = ONNX_NAMESPACE::AttributeProto::Create();
     p_attr_3->set_name(kONNXModelFileNameAttr);
     p_attr_3->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
-    p_attr_3->set_s(fs::path(graph_viewer.ModelPath().ToPathString()).filename().string());
+    p_attr_3->set_s(graph_viewer.ModelPath().filename().string());
     p_node_attrs->emplace(kONNXModelFileNameAttr, *p_attr_3);
     // Attr "partition_name".
     auto p_attr_6 = ONNX_NAMESPACE::AttributeProto::Create();
@@ -595,7 +595,7 @@ bool FusedGraphHasEPContextNode(
   return false;
 }
 
-const Path& GetTopLevelModelPath(const GraphViewer& graph_viewer) {
+const fs::path& GetTopLevelModelPath(const GraphViewer& graph_viewer) {
   const auto& graph = graph_viewer.GetGraph();
   const Graph* p_graph = &graph;
   while (p_graph->IsSubgraph()) {

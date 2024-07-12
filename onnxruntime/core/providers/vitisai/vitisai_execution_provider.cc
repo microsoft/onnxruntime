@@ -82,7 +82,8 @@ void VitisAIExecutionProvider::LoadEPContexModelFromFile() const {
 void VitisAIExecutionProvider::PrepareEPContextEnablement(
     const onnxruntime::GraphViewer& graph_viewer) const {
   if (model_path_str_.empty()) {
-    model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+    // TODO: platform dependency (Linux vs Windows).
+    model_path_str_ = ToPathString(GetTopLevelModelPath(graph_viewer).string());
   }
   std::string backend_cache_dir, backend_cache_key;
   get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
@@ -123,7 +124,8 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
-  model_path_str_ = GetTopLevelModelPath(graph_viewer).ToPathString();
+  // TODO: platform dependency (Linux vs Windows).
+  model_path_str_ = ToPathString(GetTopLevelModelPath(graph_viewer).string());
   if (GetEPContextModelFileLocation(
           ep_ctx_model_path_cfg_, model_path_str_, is_ep_ctx_model, ep_ctx_model_file_loc_)) {
     if (is_ep_ctx_model) {
