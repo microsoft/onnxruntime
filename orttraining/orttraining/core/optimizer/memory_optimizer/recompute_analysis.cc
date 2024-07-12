@@ -405,7 +405,8 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
     recomputable_op_table_map.insert({advanced_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
     auto& advanced_recomputable_op_table = recomputable_op_table_map.at(advanced_op_level);
     // Append basic_recomputable_op_table to advanced_recomputable_op_table.
-    advanced_recomputable_op_table.insert(basic_recomputable_op_table.begin(), basic_recomputable_op_table.end());
+    advanced_recomputable_op_table.insert(recomputable_op_table_map.at(basic_op_level).begin(),
+                                          recomputable_op_table_map.at(basic_op_level).end());
 
     advanced_recomputable_op_table.insert({
         {
