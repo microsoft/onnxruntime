@@ -137,7 +137,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       info_["cacheKey"] = cache_key;
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << PathToUTF8String(ep_ctx_model_file_loc_);
       auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
-      restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, PathToUTF8String(graph_viewer.ModelPath().ToPathString()));
+      restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, graph_viewer.ModelPath().string());
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
         ORT_THROW("The inference session was created with a normal ONNX model but a model file with EP context cache exists at ",
@@ -152,7 +152,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
         info_["cacheDir"] = cache_dir;
         info_["cacheKey"] = cache_key;
         auto ep_ctx_payload = RetrieveEPContextCache(p_ep_ctx_model_->MainGraph(), ep_ctx_model_file_loc_, false);
-        restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, PathToUTF8String(graph_viewer.ModelPath().ToPathString()));
+        restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, graph_viewer.ModelPath().string());
       }
     }
   } else {
