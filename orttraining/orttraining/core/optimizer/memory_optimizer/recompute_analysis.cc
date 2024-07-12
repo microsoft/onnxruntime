@@ -72,7 +72,7 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
   static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
 
   std::call_once(is_initialized, [&]() {
-    const int basic_op_level = static_cast<int>(ProbeLevel::Basic);
+    constexpr const int basic_op_level = static_cast<int>(ProbeLevel::Basic);
     recomputable_op_table_map.insert({basic_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
     auto& basic_recomputable_op_table = recomputable_op_table_map.at(basic_op_level);
 
@@ -401,9 +401,11 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
 
     });
 
-    const int advanced_op_level = static_cast<int>(ProbeLevel::Advanced);
+    constexpr const int advanced_op_level = static_cast<int>(ProbeLevel::Advanced);
     recomputable_op_table_map.insert({advanced_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
     auto& advanced_recomputable_op_table = recomputable_op_table_map.at(advanced_op_level);
+    // Append basic_recomputable_op_table to advanced_recomputable_op_table.
+    advanced_recomputable_op_table.insert(basic_recomputable_op_table.begin(), basic_recomputable_op_table.end());
 
     advanced_recomputable_op_table.insert({
         {
@@ -474,7 +476,9 @@ const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecompu
 
   ORT_ENFORCE(recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end(),
               "Cannot get recomputable op table, probe level: ", probe_op_level);
-  return recomputable_op_table_map.at(probe_op_level);
+  if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
+    recomputable_op_table_map.at(probe_op_level);
+  }
 }
 
 /**
