@@ -27,7 +27,7 @@ def quant_pre_process(
     output_model_path: Optional[Union[str, Path]] = None,
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
-    skip_symbolic_shape: bool = False,
+    enable_symbolic_shape: bool = True,
     auto_merge: bool = False,
     int_max: int = 2**31 - 1,
     guess_output_rank: bool = False,
@@ -49,7 +49,7 @@ def quant_pre_process(
             with transformer based models. Skipping all shape inferences may
             reduce the effectiveness of quantization, as a tensor with unknown
             shape can not be quantized.
-        skip_symbolic_shape: Skip symbolic shape inference. Symbolic shape inference is most
+        enable_symbolic_shape: Enable symbolic shape inference. Symbolic shape inference is most
             effective with transformer based models. Skipping all shape
             inferences may reduce the effectiveness of quantization, as a tensor
             with unknown shape can not be quantized.
@@ -75,20 +75,24 @@ def quant_pre_process(
         temp_path = Path(quant_tmp_dir)
         model = None
 
-        if not skip_symbolic_shape:
+        if enable_symbolic_shape:
             logger.info("Performing symbolic shape inference...")
-            loaded_model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
-            model = SymbolicShapeInference.infer_shapes(
-                loaded_model,
-                int_max,
-                auto_merge,
-                guess_output_rank,
-                verbose,
-            )
+            try:
+                loaded_model = input_model if isinstance(input_model, onnx.ModelProto) else onnx.load(input_model)
+                model = SymbolicShapeInference.infer_shapes(
+                    loaded_model,
+                    int_max,
+                    auto_merge,
+                    guess_output_rank,
+                    verbose,
+                )
+            except Exception:
+                logger.error("ONNX Runtime symbolic shape inference failed! Consider rerun without it.")
+                logger.error(traceback.format_exc())
 
         if not skip_optimization:
             # Use ORT optimizers (native code) to optimize model
-            if not skip_symbolic_shape:
+            if enable_symbolic_shape:
                 # Need to save the inferenced model to file so as to run the optimizer
                 input_model = str(temp_path / "symbolic_shape_inferred.onnx")
                 if save_as_external_data:
@@ -106,6 +110,7 @@ def quant_pre_process(
 
             opt_model_path = str(temp_path / "optimized.onnx")
             try:
+                logger.info("Performing model optimization...")
                 sess_option = onnxruntime.SessionOptions()
                 sess_option.optimized_model_filepath = opt_model_path
                 sess_option.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
