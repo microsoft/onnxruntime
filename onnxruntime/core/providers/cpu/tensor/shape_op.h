@@ -9,7 +9,7 @@
 #include "core/framework/op_kernel.h"
 #endif
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <limits>
 
 namespace onnxruntime {

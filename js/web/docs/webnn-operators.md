@@ -21,7 +21,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Ceil | ai.onnx(7-12, 13+) | ceil | ✓ | ✓ | |
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | ✓ | ✓ | WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0] (Chromium issue: https://issues.chromium.org/issues/326156496) |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | ✓ | ✓ | |
-| Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). WebNN CPU requires the 'W' (weight) input to be a constant |
+| Conv | ai.onnx(7-10, 11+) | conv2d | ✓ | ✓ | Only supports 3-D or 4-D input and 'W' (weight) |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | ✗ | ✓ | Only supports 3-D or 4-D input and 'W' (weight). |
 | Cos | ai.onnx(7+) | cos | ✓ | ✓ | |
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
@@ -61,16 +61,16 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | ✓ | ✓ | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | ✓ | ✓ | WebNN CPU backend restricts the last dimension of input and slope to be same (Chromium issue: https://issues.chromium.org/issues/335517470) |
 | Reciprocal | ai.onnx(7-12, 13+) | reciprocal | ✓ | ✓ | |
-| ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | ✗ | ✓ | Input 'axes' if present should be a constant |
-| ReduceL2 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL2 | ✗ | ✓ | Input 'axes' if present should be a constant |
-| ReduceLogSum| ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSum| ✗ | ✓ | Input 'axes' if present should be a constant |
-| ReduceLogSumExp | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSumExp | ✗ | ✓ | Input 'axes' if present should be a constant |
+| ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | ✓ | ✓ | Input 'axes' if present should be a constant |
+| ReduceL2 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL2 | ✓ | ✓ | Input 'axes' if present should be a constant |
+| ReduceLogSum| ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSum| ✓ | ✓ | Input 'axes' if present should be a constant |
+| ReduceLogSumExp | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSumExp | ✓ | ✓ | Input 'axes' if present should be a constant |
 | ReduceMax | ai.onnx(7-10, 11, 12, 13-17, 18-19, 20+) | reduceMax | ✓ | ✓ | Input 'axes' if present should be a constant |
 | ReduceMean | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceMean | ✓ | ✓ | Input 'axes' if present should be a constant |
 | ReduceMin | ai.onnx(7-10, 11, 12, 13-17, 18-19, 20+) | reduceMin | ✓ | ✓ | Input 'axes' if present should be a constant |
 | ReduceProd | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceProduct | ✓ | ✓ | Input 'axes' if present should be a constant |
 | ReduceSum | ai.onnx(7-10, 11-12, 13+) | reduceSum | ✓ | ✓ | Input 'axes' if present should be a constant |
-| ReduceSumSquare | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceSumSquare | ✗ | ✓ | Input 'axes' if present should be a constant |
+| ReduceSumSquare | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceSumSquare | ✓ | ✓ | Input 'axes' if present should be a constant |
 | Relu | ai.onnx(7-12, 13, 14+) | relu | ✓ | ✓ | |
 | Reshape | ai.onnx(7-12, 13, 14-18, 19-20, 21+) | reshape | ✓ | ✓ | Input 'shape' should be a constant, 0 dimension value in 'shape' is not supported |
 | Resize | ai.onnx(11-12, 13-17, 18, 19+) | resample2d | ✓ | ✓ | Only supports 4-D input, exclude_outside != 0, input 'scales' and 'sizes' if present must be a constant, 'linear' and 'nearest' modes |

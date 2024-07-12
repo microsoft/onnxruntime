@@ -7,10 +7,10 @@
 #include <memory>
 #include <climits>
 #include <string>
+#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 
-#include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -174,7 +174,7 @@ class Model {
   const ModelMetaData& MetaData() const noexcept;
 
   // Gets the path from which the model was loaded, if any.
-  const Path& ModelPath() const noexcept { return model_path_; }
+  const std::filesystem::path& ModelPath() const noexcept { return model_path_; }
 
   // Get model's main graph.
   Graph& MainGraph() noexcept;
@@ -187,27 +187,24 @@ class Model {
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
-  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                  const PathString& file_path,
+  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                                  const std::filesystem::path& file_path,
                                                                   size_t initializer_size_threshold) const;
 
-#ifdef _WIN32
-  static common::Status Save(Model& model, const std::wstring& file_path);
-#endif
-  static common::Status Save(Model& model, const std::string& file_path);
+  static common::Status Save(Model& model, const PathString& file_path);
 
   static common::Status Save(Model& model, int fd);
 
   // Save the model to file using an external file for initializers larger than the given threshold (in bytes).
   static common::Status SaveWithExternalInitializers(Model& model,
-                                                     const PathString& file_path,
-                                                     const std::string& external_file_name,
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
-                                                     const PathString& file_path,
-                                                     const std::string& external_file_name,
+                                                     const std::filesystem::path& file_path,
+                                                     const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
@@ -332,7 +329,7 @@ class Model {
   ModelMetaData model_metadata_;
 
   // Path to model file. May be empty.
-  const Path model_path_;
+  const std::filesystem::path model_path_;
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;

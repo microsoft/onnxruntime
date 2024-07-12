@@ -26,9 +26,24 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
+
+// ortenv_setup is used by /onnxruntime/test/xctest/xcgtest.mm so can't be file local
 void ortenv_setup() {
   OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+
+  // allow verbose logging to be enabled by setting this environment variable to a numeric log level
+  constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
+  OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
+  if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
+      log_level_override.has_value()) {
+    *log_level_override = std::clamp(*log_level_override,
+                                     static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                                     static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+    std::cout << "Setting log level to " << *log_level_override << "\n";
+    log_level = static_cast<OrtLoggingLevel>(*log_level_override);
+  }
+
+  ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
 }
 
 #ifdef USE_TENSORRT
@@ -75,17 +90,6 @@ int TEST_MAIN(int argc, char** argv) {
   ORT_TRY {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
-
-    // allow verbose logging to be enabled by setting this environment variable to a numeric log level
-    constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
-    if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
-        log_level.has_value()) {
-      *log_level = std::clamp(*log_level,
-                              static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
-                              static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
-      std::cout << "Setting log level to " << *log_level << "\n";
-      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
-    }
 
     status = RUN_ALL_TESTS();
   }

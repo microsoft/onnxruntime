@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -278,6 +278,9 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);

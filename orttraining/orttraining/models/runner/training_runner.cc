@@ -1019,9 +1019,8 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
     optimizer = optimizer.substr(0, pos);
   perf_metrics["Optimizer"] = optimizer;
 
-  Path model_path{};
-  ORT_RETURN_IF_ERROR(Path::Parse(params_.model_path, model_path));
-  PathString leaf = model_path.GetComponents().back();
+  std::filesystem::path model_path = params_.model_path;
+  PathString leaf = model_path.filename();
   std::string model_name = ToUTF8String(leaf.c_str());
   perf_metrics["ModelName"] = model_name;
 

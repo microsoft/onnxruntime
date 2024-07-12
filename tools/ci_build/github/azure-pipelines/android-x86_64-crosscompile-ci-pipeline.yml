@@ -49,6 +49,7 @@ stages:
 # Separate stage for building CPU vs NNAPI as we only want CodeQL to run on one of them so we don't get duplicate
 # issues for code that is built in both. We pick NNAPI as that includes the NNAPI EP code.
 - stage: BUILD_CPU_STAGE
+  dependsOn: []
   variables:
     Codeql.Enabled: false
   jobs:
@@ -93,6 +94,7 @@ stages:
 
     - script: |
         python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build \
           --android_sdk_path $ANDROID_HOME \
@@ -137,6 +139,7 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
 - stage: BUILD_NNAPI_STAGE
+  dependsOn: []
   variables:
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
@@ -185,6 +188,7 @@ stages:
 
     - script: |
         python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
@@ -289,6 +293,7 @@ stages:
         displayName: Check Android NDKs
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build \
           --android_sdk_path $ANDROID_HOME \
@@ -348,6 +353,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
@@ -405,6 +411,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
