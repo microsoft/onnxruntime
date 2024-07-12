@@ -77,8 +77,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
   std::unique_ptr<NodeSelector> selector_disallow_nonpositive_scale = (std::make_unique<QDQ::DropQDQNodesSelector>(true, true, false));
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_nonpositive_scale_name,
-                                                         {{"Min", {}},
-                                                          {"Max", {}},
+                                                         {{"ReduceMin", {}},
+                                                          {"ReduceMax", {}},
                                                           {"Abs", {}}},
                                                          std::move(selector_disallow_nonpositive_scale),
                                                          std::move(drop_action_no_nonpositive_scale));
