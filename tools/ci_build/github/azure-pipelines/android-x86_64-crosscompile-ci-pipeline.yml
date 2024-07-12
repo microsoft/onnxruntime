@@ -83,8 +83,8 @@ stages:
       parameters:
         steps:
         - script: |
-                env | grep ANDROID
-              displayName: View Android ENVs
+            env | grep ANDROID
+          displayName: View Android ENVs
         - script: |
             python3 tools/ci_build/build.py \
               --enable_lto \
