@@ -1924,6 +1924,33 @@ TEST(QDQTransformerTests, Resize) {
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), true /*use_contrib_qdq*/);
 }
 
+TEST(QDQTransformerTests, ResizeLinearNoFusion) {
+  auto test_case = [&](bool use_contrib_qdq = false) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
+
+    TransformerTester(BuildQDQResizeTestCase({1, 64, 64, 3},
+                                             {1, 32, 32, 3},
+                                             "linear",              // mode
+                                             "half_pixel",          // coordinate_transformation_mode
+                                             "round_prefer_floor",  // nearest_mode
+                                             false,                 // add_dq_output_float
+                                             use_contrib_qdq),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  test_case();
+  test_case(true /*use_contrib_qdq*/);
+}
+
 TEST(QDQTransformerTests, Resize_No_Fusion) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,

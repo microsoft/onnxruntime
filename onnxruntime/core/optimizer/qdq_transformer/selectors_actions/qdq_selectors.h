@@ -52,14 +52,25 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
                                     bool allow_nonpositive_scale = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
- private:
+ protected:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
 
+ private:
   bool allow_16bit_;
   bool allow_4bit_;
   bool allow_nonpositive_scale_;
+};
+
+class DropQDQNodeResizeNearestSelector : public DropQDQNodeGroupSelector {
+ public:
+  using DropQDQNodeGroupSelector::DropQDQNodeGroupSelector;
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
 };
 
 // Single DQ -> node.
@@ -306,6 +317,14 @@ class DropQDQNodesSelector : public BaseSelector {
                                 bool allow_nonpositive_scale = true,
                                 gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+                     compatible_providers) {}
+};
+
+class DropQDQNodesResizeNearestSelector : public BaseSelector {
+ public:
+  explicit DropQDQNodesResizeNearestSelector(bool allow_16bit = false, bool allow_4bit = false, bool allow_nonpositive_scale = true,
+                                             gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<DropQDQNodeResizeNearestSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
                      compatible_providers) {}
 };
 
