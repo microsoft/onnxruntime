@@ -721,7 +721,7 @@ def parse_arguments():
 
     # Code coverage
     parser.add_argument(
-        "--code_coverage", action="store_true", help="Generate code coverage when targetting Android (only)."
+        "--code_coverage", action="store_true", help="Generate code coverage when targeting Android (only)."
     )
 
     # lazy tensor support.
@@ -2755,7 +2755,7 @@ def main():
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
-                # builds (Override any user-defined behaviour for test if any)
+                # builds (Override any user-defined behavior for test if any)
                 if args.test:
                     log.warning(
                         "Cannot test on host build machine for cross-compiled "

@@ -65,9 +65,9 @@ struct CudaContext : public CustomOpContext {
     }
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
-    OrtStatus* status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, resource_type, &resource);
+    OrtStatus* status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOURCE_VERSION, resource_type, &resource);
     if (status) {
-      ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resouce type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     T t = {};
     memcpy(&t, &resource, sizeof(T));

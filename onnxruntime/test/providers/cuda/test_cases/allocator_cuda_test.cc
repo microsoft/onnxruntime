@@ -14,7 +14,7 @@ namespace test {
 TEST(AllocatorTest, CUDAAllocatorTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
 
-  // ensure CUDA device is avaliable.
+  // ensure CUDA device is available.
   CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
 
   AllocatorCreationInfo default_memory_info(

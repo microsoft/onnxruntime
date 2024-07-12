@@ -927,7 +927,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1 if not overriden
+      // free dimensions are treated as 1 if not overridden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

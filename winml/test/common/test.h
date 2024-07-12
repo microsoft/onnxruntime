@@ -18,7 +18,7 @@ constexpr bool alwaysTrue() {
 constexpr bool alwaysFalse() {
   return false;
 }
-#define WINML_SUPRESS_UNREACHABLE_BELOW(statement) \
+#define WINML_SUPPRESS_UNREACHABLE_BELOW(statement) \
   if (alwaysTrue()) {                              \
     statement;                                     \
   }

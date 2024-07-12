@@ -58,7 +58,7 @@ cp $SOURCE_DIR/include/onnxruntime/core/providers/cuda/cuda_context.h $BINARY_DI
 cp $SOURCE_DIR/include/onnxruntime/core/providers/cuda/cuda_resource.h $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/cuda/cuda_resource.h
 fi
 
-# copy the README, licence and TPN
+# copy the README, license and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
 cp $SOURCE_DIR/docs/Privacy.md $BINARY_DIR/$ARTIFACT_NAME/Privacy.md
 cp $SOURCE_DIR/LICENSE $BINARY_DIR/$ARTIFACT_NAME/LICENSE
