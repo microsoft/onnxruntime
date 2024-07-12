@@ -107,11 +107,7 @@ endif()
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
-target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
+
 target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
@@ -222,14 +218,21 @@ target_link_libraries(onnxruntime PRIVATE
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-set_target_properties(onnxruntime PROPERTIES
-  PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-  LINK_DEPENDS ${SYMBOL_FILE}
-  VERSION ${ORT_VERSION}
-  SOVERSION 1
-  FOLDER "ONNXRuntime"
-)
-
+if(NOT MACROS)
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    SOVERSION 1
+    FOLDER "ONNXRuntime")
+else()
+  # Omit the SOVERSION setting in macOS/iOS/.. build
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    FOLDER "ONNXRuntime")
+endif()
 install(TARGETS onnxruntime
         EXPORT ${PROJECT_NAME}Targets
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
