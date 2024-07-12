@@ -284,7 +284,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length) {
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
