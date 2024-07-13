@@ -79,6 +79,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
   bool UseTF32() const { return info_.use_tf32; }
+  int GetSdpaKernel() const { return info_.sdpa_kernel; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);

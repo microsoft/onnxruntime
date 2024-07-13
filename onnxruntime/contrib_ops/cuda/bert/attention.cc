@@ -3,7 +3,6 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
@@ -40,35 +39,24 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
-  disable_fused_self_attention_ =
-      sizeof(T) != 2 ||
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
+  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
 
-  enable_trt_flash_attention_ =
-      sizeof(T) == 2 &&
-      !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
 
-  enable_fused_causal_attention_ =
-      sizeof(T) == 2 &&
-      ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
+  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+
+  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ =
-      ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 #else
   disable_memory_efficient_attention_ = true;
 #endif
 
 #if USE_FLASH_ATTENTION
-  disable_flash_attention_ =
-      sizeof(T) != 2 ||
-      onnxruntime::ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForFlashAttentionPackedQKV,
-      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 #else
   disable_flash_attention_ = true;
-  min_seq_len_for_flash_attention_packed_qkv_ = 0;
 #endif
 }
 
@@ -134,7 +122,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.num_heads,
                                                               parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
-  if (use_flash_attention && parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+  if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
   }
   // Allocate buffers
@@ -220,7 +208,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == past &&
       nullptr == present &&
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
-      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 
   if (use_memory_efficient_attention) {

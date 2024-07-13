@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
@@ -47,31 +46,23 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
   ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support CUDA kernel. Consider using Attention or GQA instead.");
 
-  disable_fused_self_attention_ = sizeof(T) != 2 ||
-                                  ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-
-  enable_trt_flash_attention_ = sizeof(T) == 2 &&
-                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
+  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 
 #if USE_FLASH_ATTENTION
-  disable_flash_attention_ = sizeof(T) != 2 ||
-                             ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForFlashAttentionPackedQKV,
-      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 #else
   disable_flash_attention_ = true;
-  min_seq_len_for_flash_attention_packed_qkv_ = 0;
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
+  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 #else
   disable_memory_efficient_attention_ = true;
 #endif
 
-  disable_fused_cross_attention_ = sizeof(T) != 2 ||
-                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+  disable_fused_cross_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtCrossAttention();
 
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
@@ -155,7 +146,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
   if (use_flash_attention && key == nullptr && value == nullptr &&
-      parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+      parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
   }
   // Allocate buffers
@@ -229,9 +220,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
+  int length_threshold = this->kernel_options_->MinSeqLenForEfficientAttentionFp32();
   bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
-                          parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32 ||
-                          parameters.kv_sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32;
+                          parameters.sequence_length >= length_threshold ||
+                          parameters.kv_sequence_length >= length_threshold;
 
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 

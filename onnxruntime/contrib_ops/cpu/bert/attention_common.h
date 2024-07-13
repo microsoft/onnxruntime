@@ -166,11 +166,15 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 
-// Minimum sequence length to enable memory efficient attention in FP32.
-constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
+// Minimum sequence length to perfer memory efficient attention when data type is float32
+constexpr const char* kMinSeqLenForEfficientAttentionFp32 = "ORT_MIN_SEQ_LEN_EFFICIENT_ATTENTION_FP32";
+
+// Default value for minimum sequence length to enable memory efficient attention in FP32.
+constexpr int kDefaultMinSeqLenForEfficientAttentionFp32 = 256;
 
 // Minimum sequence length to prefer flash attention when input format is packed QKV for MultiHeadAttention
 constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
+
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
 
