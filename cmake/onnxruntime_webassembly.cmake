@@ -223,8 +223,8 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MEMORY64=1"
     )
-    string(APPEND CMAKE_C_FLAGS " -DWASM_MEMORY64 -sMEMORY64 -Wno-experimental")
-    string(APPEND CMAKE_CXX_FLAGS " -DWASM_MEMORY64 -sMEMORY64 -Wno-experimental")
+    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
+    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
     set(SMEMORY_FLAG "-sMEMORY64")
 
     target_compile_options(onnx PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
