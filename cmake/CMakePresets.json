@@ -72,7 +72,7 @@
             "binaryDir": "${sourceParentDir}/cmake_build/x64-windows",
             "installDir": "${sourceParentDir}/cmake_build/out",
             "cacheVariables": {
-                "ONNXRUNTIME_USE_VCPKG": true,
+                "onnxruntime_USE_VCPKG": true,
                 "onnxruntime_USE_XNNPACK": false,
                 "onnxruntime_USE_DML": false,
                 "onnxruntime_BUILD_SHARED_LIB": true,
@@ -112,7 +112,7 @@
                 "vcpkg-manifest"
             ],
             "cacheVariables": {
-                "ONNXRUNTIME_USE_VCPKG": true,
+                "onnxruntime_USE_VCPKG": true,
                 "onnxruntime_USE_XNNPACK": false,
                 "onnxruntime_USE_COREML": false,
                 "onnxruntime_BUILD_OBJC": false,
