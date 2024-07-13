@@ -218,7 +218,6 @@ else()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    set(ASYNCIFY 2)
     set(MAXIMUM_MEMORY "17179869184")
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MEMORY64=1"
@@ -255,7 +254,6 @@ else()
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
     )
   else ()
-    set(ASYNCIFY 1)
     set(MAXIMUM_MEMORY "4294967296")
     target_link_options(onnxruntime_webassembly PRIVATE
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
@@ -295,9 +293,6 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
       "SHELL:-s ASYNCIFY=1"
-      #"SHELL:-s JSPI"
-      #"SHELL:-s ASYNCIFY_IGNORE_INDIRECT=1"
-      #"SHELL:-s WASM_BIGINT"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
     )
@@ -336,9 +331,7 @@ else()
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    # target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
-  else()
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
     target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
   endif()
 

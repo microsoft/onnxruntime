@@ -73,20 +73,20 @@ class ComputeContextImpl implements ComputeContext {
     // extract context data
     const ptrSize = module.PTR_SIZE;
     let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2 ** 3) : (contextDataOffset >> 2);
-    this.opKernelContext = module.getValue(dataIndex++ * ptrSize, 'i32');
-    const inputCount = module.getValue(dataIndex++ * ptrSize, 'i32');
-    this.outputCount = module.getValue(dataIndex++ * ptrSize, 'i32');
-    this.customDataOffset = module.getValue(dataIndex++ * ptrSize, 'i32');
-    this.customDataSize = module.getValue(dataIndex++ * ptrSize, 'i32');
+    this.opKernelContext = module.getValue(ptrSize * dataIndex++, 'i32');
+    const inputCount = module.getValue(ptrSize * dataIndex++, 'i32');
+    this.outputCount = module.getValue(ptrSize * dataIndex++, 'i32');
+    this.customDataOffset = module.getValue(ptrSize * dataIndex++, 'i32');
+    this.customDataSize = module.getValue(ptrSize * dataIndex++, 'i32');
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = module.getValue(dataIndex++ * ptrSize, 'i32');
-      const data = module.getValue(dataIndex++ * ptrSize, '*');
-      const dim = module.getValue(dataIndex++ * ptrSize, 'i32');
+      const dataType = module.getValue(ptrSize * dataIndex++, 'i32');
+      const data = module.getValue(ptrSize * dataIndex++, '*');
+      const dim = module.getValue(ptrSize * dataIndex++, 'i32');
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(module.getValue(dataIndex++ * ptrSize, 'i32'));
+        dims.push(module.getValue(ptrSize * dataIndex++, 'i32'));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }

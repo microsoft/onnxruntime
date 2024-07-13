@@ -532,12 +532,12 @@ export const run = async(
     }
 
     for (let i = 0; i < inputCount; i++) {
-      wasm.setValue(inputValuesOffset + i * ptrSize, inputTensorHandles[i], 'i64');
-      wasm.setValue(inputNamesOffset + i * ptrSize, inputNamesUTF8Encoded[inputIndices[i]], 'i64');
+      wasm.setValue(inputValuesOffset + i * ptrSize, inputTensorHandles[i], '*');
+      wasm.setValue(inputNamesOffset + i * ptrSize, inputNamesUTF8Encoded[inputIndices[i]], '*');
     }
     for (let i = 0; i < outputCount; i++) {
-      wasm.setValue(outputValuesOffset + i * ptrSize, outputTensorHandles[i], 'i64');
-      wasm.setValue(outputNamesOffset + i * ptrSize, outputNamesUTF8Encoded[outputIndices[i]], 'i64');
+      wasm.setValue(outputValuesOffset + i * ptrSize, outputTensorHandles[i], '*');
+      wasm.setValue(outputNamesOffset + i * ptrSize, outputNamesUTF8Encoded[outputIndices[i]], '*');
     }
 
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState && !inputOutputBound) {
