@@ -69,24 +69,24 @@ class ComputeContextImpl implements ComputeContext {
   private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     this.adapterInfo = backend.adapterInfo;
-    const heap = module.PTR_SIZE === 4 ? module.HEAPU32 : module.HEAPU64;
 
     // extract context data
+    const ptrSize = module.PTR_SIZE;
     let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2 ** 3) : (contextDataOffset >> 2);
-    this.opKernelContext = Number(heap[dataIndex++]);
-    const inputCount = Number(heap[dataIndex++]);
-    this.outputCount = Number(heap[dataIndex++]);
-    this.customDataOffset = Number(heap[dataIndex++]);
-    this.customDataSize = Number(heap[dataIndex++]);
+    this.opKernelContext = module.getValue(dataIndex++ * ptrSize, 'i32');
+    const inputCount = module.getValue(dataIndex++ * ptrSize, 'i32');
+    this.outputCount = module.getValue(dataIndex++ * ptrSize, 'i32');
+    this.customDataOffset = module.getValue(dataIndex++ * ptrSize, 'i32');
+    this.customDataSize = module.getValue(dataIndex++ * ptrSize, 'i32');
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = Number(heap[dataIndex++]);
-      const data = Number(heap[dataIndex++]);
-      const dim = Number(heap[dataIndex++]);
+      const dataType = module.getValue(dataIndex++ * ptrSize, 'i32');
+      const data = module.getValue(dataIndex++ * ptrSize, '*');
+      const dim = module.getValue(dataIndex++ * ptrSize, 'i32');
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(Number(heap[dataIndex++]));
+        dims.push(module.getValue(dataIndex++ * ptrSize, 'i32'));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -130,9 +130,9 @@ class ComputeContextImpl implements ComputeContext {
     try {
       const ptrSize = this.module.PTR_SIZE;
       const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
-      this.module.setValue(data, dims.length, '*');
+      this.module.setValue(data, dims.length, 'i32');
       for (let i = 0; i < dims.length; i++) {
-        this.module.setValue(data + ptrSize * (i + 1), dims[i], '*');
+        this.module.setValue(data + ptrSize * (i + 1), dims[i], 'i32');
       }
       return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {
