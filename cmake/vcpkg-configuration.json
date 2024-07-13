@@ -1,0 +1,25 @@
+{
+    "default-registry": {
+        "kind": "git",
+        "repository": "https://github.com/Microsoft/vcpkg",
+        "baseline": "f7423ee180c4b7f40d43402c2feb3859161ef625"
+    },
+    "registries": [
+        {
+            "repository": "https://github.com/microsoft/vcpkg",
+            "kind": "git",
+            "packages": [
+                "flatbuffers"
+            ],
+            "baseline": "8161f655436492669adc8eb6f269dc41392ffa70"
+        },
+        {
+            "repository": "https://github.com/luncliff/vcpkg-registry",
+            "kind": "git",
+            "packages": [
+                "onnx"
+            ],
+            "baseline": "d8758aed30032ab7b6988fd42faf0657d49a2880"
+        }
+    ]
+}

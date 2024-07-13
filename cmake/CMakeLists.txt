@@ -38,6 +38,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -69,6 +70,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 # Options
+option(ONNXRUNTIME_USE_VCPKG "Build with the vcpkg package manager" OFF)
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
@@ -595,7 +597,11 @@ get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
-include(external/onnxruntime_external_deps.cmake)
+if(ONNXRUNTIME_USE_VCPKG)
+  include(external/onnxruntime_vcpkg_deps.cmake)
+else()
+  include(external/onnxruntime_external_deps.cmake)
+endif()
 
 set(ORT_WARNING_FLAGS)
 if (WIN32)
@@ -731,6 +737,15 @@ set(ORT_PROVIDER_CMAKE_FLAGS)
 if (onnxruntime_USE_CUDA)
   if (onnxruntime_USE_CUDA_NHWC_OPS)
     add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
+  endif()
+  # Give more hints for the generator, with FindCUDAToolkit.cmake
+  find_package(CUDAToolkit REQUIRED)
+  if(CMAKE_GENERATOR MATCHES "Visual Studio")
+    set(CMAKE_VS_PLATFORM_TOOLSET_CUDA "${CUDAToolkit_VERSION_MAJOR}.${CUDAToolkit_VERSION_MINOR}")
+    set(CMAKE_VS_PLATFORM_TOOLSET_CUDA_CUSTOM_DIR "${CUDAToolkit_TARGET_DIR}/")
+  endif()
+  if(NOT DEFINED CMAKE_CUDA_COMPILER)
+    get_filename_component(CMAKE_CUDA_COMPILER "${CUDAToolkit_NVCC_EXECUTABLE}" ABSOLUTE)
   endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
