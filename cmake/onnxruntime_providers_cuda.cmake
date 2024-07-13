@@ -217,11 +217,16 @@
       target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
     endif()
 
-    find_package(NvidiaCutlass REQUIRED)
-    target_link_libraries(${target} PRIVATE nvidia::cutlass::cutlass)
-    if(MSVC)
-      # CUTLASS_CONSTEXPR_IF_CXX17 must be constexpr. Correct the __cplusplus value with MSVC
-      target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /Zc:__cplusplus>)
+    if(onnxruntime_USE_VCPKG)
+      find_package(NvidiaCutlass REQUIRED)
+      target_link_libraries(${target} PRIVATE nvidia::cutlass::cutlass)
+      if(MSVC)
+        # CUTLASS_CONSTEXPR_IF_CXX17 must be constexpr. Correct the __cplusplus value with MSVC
+        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:"-Xcompiler /Zc:__cplusplus">)
+      endif()
+    else()
+      include(cutlass)
+      target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
     endif()
 
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES}
