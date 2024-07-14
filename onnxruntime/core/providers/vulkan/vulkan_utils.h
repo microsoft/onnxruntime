@@ -48,10 +48,15 @@ ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
 ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
                                      const ncnn::VulkanDevice& device, const ncnn::Option& options);
 
+// get input/output shape hints
+std::tuple<std::vector<ncnn::Mat>, std::vector<ncnn::Mat>> GetLayerShapeHints(const Node& node);
+
 struct LayerPipeline {
   LayerPipeline(ncnn::Layer& layer, const ncnn::Option& options,
                 const std::vector<ncnn::Mat>& input_shape_hints = {},
-                const std::vector<ncnn::Mat>& output_shape_hints = {}) : layer_(&layer), options_{&options} {
+                const std::vector<ncnn::Mat>& output_shape_hints = {})
+      : layer_(&layer),
+        options_{&options} {
     layer_->bottom_shapes = input_shape_hints;
     layer_->top_shapes = output_shape_hints;
 

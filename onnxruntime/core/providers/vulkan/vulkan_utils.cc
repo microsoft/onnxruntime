@@ -4,12 +4,13 @@
 #include "core/providers/vulkan/vulkan_utils.h"
 
 #include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace vulkan {
 namespace {
 template <typename TMat>
-void InitMatFromTensor(const Tensor& tensor, TMat& mat, int32_t elempack = 1) {
+void InitMatFromTensor(const Tensor& tensor, TMat& mat, bool align_channels = false) {
   const auto& shape = tensor.Shape();
   const size_t rank = shape.NumDimensions();
   const int64_t num_elements = shape.Size();
@@ -18,7 +19,7 @@ void InitMatFromTensor(const Tensor& tensor, TMat& mat, int32_t elempack = 1) {
   ORT_ENFORCE(rank > 0, "TODO: do scalars need to be 1D?");
 
   mat.elemsize = element_size;
-  mat.elempack = elempack;
+  mat.elempack = 1;
 
   // NCNN doesn't support batches so the 4D dims are C, D, H, W where 'D' is depth.
   // For now map the same way (3D -> C, 1, H, W).
@@ -40,24 +41,30 @@ void InitMatFromTensor(const Tensor& tensor, TMat& mat, int32_t elempack = 1) {
       mat.h = gsl::narrow_cast<int32_t>(shape[1]);
       break;
     case 4:
-      mat.c = gsl::narrow_cast<int32_t>(shape[0]);
-      mat.d = gsl::narrow_cast<int32_t>(shape[1]);
+      // Assume NCHW.
+      // NCNN doesn't support batches so if the first dim is 1 assume it's the batch size
+      if (mat.c == 1) {
+        mat.c = gsl::narrow_cast<int32_t>(shape[1]);
+      } else {
+        ORT_THROW("Unsupported?");  // TODO: is there a scenario with 4D input where the first dim is not the batch?
+        // mat.c = gsl::narrow_cast<int32_t>(shape[0]);
+        // mat.d = gsl::narrow_cast<int32_t>(shape[1]);
+      }
       mat.h = gsl::narrow_cast<int32_t>(shape[2]);
       break;
     default:
       ORT_THROW("Tensor shape is not supported in Vulkan EP. Must be 4D or less. shape:", shape);
   }
 
-  auto bytes_required = mat.cstep * mat.c;
-
-  // align channels data the same way NCNN does.
-  // TODO: not sure if this is necessary if all the 'pack' related ncnn::Option values are set to false
-  // as it's only really relevant for CPU implementations of the NCNN kernels
-  if (rank > 2) {
+  // align channels data the same way NCNN does. this only applies if we're creating a VkMat for a value that was
+  // uploaded using NCNN code that aligns the data.
+  if (align_channels && rank > 2) {
     mat.cstep = ncnn::alignSize(SafeInt<size_t>(mat.w) * mat.h * mat.d * element_size, 16) / element_size;
   }
 
-  // NCNN uses a few bytes past the end of the allocation for the VkMat refernece counter.
+  auto bytes_required = mat.cstep * mat.c;
+
+  // NCNN uses a few bytes past the end of the allocation for the VkMat reference counter.
   // we're not directly using the reference counter (we set it to nullptr) but it may happen if there are internal
   // allocations  made by NCNN (e.g. the Convolution kernel uses a Padding Layer internally). we don't control those.
   //
@@ -86,13 +93,81 @@ int GetNcnnLayerIndex(const std::string& layer_name) {
   return index;
 }
 
+// get ncnn::Mat shape hints from the node
+// TODO: figure out how to handle the inputs/outputs not being 1:1 between the NCNN Layer and the ONNX Node
+//       and/or when there are missing optional inputs
+std::tuple<std::vector<ncnn::Mat>, std::vector<ncnn::Mat>> GetLayerShapeHints(const Node& node) {
+  const auto defs_to_hints = [](const ConstPointerContainer<std::vector<NodeArg*>>& defs) {
+    std::vector<ncnn::Mat> shapes;
+    shapes.reserve(defs.size());
+
+    for (const auto* def : defs) {
+      ncnn::Mat ncnn_shape;
+      if (def->Exists()) {
+        auto* tensorproto_shape = def->Shape();
+        if (tensorproto_shape) {
+          TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*tensorproto_shape);
+          ncnn_shape.dims = gsl::narrow_cast<int32_t>(shape.NumDimensions());
+          ncnn_shape.h = 1;
+          ncnn_shape.d = 1;
+          ncnn_shape.c = 1;
+          ncnn_shape.elempack = 1;
+          // The shader bases the datatype on whether fp16 is being used or not, which is set in ncnn::Option.
+          // Assuming we don't need to set elemsize here for now.
+          // ncnn_shape.elemsize = ???;
+
+          switch (ncnn_shape.dims) {
+            case 1:
+              ncnn_shape.w = gsl::narrow_cast<int32_t>(shape[0]);
+              break;
+            case 2:
+              ncnn_shape.h = gsl::narrow_cast<int32_t>(shape[0]);
+              ncnn_shape.w = gsl::narrow_cast<int32_t>(shape[1]);
+              break;
+            case 3:
+              ncnn_shape.c = gsl::narrow_cast<int32_t>(shape[0]);
+              ncnn_shape.h = gsl::narrow_cast<int32_t>(shape[1]);
+              ncnn_shape.w = gsl::narrow_cast<int32_t>(shape[2]);
+
+              break;
+            case 4:
+              // 4D is OK if batch is 1
+              if (shape[0] == 1) {
+                ncnn_shape.c = gsl::narrow_cast<int32_t>(shape[1]);
+                ncnn_shape.h = gsl::narrow_cast<int32_t>(shape[2]);
+                ncnn_shape.w = gsl::narrow_cast<int32_t>(shape[3]);
+              }
+
+              [[fallthrough]];
+
+            default:
+              // as NCNN doesn't expect batches
+              ORT_THROW("Unsupported shape:", shape);
+          }
+
+          ncnn_shape.cstep = ncnn_shape.w * ncnn_shape.h * ncnn_shape.d;
+        }
+      }
+
+      shapes.emplace_back(std::move(ncnn_shape));
+    }
+
+    return shapes;
+  };
+
+  auto input_shapes = defs_to_hints(node.InputDefs());
+  auto output_shapes = defs_to_hints(node.OutputDefs());
+
+  return {input_shapes, output_shapes};
+}
+
 ncnn::Mat TensorToMat(const Tensor& tensor) {
   ncnn::Mat mat;
 
   InitMatFromTensor(tensor, mat);
-  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
+  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading,
   // and there's no real value having a `ncnn::Mat TensorToMat(Tensor& tensor)` overload to avoid the const_cast
-  // when writing.
+  // and all MutableDataRaw when writing.
   mat.data = const_cast<void*>(tensor.DataRaw());
 
   return mat;
@@ -103,7 +178,7 @@ ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator) {
 
   InitMatFromTensor(tensor, vkmat);
   vkmat.allocator = &allocator;
-  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
+  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading,
   // and there's no real value having a `ncnn::VkMat TensorToVkMat(Tensor& tensor)` overload to avoid the const_cast
   // when writing.
   vkmat.data = static_cast<ncnn::VkBufferMemory*>(const_cast<void*>(tensor.DataRaw()));
@@ -117,7 +192,7 @@ ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& al
   ncnn::VkMat vkmat;
 
   // get initial values with elempack = 1
-  InitMatFromTensor(tensor, vkmat);
+  InitMatFromTensor(tensor, vkmat, /* align */ true);
 
   vkmat.allocator = &allocator;
   // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
