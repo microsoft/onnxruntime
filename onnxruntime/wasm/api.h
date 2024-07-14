@@ -280,9 +280,9 @@ int EMSCRIPTEN_KEEPALIVE OrtRunWithBinding(ort_session_handle_t session,
 int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
                                 const char** input_names,
                                 const ort_tensor_handle_t* inputs,
-                                size_t input_count,
+                                int input_count,
                                 const char** output_names,
-                                size_t output_count,
+                                int output_count,
                                 ort_tensor_handle_t* outputs,
                                 ort_run_options_handle_t run_options);
 
