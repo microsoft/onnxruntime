@@ -1744,7 +1744,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_file_path: " << ep_context_file_path_
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
-                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_;
+                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
