@@ -81,14 +81,6 @@ stages:
     - template: "templates/use-android-ndk.yml"
 
     - script: |
-        set -e -x \
-        uname -m \
-        echo "ANDROID_HOME=$ANDROID_HOME" \
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
-        ls -R $ANDROID_SDK_ROOT
-      displayName: Check Android NDKs
-
-    - script: |
         env | grep ANDROID
       displayName: View Android ENVs
 
@@ -173,14 +165,6 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - script: |
-        set -e -x \
-        uname -m \
-        echo "ANDROID_HOME=$ANDROID_HOME" \
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
-        ls -R $ANDROID_SDK_ROOT
-      displayName: Check Android NDKs
 
     - script: |
         env | grep ANDROID
@@ -269,28 +253,12 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: |
-          set -e -x \
-          uname -m \
-          echo "ANDROID_HOME=$ANDROID_HOME" \
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
-          ls -R $ANDROID_SDK_ROOT
-        displayName: Check Android NDKs
-
       - template: templates/use-android-emulator.yml
         parameters:
           create: true
           start: true
           install_missing_packages: true
 
-
-      - script: |
-          set -e -x \
-          uname -m \
-          echo "ANDROID_HOME=$ANDROID_HOME" \
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" \
-          ls -R $ANDROID_SDK_ROOT
-        displayName: Check Android NDKs
       - script: |
           python3 tools/ci_build/build.py \
           --enable_lto \
