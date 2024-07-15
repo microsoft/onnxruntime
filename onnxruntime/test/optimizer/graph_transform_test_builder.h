@@ -340,8 +340,10 @@ class ModelTestBuilder {
                         bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain, attributes);
@@ -416,8 +418,10 @@ class ModelTestBuilder {
                           bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain, attributes);

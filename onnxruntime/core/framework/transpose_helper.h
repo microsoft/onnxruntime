@@ -37,7 +37,7 @@ We fall back to the default implementation in all other cases, and if the input 
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 bool IsTransposeMovingSingleAxis(gsl::span<const size_t> permutations, size_t& from, size_t& to);

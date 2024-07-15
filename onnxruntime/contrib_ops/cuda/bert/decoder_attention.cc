@@ -282,7 +282,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       &one, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop, UseTF32()));
   // gemm_query_buffer in col-base: (h2, S*B)
 
-  // calcualte k, v
+  // calculate k, v
   n = 2 * hidden_size;
   k = hidden_size;
   if (!has_layer_state_ || !use_past_) {

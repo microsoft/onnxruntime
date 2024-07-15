@@ -113,8 +113,7 @@ template <
     /// Permute operand A
     typename PermuteALayout = layout::NoPermute,
     /// Permute operand B
-    typename PermuteBLayout = layout::NoPermute
-    >
+    typename PermuteBLayout = layout::NoPermute>
 struct DefaultQuantBMma;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,19 +163,16 @@ template <
     /// Permute operand A
     typename PermuteALayout,
     /// Permute operand B
-    typename PermuteBLayout
-    >
+    typename PermuteBLayout>
 struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
-                  kAlignmentB, ElementQScale, ElementQOffset,
-                  LayoutQMeta, QuantBlocking,
-                  ElementAccumulator, LayoutC,
-                  arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape,
-                  InstructionShape, Stages, Operator, false,
-                  GatherA, GatherB, PermuteALayout, PermuteBLayout> {
-
-  static_assert(platform::is_same<LayoutC, layout::RowMajor>::value
-             || platform::is_same<LayoutC, layout::AffineRankN<2>>::value,
-             "simt epilogue must be row major");
+                        kAlignmentB, ElementQScale, ElementQOffset,
+                        LayoutQMeta, QuantBlocking,
+                        ElementAccumulator, LayoutC,
+                        arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape,
+                        InstructionShape, Stages, Operator, false,
+                        GatherA, GatherB, PermuteALayout, PermuteBLayout> {
+  static_assert(platform::is_same<LayoutC, layout::RowMajor>::value || platform::is_same<LayoutC, layout::AffineRankN<2>>::value,
+                "simt epilogue must be row major");
 
   static cutlass::arch::CacheOperation::Kind const CacheOpA =
       ((sizeof_bits<ElementA>::value * kAlignmentA) == 128)
@@ -208,7 +204,7 @@ struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
   using AccessTypeB = cutlass::Array<ElementB, kAlignmentB>;
   using IteratorB =
       cutlass::transform::threadblock::PredicatedTileAccessIterator<
-          cutlass::MatrixShape<ThreadblockShape::kK/2, ThreadblockShape::kN/2>,
+          cutlass::MatrixShape<ThreadblockShape::kK / 2, ThreadblockShape::kN / 2>,
           ElementB, LayoutB, 0, ThreadMapB, AccessTypeB, GatherB, PermuteBLayout>;
 
   // Define iterators over tiles from the quant scales
@@ -225,8 +221,8 @@ struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
       cutlass::Array<ElementQOffset, ThreadMapQOffset::kElementsPerAccess>;
   using IteratorQOffset =
       cutlass::transform::threadblock::OptionalPredicatedTileAccessIterator<
-            typename MmaCore::ThreadblockQShape, ElementQOffset, LayoutQMeta,
-            0, ThreadMapQOffset, AccessTypeQOffset, MmaCore::kThreads>;
+          typename MmaCore::ThreadblockQShape, ElementQOffset, LayoutQMeta,
+          0, ThreadMapQOffset, AccessTypeQOffset, MmaCore::kThreads>;
 
   // Define the threadblock-scoped multistage matrix multiply
   using ThreadblockMma = cutlass::gemm::threadblock::QuantBMmaMultistage<
@@ -241,8 +237,8 @@ struct DefaultQuantBMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-} // namespace threadblock
-} // namespace gemm
-} // namespace cutlass
+}  // namespace threadblock
+}  // namespace gemm
+}  // namespace cutlass
 
 ////////////////////////////////////////////////////////////////////////////////

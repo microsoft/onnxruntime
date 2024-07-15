@@ -9,7 +9,6 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
-#include "core/common/path.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"

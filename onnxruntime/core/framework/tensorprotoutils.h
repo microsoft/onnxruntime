@@ -10,7 +10,6 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/framework/endian_utils.h"

@@ -70,42 +70,41 @@ namespace warp {
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
 template <
-  /// Size of the Gemm problem - concept: gemm::GemmShape<>
-  typename Shape_,
-  /// Data type of A elements
-  typename ElementA_,
-  /// Layout of A matrix (concept: MatrixLayout)
-  typename LayoutA_,
-  /// Data type of B elements
-  typename ElementB_,
-  /// Layout of B matrix (concept: MatrixLayout)
-  typename LayoutB_,
-  /// Data type of quant scales
-  typename ElementQScale_,
-  /// Layout of quant scales (concept: MatrixLayout)
-  typename SmemLayoutQScale_,
-  /// Data type of quant offsets
-  typename ElementQOffset_,
-  /// Layout of quant offsets (concept: MatrixLayout)
-  typename SmemLayoutQOffset_,
-  /// Blocking dimensions of quantization
-  typename QuantBlocking_,
-  /// Element type of C matrix
-  typename ElementC_,
-  /// Layout of C matrix (concept: MatrixLayout)
-  typename LayoutC_,
-  /// Policy describing warp-level MmaTensorOp (concept: MmaTensorOp policy)
-  typename Policy_,
-  /// Number of partitions along K dimension
-  int PartitionsK_ = 1,
-  /// Store the accumulators in row major or column major.  Row major is used
-  /// when output layout is interleaved.
-  bool AccumulatorsInRowMajor = false,
-  /// Used for partial specialization
-  typename Enable = bool
->
+    /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename Shape_,
+    /// Data type of A elements
+    typename ElementA_,
+    /// Layout of A matrix (concept: MatrixLayout)
+    typename LayoutA_,
+    /// Data type of B elements
+    typename ElementB_,
+    /// Layout of B matrix (concept: MatrixLayout)
+    typename LayoutB_,
+    /// Data type of quant scales
+    typename ElementQScale_,
+    /// Layout of quant scales (concept: MatrixLayout)
+    typename SmemLayoutQScale_,
+    /// Data type of quant offsets
+    typename ElementQOffset_,
+    /// Layout of quant offsets (concept: MatrixLayout)
+    typename SmemLayoutQOffset_,
+    /// Blocking dimensions of quantization
+    typename QuantBlocking_,
+    /// Element type of C matrix
+    typename ElementC_,
+    /// Layout of C matrix (concept: MatrixLayout)
+    typename LayoutC_,
+    /// Policy describing warp-level MmaTensorOp (concept: MmaTensorOp policy)
+    typename Policy_,
+    /// Number of partitions along K dimension
+    int PartitionsK_ = 1,
+    /// Store the accumulators in row major or column major.  Row major is used
+    /// when output layout is interleaved.
+    bool AccumulatorsInRowMajor = false,
+    /// Used for partial specialization
+    typename Enable = bool>
 class QuantBMmaTensorOp {
-public:
+ public:
   /// Shape of warp-level matrix operation (concept: GemmShape)
   using Shape = Shape_;
 
@@ -157,13 +156,12 @@ public:
   /// Number of partitions along K dimension
   static int const kPartitionsK = PartitionsK_;
 
-public:
-
+ public:
   /// Iterates over the A operand in memory
   using IteratorA = MmaTensorOpMultiplicandTileIterator<
-     MatrixShape<Shape::kM, Shape::kK>, Operand::kA, ElementA, LayoutA,
-     MatrixShape<ArchMmaOperator::Shape::kM, ArchMmaOperator::Shape::kK>,
-     Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
+      MatrixShape<Shape::kM, Shape::kK>, Operand::kA, ElementA, LayoutA,
+      MatrixShape<ArchMmaOperator::Shape::kM, ArchMmaOperator::Shape::kK>,
+      Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
 
   /// Storage for A tile
   using FragmentA = typename IteratorA::Fragment;
@@ -174,8 +172,8 @@ public:
 
   /// Iterates over the B operand in memory
   using IteratorB = MmaTensorOpMultiplicandTileIterator<
-      MatrixShape<Shape::kK/2, Shape::kN/2>, Operand::kB, ElementB, LayoutB,
-      MatrixShape<ArchMmaOperator::Shape::kK/2, ArchMmaOperator::Shape::kN/2>,
+      MatrixShape<Shape::kK / 2, Shape::kN / 2>, Operand::kB, ElementB, LayoutB,
+      MatrixShape<ArchMmaOperator::Shape::kK / 2, ArchMmaOperator::Shape::kN / 2>,
       Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
   // warp B MatrixShape<64, 64>,
   // layout B cutlass::layout::ColumnMajorTensorOpMultiplicandCrosswise<16, 64>,
@@ -184,7 +182,7 @@ public:
   // FragmentB::kElements 32
 
   /// Storage for B tile
-  using FragmentB = typename IteratorB::Fragment; // cutlass::Array<cutlass::half_t, 8>
+  using FragmentB = typename IteratorB::Fragment;  // cutlass::Array<cutlass::half_t, 8>
 
   /// Storage for transformed B tile
   /// When loading weights, we packed 4 int4 weights into one 2-byte-element, when expanded
@@ -196,8 +194,8 @@ public:
 
   /// Iterates over the C operand in memory
   using IteratorC = MmaTensorOpAccumulatorTileIterator<
-     MatrixShape<Shape::kM, Shape::kN>, ElementC, LayoutC,
-     typename ArchMmaOperator::Shape, typename Policy::OpDelta>;
+      MatrixShape<Shape::kM, Shape::kN>, ElementC, LayoutC,
+      typename ArchMmaOperator::Shape, typename Policy::OpDelta>;
 
   /// Storage for C tile
   using FragmentC = typename IteratorC::Fragment;
@@ -218,26 +216,23 @@ public:
   // TODO This is an expanding iterator, it needs to replicate the quantization parameters
   // to all threads in the warp.
   using IteratorQMeta = QuantBMetaMmaTensorOpTileIterator<
-    MatrixShape<Shape::kK, Shape::kN>, QuantBlocking, ElementQScale, SmemLayoutQScale,
-    ElementQOffset, SmemLayoutQOffset,
-    ArchMmaOperator, kThreadCount, kPartitionsK>;
+      MatrixShape<Shape::kK, Shape::kN>, QuantBlocking, ElementQScale, SmemLayoutQScale,
+      ElementQOffset, SmemLayoutQOffset,
+      ArchMmaOperator, kThreadCount, kPartitionsK>;
 
   using FragmentQScale = typename IteratorQMeta::FragmentScale;
   using FragmentQOffset = typename IteratorQMeta::FragmentOffset;
 
   /// Number of mma operations performed
   using MmaIterations = MatrixShape<
-    (Shape::kM + ArchMmaOperator::Shape::kM - 1) / ArchMmaOperator::Shape::kM,
-    (Shape::kN + ArchMmaOperator::Shape::kN - 1) / ArchMmaOperator::Shape::kN
-  >;
+      (Shape::kM + ArchMmaOperator::Shape::kM - 1) / ArchMmaOperator::Shape::kM,
+      (Shape::kN + ArchMmaOperator::Shape::kN - 1) / ArchMmaOperator::Shape::kN>;
 
-public:
-
+ public:
   /// Underlying matrix multiply operator (concept: arch::Mma)
   ArchMmaOperator mma;
 
-public:
-
+ public:
   //
   // Methods
   //
@@ -249,113 +244,106 @@ public:
   /// Performs a warp-level matrix multiply-accumulate operation
   CUTLASS_DEVICE
   void operator()(
-    FragmentC &D,
-    TransformedFragmentA const &A,
-    TransformedFragmentB const &B,
-    FragmentC const &C
-  ) const {
-
+      FragmentC& D,
+      TransformedFragmentA const& A,
+      TransformedFragmentB const& B,
+      FragmentC const& C) const {
     using MmaOperandA = typename ArchMmaOperator::FragmentA;
     using MmaOperandB = typename ArchMmaOperator::FragmentB;
     using MmaOperandC = typename ArchMmaOperator::FragmentC;
 
     D = C;
 
-    MmaOperandA const *ptr_A = reinterpret_cast<MmaOperandA const *>(&A);
-    MmaOperandB const *ptr_B = reinterpret_cast<MmaOperandB const *>(&B);
-    MmaOperandC *ptr_D = reinterpret_cast<MmaOperandC *>(&D);
+    MmaOperandA const* ptr_A = reinterpret_cast<MmaOperandA const*>(&A);
+    MmaOperandB const* ptr_B = reinterpret_cast<MmaOperandB const*>(&B);
+    MmaOperandC* ptr_D = reinterpret_cast<MmaOperandC*>(&D);
 
-    #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800)
-      // Serpentine visitation order maximizing reuse of Rb
-      // The visitation order is like
-      //      _
-      //   | | | |
-      //   | | | |
-      //   |_| |_|
-      //
-      // Down Up Down Up
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 800)
+    // Serpentine visitation order maximizing reuse of Rb
+    // The visitation order is like
+    //      _
+    //   | | | |
+    //   | | | |
+    //   |_| |_|
+    //
+    // Down Up Down Up
 
+    CUTLASS_PRAGMA_UNROLL
+    for (int n = 0; n < MmaIterations::kColumn; ++n) {
       CUTLASS_PRAGMA_UNROLL
-      for (int n = 0; n < MmaIterations::kColumn; ++n) {
+      for (int m = 0; m < MmaIterations::kRow; ++m) {
+        int m_serpentine = ((n % 2) ? (MmaIterations::kRow - 1 - m) : m);
 
-        CUTLASS_PRAGMA_UNROLL
-        for (int m = 0; m < MmaIterations::kRow; ++m) {
-
-          int m_serpentine = ((n % 2) ? (MmaIterations::kRow - 1 - m) : m);
-
-          if (AccumulatorsInRowMajor) {  // matrix B is reordered
-            mma(
+        if (AccumulatorsInRowMajor) {  // matrix B is reordered
+          mma(
               ptr_D[n + m_serpentine * MmaIterations::kColumn],
               ptr_A[m_serpentine],
               ptr_B[n],
               ptr_D[n + m_serpentine * MmaIterations::kColumn]);
-          } else {
-            mma(
+        } else {
+          mma(
               ptr_D[m_serpentine + n * MmaIterations::kRow],
               ptr_A[m_serpentine],
               ptr_B[n],
               ptr_D[m_serpentine + n * MmaIterations::kRow]);
-          }
         }
       }
-    #elif defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
-      // Serpentine visitation order maximizing reuse of Ra
-      // The visitation order is like
-      //   _________
-      //   _________|
-      //  |_________
-      //  __________|
-      //
-      // Right Left Right Left
+    }
+#elif defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+    // Serpentine visitation order maximizing reuse of Ra
+    // The visitation order is like
+    //   _________
+    //   _________|
+    //  |_________
+    //  __________|
+    //
+    // Right Left Right Left
 
+    CUTLASS_PRAGMA_UNROLL
+    for (int m = 0; m < MmaIterations::kRow; ++m) {
       CUTLASS_PRAGMA_UNROLL
-      for (int m = 0; m < MmaIterations::kRow; ++m) {
+      for (int n = 0; n < MmaIterations::kColumn; ++n) {
+        int n_serpentine = ((m % 2) ? (MmaIterations::kColumn - 1 - n) : n);
 
-        CUTLASS_PRAGMA_UNROLL
-        for (int n = 0; n < MmaIterations::kColumn; ++n) {
-
-          int n_serpentine = ((m % 2) ? (MmaIterations::kColumn - 1 - n) : n);
-
-          if (AccumulatorsInRowMajor) {  // matrix B is reordered
-            mma(
+        if (AccumulatorsInRowMajor) {  // matrix B is reordered
+          mma(
               ptr_D[n_serpentine + m * MmaIterations::kColumn],
               ptr_A[m],
               ptr_B[n_serpentine],
               ptr_D[n_serpentine + m * MmaIterations::kColumn]);
-          } else {
-            mma(ptr_D[m + n_serpentine * MmaIterations::kRow],
-                ptr_A[m],
-                ptr_B[n_serpentine],
-                ptr_D[m + n_serpentine * MmaIterations::kRow]);
-          }
+        } else {
+          mma(ptr_D[m + n_serpentine * MmaIterations::kRow],
+              ptr_A[m],
+              ptr_B[n_serpentine],
+              ptr_D[m + n_serpentine * MmaIterations::kRow]);
         }
       }
-    #else
-      assert(0);
-    #endif
+    }
+#else
+    assert(0);
+#endif
   }
 
   /// Transform the mma operands to the required types
   CUTLASS_DEVICE
-  void transform(TransformedFragmentB &dst_B,
-                 FragmentB const &B,
-                 FragmentQScale const &scales,
-                 FragmentQOffset const &offsets) const {
-
-    Array<uint8_t, FragmentB::kElements * 2> const *ptr_B =
-        reinterpret_cast<Array<uint8_t, FragmentB::kElements * 2> const *>(&B);
+  void transform(TransformedFragmentB& dst_B,
+                 FragmentB const& B,
+                 FragmentQScale const& scales,
+                 FragmentQOffset const& offsets) const {
+    Array<uint8_t, FragmentB::kElements* 2> const* ptr_B =
+        reinterpret_cast<Array<uint8_t, FragmentB::kElements * 2> const*>(&B);
     IteratorQMeta::dequant(scales, offsets, *ptr_B, dst_B);
   }
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-} // namespace warp
-} // namespace gemm
-} // namespace cutlass
+}  // namespace warp
+}  // namespace gemm
+}  // namespace cutlass
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-//#include "cutlass/gemm/warp/mma_tensor_op_fast_f32.h"
+// #include "cutlass/gemm/warp/mma_tensor_op_fast_f32.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

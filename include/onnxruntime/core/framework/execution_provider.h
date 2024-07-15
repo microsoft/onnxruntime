@@ -231,7 +231,7 @@ class IExecutionProvider {
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
-  // Fusion approach that is suppported
+  // Fusion approach that is supported
   // !!! The "Function" FusionStyle is deprecated.
   // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
