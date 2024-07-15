@@ -685,7 +685,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
     ORT_THROW_IF_ERROR(
         Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
   } else {
-    ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
+    ORT_THROW_IF_ERROR(Model::Save(*inference_model, ToPathString(inference_model_path)));
   }
   // Save the model at the desired location.
   return Status::OK();

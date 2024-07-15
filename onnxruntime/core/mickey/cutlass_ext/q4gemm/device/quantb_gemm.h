@@ -35,7 +35,7 @@
  *
  * @file quantb_gemm.h
  * @brief Modified from cutlass/gemm/device/gemm.h, boilerplate code passing input pointers to the kernel.
-*/
+ */
 
 #pragma once
 
@@ -145,7 +145,6 @@ template <
     typename PermuteDLayout = layout::NoPermute>
 class QuantBGemm {
  public:
-
   using ElementA = ElementA_;
   using LayoutA = LayoutA_;
   using TensorRefA = TensorRef<ElementA const, LayoutA>;
@@ -189,34 +188,33 @@ class QuantBGemm {
 
   /// Define the kernel
   using GemmKernel = typename kernel::DefaultQuantBGemm<
-    ElementA,
-    LayoutA,
-    kAlignmentA,
-    ElementB,
-    LayoutB,
-    kAlignmentB,
-    ElementQScale,
-    ElementQOffset,
-    LayoutQMeta,
-    QuantBlocking,
-    ElementC,
-    LayoutC,
-    ElementAccumulator,
-    OperatorClass,
-    ArchTag,
-    ThreadblockShape,
-    WarpShape,
-    InstructionShape,
-    EpilogueOutputOp,
-    ThreadblockSwizzle,
-    kStages,
-    kSplitKSerial,
-    Operator,
-    GatherA,
-    GatherB,
-    ScatterD,
-    PermuteDLayout
-  >::GemmKernel;
+      ElementA,
+      LayoutA,
+      kAlignmentA,
+      ElementB,
+      LayoutB,
+      kAlignmentB,
+      ElementQScale,
+      ElementQOffset,
+      LayoutQMeta,
+      QuantBlocking,
+      ElementC,
+      LayoutC,
+      ElementAccumulator,
+      OperatorClass,
+      ArchTag,
+      ThreadblockShape,
+      WarpShape,
+      InstructionShape,
+      EpilogueOutputOp,
+      ThreadblockSwizzle,
+      kStages,
+      kSplitKSerial,
+      Operator,
+      GatherA,
+      GatherB,
+      ScatterD,
+      PermuteDLayout>::GemmKernel;
 
   /// Argument structure
   struct Arguments {
@@ -237,9 +235,9 @@ class QuantBGemm {
     // split-K parallelism (etc.) are not yet supported, keeping this for future extension
     int split_k_slices{1};
     // For gather+scatter operations
-    int const *gather_A_indices{nullptr};
-    int const *gather_B_indices{nullptr};
-    int const *scatter_D_indices{nullptr};
+    int const* gather_A_indices{nullptr};
+    int const* gather_B_indices{nullptr};
+    int const* scatter_D_indices{nullptr};
 
     //
     // Methods
@@ -247,49 +245,47 @@ class QuantBGemm {
 
     /// Default ctor
     CUTLASS_HOST_DEVICE
-    Arguments(): problem_size(0, 0, 0) {}
+    Arguments() : problem_size(0, 0, 0) {}
 
     /// Constructs an Arguments structure
     CUTLASS_HOST_DEVICE
     Arguments(
-      GemmCoord problem_size_,
-      TensorRef<ElementA const, LayoutA> ref_A_,
-      TensorRef<ElementB const, LayoutB> ref_B_,
-      TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
-      TensorRef<ElementC const, LayoutC> ref_C_,
-      TensorRef<ElementC, LayoutC> ref_D_,
-      typename EpilogueOutputOp::Params epilogue_ =
-        typename EpilogueOutputOp::Params()):
-      problem_size(problem_size_),
-      ref_A(ref_A_),
-      ref_B(ref_B_),
-      ref_Qscale(ref_Qscale_),
-      ref_C(ref_C_),
-      ref_D(ref_D_),
-      epilogue(epilogue_) {
-        assert(!kHasQOffset);
+        GemmCoord problem_size_,
+        TensorRef<ElementA const, LayoutA> ref_A_,
+        TensorRef<ElementB const, LayoutB> ref_B_,
+        TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
+        TensorRef<ElementC const, LayoutC> ref_C_,
+        TensorRef<ElementC, LayoutC> ref_D_,
+        typename EpilogueOutputOp::Params epilogue_ =
+            typename EpilogueOutputOp::Params()) : problem_size(problem_size_),
+                                                   ref_A(ref_A_),
+                                                   ref_B(ref_B_),
+                                                   ref_Qscale(ref_Qscale_),
+                                                   ref_C(ref_C_),
+                                                   ref_D(ref_D_),
+                                                   epilogue(epilogue_) {
+      assert(!kHasQOffset);
     }
 
     CUTLASS_HOST_DEVICE
     Arguments(
-      GemmCoord problem_size_,
-      TensorRef<ElementA const, LayoutA> ref_A_,
-      TensorRef<ElementB const, LayoutB> ref_B_,
-      TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
-      TensorRef<ElementQOffset const, LayoutQMeta> ref_Qoffset_,
-      TensorRef<ElementC const, LayoutC> ref_C_,
-      TensorRef<ElementC, LayoutC> ref_D_,
-      typename EpilogueOutputOp::Params epilogue_ =
-        typename EpilogueOutputOp::Params()):
-      problem_size(problem_size_),
-      ref_A(ref_A_),
-      ref_B(ref_B_),
-      ref_Qscale(ref_Qscale_),
-      ref_Qoffset(ref_Qoffset_),
-      ref_C(ref_C_),
-      ref_D(ref_D_),
-      epilogue(epilogue_) {
-        assert(kHasQOffset);
+        GemmCoord problem_size_,
+        TensorRef<ElementA const, LayoutA> ref_A_,
+        TensorRef<ElementB const, LayoutB> ref_B_,
+        TensorRef<ElementQScale const, LayoutQMeta> ref_Qscale_,
+        TensorRef<ElementQOffset const, LayoutQMeta> ref_Qoffset_,
+        TensorRef<ElementC const, LayoutC> ref_C_,
+        TensorRef<ElementC, LayoutC> ref_D_,
+        typename EpilogueOutputOp::Params epilogue_ =
+            typename EpilogueOutputOp::Params()) : problem_size(problem_size_),
+                                                   ref_A(ref_A_),
+                                                   ref_B(ref_B_),
+                                                   ref_Qscale(ref_Qscale_),
+                                                   ref_Qoffset(ref_Qoffset_),
+                                                   ref_C(ref_C_),
+                                                   ref_D(ref_D_),
+                                                   epilogue(epilogue_) {
+      assert(kHasQOffset);
     }
   };
 
@@ -299,24 +295,22 @@ class QuantBGemm {
 
  public:
   /// Constructs the GEMM.
-  QuantBGemm() { }
+  QuantBGemm() {}
 
   /// Determines whether the GEMM can execute the given problem.
-  static Status can_implement(Arguments const &args) {
-
+  static Status can_implement(Arguments const& args) {
     if (!kSplitKSerial && args.split_k_slices > 1) {
       return Status::kErrorInvalidProblem;
     }
 
     Status status = GemmKernel::can_implement(
-      args.problem_size,
-      args.ref_A.non_const_ref(),
-      args.ref_B.non_const_ref(),
-      args.ref_Qscale.non_const_ref(),
-      args.ref_Qoffset.non_const_ref(),
-      args.ref_C.non_const_ref(),
-      args.ref_D
-    );
+        args.problem_size,
+        args.ref_A.non_const_ref(),
+        args.ref_B.non_const_ref(),
+        args.ref_Qscale.non_const_ref(),
+        args.ref_Qoffset.non_const_ref(),
+        args.ref_C.non_const_ref(),
+        args.ref_D);
 
     if (status != Status::kSuccess) {
       return status;
@@ -326,20 +320,18 @@ class QuantBGemm {
   }
 
   /// Gets the workspace size
-  static size_t get_workspace_size(Arguments const &args) {
-
+  static size_t get_workspace_size(Arguments const& args) {
     size_t bytes = 0;
 
     // Determine grid shape
     ThreadblockSwizzle threadblock_swizzle;
 
     cutlass::gemm::GemmCoord tiled_shape = threadblock_swizzle.get_tiled_shape(
-      args.problem_size,
-      {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
-      args.split_k_slices);
+        args.problem_size,
+        {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
+        args.split_k_slices);
 
     if (kSplitKSerial && args.split_k_slices > 1) {
-
       bytes += sizeof(int) * size_t(tiled_shape.m()) * size_t(tiled_shape.n());
     }
 
@@ -347,15 +339,14 @@ class QuantBGemm {
   }
 
   /// Initializes GEMM state from arguments.
-  Status initialize(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
-
+  Status initialize(Arguments const& args, void* workspace = nullptr, cudaStream_t stream = nullptr) {
     // Determine grid shape
     ThreadblockSwizzle threadblock_swizzle;
 
     cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
-      args.problem_size,
-      {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
-      args.split_k_slices);
+        args.problem_size,
+        {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
+        args.split_k_slices);
 
     if (kSplitKSerial) {
       if (args.split_k_slices > 1) {
@@ -372,7 +363,6 @@ class QuantBGemm {
         }
       }
     } else {
-
       if (args.split_k_slices > 1) {
         return Status::kErrorInvalidProblem;
       }
@@ -380,27 +370,25 @@ class QuantBGemm {
 
     // Initialize the Params structure
     params_ = typename GemmKernel::Params{
-      args.problem_size,
-      grid_shape,
-      args.ref_A.non_const_ref(),
-      args.ref_B.non_const_ref(),
-      args.ref_Qscale.non_const_ref(),
-      args.ref_Qoffset.non_const_ref(),
-      args.ref_C.non_const_ref(),
-      args.ref_D,
-      args.epilogue,
-      static_cast<int *>(workspace),
-      args.gather_A_indices,
-      args.gather_B_indices,
-      args.scatter_D_indices
-    };
+        args.problem_size,
+        grid_shape,
+        args.ref_A.non_const_ref(),
+        args.ref_B.non_const_ref(),
+        args.ref_Qscale.non_const_ref(),
+        args.ref_Qoffset.non_const_ref(),
+        args.ref_C.non_const_ref(),
+        args.ref_D,
+        args.epilogue,
+        static_cast<int*>(workspace),
+        args.gather_A_indices,
+        args.gather_B_indices,
+        args.scatter_D_indices};
 
     return Status::kSuccess;
   }
 
   /// Lightweight update given a subset of arguments
-  Status update(Arguments const &args, void *workspace = nullptr) {
-
+  Status update(Arguments const& args, void* workspace = nullptr) {
     if (kSplitKSerial && args.split_k_slices > 1) {
       if (!workspace) {
         return Status::kErrorWorkspaceNull;
@@ -414,14 +402,13 @@ class QuantBGemm {
     params_.ref_C.reset(args.ref_C.non_const_ref().data());
     params_.ref_D.reset(args.ref_D.data());
     params_.output_op = args.epilogue;
-    params_.semaphore = static_cast<int *>(workspace);
+    params_.semaphore = static_cast<int*>(workspace);
 
     return Status::kSuccess;
   }
 
   /// Runs the kernel using initialized state.
   Status run(cudaStream_t stream = nullptr) {
-
     ThreadblockSwizzle threadblock_swizzle;
 
     dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
@@ -457,10 +444,9 @@ class QuantBGemm {
 
   /// Runs the kernel using initialized state.
   Status operator()(
-    Arguments const &args,
-    void *workspace = nullptr,
-    cudaStream_t stream = nullptr) {
-
+      Arguments const& args,
+      void* workspace = nullptr,
+      cudaStream_t stream = nullptr) {
     Status status = initialize(args, workspace, stream);
 
     if (status == Status::kSuccess) {
@@ -471,11 +457,10 @@ class QuantBGemm {
   }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
-} // namespace device
-} // namespace gemm
-} // namespace cutlass
+}  // namespace device
+}  // namespace gemm
+}  // namespace cutlass
 
 ////////////////////////////////////////////////////////////////////////////////

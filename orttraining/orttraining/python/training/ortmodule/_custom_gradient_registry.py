@@ -238,7 +238,7 @@ def native_group_norm_gradient():
 
 
 # PyTorch removed related backward functions with "vec" overload name since 1.13. The functions with no overload name
-# are available for all versions, though they are not that convienent to use.
+# are available for all versions, though they are not that convenient to use.
 def _upsample_gradient(backward_fn, dims):
     scales = ["" for _ in range(dims)]
     if "bicubic" in backward_fn:

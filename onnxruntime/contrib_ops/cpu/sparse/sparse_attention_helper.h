@@ -21,7 +21,7 @@ Status CheckInputs(void* params,
                    const Tensor* sin_cache,
                    const Tensor* block_row_indices,
                    const Tensor* block_col_indices,
-                   const Tensor* seqlens_k_total,
+                   const Tensor* total_key_lengths,
                    const Tensor* total_seq_len) {
   // No packing for q/k/v:
   //   query                (batch_size, sequence_length, num_heads * head_size)
@@ -36,7 +36,7 @@ Status CheckInputs(void* params,
   //   past_value           (batch_size, kv_num_heads, max_cache_sequence_length, head_size)
   //   block_row_indices    (num_layout, max_blocks + 1), where max_blocks = max_sequence_length / sparse_block_size
   //   block_col_indices    (num_layout, max_nnz)
-  //   seqlens_k_total      (batch_size) when do_rotary is True, optional otherwise
+  //   total_key_lengths    (batch_size)
   //   total_seq_len        (1)
   //   cos_cache            (max_rotary_sequence_length, rotary_dim / 2) when do_rotary is true.
   //   sin_cache            (max_rotary_sequence_length, rotary_dim / 2) when do_rotary is true.
@@ -197,7 +197,7 @@ Status CheckInputs(void* params,
   }
 
   // Check the shape of total_key_sequence_lengths. We do not check the values here.
-  const auto& k_len_dim = seqlens_k_total->Shape().GetDims();
+  const auto& k_len_dim = total_key_lengths->Shape().GetDims();
   if (k_len_dim.size() != 1 && k_len_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "key_total_sequence_lengths must have shape (batch_size).");

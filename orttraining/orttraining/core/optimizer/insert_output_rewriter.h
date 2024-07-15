@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 
-// Rewrite rule that insert an addtional output to the matched node.
+// Rewrite rule that insert an additional output to the matched node.
 class InsertMaxPoolOutput : public RewriteRule {
  public:
   InsertMaxPoolOutput() noexcept
@@ -24,7 +24,7 @@ class InsertMaxPoolOutput : public RewriteRule {
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
-// Rewrite rule that insert an addtional output to the matched node.
+// Rewrite rule that insert an additional output to the matched node.
 // Adding this second output to expose FW intermediate result for speeding up BW computation
 class InsertSoftmaxCrossEntropyLossOutput : public RewriteRule {
  public:

@@ -349,7 +349,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     if (options.hasKey("interOpNumThreads")) {
       int interOpNumThreads = options.getInt("interOpNumThreads");
       if (interOpNumThreads > 0 && interOpNumThreads < Integer.MAX_VALUE) {
-        sessionOptions.setIntraOpNumThreads(interOpNumThreads);
+        sessionOptions.setInterOpNumThreads(interOpNumThreads);
       }
     }
 
