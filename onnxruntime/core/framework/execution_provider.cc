@@ -8,12 +8,20 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/op_kernel.h"
+#include "onnxruntime_c_api.h"
+#include "iostream"
 
 namespace onnxruntime {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const IKernelLookup& kernel_lookup) const {
+  const OrtGraph* ort_g = reinterpret_cast<const OrtGraph*>(&graph.GetGraph());
+  bool is_constantInitializer = OrtGraph_IsConstantInitializer(ort_g, "", true);
+  if (is_constantInitializer) {
+    std::cout << "This is a test\n";
+  }
+
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
     if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
