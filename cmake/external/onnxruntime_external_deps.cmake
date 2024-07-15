@@ -86,11 +86,17 @@ if (onnxruntime_USE_VULKAN)
   #   # TODO: Setup patch command to not call find_package(glslang) in ncnn CMakeLists.txt
   #   # set(ncnn_patch_command)
   # endif()
+  if(Patch_FOUND)
+    set(ONNXRUNTIME_NCNN_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/ncnn/ncnn.patch)
+  else()
+    message(FATAL_ERROR "NCNN must be patched but the patch executable was not found")
+  endif()
 
   FetchContent_Declare(
       ncnn
       URL ${DEP_URL_ncnn}
       URL_HASH SHA1=${DEP_SHA1_ncnn}
+      PATCH_COMMAND ${ONNXRUNTIME_NCNN_PATCH_COMMAND}
   )
 
   set(NCNN_SYSTEM_GLSLANG ON CACHE BOOL "" FORCE)
