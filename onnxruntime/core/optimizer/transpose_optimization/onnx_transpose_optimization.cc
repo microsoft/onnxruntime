@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/make_string.h"
 #include "core/graph/constants.h"
 

@@ -41,7 +41,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     auto input_defs = isinf_node.MutableInputDefs();
     // see if there is a Cast before IsInf
-    // This will happen if input type is FP16 but IsInf doesnt support fp16, so it will be cast to float/double
+    // This will happen if input type is FP16 but IsInf doesn't support fp16, so it will be cast to float/double
     // This Cast can be skipped as we are replacing the subgraph with IsAllFinite, which supports FP16
     auto cast1_node_iter = isinf_node.InputNodesBegin();
     if (cast1_node_iter != isinf_node.InputNodesEnd() &&

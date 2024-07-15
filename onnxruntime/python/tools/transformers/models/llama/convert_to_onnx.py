@@ -1052,7 +1052,8 @@ def main():
             logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
-            logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
+            logger.exception(f"An error occurred while verifying parity: {e}")
+            sys.exit(-1)
 
 
 if __name__ == "__main__":

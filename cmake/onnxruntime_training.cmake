@@ -141,10 +141,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       Boost::mp11 safeint_interface
   )
 
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-      list(APPEND ONNXRUNTIME_LIBS onnxruntime_language_interop onnxruntime_pyop)
-  endif()
-
   if(UNIX AND NOT APPLE)
     if (HAS_NO_MAYBE_UNINITIALIZED)
       target_compile_options(onnxruntime_training_mnist PUBLIC "-Wno-maybe-uninitialized")

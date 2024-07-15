@@ -53,6 +53,8 @@ struct OrtVitisAIEpAPI {
   std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
       const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
   uint32_t (*vaip_get_version)();
+  void (*get_backend_compilation_cache)(const std::string& model_path, const onnxruntime::Graph& graph, const char* json_config, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
+  void (*restore_backend_compilation_cache)(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);
   void Ensure() {
     if (handle_)
       return;
@@ -77,6 +79,8 @@ struct OrtVitisAIEpAPI {
     }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "get_compilation_cache", (void**)&get_backend_compilation_cache));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "restore_compilation_cache", (void**)&restore_backend_compilation_cache));
   }
 
  private:
@@ -122,19 +126,24 @@ static std::string config_to_json_str(const onnxruntime::ProviderOptions& config
 
 vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger, const ProviderOptions& options) {
-#ifndef _WIN32
-  auto model_path = graph_viewer.ModelPath().ToPathString();
-#else
-  using convert_t = std::codecvt_utf8<wchar_t>;
-  std::wstring_convert<convert_t, wchar_t> strconverter;
-  auto model_path = strconverter.to_bytes(graph_viewer.ModelPath().ToPathString());
-#endif
+  auto model_path = PathToUTF8String(ToPathString(graph_viewer.ModelPath().string()));
   if (s_library_vitisaiep.compile_onnx_model_with_options) {
     return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph_viewer.GetGraph(), options));
   } else {
     auto json_str = config_to_json_str(options);
     return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_3(model_path, graph_viewer.GetGraph(), json_str.c_str()));
   }
+}
+
+void get_backend_compilation_cache(const onnxruntime::PathString& model_path_str, const onnxruntime::GraphViewer& graph_viewer, const onnxruntime::ProviderOptions& options, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data) {
+  const std::string& model_path = PathToUTF8String(model_path_str);
+  const onnxruntime::Graph& graph = graph_viewer.GetGraph();
+  const auto json_str = config_to_json_str(options);
+  s_library_vitisaiep.get_backend_compilation_cache(model_path, graph, json_str.c_str(), compiler_codes, cache_dir, cache_key, cache_data);
+}
+
+void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path) {
+  s_library_vitisaiep.restore_backend_compilation_cache(cache_dir, cache_key, cache_data, model_path);
 }
 
 struct MyCustomOpKernel : OpKernel {
@@ -218,7 +227,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     auto& logger = logging::LoggingManager::DefaultLogger();
     auto& model = const_cast<onnxruntime::Model&>(const_model);
     auto model_proto = model.ToProto();
-    auto file_path = model.MainGraph().ModelPath().ToPathString();
+    auto file_path = ToPathString(model.MainGraph().ModelPath().string());
     auto local_registries = IOnnxRuntimeOpSchemaRegistryList{model.MainGraph().GetSchemaRegistry()};
     auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
     auto status = ret->MainGraph().Resolve();
@@ -270,6 +279,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
       graph.SetGraphResolveNeeded();
     }
     auto status = graph.Resolve();
+    if (!status.IsOK()) {
+      std::cerr << "graph resolve error:" << status.ErrorMessage() << std::endl;
+    }
     return status.Code();
   };
   the_global_api.graph_get_consumer_nodes_unsafe = [](const Graph& graph, const std::string& node_arg_name) -> auto {

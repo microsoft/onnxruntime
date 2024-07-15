@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// WebNN API currently does not have a TypeScript definition file. This file is a workaround with types generated from
+// WebNN API specification.
+// https://github.com/webmachinelearning/webnn/issues/677
+/// <reference path="jsep/webnn/webnn.d.ts" />
+
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
 import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
@@ -69,7 +74,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
 };
 
 /**
- * intialize runtime environment.
+ * initialize runtime environment.
  * @param env passed in the environment config object.
  */
 export const initRuntime = async(env: Env): Promise<void> => {
@@ -253,9 +258,41 @@ export const createSession = async(
       await Promise.all(loadingPromises);
     }
 
+    for (const provider of options?.executionProviders ?? []) {
+      const providerName = typeof provider === 'string' ? provider : provider.name;
+      if (providerName === 'webnn') {
+        if (wasm.currentContext) {
+          throw new Error('WebNN execution provider is already set.');
+        }
+        if (typeof provider !== 'string') {
+          const webnnOptions = provider as InferenceSession.WebNNExecutionProviderOption;
+          const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
+          const gpuDevice = (webnnOptions as InferenceSession.WebNNOptionsWebGpu)?.gpuDevice;
+          const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
+          const numThreads = (webnnOptions as InferenceSession.WebNNContextOptions)?.numThreads;
+          const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
+          if (context) {
+            wasm.currentContext = context as MLContext;
+          } else if (gpuDevice) {
+            wasm.currentContext = await navigator.ml.createContext(gpuDevice);
+          } else {
+            wasm.currentContext = await navigator.ml.createContext({deviceType, numThreads, powerPreference});
+          }
+        } else {
+          wasm.currentContext = await navigator.ml.createContext();
+        }
+        break;
+      }
+    }
+
     sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
     if (sessionHandle === 0) {
       checkLastError('Can\'t create a session.');
+    }
+
+    // clear current MLContext after session creation
+    if (wasm.currentContext) {
+      wasm.currentContext = undefined;
     }
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);

@@ -631,6 +631,8 @@ Status FlashAttention(
           data.output,
           cu_seqlens_q,
           cu_seqlens_k,
+          nullptr,  // seqused_k
+          nullptr,  // block_table
           softmax_lse_buffer,
           batch_size,
           num_heads,
@@ -640,7 +642,7 @@ Status FlashAttention(
           sequence_length,
           scale,
           false,  // is causal
-          false  // is bf16
+          false   // is bf16
           ));
 
   DUMP_TENSOR_INIT();

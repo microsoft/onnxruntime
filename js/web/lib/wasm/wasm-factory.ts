@@ -133,13 +133,17 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
        * created.
        */
       numThreads,
+    };
+
+    if (wasmPathOverride || wasmPrefixOverride) {
       /**
        * A callback function to locate the WebAssembly file. The function should return the full path of the file.
        *
        * Since Emscripten 3.1.58, this function is only called for the .wasm file.
        */
-      locateFile: (fileName, scriptDirectory) => wasmPathOverride ?? (wasmPrefixOverride ?? scriptDirectory) + fileName
-    };
+      config.locateFile = (fileName, scriptDirectory) =>
+          wasmPathOverride ?? (wasmPrefixOverride ?? scriptDirectory) + fileName;
+    }
 
     ortWasmFactory(config).then(
         // wasm module initialized successfully
