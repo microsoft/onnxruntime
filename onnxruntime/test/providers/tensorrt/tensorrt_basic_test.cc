@@ -594,7 +594,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   ASSERT_TRUE(status.IsOK());
   RunSession(session_object8, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 
-
   /*
    * Test case 7: Refit weightless context model with ONNX from disk
    */

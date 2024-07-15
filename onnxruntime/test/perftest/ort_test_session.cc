@@ -820,16 +820,16 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   if (!performance_test_config.model_info.load_via_path) {
     session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
   } else {
-      std::fstream file(performance_test_config.model_info.model_file_path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
-      if (file.is_open()) {
-        auto fsize = file.tellg();
-        file.seekg(0, std::ios_base::beg);
-        std::vector<char> model_bytes(fsize);
-        file.read(model_bytes.data(), fsize);
-        session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
-      } else {
-        ORT_THROW("Model file could not be opened.\n");
-      }
+    std::fstream file(performance_test_config.model_info.model_file_path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
+    if (file.is_open()) {
+      auto fsize = file.tellg();
+      file.seekg(0, std::ios_base::beg);
+      std::vector<char> model_bytes(fsize);
+      file.read(model_bytes.data(), fsize);
+      session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
+    } else {
+      ORT_THROW("Model file could not be opened.\n");
+    }
   }
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
