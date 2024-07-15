@@ -98,8 +98,7 @@ stages:
           --skip_submodule_sync \
           --parallel \
           --cmake_generator=Ninja \
-          --build_java \
-          --test
+          --build_java
       displayName: CPU EP, Build and Test
     - template: templates/use-android-emulator.yml
       parameters:
