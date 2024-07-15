@@ -275,7 +275,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
   // Only make path checks if model not provided as byte buffer
-  bool make_secure_path_checks = GetModelPath(graph_viewer).empty();
+  bool make_secure_path_checks = !GetModelPath(graph_viewer).empty();
 
   if (embed_mode) {
     // Get engine from byte stream.
@@ -287,13 +287,16 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not deserialize engine from binary data");
     }
-    if ((*trt_engine_)->isRefittable() && weight_stripped_engine_refit_) {
+
+    if (weight_stripped_engine_refit_) {
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
       std::string placeholder;
       auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
                                                            onnx_model_folder_path_,
                                                            placeholder,
                                                            make_secure_path_checks,
+                                                           onnx_model_bytestream_,
+                                                           onnx_model_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            false /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
@@ -361,6 +364,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            onnx_model_folder_path_,
                                                            weight_stripped_engine_cache,
                                                            make_secure_path_checks,
+                                                           onnx_model_bytestream_,
+                                                           onnx_model_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
