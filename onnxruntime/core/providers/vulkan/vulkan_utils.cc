@@ -82,17 +82,6 @@ const VulkanExecutionProvider& GetVulkanExecutionProvider(const onnxruntime::OpK
   return *static_cast<const VulkanExecutionProvider*>(info.GetExecutionProvider());
 }
 
-// Get the index of the layer in the ncnn model. Throws if not found.
-int GetNcnnLayerIndex(const std::string& layer_name) {
-  int index = ncnn::layer_to_index(layer_name.c_str());
-  if (index == -1) {
-    // should never happen outside of during development
-    ORT_THROW("Failed to find ", layer_name, " in the NCNN kernels.");
-  }
-
-  return index;
-}
-
 // get ncnn::Mat shape hints from the node
 // TODO: figure out how to handle the inputs/outputs not being 1:1 between the NCNN Layer and the ONNX Node
 //       and/or when there are missing optional inputs

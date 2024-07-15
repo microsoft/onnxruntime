@@ -13,31 +13,45 @@ namespace vulkan {
 
 class SigmoidKernel : VulkanKernel {
  public:
-  static bool IsSupported(const onnxruntime::Node& /*node*/, const logging::Logger& /*logger*/) {
-    // implement check here
-    // - data type/s - VulkanKernel does the overall check for types that are supported
-    // - any param values that are required to create the pipeline are constant initializers
-    //   - we _could_ create a pipeline on a per-Run basis to handle this but we don't support that currently
-
-    // If the return will be false, log the reason why
-
+  static bool IsSupported(const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
     return true;
   }
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
-                                              const onnxruntime::Node& node,
-                                              std::unique_ptr<ncnn::Layer> layer) {
-    return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, node, std::move(layer)));
+                                              const onnxruntime::Node& node) {
+    return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, node));
   }
 
   // static kernel usage.
   Status ComputeImpl(OpKernelContext& context) const override;
 
  private:
-  SigmoidKernel(const VulkanExecutionProvider& vulkan_ep,
-                const onnxruntime::Node& node,
-                std::unique_ptr<ncnn::Layer> layer)
-      : VulkanKernel{vulkan_ep, node, std::move(layer)} {
+  SigmoidKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)
+      : VulkanKernel{vulkan_ep, node} {
+  }
+};
+
+class ClipKernel : VulkanKernel {
+ public:
+  static bool IsSupported(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+                          const logging::Logger& logger);
+
+  static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
+                                              const onnxruntime::Node& node) {
+    return std::unique_ptr<VulkanKernel>(new ClipKernel(vulkan_ep, node));
+  }
+
+  // std::string_view GetNcnnLayerName() const override {
+  // if we add a Relu6 layer to NCNN we need this to plug in calling that for Clip(0, 6)
+  // }
+
+  // static kernel usage.
+  // Status ComputeImpl(OpKernelContext& context) const override;
+
+ private:
+  ClipKernel(const VulkanExecutionProvider& vulkan_ep,
+             const onnxruntime::Node& node)
+      : VulkanKernel{vulkan_ep, node} {
   }
 };
 
@@ -55,18 +69,5 @@ class Sigmoid : public OpKernel {
   std::unique_ptr<VulkanKernel> kernel_;
 };
 
-// class HardSigmoid final : public Sigmoid {
-//  public:
-//   explicit HardSigmoid(const OpKernelInfo& info) : Sigmoid(info) {}
-//   ~HardSigmoid() = default;
-//
-//   Status Compute(OpKernelContext* context) const override { return Sigmoid::Compute(context); }
-//
-//   static bool IsSupported(const onnxruntime::Node& /*node*/, const logging::Logger& /*logger*/) {
-//     // implement any non-data type checks here.
-//     // log why nodes are not supported if rejecting
-//     return true;
-//   }
-// };
 }  // namespace vulkan
 }  // namespace onnxruntime

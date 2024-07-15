@@ -148,7 +148,7 @@ GetCapabilityStaticKernels(const onnxruntime::GraphViewer& graph_viewer,
         continue;
       }
 
-      if (!VulkanKernel::IsSupported(node, logger)) {
+      if (!VulkanKernel::IsSupported(graph_viewer, node, logger)) {
         continue;
       }
 
@@ -164,6 +164,8 @@ GetCapabilityStaticKernels(const onnxruntime::GraphViewer& graph_viewer,
 std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onnxruntime::GraphViewer& graph_viewer,
                                                                        ModelMetadefIdGenerator metadef_id_generator,
                                                                        const logging::Logger& logger) {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+
   const auto gen_metadef_name =
       [&]() {
         HashValue model_hash;
@@ -171,13 +173,11 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onn
         return MakeString(kVulkanExecutionProvider, "_", model_hash, "_", metadef_id);
       };
 
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-
-  const utils::IsNodeSupportedFn is_node_supported_fn = [&logger](const Node& node) -> bool {
-    return VulkanKernel::IsSupported(node, logger);
+  const utils::IsNodeSupportedFn is_node_supported_fn = [&](const Node& node) -> bool {
+    return VulkanKernel::IsSupported(graph_viewer, node, logger);
   };
 
-  // nothing currently
+  // nothing required currently
   const utils::OnGroupClosedFn on_group_closed_fn = nullptr;
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported_fn, on_group_closed_fn,
@@ -319,7 +319,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     // create layer for each node. we add the outputs from each layer to value_indexes when doing so
     for (const Node& node : graph.Nodes()) {
       std::unique_ptr<vulkan::VulkanKernel> layer;
-      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, node, value_indexes, layer));
+      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, &graph, node, value_indexes, layer));
       layers.push_back(std::move(layer));
     }
 

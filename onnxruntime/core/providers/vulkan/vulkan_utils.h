@@ -38,9 +38,6 @@ KernelCreateInfo BuildKernelCreateInfo();
 
 const VulkanExecutionProvider& GetVulkanExecutionProvider(const onnxruntime::OpKernelInfo& info);
 
-// Get the index of the layer in the ncnn model. Throws if not found.
-int GetNcnnLayerIndex(const std::string& layer_name);
-
 ncnn::Mat TensorToMat(const Tensor& tensor);
 ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
 
