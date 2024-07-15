@@ -6955,6 +6955,10 @@ def test_layerwise_recompute_pythonop_determinstic():
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
 
 
+@pytest.mark.skipif(
+    Version(torch.__version__) < Version("2.3.0"),
+    reason="torch.nn.attention module was introduced in PyTorch 2.3.0",
+)
 def test_aten_attention():
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
