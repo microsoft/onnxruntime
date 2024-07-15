@@ -57,37 +57,18 @@ if (onnxruntime_USE_VULKAN)
   set(ENABLE_RTTI NOT ${onnxruntime_DISABLE_RTTI} CACHE BOOL "" FORCE)
   set(ENABLE_EXCEPTION NOT ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL "" FORCE)
 
-  # NOTE: For now we're using glslang from the Vulkan SDK and wiring things up so NCNN can find that.
-  # If we wanted to use glslang from source there are a few more hoops to jump through.
-  # NCNN uses glslang as a submodule, but if we add a FetchContent for glslang here that isn't in a state where
-  # the NCNN CMakeLists.txt is happy with it as the glslang cmake setup isn't generated yet. Not sure how to resolve
-  # that. Not sure if this is a scenario where you'd call FetchContent_MakeAvailable with multiple package names,
-  # or whether onnxruntime_fetchcontent_makeavailable supports that.
-  #
-  # FWIW the current expected usage of glslang would be to pre-compile shaders to bytecode offline, so glslang code
-  # wouldn't be included in the released binary. That is TBC though as this is all experimental currently.
+  onnxruntime_fetchcontent_makeavailable(glslang)
+  if (NOT TARGET glslang)
+    message(FATAL_ERROR "glslang target not found")
+  elseif(NOT TARGET SPIRV)
+    message(FATAL_ERROR "SPIRV target not found")
+  else()
+    set(glslang_FOUND TRUE CACHE BOOL "" FORCE)
+  endif()
 
-  # this is enough for find_package(glslang) to work, but the find_dependencies usage within that still breaks
-  # list(APPEND CMAKE_PREFIX_PATH $ENV{VULKAN_SDK})
-
-  # the Windows Vulkan SDK has an incomplete cmake setup. we need to do this hack and patch the NCNN CMakeLists.txt.
-  # the Linux Vulkan SDK looks to be correct and may be able to just include NCNN as-is and let it find the package
-  # via the CMAKE_PREFIX_PATH addition of the Vulkan SDK path.
-  # if (WIN32)
-  #   add_library(SPIRV-Tools-static STATIC IMPORTED)
-  #   set_target_properties(SPIRV-Tools-static PROPERTIES
-  #     IMPORTED_LOCATION "$ENV{VULKAN_SDK}/Lib/SPIRV-Tools.lib"
-  #   )
-
-  #   include("$ENV{VULKAN_SDK}/Lib/cmake/SPIRV-Tools-optTargets.cmake")
-  #   include("$ENV{VULKAN_SDK}/Lib/cmake/glslang/glslang-targets.cmake")
-  #   set(glslang_FOUND TRUE CACHE BOOL "" FORCE)
-
-  #   # TODO: Setup patch command to not call find_package(glslang) in ncnn CMakeLists.txt
-  #   # set(ncnn_patch_command)
-  # endif()
   if(Patch_FOUND)
-    set(ONNXRUNTIME_NCNN_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/ncnn/ncnn.patch)
+    set(ONNXRUNTIME_NCNN_PATCH_COMMAND
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/ncnn/ncnn.patch)
   else()
     message(FATAL_ERROR "NCNN must be patched but the patch executable was not found")
   endif()
@@ -111,16 +92,13 @@ if (onnxruntime_USE_VULKAN)
   set(NCNN_DISABLE_EXCEPTION ${onnxruntime_DISABLE_EXCEPTIONS} CACHE BOOL "" FORCE)
   # TBD what to set the various NCNN_PIXEL* values to
 
-  onnxruntime_fetchcontent_makeavailable(glslang)
-  if (NOT TARGET glslang)
-    message(FATAL_ERROR "glslang target not found")
-  elseif(NOT TARGET SPIRV)
-    message(FATAL_ERROR "SPIRV target not found")
-  else()
-    set(glslang_FOUND TRUE CACHE BOOL "" FORCE)
-  endif()
-
   onnxruntime_fetchcontent_makeavailable(ncnn)
+
+  # Add the _deps directory as an include. NCNN doesn't have a subdirectory for the source so the default addition
+  # to the include path is _deps/ncnn-src/src, and would result in for example `#include "layer.h"`, which doesn't convey
+  # that the file comes from NCNN and is also likely to clash with other header filenames.
+  # By adding _deps we can at least do #include "ncnn-src/src/layer.h" which is more explicit and unique.
+  target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR}>)
 
   # Create a symlink from the glslang-src to the ncnn-src/glslang directory that would be used if glslang was fetched
   # as a submodule of NCNN.

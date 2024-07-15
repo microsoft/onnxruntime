@@ -177,6 +177,19 @@ index f4ec5667..9fcec0ab 100644
  }
 
  void VkCompute::record_download(const VkImageMat& src, Mat& dst, const Option& opt)
+diff --git a/src/command.h b/src/command.h
+index 88912739..cabd838d 100644
+--- a/src/command.h
++++ b/src/command.h
+@@ -41,7 +41,7 @@ public:
+
+     void record_upload(const Mat& src, VkImageMat& dst, const Option& opt);
+
+-    void record_download(const VkMat& src, Mat& dst, const Option& opt);
++    int record_download(const VkMat& src, Mat& dst, const Option& opt);
+
+     void record_download(const VkImageMat& src, Mat& dst, const Option& opt);
+
 diff --git a/src/layer/vulkan/shader/sigmoid.comp b/src/layer/vulkan/shader/sigmoid.comp
 index bda303fd..ab06478d 100644
 --- a/src/layer/vulkan/shader/sigmoid.comp
@@ -335,15 +348,3 @@ index 1350f6a4..08155ee6 100644
      using Sigmoid::forward_inplace;
      virtual int forward_inplace(VkMat& bottom_top_blob, VkCompute& cmd, const Option& opt) const;
      virtual int forward_inplace(VkImageMat& bottom_top_blob, VkCompute& cmd, const Option& opt) const;
-diff --git a/tests/testutil.cpp b/tests/testutil.cpp
-index f0bf3c51..d2f0f3d0 100644
---- a/tests/testutil.cpp
-+++ b/tests/testutil.cpp
-@@ -1549,6 +1549,7 @@ int test_layer(const char* layer_type, const ncnn::ParamDict& pd, const std::vec
-         opt.use_bf16_storage = options[i][4];
-         opt.use_shader_pack8 = options[i][5];
-         opt.use_image_storage = options[i][6];
-+        opt.use_vulkan_compute = true;
-
-         int ret = test_layer_opt(layer_type, pd, weights, opt, a, epsilon, func, flag);
-         if (ret != 0)
