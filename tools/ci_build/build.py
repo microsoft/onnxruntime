@@ -1878,7 +1878,7 @@ def setup_rocm_build(args):
 
 
 def setup_vulcan_vars(args):
-    if args.use_vulkan:
+    if args.use_vulkan and is_windows():
         if args.vulkan_sdk_path is None or not os.path.exists(args.vulkan_sdk_path):
             raise BuildError("vulkan_sdk path must be specified or available via VULKAN_SDK environment variable. ",
                              f"vulkan_sdk='{args.vulkan_sdk_path}'.")

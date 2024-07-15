@@ -26,13 +26,6 @@ index a67ab6af..10fae775 100644
          else()
              set(GLSLANG_TARGET_DIR "GLSLANG-NOTFOUND" CACHE PATH "Absolute path to glslangTargets.cmake directory")
              if(NOT GLSLANG_TARGET_DIR AND NOT DEFINED ENV{GLSLANG_TARGET_DIR})
-diff --git a/python/pybind11 b/python/pybind11
-index 80dc998e..3e9dfa28 160000
---- a/python/pybind11
-+++ b/python/pybind11
-@@ -1 +1 @@
--Subproject commit 80dc998efced8ceb2be59756668a7e90e8bef917
-+Subproject commit 3e9dfa2866941655c56877882565e7577de6fc7b
 diff --git a/src/command.cpp b/src/command.cpp
 index f4ec5667..9fcec0ab 100644
 --- a/src/command.cpp
