@@ -29,22 +29,21 @@ See [Build instructions](../build/eps.html#cuda).
 ## Requirements
 
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that
-ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab
-on [onnxruntime.ai](https://onnxruntime.ai/) for supported versions.
+ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Optimize Training tab on [onnxruntime.ai](https://onnxruntime.ai/getting-started) for supported versions.
 
-Note: Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility), ONNX Runtime built with CUDA 11.8 should be compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.2 should be compatible with any CUDA 12.x version.
+Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility), ONNX Runtime built with CUDA 11.8 are compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.x are compatible with any CUDA 12.x version.
 
-ONNX Runtime built with cuDNN 8.x are not compatible with cuDNN 9.x, and vice versa.
+ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice versa.
 
 ### CUDA 12.x
 
 To install CUDA 12 package, please look at [Install ORT](../install).
 
-| ONNX Runtime  | CUDA   | cuDNN | Notes                                                                                                                           |
-|---------------|--------|-------|---------------------------------------------------------------------------------------------------------------------------------|
-| 1.18.1        | 12.x   | 9.x   | See [release note](https://github.com/microsoft/onnxruntime/releases/tag/v1.18.1) for details                                   |
-| 1.18.0        | 12.x   | 8.9.x | Java CUDA 12 support is added since 1.18.0.                                                                                     |
-| 1.17.x        | 12.x   | 8.9.x | Only C++/C# Nuget and Python packages are released with CUDA 12.2.                                                              |
+| ONNX Runtime  | CUDA   | cuDNN | Notes                                                             |
+|---------------|--------|-------|-------------------------------------------------------------------|
+| 1.18.1        | 12.x   | 9.x   | cuDNN 9 installation is required.                                 |
+| 1.18.0        | 12.x   | 8.9.x | Java CUDA 12 support is added since 1.18.0.                       |
+| 1.17.x        | 12.x   | 8.9.x | Only C++/C# Nuget and Python packages are released for CUDA 12.x. |
 
 ### CUDA 11.x
 
