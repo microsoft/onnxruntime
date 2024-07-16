@@ -187,7 +187,7 @@ stages:
     timeoutInMinutes: 180
     workspace:
       clean: all
-    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    condition: always()
     steps:
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
