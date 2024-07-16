@@ -303,32 +303,34 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_OPERATOR_DESC opDesc = {};
-        if (opsetVersion >= 18) {
-          // Restrict this change to Resize18 and Resize19
-          const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
-          DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
-          operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
-          operatorDesc.InputTensor = inputDescs.data();
-          operatorDesc.OutputTensor = outputDescs.data();
-          operatorDesc.InterpolationMode = interpolationMode;
-          operatorDesc.RoundingDirection = roundingDirection;
-          operatorDesc.Scales = paddedScales.data();
-          operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
-          operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
-          operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-          opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
+        if (opsetVersion >= 18)
+        {
+            // Restrict this change to Resize18 and Resize19.
+            const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+            DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
+            operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
+            operatorDesc.InputTensor = inputDescs.data();
+            operatorDesc.OutputTensor = outputDescs.data();
+            operatorDesc.InterpolationMode = interpolationMode;
+            operatorDesc.RoundingDirection = roundingDirection;
+            operatorDesc.Scales = paddedScales.data();
+            operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
+            operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
+            operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
+            opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
         }
-        else {
-          DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
-          operatorDesc.InputTensor = inputDescs.data();
-          operatorDesc.OutputTensor = outputDescs.data();
-          operatorDesc.InterpolationMode = interpolationMode;
-          operatorDesc.RoundingDirection = roundingDirection;
-          operatorDesc.Scales = paddedScales.data();
-          operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
-          operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
-          operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-          opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
+        else
+        {
+            DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
+            operatorDesc.InputTensor = inputDescs.data();
+            operatorDesc.OutputTensor = outputDescs.data();
+            operatorDesc.InterpolationMode = interpolationMode;
+            operatorDesc.RoundingDirection = roundingDirection;
+            operatorDesc.Scales = paddedScales.data();
+            operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
+            operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
+            operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
+            opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
         }
 
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
