@@ -1361,15 +1361,15 @@ static void RunReduceExtremumDropQDQTestCase(const std::string& op_type,
 TEST(QDQTransformerTests, ReduceExtremumDropQDQ) {
   // Check that Q/DQ nodes are dropped for positive scale
   RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, 0.003f, true);
-  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, 0.003f, true, true, 13);    // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, 0.003f, true, true, 13);  // Use com.microsoft QDQ ops
   RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, 0.003f, true);
-  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, 0.003f, true, true, 13);    // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, 0.003f, true, true, 13);  // Use com.microsoft QDQ ops
 
   // Check that Q/DQ nodes are *not* dropped for negative scale
   RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, -0.003f, false);
-  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, -0.003f, false, true, 13);    // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, -0.003f, false, true, 13);  // Use com.microsoft QDQ ops
   RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, -0.003f, false);
-  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, -0.003f, false, true, 13);    // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, -0.003f, false, true, 13);  // Use com.microsoft QDQ ops
 }
 
 TEST(QDQTransformerTests, DoubleQDQ) {
