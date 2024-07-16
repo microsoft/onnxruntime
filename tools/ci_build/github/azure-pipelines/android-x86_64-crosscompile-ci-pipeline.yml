@@ -108,7 +108,8 @@ stages:
 
 - stage: BUILD_AND_TEST_NNAPI_EP
   dependsOn: []
-  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+#  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: never()
   variables:
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
@@ -179,7 +180,7 @@ stages:
   # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+#  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   jobs:
   - job: NNAPI_EP_MASTER
     pool: onnxruntime-Ubuntu2204-AMD-CPU
@@ -224,6 +225,13 @@ stages:
           --build_java \
           --code_coverage
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
+      - script: |
+          if command -v gcov >/dev/null 2>&1; then
+              echo "gcov is installed."
+          else
+              echo "gcov is not installed." && apt-get update && apt-get install -y gcovr 
+          fi
+        displayName: Check if gcov is installed
 
       - script: |
           python3 -m pip install gcovr && \
