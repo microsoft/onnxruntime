@@ -1,6 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
