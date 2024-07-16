@@ -1982,7 +1982,9 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
     TensorTypeAndShapeInfo type_shape_info(info);
     auto integer_shape = type_shape_info.GetShape();
     std::vector<const char*> symbolic_shape(integer_shape.size(), {});
-    type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    if (!integer_shape.empty()) {
+      type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    }
     Shape shape;
     for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
       if (symbolic_shape[ith] && std::string{symbolic_shape[ith]}.size() > 0) {
