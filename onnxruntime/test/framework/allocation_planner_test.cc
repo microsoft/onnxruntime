@@ -2077,6 +2077,7 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   const SequentialExecutionPlan* plan = sess.GetSessionState().GetExecutionPlan();
   ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
 
+  ASSERT_TRUE(plan->execution_plan.size() > 1) << "Number of execution plans is only " << plan->execution_plan.size();
   int gather_count = 0;
   for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
     if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
