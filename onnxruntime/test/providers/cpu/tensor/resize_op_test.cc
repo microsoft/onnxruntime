@@ -227,9 +227,40 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+
+    test.AddAttribute("mode", "linear");
+
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        5.0f, 6.0f, 7.0f, 8.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<float> Y = {2.66666651f, 4.3333331f};
+
+    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    // QNN: result diff
+    // TRT: Segmentation fault in A100
+    std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+// Primarily to test CoreML using upsample_bilinear when the input size is evenly divisible by the output size
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_EvenlyDivisible) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
-  std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+  std::vector<float> scales{1.0f, 1.0f, 0.5f, 0.5f};
 
   test.AddAttribute("mode", "linear");
 
@@ -240,9 +271,9 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {4}, scales);
+  test.AddInput<float>("scales", {4}, scales, /*scales_in_initializer*/ true);
 
-  std::vector<float> Y = {2.66666651f, 4.3333331f};
+  std::vector<float> Y = {3.5f, 5.5f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
   // QNN: result diff
@@ -333,7 +364,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
 // So the result of the above example will be different than CPU EP
 // Add the following 2 tests to test with scales valid to NNAPI
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -361,7 +392,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_and_sizes_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -390,7 +421,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -416,15 +447,51 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
 
   run_test(false);
 
-#ifdef USE_NNAPI
-  // NNAPI will need the scales as an initializer
+#if defined(USE_NNAPI) || defined(USE_COREML)
+  // NNAPI and CoreML need the scales as an initializer
+  // Also tensor RT EP will fail if scales is an initializer but will pass if it is not
+  run_test(true);
+#endif
+}
+
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners_sizes) {
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{};
+    std::vector<int64_t> sizes{1, 1, 1, 2};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        5.0f, 6.0f, 7.0f, 8.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("", {0}, scales);
+    test.AddInput<int64_t>("sizes", {4}, sizes, scales_in_initializer);
+
+    std::vector<float> Y = {1.0f, 4.0f};
+
+    test.AddOutput<float>("Y", {N, C, 1, 2}, Y);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+  };
+
+  run_test(false);
+
+#if defined(USE_NNAPI) || defined(USE_COREML)
+  // NNAPI and CoreML will need the scales as an initializer
   // Also tensor RT EP will fail if scales is an initializer but will pass if it is not
   run_test(true);
 #endif
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uint8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -456,7 +523,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -622,7 +689,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric_scales) {
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -668,7 +735,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
