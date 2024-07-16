@@ -457,8 +457,8 @@ class TrainingManager(GraphExecutionManager):
     def __getstate__(self):
         state = super().__getstate__()
 
-        # Only top level classes are pickleable. So, _ORTModuleFunction is
-        # not pickleable. So, let's not pickle it, and redefine it when
+        # Only top level classes are picklable. So, _ORTModuleFunction is
+        # not picklable. So, let's not pickle it, and redefine it when
         # loading the state.
         del state["_forward_class"]
         return state

@@ -4,7 +4,7 @@
 #include "core/providers/cpu/tensor/unique.h"
 #include <map>
 #include <core/common/safeint.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"

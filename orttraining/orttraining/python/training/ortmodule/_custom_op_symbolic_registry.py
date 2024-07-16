@@ -437,7 +437,7 @@ def permute_and_reshape_tensor(
     shape_tensor,
 ):
     # If matmul_output_axes and contraction_axes are contiguous in input tensor,
-    # we can move Reshape to before Transpose, so it's possible that the Transpoase is fused to MatMul.
+    # we can move Reshape to before Transpose, so it's possible that the Transpose is fused to MatMul.
     # Otherwise, we have to Transpose first to move those axes together and then Reshape.
     is_matmul_output_axes_contiguous = is_axes_contiguous(matmul_output_axes)
     is_contraction_axes_contiguous = is_axes_contiguous(contraction_axes)
@@ -525,7 +525,7 @@ def permute_and_reshape_tensor(
 
 @register_symbolic("einsum", torch_version_end="1.13.0")
 @parse_args("s", "v")
-def einsum_pre_troch_113(g, equation, tensor_list):
+def einsum_pre_torch_113(g, equation, tensor_list):
     return einsum_internal(g, equation, tensor_list)
 
 
@@ -540,12 +540,12 @@ def einsum_internal(g, equation, tensor_list):
     num_ops = len(tensors)
     assert num_ops > 0
 
-    # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
-    # Doesn't support ellipsis ('...') for now as not easy to get sizes of oprands.
+    # Doesn't support implicit output is ellipsis or more than 2 operands for now.
+    # Doesn't support ellipsis ('...') for now as not easy to get sizes of operands.
     if num_ops != 2 or equation.find("->") == -1 or "." in equation:
         return g.op("Einsum", *tensors, equation_s=equation)
 
-    # Take "ks,ksm->sm" as example. After prcoess inputs,
+    # Take "ks,ksm->sm" as example. After process inputs,
     # lhs_labels = [k,s], rhs_labels = [k,s,m], result_labels = [s,m].
     lhs_labels, rhs_labels, result_labels = parse_equation(equation)
 

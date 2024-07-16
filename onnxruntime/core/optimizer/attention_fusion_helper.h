@@ -23,7 +23,8 @@ struct MatchGemmResult {
 };
 
 // Compare the expected parameters (starts, ends, axes and step)
-bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vector<int>& input_indices, const std::vector<int64_t>& expected_values, const logging::Logger& logger) {
+bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vector<int>& input_indices,
+                          const std::vector<int64_t>& expected_values, const logging::Logger& logger) {
   ORT_ENFORCE(input_indices.size() == expected_values.size() && input_indices.size() > 0);
 
   // Here assumes that the last element of input_indices is the maximum one.

@@ -26,7 +26,7 @@
 #include <wil/wrl.h>
 #include <wil/result.h>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #ifdef _GAMING_XBOX_SCARLETT
 #include <d3d12_xs.h>
