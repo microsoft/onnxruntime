@@ -140,10 +140,11 @@ struct Module {
 #if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path.
+  // This function modifies the graph stored with the eval session & marks the module as done training.
   // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
   // and the state has not been loaded yet, then this function will return an error.
   Status ExportModelForInferencing(const std::string& inference_model_path,
-                                   gsl::span<const std::string> graph_output_names) const;
+                                   gsl::span<const std::string> graph_output_names);
 #endif
 
   // Returns the user input count for training graph
@@ -167,6 +168,7 @@ struct Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
+  bool finished_training_ = false;
 
   struct TrainInputNames {
    private:

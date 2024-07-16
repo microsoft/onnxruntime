@@ -403,6 +403,10 @@ class InferenceSession {
                             int32_t partial_graph_index);
 #endif
 
+#ifdef ENABLE_TRAINING_APIS
+  std::shared_ptr<onnxruntime::Model> GetModel() noexcept { return model_; };
+#endif
+
   /**
    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
    * @note lifetime of the returned pointer is valid as long as the Session object is live.

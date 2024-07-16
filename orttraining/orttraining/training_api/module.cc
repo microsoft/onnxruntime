@@ -56,7 +56,10 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   for (size_t idx = node_indices.size(); idx > 0; --idx) {
     const NodeIndex node_index = idx - 1;
     auto* node = inference_graph.GetNode(node_index);
-    if (!reachable_nodes.count(node)) {
+    if (!node) {
+      inference_graph.RemoveNode(node_index);
+    }
+    else if (!reachable_nodes.count(node)) {
       graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
       inference_graph.RemoveNode(node_index);
     }
@@ -65,6 +68,20 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   return Status::OK();
 }
 
+//TODO: REMOVE THIS METHOD BEFORE YOUR PR ITS JUST FOR DEBUGGING PURPOSES
+Status RemoveThisMethodBeforeYourPR(Graph& inference_graph) {
+  GraphViewer graph_viewer(inference_graph);
+  const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (size_t idx = node_indices.size(); idx > 0; --idx) {
+    const NodeIndex node_index = idx - 1;
+    auto* node = inference_graph.GetNode(node_index);
+    if (node->Name().empty()) {
+      inference_graph.RemoveNode(node_index);
+    }
+  }
+
+  return Status::OK();
+}
 Status TransformModelOutputsForInference(Graph& inference_graph,
                                          gsl::span<const std::string> inference_graph_outputs) {
   // Model is updated to remove any outputs that are not defined in inference_graph_outputs. Nodes
@@ -388,6 +405,11 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   }
   ORT_THROW_IF_ERROR(eval_sess_->Initialize());
   utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
+  // TODO: remove this
+  // std::shared_ptr<onnxruntime::Model> inference_model = eval_sess_->GetModel();
+  // Graph& inference_graph = inference_model->MainGraph();
+
+  // ORT_THROW_IF_ERROR(RemoveThisMethodBeforeYourPR(inference_graph));
 
   // Eval model validation
   // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
@@ -412,6 +434,8 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   eval_user_input_count_ = eval_user_input_names.size();
   eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
+  // TODO: remove this
+  // ORT_THROW_IF_ERROR(RemoveThisMethodBeforeYourPR(inference_graph));
   // Keep a copy of the eval model path to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
   // TODO(askhade): Find a fix to export model for inference when the eval model is loaded from a buffer.
@@ -613,6 +637,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
 }
 
 Status Module::LazyResetGrad() {
+  ORT_RETURN_IF(finished_training_, "Cannot train after exporting for inferencing. To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   accumulate_gradient_ = false;
   return Status::OK();
 }
@@ -620,6 +645,7 @@ Status Module::LazyResetGrad() {
 Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot perform TrainStep with a nominal state. Please load the model parameters first.");
+  ORT_RETURN_IF(finished_training_, "Cannot train after exporting for inferencing. To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   std::vector<std::shared_ptr<Parameter>> params;
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
@@ -642,6 +668,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot perform EvalStep with a nominal state. Please load the model parameters first.");
+  ORT_RETURN_IF(finished_training_, "Cannot evaluate after exporting for inferencing. To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   ORT_ENFORCE(nullptr != eval_sess_, "Evaluation session not initialized.");
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
@@ -655,26 +682,25 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 //                      the build is minimal or not. This will require to read the ort_format eval model,
 //                      transform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
-                                         gsl::span<const std::string> graph_output_names) const {
+                                         gsl::span<const std::string> graph_output_names) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot export the model with a nominal state. Please load the model parameters first.");
-  ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
-                "Eval model was not provided. Cannot export a model for inferencing.");
 
-  ONNX_NAMESPACE::ModelProto eval_model;
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
+  // Once finished_training is set to true, will no longer be able to train or evaluate with this module
+  // since the eval session graph will have been modified.
+  finished_training_ = true;
 
-  // Clone the eval mode into an inference onnxruntime::Model.
-  std::shared_ptr<Model> inference_model;
-  ORT_RETURN_IF_ERROR(Model::Load(eval_model, inference_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  // Model& inference_model = const_cast<Model&>(eval_sess_->GetModel());
+  std::shared_ptr<onnxruntime::Model> inference_model = eval_sess_->GetModel();
+  Graph& inference_graph = inference_model->MainGraph();
 
   // The cloned model's outputs are transformed such that the model has outputs as defined by graph_output_names
   // Any nodes not contributing to the inference outputs will be pruned.
-  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model->MainGraph(), graph_output_names));
+  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_graph, graph_output_names));
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(),
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_graph,
                                                        state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
