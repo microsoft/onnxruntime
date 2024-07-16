@@ -473,7 +473,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
-  std::string ctx_model_name = ToPathString(params.trt_ep_context_file_path);
+  PathString ctx_model_name = params.trt_ep_context_file_path;
   params3.trt_engine_cache_enable = 1;
   execution_provider = TensorrtExecutionProviderWithOptions(&params3);
   EXPECT_TRUE(session_object3.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -502,7 +502,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object4{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params4;
-  ctx_model_name = ORT_TSTR("./context_model_folder/EPContextNode_test_ctx.onnx");
+  ctx_model_name = "./context_model_folder/EPContextNode_test_ctx.onnx";
   execution_provider = TensorrtExecutionProviderWithOptions(&params4);
   EXPECT_TRUE(session_object4.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object4.Load(ctx_model_name);
@@ -539,7 +539,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   InferenceSession session_object6{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params6;
   params6.trt_ep_context_embed_mode = 1;
-  ctx_model_name = ToPathString(params5.trt_ep_context_file_path);
+  ctx_model_name = params5.trt_ep_context_file_path;
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object6.Load(ctx_model_name);
@@ -558,7 +558,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   /*
    * Test case 7: Run context model with ONNX in memory
    */
-  auto model_bytes = ReadFileFromDisk(model_name);
+  auto model_bytes = ReadFileFromDisk(model_name.c_str());
   ctx_model_name = ToPathString("EP_Context_model_weight_stripped.onnx");
   InferenceSession session_object7{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params7;
