@@ -822,7 +822,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else {
     std::fstream file(performance_test_config.model_info.model_file_path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
     if (file.is_open()) {
-      auto fsize = file.tellg();
+      const size_t fsize = file.tellg();
       file.seekg(0, std::ios_base::beg);
       std::vector<char> model_bytes(fsize);
       file.read(model_bytes.data(), fsize);
