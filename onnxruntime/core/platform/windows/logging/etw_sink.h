@@ -66,6 +66,9 @@ class EtwRegistrationManager {
   // Get the current keyword
   uint64_t Keyword() const;
 
+  // Get the ETW registration status
+  HRESULT Status() const;
+
   void RegisterInternalCallback(const EtwInternalCallback& callback);
 
   void UnregisterInternalCallback(const EtwInternalCallback& callback);
@@ -97,6 +100,7 @@ class EtwRegistrationManager {
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
+  HRESULT etw_status_;
 };
 
 }  // namespace logging
