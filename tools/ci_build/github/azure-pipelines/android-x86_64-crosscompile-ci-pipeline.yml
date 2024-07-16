@@ -109,7 +109,7 @@ stages:
 - stage: BUILD_AND_TEST_NNAPI_EP
   dependsOn: []
 #  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
-  condition: never()
+  condition: not(always())
   variables:
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
