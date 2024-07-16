@@ -197,14 +197,14 @@ export const init =
           LOG_DEBUG(
               'verbose',
               () => `[WebGPU] jsepCopyGpuToGpu: src=${Number(src)}, dst=${Number(dst)}, size=${Number(size)}`);
-          backend.memcpy(src, dst);
+          backend.memcpy(Number(src), Number(dst));
         } else {
           LOG_DEBUG(
               'verbose',
               () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${Number(src)}, gpuDataId=${Number(dst)}, size=${
                   Number(size)}`);
           const data = module.HEAPU8.subarray(Number(src >>> 0), Number(src >>> 0) + Number(size));
-          backend.upload(dst, data);
+          backend.upload(Number(dst), data);
         }
       },
 
@@ -216,12 +216,13 @@ export const init =
                 () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
             await backend.download(
-                gpuDataId, () => module.HEAPU8.subarray(Number(dataOffset >>> 0), Number((dataOffset >>> 0) + size)));
+                Number(gpuDataId),
+                () => module.HEAPU8.subarray(Number(dataOffset) >>> 0, Number(dataOffset + size) >>> 0));
           },
 
       // jsepCreateKernel
       (kernelType: string, kernelId: number, attribute: unknown) => backend.createKernel(
-          kernelType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName!(kernelId))),
+          kernelType, Number(kernelId), attribute, module.UTF8ToString(module._JsepGetNodeName!(Number(kernelId)))),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
@@ -233,7 +234,7 @@ export const init =
             () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
                 contextDataOffset}`);
         const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
-        return backend.computeKernel(kernel, context, errors);
+        return backend.computeKernel(Number(kernel), context, errors);
       },
       // jsepCaptureBegin
       () => backend.captureBegin(),

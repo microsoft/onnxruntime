@@ -369,7 +369,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   async download(id: GpuDataId, getTargetBuffer: () => Uint8Array): Promise<void> {
-    const cachedData = this.storageCache.get(id);
+    const cachedData = this.storageCache.get(Number(id));
     if (!cachedData) {
       throw new Error('data does not exist');
     }
