@@ -232,9 +232,16 @@ stages:
               echo "gcov is not installed." && apt-get update && apt-get install -y gcovr 
           fi
         displayName: Check if gcov is installed
-
+#      - displayName: Check if $(Build.SourcesDirectory)/build_nnapi/Debug/CMakeFiles/onnxruntime_test_all.dir/mnt/vss/_work/1/s/onnxruntime/test/framework/parallel_executor_test.cc.gcda exists
+#        script: |
+#          if [ -f Debug/CMakeFiles/onnxruntime_test_all.dir/mnt/vss/_work/1/s/onnxruntime/test/framework/parallel_executor_test.cc.gcda ]; then
+#              echo "Debug/CMakeFiles/onnxruntime_test_all.dir/mnt/vss/_work/1/s/onnxruntime/test/framework/parallel_executor_test.cc.gcda exists"
+#          else
+#              echo "Debug/CMakeFiles/onnxruntime_test_all.dir/mnt/vss/_work/1/s/onnxruntime/test/framework/parallel_executor_test.cc.gcda does not exist"
+#              exit 1
+#          fi
       - script: |
-          python3 -m pip install gcovr && \
+          set -e -x && \
           python3 tools/ci_build/coverage.py \
             --build_dir build_nnapi \
             --android_sdk_path $ANDROID_HOME
