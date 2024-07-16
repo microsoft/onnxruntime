@@ -286,6 +286,11 @@ if ATEN_SDPA_FALLBACK:
     @register_gradient("org.pytorch.aten", "ATen", "_scaled_dot_product_efficient_attention", "")
     def scaled_dot_product_attention_gradient():
         grad_input_mask = [1, 1, 1, 1] if ATEN_SDPA_FALLBACK.upper() == "MASKED" else [1, 1, 1, 0]
+        grad_output = (
+            ["GI(0)", "GI(1)", "GI(2)", "GI(3)"]
+            if ATEN_SDPA_FALLBACK.upper() == "MASKED"
+            else ["GI(0)", "GI(1)", "GI(2)", ""]
+        )
         return [
             (
                 "Constant",
@@ -310,7 +315,7 @@ if ATEN_SDPA_FALLBACK:
                     "I(6)",
                     "I(7)",
                 ],
-                ["GI(0)", "GI(1)", "GI(2)", "GI(3)"],
+                grad_output,
                 {"operator": {"value": "_scaled_dot_product_efficient_attention_backward", "dtype": "string"}},
             ),
         ]
