@@ -130,6 +130,15 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
                        std::string_view input_name, std::string_view value_name);
 
 /// <summary>
+/// Add a variadic input argument to a MILSpec::Operation
+/// </summary>
+/// <param name="op"> Operation to update.</param>
+/// <param name="input name"> The input name defined by the spec for the operation. </param>
+/// <param name="values"> The
+void AddOperationInputs(COREML_SPEC::MILSpec::Operation& op, std::string_view input_name,
+                        const std::vector<std::string_view>& value_names);
+
+/// <summary>
 /// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
 /// </summary>
 /// <param name="op">Operation to update.</param>
