@@ -28,6 +28,8 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
   ASSERT_FALSE(options->UseTrtFlashAttention());
   ASSERT_FALSE(options->UseTrtCrossAttention());
   ASSERT_FALSE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 0);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 0);
 
   value = static_cast<int>(AttentionBackend::TRT_FUSED_ATTENTION) | static_cast<int>(AttentionBackend::MATH);
   options = AttentionKernelOptions::GetInstance(value, force_init);
@@ -38,6 +40,8 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
   ASSERT_FALSE(options->UseTrtFlashAttention());
   ASSERT_FALSE(options->UseTrtCrossAttention());
   ASSERT_FALSE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 0);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 0);
 
   value = static_cast<int>(AttentionBackend::TRT_FLASH_ATTENTION);
   options = AttentionKernelOptions::GetInstance(value, force_init);
@@ -48,6 +52,8 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
   ASSERT_TRUE(options->UseTrtFlashAttention());
   ASSERT_FALSE(options->UseTrtCrossAttention());
   ASSERT_FALSE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 0);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 0);
 
   value = static_cast<int>(AttentionBackend::TRT_CROSS_ATTENTION) | static_cast<int>(AttentionBackend::TRT_CAUSAL_ATTENTION);
   options = AttentionKernelOptions::GetInstance(value, force_init);
@@ -58,36 +64,11 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
   ASSERT_FALSE(options->UseTrtFlashAttention());
   ASSERT_TRUE(options->UseTrtCrossAttention());
   ASSERT_TRUE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 0);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 0);
 
   // Test environment variables are ignored when option value is non-zero
-  ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{
-          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
-          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-          {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "256"}}};
-  value = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
-  options = AttentionKernelOptions::GetInstance(value, force_init);
-  ASSERT_TRUE(options->UseFlashAttention());
-  ASSERT_FALSE(options->UseEfficientAttention());
-  ASSERT_FALSE(options->UseTrtFusedAttention());
-  ASSERT_FALSE(options->UseUnfusedAttention());
-  ASSERT_FALSE(options->UseTrtFlashAttention());
-  ASSERT_FALSE(options->UseTrtCrossAttention());
-  ASSERT_FALSE(options->UseTrtCausalAttention());
-  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 256);
-}
-
-TEST(AttentionKernelOptionsTest, ZeroValueWithEnvVar) {
-  constexpr bool force_init = true;
-  int value = 0;
-  const AttentionKernelOptions* options = nullptr;
-
-  // Test environment variables take effect when option value is 0
+  // Test default min sequence lenghts are zeros
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
@@ -97,20 +78,21 @@ TEST(AttentionKernelOptionsTest, ZeroValueWithEnvVar) {
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
             {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "128"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"}}};
+    value = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
     options = AttentionKernelOptions::GetInstance(value, force_init);
     ASSERT_TRUE(options->UseFlashAttention());
-    ASSERT_TRUE(options->UseEfficientAttention());
-    ASSERT_TRUE(options->UseTrtFusedAttention());
-    ASSERT_TRUE(options->UseUnfusedAttention());
-    ASSERT_TRUE(options->UseTrtFlashAttention());
-    ASSERT_TRUE(options->UseTrtCrossAttention());
-    ASSERT_TRUE(options->UseTrtCausalAttention());
-    ASSERT_TRUE(options->UseTrtCausalAttention());
-    EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 128);
+    ASSERT_FALSE(options->UseEfficientAttention());
+    ASSERT_FALSE(options->UseTrtFusedAttention());
+    ASSERT_FALSE(options->UseUnfusedAttention());
+    ASSERT_FALSE(options->UseTrtFlashAttention());
+    ASSERT_FALSE(options->UseTrtCrossAttention());
+    ASSERT_FALSE(options->UseTrtCausalAttention());
+    EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 0);
+    EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 0);
   }
 
+  // Test min sequence lenghts can be parsed from environment variables when option value is non-zero
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
@@ -121,18 +103,76 @@ TEST(AttentionKernelOptionsTest, ZeroValueWithEnvVar) {
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
             {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
             {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
-            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "64"}}};
+            {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "128"},
+            {onnxruntime::contrib::attention::kMinSeqLenForEfficientAttentionFp32, "256"}}};
+    value = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
     options = AttentionKernelOptions::GetInstance(value, force_init);
-    ASSERT_FALSE(options->UseFlashAttention());
+    ASSERT_TRUE(options->UseFlashAttention());
     ASSERT_FALSE(options->UseEfficientAttention());
     ASSERT_FALSE(options->UseTrtFusedAttention());
-    ASSERT_TRUE(options->UseUnfusedAttention());
+    ASSERT_FALSE(options->UseUnfusedAttention());
     ASSERT_FALSE(options->UseTrtFlashAttention());
     ASSERT_FALSE(options->UseTrtCrossAttention());
     ASSERT_FALSE(options->UseTrtCausalAttention());
-    ASSERT_FALSE(options->UseTrtCausalAttention());
-    EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 64);
+    EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 128);
+    EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 256);
   }
+}
+
+// Test all environment variables take effect when option value is 0.
+TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
+  constexpr bool force_init = true;
+  constexpr int value = 0;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+          {onnxruntime::contrib::attention::kMinSeqLenForFlashAttentionPackedQKV, "128"},
+          {onnxruntime::contrib::attention::kMinSeqLenForEfficientAttentionFp32, "256"}}};
+  const AttentionKernelOptions* options = AttentionKernelOptions::GetInstance(value, force_init);
+  ASSERT_TRUE(options->UseFlashAttention());
+  ASSERT_TRUE(options->UseEfficientAttention());
+  ASSERT_TRUE(options->UseTrtFusedAttention());
+  ASSERT_TRUE(options->UseUnfusedAttention());
+  ASSERT_TRUE(options->UseTrtFlashAttention());
+  ASSERT_TRUE(options->UseTrtCrossAttention());
+  ASSERT_TRUE(options->UseTrtCausalAttention());
+  ASSERT_TRUE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(), 128);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(), 256);
+}
+
+// Test default min sequence lenghts when environment variables are not set.
+TEST(AttentionKernelOptionsTest, DefaultMinSeqLens) {
+  constexpr bool force_init = true;
+  constexpr int value = 0;
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"}}};
+  const AttentionKernelOptions* options = AttentionKernelOptions::GetInstance(value, force_init);
+  ASSERT_FALSE(options->UseFlashAttention());
+  ASSERT_FALSE(options->UseEfficientAttention());
+  ASSERT_FALSE(options->UseTrtFusedAttention());
+  ASSERT_TRUE(options->UseUnfusedAttention());
+  ASSERT_FALSE(options->UseTrtFlashAttention());
+  ASSERT_FALSE(options->UseTrtCrossAttention());
+  ASSERT_FALSE(options->UseTrtCausalAttention());
+  ASSERT_FALSE(options->UseTrtCausalAttention());
+  EXPECT_EQ(options->MinSeqLenForFlashAttentionPackedQkv(),
+            onnxruntime::contrib::attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+  EXPECT_EQ(options->MinSeqLenForEfficientAttentionFp32(),
+            onnxruntime::contrib::attention::kDefaultMinSeqLenForEfficientAttentionFp32);
 }
 
 }  // namespace test

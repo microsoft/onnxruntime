@@ -32,13 +32,14 @@ void AttentionKernelOptions::Initialize(int value) {
     use_trt_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
   }
 
+  // When value is positive, we use 0 as default minimum sequence lengths to align with common usage in testing.
   min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
       attention::kMinSeqLenForFlashAttentionPackedQKV,
-      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+      value > 0 ? 0 : attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
 
   min_seq_len_for_efficient_attention_fp32_ = ParseEnvironmentVariableWithDefault<int>(
       attention::kMinSeqLenForEfficientAttentionFp32,
-      attention::kDefaultMinSeqLenForEfficientAttentionFp32);
+      value > 0 ? 0 : attention::kDefaultMinSeqLenForEfficientAttentionFp32);
 
   initialized_ = true;
 }
