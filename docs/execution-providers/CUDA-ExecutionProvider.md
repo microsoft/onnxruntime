@@ -40,17 +40,17 @@ ONNX Runtime built with cuDNN 8.x are not compatible with cuDNN 9.x, and vice ve
 
 To install CUDA 12 package, please look at [Install ORT](../install).
 
-| ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                                                                                                       |
-|--------------------------|--------|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.18.1                   | 12.x   | 9.x                                     |                                                                                                                                             |
-| 1.18.0                   | 12.x   | 8.9.x                                   | Java CUDA 12 support is added for release 1.18                                                                                              |
-| 1.17                     | 12.x   | 8.9.x                                   | Only C++/C# Nuget and Python packages are released with CUDA 12.2.                                                                          |
+| ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                               |
+|--------------------------|--------|-----------------------------------------|---------------------------------------------------------------------|
+| 1.18.1                   | 12.x   | 9.x                                     |                                                                     |
+| 1.18.0                   | 12.x   | 8.9.x                                   | Java CUDA 12 support is added since 1.18.0                          |
+| 1.17.x                   | 12.x   | 8.9.x                                   | Only C++/C# Nuget and Python packages are released with CUDA 12.2.  |
 
 ### CUDA 11.x
 
 | ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                                                                                                       |
 |--------------------------|--------|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.18<br/>1.18.1          | 11.8   | 8.9.x                                   |                                                                                                                                             |
+| 1.18.x                   | 11.8   | 8.9.x                                   |                                                                                                                                             |
 | 1.15<br>1.16<br>1.17     | 11.8   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.9.0                                                            |
 | 1.14<br/>1.13.1<br/>1.13 | 11.6   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4       |
 | 1.12<br/>1.11            | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4       |
@@ -61,11 +61,11 @@ To install CUDA 12 package, please look at [Install ORT](../install).
 
 ### CUDA 10.x
 
-| ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                                                                                                       |
-|--------------------------|--------|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.5-1.6                  | 10.2   | 8.0.3                                   | CUDA 11 can be built from source                                                                                                            |
-| 1.2-1.4                  | 10.1   | 7.6.5                                   | Requires cublas10-10.2.1.243; cublas 10.1.x will not work                                                                                   |
-| 1.0-1.1                  | 10.0   | 7.6.4                                   | CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017                           |
+| ONNX Runtime             | CUDA   | cuDNN                                   | Notes                                                                                                             |
+|--------------------------|--------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| 1.5-1.6                  | 10.2   | 8.0.3                                   | CUDA 11 can be built from source                                                                                  |
+| 1.2-1.4                  | 10.1   | 7.6.5                                   | Requires cublas10-10.2.1.243; cublas 10.1.x will not work                                                         |
+| 1.0-1.1                  | 10.0   | 7.6.4                                   | CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017 |
 
 For older versions, please reference the readme and build pages on the release branch.
 
