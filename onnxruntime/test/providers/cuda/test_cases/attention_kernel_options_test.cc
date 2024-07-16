@@ -126,7 +126,7 @@ TEST(AttentionKernelOptionsTest, ZeroValueWithEnvVar) {
     ASSERT_FALSE(options->UseFlashAttention());
     ASSERT_FALSE(options->UseEfficientAttention());
     ASSERT_FALSE(options->UseTrtFusedAttention());
-    ASSERT_FALSE(options->UseUnfusedAttention());
+    ASSERT_TRUE(options->UseUnfusedAttention());
     ASSERT_FALSE(options->UseTrtFlashAttention());
     ASSERT_FALSE(options->UseTrtCrossAttention());
     ASSERT_FALSE(options->UseTrtCausalAttention());
