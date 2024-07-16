@@ -16,6 +16,25 @@ parameters:
 steps:
 - ${{ if eq(parameters.create, true) }}:
   - script: |
+      if [[ ":$PATH:" == *":${ANDROID_SDK_ROOT}/emulator:"* ]]; then
+          echo "${ANDROID_SDK_ROOT}/emulator is in PATH"
+      else
+          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "emulator"
+          echo "##vso[task.prependpath]${ANDROID_SDK_ROOT}/emulator"
+      fi
+    displayName: Check if emulator are installed and add to PATH
+
+  - script: |
+      if [[ ":$PATH:" == *":${ANDROID_SDK_ROOT}/platform-tools:"* ]]; then
+          echo "${ANDROID_SDK_ROOT}/platform-tools is in PATH"
+      else
+          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
+          echo "##vso[task.prependpath]${ANDROID_SDK_ROOT}/platform-tools"
+      fi
+      ls -R ${ANDROID_SDK_ROOT}/platform-tools
+    displayName: Check if platform tools are installed and add to PATH
+
+  - script: |
       set -e -x
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
