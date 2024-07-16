@@ -214,13 +214,6 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
   list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
 endif()
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_INTERNAL_LIBRARIES
-    onnxruntime_language_interop
-    onnxruntime_pyop
-  )
-endif()
-
 if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
