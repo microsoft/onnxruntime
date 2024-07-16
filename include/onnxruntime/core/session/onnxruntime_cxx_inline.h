@@ -2011,7 +2011,7 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
 
   for (const auto dim : shape) {
     if (dim.IsInt()) {
-      integer_dims.push_back(dim.IsInt());
+      integer_dims.push_back(dim.AsInt());
       symbolic_dims.push_back("");
     } else {
       if (!dim.AsSym() || std::string{dim.AsSym()}.empty()) {
