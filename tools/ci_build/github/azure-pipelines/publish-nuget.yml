@@ -9,10 +9,22 @@ resources:
         - rel-*
     branch: main
 
+parameters:
+  - name: isReleaseBuild
+    type: boolean
+    default: false
+
+variables:
+  - name: ArtifactFeed
+    ${{ if eq(parameters.isReleaseBuild, false) }}:
+      value: ort-cuda-11-nightly
+    ${{ else }}:
+      value: onnxruntime-cuda-11
+
 stages:
   - template: templates/publish-nuget-steps.yml
     parameters:
-      stage_name: 'Publish_NuGet_Packag_And_Report'
+      stage_name: 'Publish_NuGet_Package_And_Report'
       include_cpu_ep: true
       download_artifacts_steps:
         - download: build
@@ -29,3 +41,7 @@ stages:
           displayName: 'Download Pipeline Artifact - Signed NuGet Package'
           artifact: 'drop-signed-nuget-GPU'
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+  - template: stages/nuget-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)
