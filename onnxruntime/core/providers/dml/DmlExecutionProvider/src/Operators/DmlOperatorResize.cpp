@@ -303,8 +303,7 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_OPERATOR_DESC opDesc = {};
-        if (opsetVersion >= 18) {
-          // Restrict this change to Resize18 and Resize19
+        #if FALSE
           const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
           DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
           operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
@@ -317,8 +316,7 @@ public:
           operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
           operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
           opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
-        }
-        else {
+        #else
           DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
           operatorDesc.InputTensor = inputDescs.data();
           operatorDesc.OutputTensor = outputDescs.data();
@@ -329,7 +327,7 @@ public:
           operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
           operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
           opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
-        }
+        #endif
 
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
