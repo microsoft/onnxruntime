@@ -271,15 +271,45 @@ else()
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
-    "SHELL:-s WASM_BIGINT"
+    "SHELL:-s WASM_BIGINT=1"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+    set(SIGNATURE_CONVERSIONS "\
+OrtRun:_ppp_p_pp,\
+OrtGetTensorData:_ppppp,\
+OrtCreateTensor:p_pppp_,\
+OrtCreateSession:pppp,\
+OrtReleaseSession:_p,\
+OrtGetInputOutputCount:pppp,\
+OrtCreateSessionOptions:pp__p_ppppp,\
+OrtAddSessionConfigEntry:pppp,\
+OrtReleaseSessionOptions:_p,\
+OrtAppendExecutionProvider:ppp,\
+OrtAddSessionConfigEntry:pppp,\
+OrtGetInputName:ppp,\
+OrtGetOutputName:ppp,\
+OrtCreateRunOptions:ppp_p,\
+OrtReleaseRunOptions:pp,\
+OrtReleaseTensor:_p,\
+OrtFree:_p,\
+OrtCreateBinding:_p,\
+OrtBindInput:_ppp,\
+OrtBindOutput:_ppp,\
+OrtClearBoundOutputs:_p,\
+OrtReleaseBinding:_p,\
+OrtGetLastError:_pp,\
+JsepOutput:pp_p,\
+JsepGetNodeN:pp,\
+JsepOutput:pp_p,\
+jsepCopy:_pp_,\
+jsepCopyAsync:_pp_,\
+jsepDownload:_pp_")
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
-      "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_ppp_p_pp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp_,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p,JsepGetNodeName:pp,JsepOutput:pp_p,jsepCopy:_pp_,jsepCopyAsync:_pp_,jsepDownload:_pp_"
+      "SHELL:-s SIGNATURE_CONVERSIONS='${SIGNATURE_CONVERSIONS}'"
     )
   endif ()
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
