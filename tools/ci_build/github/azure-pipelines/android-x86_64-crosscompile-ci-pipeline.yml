@@ -225,25 +225,26 @@ stages:
           --build_java \
           --code_coverage
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
-      - script: |
-          if command -v gcov >/dev/null 2>&1; then
-              echo "gcov is installed."
-          else
-              echo "gcov is not installed." && apt-get update && apt-get install -y gcovr 
-          fi
-        displayName: Check if gcov is installed
 
       - script: |
           if command -v gcovr >/dev/null 2>&1; then
-              echo "gcov is installed."
+              echo "gcovr is installed."
           else
-              echo "gcov is not installed." && apt-get update && apt-get install -y gcovr 
+              echo "gcovr is not installed." && sudo apt-get update && sudo apt-get install -y gcovr 
+          fi
+        displayName: Check if gcovr is installed
+        continueOnError: true
+
+      - script: |
+          if command -v gcovr >/dev/null 2>&1; then
+              echo "gcovr is installed."
+          else
+              echo "gcovr is not installed." && python3 -m pip install gcovr
           fi
         displayName: Check if gcovr is installed
 
       - script: |
           set -e -x && \
-          python3 -m pip install gcovr && \
           python3 tools/ci_build/coverage.py \
             --build_dir build_nnapi \
             --android_sdk_path $ANDROID_HOME
