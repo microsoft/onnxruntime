@@ -14,8 +14,10 @@ parameters:
     type: string
     default: '12.2'
 
+variables:
+  - template: templates/common-variables.yml
+
 steps:
-  - template: ../common-variables.yml
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:
       - powershell: |
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.PrimaryCUDAVersion }}" $(Agent.TempDirectory)
