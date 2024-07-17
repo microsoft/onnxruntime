@@ -50,7 +50,7 @@ public:
         // When positionIds is a scalar, it represents the start offset for each sequence
         const bool positionIdsIsOffset = kernelInfo.GetInputTensorDimensionCount(positionIdsIndex) == 1;
 
-        Initialize(kernelInfo);
+        Initialize(kernelInfo, NchwDimensionCount);
 
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[inputDataIndex].GetDimensionCount() == 4);
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[positionIdsIndex].GetDimensionCount() == 4);

@@ -175,7 +175,7 @@ namespace Dml
         TensorAxis m_coerceAxis = TensorAxis::DoNotCoerce;
         TensorAxis m_placement = TensorAxis::NoPlacementAdjustment;
         int32_t m_leftAlignedDimensionCount = TensorAxis::RightAligned;
-        uint32_t m_minDimensionCount = NchwDimensionCount;
+        uint32_t m_minDimensionCount = 1;
         uint32_t m_guaranteedBaseOffsetAlignment = 0;
     };
 
