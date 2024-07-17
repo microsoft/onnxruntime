@@ -230,13 +230,13 @@ stages:
           if command -v gcovr >/dev/null 2>&1; then
               echo "gcovr is installed."
           else
-              echo "gcovr is not installed. Installing gcovr from apt-get" && sudo apt-get update && sudo apt-get install -y gcovr 
+              echo "gcovr is not installed.  Installing gcovr from pip" && python3 -m pip install gcovr
           fi
           
           if command -v gcovr >/dev/null 2>&1; then
               echo "gcovr is installed."
           else
-              echo "gcovr is not installed.  Installing gcovr from pip" && python3 -m pip install gcovr
+              echo "gcovr is not installed. Installing gcovr from apt-get" && sudo apt-get update && sudo apt-get install -y gcovr 
           fi
           
           if command -v gcovr >/dev/null 2>&1; then
