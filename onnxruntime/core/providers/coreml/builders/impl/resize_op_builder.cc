@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <math.h>
+#include <cmath>
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
@@ -192,6 +192,19 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                       "Error getting validated scales");
     num_scales = output_scales.size();
 
+    // special case linear downsample.
+    // the CoreML implementation seems to be flaky and gives different outputs on different OS versions.
+    // use bilinear_resize instead. we check in IsOpSupportedImpl that the downsample input is evenly
+    // divisible by the output size so there's no rounding involved.
+    if (is_linear && (output_scales[num_scales - 1] < 1.f || output_scales[num_scales - 2] < 1.f)) {
+      using_scales = false;
+      using_sizes = true;
+      num_sizes = num_scales;
+      output_sizes = input_shape;
+      // only the last to dims have their size changed
+      output_sizes[input_rank - 2] = static_cast<int64_t>(input_shape[input_rank - 2] * output_scales[num_scales - 2]);
+      output_sizes[input_rank - 1] = static_cast<int64_t>(input_shape[input_rank - 1] * output_scales[num_scales - 1]);
+    }
   } else {
     ORT_RETURN_IF_NOT(GetValidatedResizeSizes(graph_viewer, node, input_shape, axes, output_sizes, logger),
                       "Error getting validated sizes");
@@ -308,6 +321,16 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
+  // as we allow empty shapes in the checks done by BaseOpBuilder::HasSupportedInputs we explicitly check for an empty
+  // an empty input here to be consistent.
+  // this should never happen in a real model though as a dim with value 0 (i.e. no input data) would typically be a
+  // dynamic dimension where a previous step had no output (e.g. Loop of zero interations, NonZero with no matches,
+  // NonMaxSupression with no boxes).
+  if (std::find(input_shape.begin(), input_shape.end(), 0) != input_shape.end()) {
+    LOGS(logger, VERBOSE) << "Resize input shape has with dimension values of 0 which is not supported.";
+    return false;
+  }
+
   const auto input_rank = input_shape.size();
   if (input_params.create_mlprogram) {
     if (input_rank < 3 || input_rank > 5) {
@@ -405,13 +428,13 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
         auto h_out = h_in * scale_h;
         auto w_out = w_in * scale_w;
 
-        if (std::fmodf(float(h_in), h_out) != 0.f) {
+        if (std::fmod(float(h_in), h_out) != 0.f) {
           LOGS(logger, VERBOSE) << "Resize: downsampling output height: " << h_out
                                 << " is not a factor of input height: " << h_in;
           return false;
         }
 
-        if (std::fmodf(float(w_in), w_out) != 0.f) {
+        if (std::fmod(float(w_in), w_out) != 0.f) {
           LOGS(logger, VERBOSE) << "Resize: downsampling output width: " << w_out
                                 << " is not a factor of input width: " << w_in;
           return false;

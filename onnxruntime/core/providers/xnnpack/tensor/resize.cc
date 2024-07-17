@@ -68,8 +68,28 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     InlinedVector<float> scale(4, 1.0F);
     if (scale_tensor) {
       const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
-      if (scale_val.DataAsSpan<float>()[1] != 1.0F) {
+      const auto scales = scale_val.DataAsSpan<float>();
+      if (scales[1] != 1.0F) {
         break;
+      }
+
+      // downsampling output seems to require the output size to be a factor of the input to match ONNX
+      if (scales[2] < 1.0f || scales[3] < 1.0f) {
+        // we also require input_shape to be known to check
+        int64_t h_in = x_shape->dim(2).dim_value();
+        int64_t w_in = x_shape->dim(3).dim_value();
+        if (h_in < 0 || w_in < 0) {
+          break;
+        }
+
+        float scale_h = scales[2];
+        float scale_w = scales[3];
+        float h_out = h_in * scale_h;
+        float w_out = w_in * scale_w;
+        if (std::fmod(float(h_in), h_out) != 0.f ||
+            std::fmod(float(w_in), w_out) != 0.f) {
+          break;
+        }
       }
     }
 
