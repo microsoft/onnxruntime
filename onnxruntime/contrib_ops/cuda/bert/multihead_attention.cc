@@ -46,21 +46,13 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
   ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support CUDA kernel. Consider using Attention or GQA instead.");
 
-  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
+  kernel_options_ = this->GetAttentionKernelOptions();
   disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 
-#if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
-#else
-  disable_flash_attention_ = true;
-#endif
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
 
   disable_fused_cross_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtCrossAttention();
 

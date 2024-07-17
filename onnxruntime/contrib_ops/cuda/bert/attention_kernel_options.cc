@@ -6,14 +6,10 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 
+using namespace onnxruntime::contrib::attention;
+
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
-
-// Initialize the singleton instance
-AttentionKernelOptions AttentionKernelOptions::instance;
-
-void AttentionKernelOptions::Initialize(int value) {
+void AttentionKernelOptions::Initialize(int value, bool use_build_flag) {
   if (value > 0) {
     use_flash_attention_ = (value & static_cast<int>(AttentionBackend::FLASH_ATTENTION)) > 0;
     use_efficient_attention_ = (value & static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION)) > 0;
@@ -23,35 +19,39 @@ void AttentionKernelOptions::Initialize(int value) {
     use_trt_cross_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CROSS_ATTENTION)) > 0;
     use_trt_causal_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CAUSAL_ATTENTION)) > 0;
   } else {
-    use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-    use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-    use_trt_fused_attention_ = !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
+    use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFlashAttention, false);
+    use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableMemoryEfficientAttention, false);
+    use_trt_fused_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedSelfAttention, false);
     use_unfused_ = true;
-    use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
-    use_trt_cross_attention_ = !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
-    use_trt_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFusedCausalAttention, false);
+    use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableTrtFlashAttention, false);
+    use_trt_cross_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedCrossAttention, false);
+    use_trt_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableFusedCausalAttention, false);
   }
 
   // When value is positive, we use 0 as default minimum sequence lengths to align with common usage in testing.
   min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForFlashAttentionPackedQKV,
-      value > 0 ? 0 : attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
+      kMinSeqLenForFlashAttentionPackedQKV,
+      value > 0 ? 0 : kDefaultMinSeqLenForFlashAttentionPackedQKV);
 
   min_seq_len_for_efficient_attention_fp32_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForEfficientAttentionFp32,
-      value > 0 ? 0 : attention::kDefaultMinSeqLenForEfficientAttentionFp32);
+      kMinSeqLenForEfficientAttentionFp32,
+      value > 0 ? 0 : kDefaultMinSeqLenForEfficientAttentionFp32);
 
-  initialized_ = true;
-}
+  if (use_build_flag) {
+    // Some kernels can be disabled at build time. If they are disabled, we should not use them.
+#ifndef USE_FLASH_ATTENTION
+    use_flash_attention_ = false;
+#endif
 
-const AttentionKernelOptions* AttentionKernelOptions::GetInstance(int sdpa_kernel, bool force_init) {
-  if (force_init || !instance.initialized_) {
-    instance.Initialize(sdpa_kernel);
+#ifndef USE_MEMORY_EFFICIENT_ATTENTION
+    use_efficient_attention_ = false;
+#endif
   }
-
-  return &instance;
 }
 
-}  // namespace cuda
-}  // namespace contrib
+void AttentionKernelOptions::InitializeOnce(
+    int sdpa_kernel, bool use_build_flag) {
+  std::call_once(this->initialize_once_flag_, [&]() { this->Initialize(sdpa_kernel, use_build_flag); });
+}
+
 }  // namespace onnxruntime

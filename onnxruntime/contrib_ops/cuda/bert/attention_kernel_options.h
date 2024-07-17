@@ -2,26 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <mutex>
 
 namespace onnxruntime {
-namespace contrib {
-namespace cuda {
-
-enum class AttentionBackend : int {
-  FLASH_ATTENTION = 1,
-  EFFICIENT_ATTENTION = 2,
-  TRT_FUSED_ATTENTION = 4,
-  MATH = 8,  // unfused
-
-  // The following kernels might be deprected in the future.
-  TRT_FLASH_ATTENTION = 16,
-  TRT_CROSS_ATTENTION = 32,
-  TRT_CAUSAL_ATTENTION = 64,
-};
-
 class AttentionKernelOptions {
  public:
-  static const AttentionKernelOptions* GetInstance(int sdpa_kernel, bool force_init);
+  void InitializeOnce(int sdpa_kernel, bool use_build_flag);
 
   bool UseFlashAttention() const { return use_flash_attention_; }
   bool UseEfficientAttention() const { return use_efficient_attention_; }
@@ -35,7 +21,7 @@ class AttentionKernelOptions {
   int MinSeqLenForEfficientAttentionFp32() const { return min_seq_len_for_efficient_attention_fp32_; }
 
  protected:
-  void Initialize(int value);
+  void Initialize(int value, bool use_build_flag);
 
  private:
   bool use_flash_attention_{true};
@@ -52,10 +38,7 @@ class AttentionKernelOptions {
 
   int min_seq_len_for_efficient_attention_fp32_{0};
 
-  bool initialized_{false};
-  static AttentionKernelOptions instance;
+  std::once_flag initialize_once_flag_;
 };
 
-}  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

@@ -39,7 +39,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
-  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
+  kernel_options_ = this->GetAttentionKernelOptions();
 
   disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
 
@@ -47,17 +47,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
   enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
 
-#if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
-#else
-  disable_flash_attention_ = true;
-#endif
 }
 
 template <typename T>

@@ -35,7 +35,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
-  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
+  kernel_options_ = this->GetAttentionKernelOptions();
   disable_fused_runner_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 }

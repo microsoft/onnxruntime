@@ -147,6 +147,19 @@ constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_
 }  // namespace sparse_attention
 
 namespace attention {
+
+enum class AttentionBackend : int {
+  FLASH_ATTENTION = 1,
+  EFFICIENT_ATTENTION = 2,
+  TRT_FUSED_ATTENTION = 4,
+  MATH = 8,  // unfused
+
+  // The following kernels might be deprected in the future.
+  TRT_FLASH_ATTENTION = 16,
+  TRT_CROSS_ATTENTION = 32,
+  TRT_CAUSAL_ATTENTION = 64,
+};
+
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
 

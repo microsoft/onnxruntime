@@ -52,19 +52,12 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  kernel_options_ = AttentionKernelOptions::GetInstance(this->SdpaKernel(), false);
-#if USE_FLASH_ATTENTION
+  kernel_options_ = this->GetAttentionKernelOptions();
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
-#else
-  disable_flash_attention_ = true;
-#endif
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
   // Memory efficient attention only supports float and float16, not bfloat16.
   disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value || !kernel_options_->UseEfficientAttention();
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
+
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
   }

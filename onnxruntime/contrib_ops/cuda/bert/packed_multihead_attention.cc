@@ -42,17 +42,9 @@ PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-#if USE_FLASH_ATTENTION
   disable_flash_attention_ = sizeof(T) != 2 || !this->kernel_options_->UseFlashAttention();
-#else
-  disable_flash_attention_ = true;
-#endif
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
   disable_memory_efficient_attention_ = !this->kernel_options_->UseEfficientAttention();
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
 }
 
 template <typename T>
