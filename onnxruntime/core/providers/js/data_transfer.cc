@@ -37,7 +37,7 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
       }
     } else /* if (src_device.Type() == OrtDevice::GPU) */ {
       // copy from GPU to CPU
-      jsepDownload(src_data, dst_data, bytes);
+      EM_ASM({ Module.jsepCopyAsync(Number($0), Number($1), Number($2)); }, src_data, dst_data, bytes);
     }
   }
 

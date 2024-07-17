@@ -219,6 +219,7 @@ else()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
     set(MAXIMUM_MEMORY "17179869184")
+    set(ASYNCIFY 2)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MEMORY64=1"
     )
@@ -255,6 +256,7 @@ else()
     )
   else ()
     set(MAXIMUM_MEMORY "4294967296")
+    set(ASYNCIFY 1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
     )
@@ -279,7 +281,7 @@ else()
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
-      "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_ppp_p_pp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp_,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p,JsepGetNodeName:pp,JsepOutput:pp_p"
+      "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_ppp_p_pp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp_,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p,JsepGetNodeName:pp,JsepOutput:pp_p,jsepCopy:_pp_,jsepCopyAsync:_pp_,jsepDownload:_pp_"
     )
   endif ()
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre.js)
@@ -295,6 +297,7 @@ else()
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
+      "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync,jsepDownload']"
     )
     set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
   endif()
