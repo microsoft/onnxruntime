@@ -253,11 +253,10 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row1 = vld1q_s8(QuantADataPtrRow1 + 0);
 
                 // quantized dot product
-                int32x4_t dot00{}, dot01{}, dot10{}, dot11{};
-                dot00 = vdotq_s32(dot00, av_row0, bv_col0);
-                dot01 = vdotq_s32(dot01, av_row0, bv_col1);
-                dot10 = vdotq_s32(dot10, av_row1, bv_col0);
-                dot11 = vdotq_s32(dot11, av_row1, bv_col1);
+                const int32x4_t dot00 = vdotq_s32(int32x4_t{}, av_row0, bv_col0);
+                const int32x4_t dot01 = vdotq_s32(int32x4_t{}, av_row0, bv_col1);
+                const int32x4_t dot10 = vdotq_s32(int32x4_t{}, av_row1, bv_col0);
+                const int32x4_t dot11 = vdotq_s32(int32x4_t{}, av_row1, bv_col1);
 
                 // convert to float
                 const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
@@ -279,11 +278,10 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLen16(
                 const int8x16_t av_row3 = vld1q_s8(QuantADataPtrRow3 + 0);
 
                 // quantized dot product
-                int32x4_t dot20{}, dot21{}, dot30{}, dot31{};
-                dot20 = vdotq_s32(dot20, av_row2, bv_col0);
-                dot21 = vdotq_s32(dot21, av_row2, bv_col1);
-                dot30 = vdotq_s32(dot30, av_row3, bv_col0);
-                dot31 = vdotq_s32(dot31, av_row3, bv_col1);
+                const int32x4_t dot20 = vdotq_s32(int32x4_t{}, av_row2, bv_col0);
+                const int32x4_t dot21 = vdotq_s32(int32x4_t{}, av_row2, bv_col1);
+                const int32x4_t dot30 = vdotq_s32(int32x4_t{}, av_row3, bv_col0);
+                const int32x4_t dot31 = vdotq_s32(int32x4_t{}, av_row3, bv_col1);
 
                 // convert to float
                 const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
@@ -428,11 +426,10 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row1_1 = vld1q_s8(QuantADataPtrRow1 + 16);
 
                 // quantized dot product
-                int32x4_t dot00{}, dot01{}, dot10{}, dot11{};
-                dot00 = vdotq_s32(vdotq_s32(dot00, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
-                dot01 = vdotq_s32(vdotq_s32(dot01, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
-                dot10 = vdotq_s32(vdotq_s32(dot10, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
-                dot11 = vdotq_s32(vdotq_s32(dot11, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
+                const int32x4_t dot00 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col0_0), av_row0_1, bv_col0_1);
+                const int32x4_t dot01 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row0_0, bv_col1_0), av_row0_1, bv_col1_1);
+                const int32x4_t dot10 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col0_0), av_row1_1, bv_col0_1);
+                const int32x4_t dot11 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row1_0, bv_col1_0), av_row1_1, bv_col1_1);
 
                 // convert to float
                 const float32x4_t dot_f32_00 = vcvtq_f32_s32(dot00);
@@ -456,11 +453,10 @@ SQ4BitGemm_CompInt8_Compute4x2_BlkLenGreaterThan16(
                 const int8x16_t av_row3_1 = vld1q_s8(QuantADataPtrRow3 + 16);
 
                 // quantized dot product
-                int32x4_t dot20{}, dot21{}, dot30{}, dot31{};
-                dot20 = vdotq_s32(vdotq_s32(dot20, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
-                dot21 = vdotq_s32(vdotq_s32(dot21, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
-                dot30 = vdotq_s32(vdotq_s32(dot30, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
-                dot31 = vdotq_s32(vdotq_s32(dot31, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
+                const int32x4_t dot20 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col0_0), av_row2_1, bv_col0_1);
+                const int32x4_t dot21 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row2_0, bv_col1_0), av_row2_1, bv_col1_1);
+                const int32x4_t dot30 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col0_0), av_row3_1, bv_col0_1);
+                const int32x4_t dot31 = vdotq_s32(vdotq_s32(int32x4_t{}, av_row3_0, bv_col1_0), av_row3_1, bv_col1_1);
 
                 // convert to float
                 const float32x4_t dot_f32_20 = vcvtq_f32_s32(dot20);
@@ -572,8 +568,8 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLen16(
         bv1 = vsubq_s8(bv1, bzp1);
 
         // quantized dot product
-        const int32x4_t dot0 = vdotq_s32(vdupq_n_s32(0), av0, bv0);
-        const int32x4_t dot1 = vdotq_s32(vdupq_n_s32(0), av1, bv1);
+        const int32x4_t dot0 = vdotq_s32(int32x4_t{}, av0, bv0);
+        const int32x4_t dot1 = vdotq_s32(int32x4_t{}, av1, bv1);
 
         // convert to float
         const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
@@ -621,7 +617,7 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLen16(
         bv0 = vsubq_s8(bv0, bzp0);
 
         // quantized dot product
-        const int32x4_t dot0 = vdotq_s32(vdupq_n_s32(0), av0, bv0);
+        const int32x4_t dot0 = vdotq_s32(int32x4_t{}, av0, bv0);
 
         // convert to float
         const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
@@ -698,9 +694,8 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLen32(
         bv_hi1 = vsubq_s8(bv_hi1, bzp1);
 
         // quantized dot product
-        int32x4_t dot0{}, dot1{};
-        dot0 = vdotq_s32(vdotq_s32(dot0, av_lo0, bv_lo0), av_hi0, bv_hi0);
-        dot1 = vdotq_s32(vdotq_s32(dot1, av_lo1, bv_lo1), av_hi1, bv_hi1);
+        const int32x4_t dot0 = vdotq_s32(vdotq_s32(int32x4_t{}, av_lo0, bv_lo0), av_hi0, bv_hi0);
+        const int32x4_t dot1 = vdotq_s32(vdotq_s32(int32x4_t{}, av_lo1, bv_lo1), av_hi1, bv_hi1);
 
         // convert to float
         const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
@@ -746,8 +741,7 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLen32(
         bv_hi0 = vsubq_s8(bv_hi0, bzp0);
 
         // quantized dot product
-        int32x4_t dot0{};
-        dot0 = vdotq_s32(vdotq_s32(dot0, av_lo0, bv_lo0), av_hi0, bv_hi0);
+        const int32x4_t dot0 = vdotq_s32(vdotq_s32(int32x4_t{}, av_lo0, bv_lo0), av_hi0, bv_hi0);
 
         // convert to float
         const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
@@ -830,9 +824,8 @@ SQ4BitGemm_CompInt8_Compute1x1_BlkLenGreaterThan32(
             bv3 = vsubq_s8(bv3, bzp);
 
             // quantized dot product
-            int32x4_t dot0{}, dot1{};
-            dot0 = vdotq_s32(vdotq_s32(dot0, av0, bv0), av1, bv1);
-            dot1 = vdotq_s32(vdotq_s32(dot1, av2, bv2), av3, bv3);
+            const int32x4_t dot0 = vdotq_s32(vdotq_s32(int32x4_t{}, av0, bv0), av1, bv1);
+            const int32x4_t dot1 = vdotq_s32(vdotq_s32(int32x4_t{}, av2, bv2), av3, bv3);
 
             // convert to float
             const float32x4_t dot_f32_0 = vcvtq_f32_s32(dot0);
