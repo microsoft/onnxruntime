@@ -73,7 +73,6 @@ jobs:
       Today: $(Today)
 
   - template: templates/jobs/win-ci-build-steps.yml
-  - template: templates/common-variables.yml
     parameters:
       WithCache: True
       Today: $(TODAY)
