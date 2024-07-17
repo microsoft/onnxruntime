@@ -45,3 +45,7 @@ stages:
   - template: stages/nuget-cuda-publishing-stage.yml
     parameters:
       artifact_feed: $(ArtifactFeed)
+
+  - template: stages/java-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)
