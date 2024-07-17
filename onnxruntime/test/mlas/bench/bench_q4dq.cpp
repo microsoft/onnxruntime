@@ -69,6 +69,7 @@ static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state
   int N = state.range(1);
   int quant_block_size = state.range(2);
   int threads = state.range(3);
+  bool add8 = state.range(4) != 0;
   int quant_num_M = (M + quant_block_size - 1) / quant_block_size;
   int blob_size = (quant_block_size + 1) / 2;
   size_t scale_size = quant_num_M * N;
@@ -87,12 +88,22 @@ static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
-  for (auto _ : state) {
-    benchmark::DoNotOptimize(dst.data());
-    MlasQDQTransposeBlockwiseQuantized<float, 4>(
-        dst.data(), scales.data(), zero_points.data(), dst_T.data(), scales_T.data(), zero_points_T.data(),
-        true, M, N, quant_block_size, tp.get());
-    benchmark::ClobberMemory();
+  if (add8) {
+    for (auto _ : state) {
+      benchmark::DoNotOptimize(dst.data());
+      MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
+          dst.data(), scales.data(), zero_points.data(), dst_T.data(), scales_T.data(), zero_points_T.data(),
+          true, M, N, quant_block_size, tp.get());
+      benchmark::ClobberMemory();
+    }
+  } else {
+    for (auto _ : state) {
+      benchmark::DoNotOptimize(dst.data());
+      MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
+          dst.data(), scales.data(), zero_points.data(), dst_T.data(), scales_T.data(), zero_points_T.data(),
+          true, M, N, quant_block_size, tp.get());
+      benchmark::ClobberMemory();
+    }
   }
 }
 
@@ -113,6 +124,6 @@ BENCHMARK(BM_MlasQuantizeBlockwise)
 BENCHMARK(BM_QDQBlockwiseQuantizer_TransposeColumnwise)
     ->UseRealTime()
     ->Apply([](benchmark::internal::Benchmark* b) {
-      b->ArgNames({"M", "N", "quant_block_size", "threads"});
-      b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {2, 8, 16}});
+      b->ArgNames({"M", "N", "quant_block_size", "threads", "add8"});
+      b->ArgsProduct({{1024, 4096}, {4096, 4095}, {64, 128}, {2, 8, 16}, {0, 1}});
     });

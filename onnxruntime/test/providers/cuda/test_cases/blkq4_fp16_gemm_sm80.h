@@ -13,7 +13,7 @@
  */
 
 #pragma once
-
+#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
 #include "test/cuda_host/blkq4_fp16_quant_sm80.h"
 
 #include <random>
@@ -197,3 +197,4 @@ void run_blkq4_small_gemm(int m, int n, int k);
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif
