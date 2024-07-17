@@ -56,10 +56,7 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   for (size_t idx = node_indices.size(); idx > 0; --idx) {
     const NodeIndex node_index = idx - 1;
     auto* node = inference_graph.GetNode(node_index);
-    if (!node) {
-      inference_graph.RemoveNode(node_index);
-    }
-    else if (!reachable_nodes.count(node)) {
+    if (node && !reachable_nodes.count(node)) {
       graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
       inference_graph.RemoveNode(node_index);
     }
@@ -101,9 +98,9 @@ Status TransformModelOutputsForInference(Graph& inference_graph,
 
   // Set the inference graph outputs, and remove any unused nodes.
   inference_graph.SetOutputs(inference_graph_output_node_args);
-  ORT_RETURN_IF_ERROR(RemoveUnusedNodes(inference_graph, inference_graph_output_node_args));
+  // ORT_RETURN_IF_ERROR(RemoveUnusedNodes(inference_graph, inference_graph_output_node_args));
 
-  ORT_RETURN_IF_ERROR(inference_graph.Resolve());
+  ORT_THROW_IF_ERROR(inference_graph.Resolve());
 
   return Status::OK();
 }
@@ -131,7 +128,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
   }
 
   inference_graph.SetInputs(user_graph_inputs);
-  ORT_RETURN_IF_ERROR(inference_graph.Resolve());
+  ORT_THROW_IF_ERROR(inference_graph.Resolve());
 
   return Status::OK();
 }

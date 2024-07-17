@@ -16,7 +16,7 @@ import torch
 from orttraining_test_ort_apis_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime import OrtValue, SessionOptions
+from onnxruntime import OrtValue, SessionOptions, InferenceSession
 from onnxruntime.training import artifacts
 from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 
@@ -283,6 +283,7 @@ def test_export_model_for_inferencing():
         inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
         model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
         assert os.path.exists(inference_model_file_path)
+        InferenceSession(inference_model_file_path)
 
 
 def test_cuda_execution_provider():
