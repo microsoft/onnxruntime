@@ -820,11 +820,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   if (!performance_test_config.model_info.load_via_path) {
     session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
   } else {
-    std::fstream file(performance_test_config.model_info.model_file_path.c_str(), std::fstream::binary | std::fstream::in | std::fstream::ate);
+    std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
+                       std::ios::binary | std::ios::in | std::ios::ate);
     if (file.is_open()) {
-      const size_t fsize = file.tellg();
+      const std::streamsize fsize = file.tellg();
       file.seekg(0, std::ios_base::beg);
-      std::vector<char> model_bytes(fsize);
+      std::vector<char> model_bytes(narrow<size_t>(fsize));
       file.read(model_bytes.data(), fsize);
       session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
     } else {
