@@ -37,11 +37,7 @@ stages:
           artifact: 'drop-signed-nuget-Training-CPU'
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-        - download: build
-          displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-          artifact: 'drop-signed-nuget-GPU'
-        - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
-
+  # Publish CUDA 11 Nuget/Java pkgs to ADO feed
   - template: stages/nuget-cuda-publishing-stage.yml
     parameters:
       artifact_feed: $(ArtifactFeed)
