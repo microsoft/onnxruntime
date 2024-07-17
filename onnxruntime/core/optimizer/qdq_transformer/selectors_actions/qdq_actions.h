@@ -82,9 +82,9 @@ struct MatMulReplaceWithQLinear : public Action {
 };
 
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
-struct DQMatMulReplaceWithMatMulNBits : public ReplaceWithNew {
-  DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level,
-                                 concurrency::ThreadPool* intra_op_thread_pool);
+struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
+  DQMatMulToMatMulNBitsAction(int64_t accuracy_level,
+                              concurrency::ThreadPool* intra_op_thread_pool);
 
  private:
   std::string OpType(const RuntimeState&) const override { return op_type_; }

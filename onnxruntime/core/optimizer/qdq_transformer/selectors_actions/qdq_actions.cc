@@ -275,8 +275,8 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
   }
 }
 
-DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_level,
-                                                               concurrency::ThreadPool* intra_op_thread_pool)
+DQMatMulToMatMulNBitsAction::DQMatMulToMatMulNBitsAction(int64_t accuracy_level,
+                                                         concurrency::ThreadPool* intra_op_thread_pool)
     : accuracy_level_{accuracy_level},
       domain_{kMSDomain},
       op_type_{"MatMulNBits"},
@@ -291,7 +291,7 @@ DQMatMulReplaceWithMatMulNBits::DQMatMulReplaceWithMatMulNBits(int64_t accuracy_
 }
 
 NodeAttributes
-DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const RuntimeState& runtime_state) const {
+DQMatMulToMatMulNBitsAction::ExtraAttributes(const RuntimeState& runtime_state) const {
   NodeAttributes extra_attributes;
 
   const auto* dq_node = runtime_state.selected_nodes.Input(0);
@@ -308,9 +308,9 @@ DQMatMulReplaceWithMatMulNBits::ExtraAttributes(const RuntimeState& runtime_stat
   return extra_attributes;
 }
 
-Status DQMatMulReplaceWithMatMulNBits::ProcessNewNode(Graph& graph,
-                                                      const NodesToOptimize& selected_nodes,
-                                                      Node& replacement_node) const {
+Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
+                                                   const NodesToOptimize& selected_nodes,
+                                                   Node& replacement_node) const {
   ORT_RETURN_IF_NOT(intra_op_thread_pool_, "Passed in thread pool should not be null");
   const auto* dq_node = selected_nodes.Input(0);
   const auto* weight_arg = dq_node->InputDefs()[0];

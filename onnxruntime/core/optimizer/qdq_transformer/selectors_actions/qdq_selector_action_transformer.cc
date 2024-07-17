@@ -234,11 +234,11 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
   // DQ's weight is int4/uint4. DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
-  const std::string action_name{"DQMatMul"};
+  const std::string action_name{"DQMatMulToMatMulNBits"};
 
   std::unique_ptr<Action> action =
-      std::make_unique<QDQ::DQMatMulReplaceWithMatMulNBits>(qdq_matmulnbits_accuracy_level,
-                                                            intra_op_thread_pool);
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                         intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>();
