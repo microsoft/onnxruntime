@@ -67,7 +67,7 @@ using OpsetToIgnorableIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
  *   or not.
  * 3. Some ops are not supported in older opsets, we need to check whether it is applicable to recompute or not.
  */
-InlinedHashMap<std::string, OpsetToIgnorableIndicesMap> InitializeRecomputableOpTable() {
+InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> InitializeRecomputableOpTable() {
   InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
 
   constexpr const int basic_op_level = static_cast<int>(ProbeLevel::Basic);
