@@ -219,7 +219,6 @@ else()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
     set(MAXIMUM_MEMORY "17179869184")
-    set(ASYNCIFY 2)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s MEMORY64=1"
     )
@@ -256,7 +255,6 @@ else()
     )
   else ()
     set(MAXIMUM_MEMORY "4294967296")
-    set(ASYNCIFY 1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js"
     )
