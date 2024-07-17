@@ -4,7 +4,7 @@
 #include "sharding_spec.h"
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/tensor_shape.h"
 
 #include <cctype>

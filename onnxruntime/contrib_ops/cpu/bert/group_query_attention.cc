@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "group_query_attention.h"
-#include "group_query_attention_helper.h"
-#include "attention_utils.h"
-#include "rotary_embedding.h"
-#include "rotary_embedding_helper.h"
+#include "contrib_ops/cpu/bert/group_query_attention.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/rotary_helper.h"
+#include "contrib_ops/cpu/bert/attention_utils.h"
+#include "contrib_ops/cpu/bert/rotary_embedding.h"
+#include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
@@ -33,19 +34,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     GroupQueryAttention<float>);
 
 template <typename T>
-GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info) : OpKernel(info), GQAAttentionBase(info, false) {
-  int64_t num_heads = 0;
-  int64_t kv_num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0);
-  num_heads_ = static_cast<int>(num_heads);
-  kv_num_heads_ = static_cast<int>(kv_num_heads);
-
-  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-  rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
-}
+GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
+    : OpKernel(info), GQAAttentionBase(info, true) {}
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
@@ -174,14 +164,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;
       T* v_rotary = k_rotary + kv_num_heads_ * sequence_length * head_size;
-      ORT_RETURN_IF_ERROR(group_query_attention_helper::PackVIntoRotaryQKV<T>(tp,
-                                                                              parameters.batch_size,
-                                                                              parameters.sequence_length,
-                                                                              parameters.num_heads,
-                                                                              parameters.kv_num_heads,
-                                                                              parameters.head_size,
-                                                                              v_input,
-                                                                              v_rotary));
+      ORT_RETURN_IF_ERROR(rotary_helper::PackVIntoRotaryQKV<T>(tp,
+                                                               parameters.batch_size,
+                                                               parameters.sequence_length,
+                                                               parameters.num_heads,
+                                                               parameters.kv_num_heads,
+                                                               parameters.head_size,
+                                                               v_input,
+                                                               v_rotary));
     }
   }
 

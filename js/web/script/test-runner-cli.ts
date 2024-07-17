@@ -613,7 +613,7 @@ async function main() {
           // == The Problem ==
           // every time when a test is completed, it will be added to the recovery page list.
           // if we run the test 100 times, there will be 100 previous tabs when we launch Edge again.
-          // this run out of resources quickly and fails the futher test.
+          // this run out of resources quickly and fails the further test.
           // and it cannot recover by itself because every time it is terminated forcely or crashes.
           // and the auto recovery feature has no way to disable by configuration/commandline/registry
           //

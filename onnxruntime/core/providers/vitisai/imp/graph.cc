@@ -107,12 +107,11 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
   auto graph_proto_subgraph = graph.ToGraphProto();
   *model_proto->mutable_graph() = *graph_proto_subgraph;
   auto& logger = logging::LoggingManager::DefaultLogger();
-  auto filename_data_relative_path = std::filesystem::path();
   auto model = Model::Create(std::move(*model_proto), ToPathString(filename), nullptr, logger);
   if (initializer_size_threshold == std::numeric_limits<size_t>::max()) {
     model_proto = model->ToProto();
   } else {
-    model_proto = model->ToGraphProtoWithExternalInitializers(filename_dat, graph.ModelPath(), initializer_size_threshold);
+    model_proto = model->ToGraphProtoWithExternalInitializers(ToPathString(filename_dat), ToPathString(filename), initializer_size_threshold);
   }
   auto& metadata = model->MetaData();
   if (!metadata.empty()) {
@@ -124,7 +123,7 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
       *prop->mutable_value() = m.second;
     }
   }
-  std::fstream output(filename, std::ios::out | std::ios::trunc | std::ios::binary);
+  std::fstream output(ToPathString(filename), std::ios::out | std::ios::trunc | std::ios::binary);
   bool result = model_proto->SerializeToOstream(output);
   output << std::flush;
   vai_assert(result, "model serialize to ostream error");

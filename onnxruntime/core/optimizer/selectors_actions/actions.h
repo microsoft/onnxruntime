@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/graph/graph_utils.h"  // TODO: Minimize usage of this given we want to use Actions in a minimal build
 #include "core/graph/runtime_optimization_record.h"
 #include "core/optimizer/selectors_actions/helpers.h"
