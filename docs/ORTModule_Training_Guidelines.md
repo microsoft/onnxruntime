@@ -307,11 +307,10 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 #### ORTMODULE_ATEN_SDPA_FALLBACK
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, this is disabled. This env var can be used for enabling pre-export attention fall back to PyTorch's efficient_attention ATen kernel for execution. NOTE: will not work if model uses both masked and unmasked attention, can only be one.
+- **Description**: By default, this is disabled. This env var can be used for enabling pre-export attention fall back to PyTorch's efficient_attention ATen kernel for execution. NOTE: only works if attn_mask=None when torch.nn.functional.scaled_dot_product_attention is called.
 
     ```bash
-    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE **WITHOUT** ATTN_MASK INPUT
-    export ORTMODULE_ATEN_SDPA_FALLBACK=MASKED # ENABLE **WITH** ATTN_MASK INPUT
+    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE
     unset ORTMODULE_ATEN_SDPA_FALLBACK # DISABLE
     ```
 
