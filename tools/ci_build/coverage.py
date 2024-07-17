@@ -59,7 +59,11 @@ def main():
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
-    run_subprocess(cmd, cwd=os.path.join(cwd, "CMakeFiles"))
+    cwdCmakefiles=os.path.join(cwd, "CMakeFiles")
+    run_subprocess(f"ls -R {cwdCmakefiles}".split(" "),cwd=cwd)
+    run_subprocess(cmd, cwd=cwdCmakefiles)
+    run_subprocess(f"find {source_dir} -name coverage_rpt.txt".split(" "),cwd=cwd)
+
 
 
 if __name__ == "__main__":
