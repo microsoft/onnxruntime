@@ -53,7 +53,7 @@ def main():
     adb_pull("/data/local/tmp/gcda_files.tar.gz", cwd)
     os.chdir(cwd)
     run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(" "),cwd=cwd)
-    run_subprocess(f"find {source_dir} -name testcase_driver.cc.gcda",cwd=cwd)
+    run_subprocess(f"find {source_dir} -name testcase_driver.cc.gcda".split(" "),cwd=cwd)
     cmd = ["gcovr", "-s", "-r"]
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
