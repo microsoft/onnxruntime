@@ -19,6 +19,11 @@ namespace onnxruntime {
 namespace coreml {
 
 class ResizeOpBuilder : public BaseOpBuilder {
+ public:
+  // allow roi and scales potentially being empty inputs that are ignored during processing
+  ResizeOpBuilder() : BaseOpBuilder(/*allow empty inputs*/ true) {}
+
+ private:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
@@ -51,14 +56,13 @@ std::vector<int64_t> GetAxes(const NodeAttrHelper& helper, size_t input_rank) {
   return axes;
 }
 
-bool GetValidatedResizeScales(const GraphViewer& graph_viewer, const Node& node, const std::vector<int64_t>& axes,
-                              std::vector<float>& scales, const logging::Logger& logger) {
+bool GetValidatedResizeScales(const GraphViewer& graph_viewer,
+                              const Node& node,
+                              const std::vector<int64_t>& input_shape,
+                              const std::vector<int64_t>& axes,
+                              std::vector<float>& scales,
+                              const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
-
   int64_t input_rank = input_shape.size();
 
   if (input_shape[input_rank - 2] == -1 || input_shape[input_rank - 1] == -1) {
@@ -88,14 +92,13 @@ bool GetValidatedResizeScales(const GraphViewer& graph_viewer, const Node& node,
 
   return true;
 }
-bool GetValidatedResizeSizes(const GraphViewer& graph_viewer, const Node& node, const std::vector<int64_t>& axes,
+
+bool GetValidatedResizeSizes(const GraphViewer& graph_viewer,
+                             const Node& node,
+                             const std::vector<int64_t>& input_shape,
+                             const std::vector<int64_t>& axes,
                              std::vector<int64_t>& sizes, const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
-
   int64_t input_rank = input_shape.size();
 
   const auto* sizes_tensor = graph_viewer.GetConstantInitializer(input_defs[3]->Name());
@@ -126,19 +129,35 @@ bool GetValidatedResizeSizes(const GraphViewer& graph_viewer, const Node& node, 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   const auto& input_defs = node.InputDefs();
 
-  // ROI is not used.
-  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // ROI
-  model_builder.AddInputToSkip(input_defs[1]->Name());        // ROI
+  // In Resize-11 both roi and scales were required even if you were using sizes.
+  // https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Resize-11
+  // From Resize-13 on they're all optional.
+  //
+  // We don't support roi so would never take a node with meaningful roi input. The roi input can however be provided
+  // and is ignored unless coordinate_transformation_mode is set to 'tf_crop_and_resize'.
+  // e.g. our unit tests tend to always provide an empty tensor as roi input instead of as a missing optional input.
+  // Due to this we always call AddInputToSkip on the roi input.
+  //
+  // We require the sizes or scales input to be a constant initializers to take the node (i.e. they won't be a model
+  // input so calling AddInputToSkip isn't relevant).
+  // Individual values from scales and sizes are added directly to the layer, so we won't use the initializer.
+  //
+  // That leaves an edge case for Resize-11 where scales could have been provided as an empty input tensor but
+  // we're using a constant initializer for sizes. In this case AddInputToSkip needs to be called for the scales input.
 
-  // individual values from `scales` and `sizes` are added directly to the layer, so we won't use the initializer
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // roi
+  model_builder.AddInputToSkip(input_defs[1]->Name());
+
   if (input_defs[2]->Exists()) {
     model_builder.AddInitializerToSkip(input_defs[2]->Name());  // scales
-    model_builder.AddInputToSkip(input_defs[2]->Name());        // scales
   }
 
   if (input_defs.size() > 3 && input_defs[3]->Exists()) {
     model_builder.AddInitializerToSkip(input_defs[3]->Name());  // sizes
-    model_builder.AddInputToSkip(input_defs[3]->Name());        // sizes
+
+    if (node.SinceVersion() < 13) {
+      model_builder.AddInputToSkip(input_defs[2]->Name());  // skip the unused scales input
+    }
   }
 }
 
@@ -149,13 +168,13 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
   std::vector<int64_t> input_shape;
-  // we wouldn't be here if the input didn't have a known valid shape so this should never fail
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Error getting input shape");
   size_t input_rank = input_shape.size();
 
   // we know we have either a scales or sizes input so this is safe.
-  bool using_scales = input_defs[2]->Exists();
-  bool using_sizes = !using_scales;
+  // check for sizes first. this handles Resize-11 where scales was a required input but sizes were used if provided.
+  bool using_sizes = input_defs.size() >= 4 && input_defs[3]->Exists();
+  bool using_scales = !using_sizes;
 
   NodeAttrHelper helper(node);
   const auto& mode = helper.Get("mode", "nearest");
@@ -169,12 +188,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   size_t num_sizes = 0;
 
   if (using_scales) {
-    ORT_RETURN_IF_NOT(GetValidatedResizeScales(graph_viewer, node, axes, output_scales, logger),
+    ORT_RETURN_IF_NOT(GetValidatedResizeScales(graph_viewer, node, input_shape, axes, output_scales, logger),
                       "Error getting validated scales");
     num_scales = output_scales.size();
 
   } else {
-    ORT_RETURN_IF_NOT(GetValidatedResizeSizes(graph_viewer, node, axes, output_sizes, logger),
+    ORT_RETURN_IF_NOT(GetValidatedResizeSizes(graph_viewer, node, input_shape, axes, output_sizes, logger),
                       "Error getting validated sizes");
     num_sizes = output_sizes.size();
   }
@@ -285,6 +304,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Resize: input shape was not known";
     return false;
   }
 
@@ -296,7 +316,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     }
   } else {
     if (input_rank != 4) {
-      LOGS(logger, VERBOSE) << "Resize only support 4d shape, input is " << input_rank << "d shape";
+      LOGS(logger, VERBOSE) << "Resize only support 4d shape. Got: " << input_rank << "D";
       return false;
     }
   }
@@ -337,8 +357,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
-  bool using_scales = input_defs.size() >= 3 && input_defs[2]->Exists();
-  bool using_sizes = !using_scales && input_defs.size() >= 4 && input_defs[3]->Exists();
+  // check for sizes first. this handles Resize-11 where scales was a required input but sizes were used if provided.
+  bool using_sizes = input_defs.size() >= 4 && input_defs[3]->Exists();
+  bool using_scales = !using_sizes && input_defs.size() >= 3 && input_defs[2]->Exists();
+
   if (!using_scales && !using_sizes) {
     LOGS(logger, VERBOSE) << "Resize requires 'scales' or 'sizes' input";
     return false;
@@ -352,7 +374,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
 
   // make sure scales/sizes are constant initializers, and are only modifying the last two dimensions of the input.
   if (using_scales) {
-    if (!GetValidatedResizeScales(input_params.graph_viewer, node, axes, output_scales, logger)) {
+    if (!GetValidatedResizeScales(input_params.graph_viewer, node, input_shape, axes, output_scales, logger)) {
       return false;
     }
 
@@ -396,7 +418,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
         }
 
       } else {
-        LOGS(logger, VERBOSE) << "Resize downscaling is not supported.";
+        LOGS(logger, VERBOSE) << "Resize: downsampling is not supported.";
         return false;
       }
     } else {
@@ -407,7 +429,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   } else {
     assert(using_sizes);
 
-    if (!GetValidatedResizeSizes(input_params.graph_viewer, node, axes, output_sizes, logger)) {
+    if (!GetValidatedResizeSizes(input_params.graph_viewer, node, input_shape, axes, output_sizes, logger)) {
       return false;
     }
 
@@ -449,6 +471,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
 
   if (input_params.create_mlprogram) {
     if (is_nearest) {
+      // Potential CoreML operators we could map to:
+      //
       // image_resizing.upsample_nearest_neighbor
       // - mode: nearest
       // - coordinate_transformation_mode: asymmetric
@@ -466,6 +490,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       }
     } else {
       assert(is_linear);
+      // Potential CoreML operators we could map to:
+      //
       // image_resizing.upsample_bilinear
       // - mode: linear
       // - 'scales' input

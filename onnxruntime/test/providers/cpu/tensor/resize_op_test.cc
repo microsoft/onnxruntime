@@ -420,6 +420,30 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
   run_test(true);
 }
 
+// test handling for opset 11. scales input is provided but should be ignored in favor of sizes
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizesOpset11) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<int64_t> sizes{N, C, 1, 2};
+  test.AddAttribute("mode", "linear");
+
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes, true);  // add as initializer so CoreML EP can take
+
+  std::vector<float> Y = {3.5f, 5.5f};
+
+  test.AddOutput<float>("Y", sizes, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
   // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
