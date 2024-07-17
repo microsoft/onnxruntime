@@ -2790,7 +2790,7 @@ TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
       const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
       // Only fuse relu into Q if level >= 2 and zero_point == -128 for int8.
       // Level1 graph:   input -> DQ -> Relu -> Q -> DQ -> output
-      // Level +2 graph: input -> DQ -> output (QuantReluFusion + QDQFinalCleanupTransformer transformers)
+      // Level2+ graph: input -> DQ -> output (QuantReluFusion + QDQFinalCleanupTransformer transformers)
       const bool fuse_relu = (zp == -128) &&
                              (opt_level == TransformerLevel::Level2 || opt_level == TransformerLevel::Level3);
       EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], fuse_relu ? 0 : 1);
