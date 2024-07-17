@@ -1,0 +1,44 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#define RESHAPE_AND_CACHE_KERNEL_IMPL 1
+#include "contrib_ops/cuda/bert/paged/paged_attention/reshape_and_cache.cuh"
+
+#include <type_traits>
+
+namespace onnxruntime::contrib::paged {
+
+using float8_e4m3fn_t = cute::float_e4m3_t;
+
+// clang-format off
+#define NUM_THREADS @NUM_THREADS@
+#define HEAD_SIZE @HEAD_SIZE@
+#define PAGE_SIZE @PAGE_SIZE@
+#define TIO @TIO@
+#define TKV @TKV@
+#define TSB @TSB@
+// clang-format on
+
+static_assert(NUM_THREADS == 128);
+static_assert(std::is_same_v<TIO, half>);
+static_assert(std::is_same_v<TKV, float8_e4m3fn_t>);
+static_assert(std::is_same_v<TSB, half>);
+
+constexpr int ChunkSize = 32;
+constexpr int VecSize = 8 / sizeof(TIO);  // target LDG.64
+
+template __global__ void reshape_and_cache_kernel<NUM_THREADS, HEAD_SIZE, PAGE_SIZE, ChunkSize, VecSize, TIO, TKV, TSB>(
+    TKV* __restrict__ k_cache_out,             // [num_pages, num_heads, head_size/x, page_size, x]
+    TKV* __restrict__ v_cache_out,             // [num_pages, num_heads, head_size, page_size]
+    TSB* __restrict__ kv_scalebias_out,        // [num_pages, 2, num_heads, 2, num_chunks, page_size], in k_scale, k_bias, v_scale, v_bias order
+    const TIO* __restrict__ k_in,              // [num_tokens, num_heads, head_size]
+    const TIO* __restrict__ v_in,              // [num_tokens, num_heads, head_size]
+    const int64_t* __restrict__ slot_mapping,  // [num_tokens]
+    int num_pages,
+    int num_tokens,
+    int num_heads,
+    int k_in_stride,  // stride of num_tokens dim
+    int v_in_stride   // stride of num_tokens dim
+);
+
+}  // namespace onnxruntime::contrib::paged
