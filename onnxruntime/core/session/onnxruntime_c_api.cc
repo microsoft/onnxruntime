@@ -22,6 +22,7 @@
 #include "core/common/safeint.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value.h"
@@ -2802,3 +2803,8 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
+
+ORT_API(bool, OrtGraph_IsConstantInitializer, const OrtGraph* graph, const char* name, bool check_outer_scope) {
+  ::onnxruntime::GraphViewer graph_viewer(*(reinterpret_cast<const ::onnxruntime::Graph*>(graph)));
+  return graph_viewer.IsConstantInitializer(std::string(name), check_outer_scope);
+}
