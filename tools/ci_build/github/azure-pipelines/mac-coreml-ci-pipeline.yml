@@ -32,7 +32,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '11.0'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -44,7 +44,7 @@ jobs:
 
   - template: templates/use-xcode-version.yml
     parameters:
-      xcodeVersion: 14.2
+      xcodeVersion: 14.3.1
 
   - template: templates/mac-build-step-with-cache.yml
     parameters:

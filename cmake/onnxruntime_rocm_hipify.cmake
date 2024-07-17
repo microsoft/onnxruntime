@@ -88,7 +88,6 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
-  "bert/group_query_attention_helper.h"
   "bert/group_query_attention.h"
   "bert/group_query_attention.cc"
   "bert/group_query_attention_impl.h"

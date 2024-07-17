@@ -31,7 +31,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #ifdef _WIN32
 #include <Windows.h>

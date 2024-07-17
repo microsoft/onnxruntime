@@ -1855,7 +1855,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
   ASSERT_TRUE(status.IsOK());
-  ASSERT_TRUE(model.Save(model, "./simplified_ssd.onnx").IsOK());
+  ASSERT_TRUE(model.Save(model, ORT_TSTR("./simplified_ssd.onnx")).IsOK());
 
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);

@@ -19,9 +19,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    # We need macOS-12 to run the Android emulator for now.
-    # https://github.com/actions/runner-images/issues/7671
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
   - name: runCodesignValidationInjection
     value: false
@@ -39,9 +37,9 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
   - task: JavaToolInstaller@0
-    displayName: Use jdk 11
+    displayName: Use jdk 17
     inputs:
-      versionSpec: '11'
+      versionSpec: '17'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 

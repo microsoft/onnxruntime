@@ -95,7 +95,6 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
     MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
-    SOVERSION ${ORT_VERSION}
     # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
@@ -108,11 +107,7 @@ endif()
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
-target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
+
 target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
@@ -130,7 +125,6 @@ if (NOT WIN32)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
-        SOVERSION ${ORT_VERSION}
         MACOSX_RPATH TRUE
         INSTALL_RPATH_USE_LINK_PATH FALSE
         BUILD_WITH_INSTALL_NAME_DIR TRUE
@@ -189,6 +183,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
+  ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
@@ -221,13 +216,23 @@ target_link_libraries(onnxruntime PRIVATE
 )
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-set_target_properties(onnxruntime PROPERTIES
-  PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-  LINK_DEPENDS ${SYMBOL_FILE}
-  VERSION ${ORT_VERSION}
-  FOLDER "ONNXRuntime"
-)
 
+#See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
+if(NOT APPLE AND NOT WIN32)
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    SOVERSION 1
+    FOLDER "ONNXRuntime")
+else()
+  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    FOLDER "ONNXRuntime")
+endif()
 install(TARGETS onnxruntime
         EXPORT ${PROJECT_NAME}Targets
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime

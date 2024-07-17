@@ -1015,57 +1015,31 @@ def generate_files(line_list, args):
 
         # Process Training specific targets and props
         if args.package_name == "Microsoft.ML.OnnxRuntime.Training":
-            monoandroid_source_targets = os.path.join(
+            net8_android_source_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 "targets.xml",
             )
-            monoandroid_target_targets = os.path.join(
+            net8_android_target_targets = os.path.join(
                 args.sources_path,
                 "csharp",
                 "src",
                 "Microsoft.ML.OnnxRuntime",
                 "targets",
-                "monoandroid11.0",
+                "net8.0-android",
                 args.package_name + ".targets",
             )
 
-            net6_android_source_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-android",
-                "targets.xml",
-            )
-            net6_android_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net6.0-android",
-                args.package_name + ".targets",
-            )
-
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
-            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
-
-            files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
+            os.system(copy_command + " " + net8_android_source_targets + " " + net8_android_target_targets)
             files_list.append(
-                "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
-            )
-
-            files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="build\\net8.0-android31.0" />'
             )
             files_list.append(
-                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
+                "<file src=" + '"' + net8_android_target_targets + '" target="buildTransitive\\net8.0-android31.0" />'
             )
 
     # README

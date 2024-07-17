@@ -57,7 +57,7 @@ void AttentionWrapper<T>::ProcessOutput(const gsl::span<const T>& rnn_cell_outpu
   if (has_attn_layer_) {
     // concat([p_cell_output, context]) * stack([attn_layer_cell_weights_, attn_layer_attn_weights_]) =
     //      p_cell_output * attn_layer_cell_weights_ + context * attn_layer_attn_weights_
-    //  The first part is calulated above. Here just add the later.
+    //  The first part is calculated above. Here just add the later.
     math::GemmEx<T>(CblasNoTrans, CblasNoTrans,
                     batch_size_, attn_layer_depth_, attn_context_depth_, T{1.0},
                     attn_context_.data(), attn_context_depth_,

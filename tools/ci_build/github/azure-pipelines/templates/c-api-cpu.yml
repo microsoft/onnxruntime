@@ -83,14 +83,14 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.2
+        xcodeVersion: 14.3.1
 
     - template: download-deps.yml
 
@@ -376,9 +376,9 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.1
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.1
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install mobile workloads
@@ -780,7 +780,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-latest
+    AgentPool : macOS-13
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -816,4 +816,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-latest'
+    PoolName: 'macOS-13'

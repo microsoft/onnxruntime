@@ -577,7 +577,7 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
 }
 
 // Kernel to convert seqlens_k to position_ids
-__global__ void SeqlensToPosIdsPrompt(int32_t* seqlens_k, int64_t* position_ids, const int seqlen,
+__global__ void SeqlensToPosIdsPrompt(const int32_t* seqlens_k, int64_t* position_ids, const int seqlen,
                                       const int batch_size) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   int b = tid / seqlen;
@@ -592,7 +592,7 @@ __global__ void SeqlensToPosIdsPrompt(int32_t* seqlens_k, int64_t* position_ids,
 }
 
 // Kernel to convert seqlens_k to position_ids
-__global__ void SeqlensToPosIdsToken(int32_t* seqlens_k, int64_t* position_ids, const int batch_size) {
+__global__ void SeqlensToPosIdsToken(const int32_t* seqlens_k, int64_t* position_ids, const int batch_size) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   if (tid < batch_size) {
     position_ids[tid] = seqlens_k[tid];
@@ -600,7 +600,7 @@ __global__ void SeqlensToPosIdsToken(int32_t* seqlens_k, int64_t* position_ids, 
 }
 
 // Convert seqlens_k to position_ids
-Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k,
+Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters, const int32_t* seqlens_k,
                              int64_t* position_ids, cudaStream_t stream, const int max_threads_per_block) {
   const int seqlen = parameters.sequence_length;
   const int batch_size = parameters.batch_size;
@@ -675,7 +675,7 @@ Status FlashAttention(
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
-      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
+      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache, /*block_table*/ nullptr,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
       parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
       scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
