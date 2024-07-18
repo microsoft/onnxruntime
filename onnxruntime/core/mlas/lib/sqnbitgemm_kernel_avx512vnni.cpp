@@ -23,6 +23,10 @@ Abstract:
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx_common_fp32.h"
 #include "sqnbitgemm_kernel_avx_common_int8.h"
+#include "sqnbitgemm_kernel_avx512_int8_blklen16.h"
+#include "sqnbitgemm_kernel_avx512_int8_blklen32.h"
+#include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
+#include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -202,6 +206,99 @@ SQ4BitGemmM1Kernel_CompInt8_avx512vnni(
     }
 }
 
+MLAS_FORCEINLINE
+size_t
+SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+)
+{
+    if (BlkLen == 16) {
+        MlasQ4Int8GemmKernelBlkLen16Avx512<true>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 32) {
+        MlasQ4Int8GemmKernelBlkLen32Avx512<true>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else if (BlkLen == 64) {
+        MlasQ4Int8GemmKernelBlkLen64Avx512<true>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    } else {
+        MlasQ4Int8GemmKernelBlkLen128Avx512<true>(
+            BlkLen,
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            CountM,
+            CountN,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    float* c_blk = C;
+    const float* b_blk_sum = QuantBBlkSum;
+
+    size_t RowsRemaining = CountM;
+    const float* a_blksum_row = ABlockSum;
+    while (RowsRemaining > 0) {
+        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+        );
+
+        c_blk += ldc * RowsHandled;
+        a_blksum_row += BlockCountK * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+    return CountM;
+}
+
 void MLASCALL
 QuantizeARow_CompInt8_avx512(
     size_t BlkLen,
@@ -213,7 +310,7 @@ QuantizeARow_CompInt8_avx512(
 );
 
 static void
-SQ4BitGemmPackQuantBDataAndBlkSum(
+SQ4BitGemmPackQuantBDataAndBlkSum512vnni(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -231,10 +328,9 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     size_t SubBlkLen = (BlkLen == 16) ? 16 : (BlkLen == 32 ? 32 : 64);
-    if (BlkLen == 32 && ComputeType == CompInt8) {
-        SubBlkLen = 64;
+    if (ComputeType == CompInt8) {
+        SubBlkLen = 128;
     }
-
     PackQuantBDataAndBlkSum(N, BlockCountK, BlkLen, SubBlkLen, QuantBDataBegin, QuantBScaleBegin, has_zp_input, QuantBZPBegin, packed_quant_b, ThreadPool);
 }
 
@@ -246,7 +342,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
 
     d.SQ4BitGemmPackQuantBDataSize = SQ4BitGemmPackQuantBDataSize;
     d.SQ4BitGemmPackQuantBData = SQ4BitGemmPackQuantBData;
-    d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum;
+    d.SQ4BitGemmPackQuantBDataAndBlkSum = SQ4BitGemmPackQuantBDataAndBlkSum512vnni;
 
     d.SQ4BitGemmPerGemmWorkspaceSize = SQ4BitGemmPerGemmWorkspaceSize;
     d.SQ4BitGemmPerGemmWorkspaceAlignment = SQ4BitGemmPerGemmWorkspaceAlignment;
@@ -254,7 +350,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
     d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32_avx2;
 
-    d.QuantizeARow_CompInt8 = nullptr;
+    d.SQ4BitGemmKernel_BlkSum_CompInt8 = SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARow_CompInt8_2 = QuantizeARow_CompInt8_avx512;
 
     return d;

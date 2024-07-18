@@ -175,7 +175,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
 )
 {
     if (BlkLen == 16) {
-        MlasQ4Int8GemmKernelBlkLen16Avx512(
+        MlasQ4Int8GemmKernelBlkLen16Avx512<false>(
             QuantA,
             QuantAScale,
             QuantBData,
@@ -188,7 +188,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             ldc
         );
     } else if (BlkLen == 32) {
-        MlasQ4Int8GemmKernelBlkLen32Avx512(
+        MlasQ4Int8GemmKernelBlkLen32Avx512<false>(
             QuantA,
             QuantAScale,
             QuantBData,
@@ -201,7 +201,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             ldc
         );
     } else if (BlkLen == 64) {
-        MlasQ4Int8GemmKernelBlkLen64Avx512(
+        MlasQ4Int8GemmKernelBlkLen64Avx512<false>(
             BlkLen,
             QuantA,
             QuantAScale,
@@ -215,7 +215,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             ldc
         );
     } else {
-        MlasQ4Int8GemmKernelBlkLen128Avx512(
+        MlasQ4Int8GemmKernelBlkLen128Avx512<false>(
             BlkLen,
             QuantA,
             QuantAScale,
