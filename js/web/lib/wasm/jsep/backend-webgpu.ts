@@ -219,7 +219,6 @@ export class WebGpuBackend {
         maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
         maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
-        maxBindingsPerBindGroup: adapter.limits.maxBindingsPerBindGroup,
       },
       requiredFeatures,
     };
@@ -450,7 +449,7 @@ export class WebGpuBackend {
       const isPersistent = validatedOutputIndices[i] === -2;
       const tensorView = (isTemporary || isPersistent) ?
           createIntermediateOutput(outputs[i].dataType, outputs[i].dims) :
-          createKernelOutput(outputs[i].outputIndex || validatedOutputIndices[i], outputs[i].dataType, outputs[i].dims);
+          createKernelOutput(validatedOutputIndices[i], outputs[i].dataType, outputs[i].dims);
       outputTensorViews.push(tensorView);
       // if tensor view data is 0, it means the output is zero-sized tensor, and there is no GPU data for it.
       if (tensorView.data === 0) {
