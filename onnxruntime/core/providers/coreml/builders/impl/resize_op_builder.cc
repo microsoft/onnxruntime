@@ -423,7 +423,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     } else if (scale_h <= 1.f && scale_w <= 1.f) {
       // downsample
       if (input_params.create_mlprogram) {
-        // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24 
+        // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24
         // and the max integer value a 32-bit float can represent accurately with its mantissa
         auto h_in = input_shape[input_rank - 2];
         auto w_in = input_shape[input_rank - 1];
