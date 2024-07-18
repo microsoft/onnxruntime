@@ -138,8 +138,8 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   // e.g. our unit tests tend to always provide an empty tensor as roi input instead of as a missing optional input.
   // Due to this we always call AddInputToSkip on the roi input.
   //
-  // We require the sizes or scales input to be a constant initializers to take the node (i.e. they won't be a model
-  // input so calling AddInputToSkip isn't relevant).
+  // We require the sizes or scales input to be a constant initializers to take the node (i.e. they won't be an input
+  // to the CoreML model for the partition, so calling AddInputToSkip isn't relevant).
   // Individual values from scales and sizes are added directly to the layer, so we won't use the initializer.
   //
   // That leaves an edge case for Resize-11 where scales could have been provided as an empty input tensor but
@@ -163,8 +163,8 @@ void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
 
 Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& output_defs = node.OutputDefs();
+  const auto input_defs = node.InputDefs();
+  const auto output_defs = node.OutputDefs();
   const auto& graph_viewer = model_builder.GetGraphViewer();
 
   std::vector<int64_t> input_shape;
@@ -181,7 +181,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool is_nearest = mode == "nearest";
   bool is_linear = !is_nearest;
 
-  auto axes = GetAxes(helper, input_shape.size());
+  auto axes = GetAxes(helper, input_rank);
   std::vector<float> output_scales;
   std::vector<int64_t> output_sizes;
   size_t num_scales = 0;
@@ -425,8 +425,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       if (input_params.create_mlprogram) {
         // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24 
         // and the max integer value a 32-bit float can represent accurately with its mantissa
-        int64_t h_in = input_shape[input_rank - 2];
-        int64_t w_in = input_shape[input_rank - 1];
+        auto h_in = input_shape[input_rank - 2];
+        auto w_in = input_shape[input_rank - 1];
         auto h_out = double(h_in) * scale_h;
         auto w_out = double(w_in) * scale_w;
 

@@ -145,7 +145,7 @@ class ModelBuilder {
   /// Skip a non-initializer value, that is not used in the CoreML model, but was an input to a supported node.
   ///
   /// This is for a rare edge case where a value is an input to a node but is empty/unused, as the
-  /// The CoreML model requires all model inputs to be consumed.
+  /// CoreML model requires all model inputs to be consumed.
   /// </summary>
   /// <remarks>
   /// The only known use case for this currently is Resize, and that is largely due to how the unit tests are
