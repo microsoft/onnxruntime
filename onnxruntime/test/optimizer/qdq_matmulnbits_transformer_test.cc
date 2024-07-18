@@ -408,9 +408,6 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
 }
 
 TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits) {
-  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
-    GTEST_SKIP() << "Skipping the test";
-  }
   // DQ contrib op schema is not updated to support blocked quantization
   RunDQMatMulConverted<Int4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0);
   RunDQMatMulConverted<Int4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0);
