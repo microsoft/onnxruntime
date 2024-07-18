@@ -5,7 +5,6 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-//#include "core/common/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"

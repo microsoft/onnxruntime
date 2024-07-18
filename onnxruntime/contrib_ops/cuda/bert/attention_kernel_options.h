@@ -41,7 +41,7 @@ class AttentionKernelOptions {
   int MinSeqLenForEfficientAttentionFp32() const { return min_seq_len_for_efficient_attention_fp32_; }
 
  protected:
- void Print() const;
+  void Print() const;
 
   void Initialize(int value, bool use_build_flag);
 

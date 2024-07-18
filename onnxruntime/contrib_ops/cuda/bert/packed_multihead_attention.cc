@@ -262,12 +262,12 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   }
 #endif
 
-if (this->kernel_options_->AllowDebugInfo()) {
+  if (this->kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      if (this->enable_trt_flash_attention_ &&  parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
+      if (this->enable_trt_flash_attention_ && parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
         debug_info.use_trt_flash_attention = true;
       } else {
         debug_info.use_trt_fused_attention = true;
@@ -278,7 +278,6 @@ if (this->kernel_options_->AllowDebugInfo()) {
     debug_info.node_name = &(this->node_name_);
     debug_info.Print();
   }
-
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 

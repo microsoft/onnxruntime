@@ -197,7 +197,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
 
-
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;

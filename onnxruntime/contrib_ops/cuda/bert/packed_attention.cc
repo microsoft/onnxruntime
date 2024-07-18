@@ -302,7 +302,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      if (this->enable_trt_flash_attention_ &&  parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
+      if (this->enable_trt_flash_attention_ && parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
         debug_info.use_trt_flash_attention = true;
       } else {
         debug_info.use_trt_fused_attention = true;
