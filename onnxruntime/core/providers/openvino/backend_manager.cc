@@ -154,7 +154,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   else
     graph_name = global_context_.onnx_model_path_name;
   // Remove extension so we can append suffix to form the complete name of output graph
-  graph_name = [&]() {
+  graph_name = [&]() -> const std::string{
     size_t dot = graph_name.find_last_of(".");
     if (dot == std::string::npos) return graph_name;
     return graph_name.substr(0, dot);
@@ -254,7 +254,7 @@ static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
                                 ONNX_NAMESPACE::ModelProto* model_proto,
                                 const onnxruntime::Node& fused_node) {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name;
+    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : std::move(onnx_model_path_name) ;
 #ifdef _WIN32
     size_t slash = model_name.find_last_of("\\");
 #else

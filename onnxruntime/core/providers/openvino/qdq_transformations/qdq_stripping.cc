@@ -209,7 +209,7 @@ static bool DQFeedsASupportedOp(const Node* dq_node) {
   if (!dq_node->GetOutputEdgesCount()) return false;  // Only feeds the graph output, and not any node
 
   const auto& target_node = *dq_node->OutputNodesBegin();
-  const auto op_type = target_node.OpType();
+  const auto& op_type = target_node.OpType();
 
   if (op_type == "Conv" || op_type == "MatMul") {
     // Conv and MatMul always keeps int8 DQs except if the DQ is sandwiched between Softmax and Conv/MatMul
@@ -291,7 +291,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
                            const onnxruntime::GraphViewer& src_graph,
                            SkipReason& reason) {
   const auto& target_node = node_unit.GetNode();
-  auto op_type = node_unit.OpType();
+  const auto& op_type = node_unit.OpType();
 
   // #1 Reverse DQ duplication
   if (dq_node->Name().find(DuplicateDQ) != std::string::npos) {
@@ -340,7 +340,7 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
 static bool CheckQFeedsIntoQuantizedOutput(const NodeUnit& node_unit,
                           const std::unordered_map<std::string, std::string> graph_op_data_type) {
   auto op_of_quantized_layer = node_unit.Outputs();
-  for (auto itr : op_of_quantized_layer) {
+  for (auto &itr : op_of_quantized_layer) {
     auto it = graph_op_data_type.find(itr.node_arg.Name());
     if (it != graph_op_data_type.end() && it->second == "tensor(uint8)") {
       return true;
@@ -357,7 +357,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   // This Q should also be uint8
 
   const auto& target_node = node_unit.GetNode();
-  auto op_type = node_unit.OpType();
+  const auto& op_type = node_unit.OpType();
 
   auto op = src_graph.GetOutputs();
   std::unordered_map<std::string, std::string> graph_op_data_type;
@@ -377,7 +377,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
   } else if (op_type == "Add") {
     // Add keeps all Qs
     return true;
-  } else if (CheckQFeedsIntoQuantizedOutput(node_unit, graph_op_data_type)) {
+  } else if (CheckQFeedsIntoQuantizedOutput(node_unit, std::move(graph_op_data_type))) {
     return true;
   } else {
     // Keep Q of an unsupported Op only if the target that succeeds it is a supported Op in this list
@@ -563,7 +563,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
   // Add Node args for inputs
   for (const auto& node_unit_input : node_unit_inputs) {
-    auto node_arg_name = node_unit_input.node_arg.Name();
+    const auto &node_arg_name = node_unit_input.node_arg.Name();
     if (auto dq_node_arg = dq_node_args_to_keep.find(node_arg_name); dq_node_arg != dq_node_args_to_keep.end()) {
       // Add supported DQ as an input arg for the target node
       input_args.push_back(dq_node_arg->second);

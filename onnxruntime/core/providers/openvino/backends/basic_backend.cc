@@ -99,7 +99,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.CompileModel(model,
                                                             hw_target,
-                                                            prec_str,
+                                                            std::move(prec_str),
                                                             global_context_.cache_dir,
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
@@ -276,7 +276,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
 
         try {
-          infer_request->SetTensor(input_name, tensor_ptr);
+          infer_request->SetTensor(std::move(input_name), tensor_ptr);
         } catch (const char* msg) {
           ORT_THROW(msg);
         }

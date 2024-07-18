@@ -85,11 +85,11 @@ struct OpenVINOExecutionProviderInfo {
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob,
                                          bool enable_qdq_optimizer, bool disable_cpu_fallback,
                                          bool so_epctx_embed_mode)
-      : precision_(precision),
+      : precision_(std::move(precision)),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         cache_dir_(std::move(cache_dir)),
-        model_priority_(model_priority),
+        model_priority_(std::move(model_priority)),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
@@ -131,7 +131,7 @@ struct OpenVINOExecutionProviderInfo {
       device_type_ = std::move(dev_type);
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
-      device_type_ = dev_type;
+      device_type_ = std::move(dev_type);
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
