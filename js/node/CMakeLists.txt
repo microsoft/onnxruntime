@@ -67,6 +67,10 @@ set_target_properties(onnxruntime_binding PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_DEBUG ${dist_folder}
   RUNTIME_OUTPUT_DIRECTORY_RELEASE ${dist_folder}
   RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_DEBUG ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_RELEASE ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${dist_folder}
   BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
@@ -92,12 +96,12 @@ else()
 endif()
 
 if (WIN32)
-  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
-  target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.so.${ort_version})
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
