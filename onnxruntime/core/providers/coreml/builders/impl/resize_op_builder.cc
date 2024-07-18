@@ -326,7 +326,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   // this should never happen in a real model though as a dim with value 0 (i.e. no input data) would typically be a
   // dynamic dimension where a previous step had no output (e.g. Loop of zero interations, NonZero with no matches,
   // NonMaxSupression with no boxes).
-  if (std::find(input_shape.begin(), input_shape.end(), 0) != input_shape.end()) {
+  if (DoesShapeSpecifyZeroElements(input_shape)) {
     LOGS(logger, VERBOSE) << "Resize input shape has with dimension values of 0 which is not supported.";
     return false;
   }
@@ -423,18 +423,20 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     } else if (scale_h <= 1.f && scale_w <= 1.f) {
       // downsample
       if (input_params.create_mlprogram) {
-        auto h_in = input_shape[input_rank - 2];
-        auto w_in = input_shape[input_rank - 1];
-        auto h_out = h_in * scale_h;
-        auto w_out = w_in * scale_w;
+        // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24 
+        // and the max integer value a 32-bit float can represent accurately with its mantissa
+        int64_t h_in = input_shape[input_rank - 2];
+        int64_t w_in = input_shape[input_rank - 1];
+        auto h_out = double(h_in) * scale_h;
+        auto w_out = double(w_in) * scale_w;
 
-        if (std::fmod(float(h_in), h_out) != 0.f) {
+        if (std::floor(h_out) != h_out) {
           LOGS(logger, VERBOSE) << "Resize: downsampling output height: " << h_out
                                 << " is not a factor of input height: " << h_in;
           return false;
         }
 
-        if (std::fmod(float(w_in), w_out) != 0.f) {
+        if (std::floor(w_out) != w_out) {
           LOGS(logger, VERBOSE) << "Resize: downsampling output width: " << w_out
                                 << " is not a factor of input width: " << w_in;
           return false;

@@ -366,6 +366,36 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
   run_test(true);
 }
 
+// Downsize with factor being an odd number (1/3)
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_OddNumber) {
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 1.0f, (1.f / 3), (1.f / 3)};
+
+    test.AddAttribute("mode", "linear");
+
+    constexpr int64_t N = 1, C = 1, H = 3, W = 6;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+        7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f,
+        13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<float> Y = {8.f, 11.f};
+
+    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
   // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_and_sizes_in_initializer) {
