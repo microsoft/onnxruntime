@@ -201,7 +201,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       using_sizes = true;
       num_sizes = num_scales;
       output_sizes = input_shape;
-      // only the last to dims have their size changed
+      // only the last two dims have their size changed
       output_sizes[input_rank - 2] = static_cast<int64_t>(input_shape[input_rank - 2] * output_scales[num_scales - 2]);
       output_sizes[input_rank - 1] = static_cast<int64_t>(input_shape[input_rank - 1] * output_scales[num_scales - 1]);
     }
@@ -213,7 +213,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
-    using namespace CoreML::Specification::MILSpec;
+    using namespace CoreML::Specification::MILSpec;  // NOLINT
 
     std::string_view coreml_op_type;
     if (using_scales) {
@@ -278,7 +278,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
     AddOperationOutput(*op, *output_defs[0]);
     model_builder.AddOperation(std::move(op));
-  } else
+  } else  // NOLINT
 #endif
   {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
@@ -427,8 +427,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
         // and the max integer value a 32-bit float can represent accurately with its mantissa
         auto h_in = input_shape[input_rank - 2];
         auto w_in = input_shape[input_rank - 1];
-        auto h_out = double(h_in) * scale_h;
-        auto w_out = double(w_in) * scale_w;
+        auto h_out = static_cast<double>(h_in) * scale_h;
+        auto w_out = static_cast<double>(w_in) * scale_w;
 
         if (std::floor(h_out) != h_out) {
           LOGS(logger, VERBOSE) << "Resize: downsampling output height: " << h_out

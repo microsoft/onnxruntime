@@ -28,7 +28,7 @@ class BaseOpBuilder : public IOpBuilder {
   void AddInitializersToSkip(ModelBuilder& /*model_builder*/, const Node& /*node*/) const override {}
 
  protected:
-  BaseOpBuilder(bool allow_empty_tensor_as_input = false)
+  explicit BaseOpBuilder(bool allow_empty_tensor_as_input = false)
       : allow_empty_tensor_as_input_(allow_empty_tensor_as_input) {
   }
 
