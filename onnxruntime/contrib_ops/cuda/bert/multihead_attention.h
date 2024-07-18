@@ -38,6 +38,7 @@ class MultiHeadAttention final : public CudaKernel {
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
   const AttentionKernelOptions* kernel_options_;
+  std::string node_name_;
 };
 
 }  // namespace cuda

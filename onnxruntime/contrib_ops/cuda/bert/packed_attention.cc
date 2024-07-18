@@ -36,6 +36,9 @@ template <typename T>
 TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
     : CudaKernel(info) {
   kernel_options_ = this->GetAttentionKernelOptions();
+  if (kernel_options_->AllowDebugInfo()) {
+    node_name_ = info.node().Name();
+  }
   disable_fused_runner_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 }
@@ -294,6 +297,22 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
         has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
+
+  if (this->kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      if (this->enable_trt_flash_attention_ &&  parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
+        debug_info.use_trt_flash_attention = true;
+      } else {
+        debug_info.use_trt_fused_attention = true;
+      }
+    }
+    debug_info.is_float16 = std::is_same<T, MLFloat16>::value;
+    debug_info.operator_name = "PackedAttention";
+    debug_info.node_name = &(this->node_name_);
+    debug_info.Print();
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);

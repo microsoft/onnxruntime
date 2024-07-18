@@ -53,6 +53,10 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   kernel_options_ = this->GetAttentionKernelOptions();
+  if (kernel_options_->AllowDebugInfo()) {
+    node_name_ = info.node().Name();
+  }
+
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 
   // Memory efficient attention only supports float and float16, not bfloat16.
@@ -192,6 +196,18 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
+
+
+  if (kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    debug_info.is_float16 = std::is_same<T, MLFloat16>::value;
+    debug_info.is_bfloat16 = std::is_same<T, BFloat16>::value;
+    debug_info.operator_name = "GroupQueryAttention";
+    debug_info.node_name = &(node_name_);
+    debug_info.Print();
+  }
 
   // seqlens_k buffer
   size_t seqlens_k_bytes = 0;

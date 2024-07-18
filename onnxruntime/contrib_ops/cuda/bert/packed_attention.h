@@ -27,6 +27,8 @@ class TrtFusedAttention : public CudaKernel {
 
  protected:
   const AttentionKernelOptions* kernel_options_;
+  std::string node_name_;
+
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;

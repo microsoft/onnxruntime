@@ -40,6 +40,9 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
+  if (kernel_options_->AllowDebugInfo()) {
+    node_name_ = info.node().Name();
+  }
 
   disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
 
@@ -211,6 +214,25 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_memory_efficient_attention = false;
 #endif
 
+  if (kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      if (is_unidirectional_) {
+        debug_info.use_trt_causal_attention = true;
+      } else if (enable_trt_flash_attention_ && sequence_length >= kMinSequenceLengthFlashAttention) {
+        debug_info.use_trt_flash_attention = true;
+      } else {
+        debug_info.use_trt_fused_attention = true;
+      }
+    }
+    debug_info.is_float16 = sizeof(T) == 2;
+    debug_info.operator_name = "Attention";
+    debug_info.node_name = &(node_name_);
+    debug_info.Print();
+  }
+
   cublasHandle_t cublas = GetCublasHandle(context);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -248,7 +270,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
-  ;
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;

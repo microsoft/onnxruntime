@@ -25,6 +25,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_TRUE(options.UseFlashAttention());
     ASSERT_TRUE(options.UseEfficientAttention());
     ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_FALSE(options.UseTrtFlashAttention());
     ASSERT_FALSE(options.UseTrtCrossAttention());
@@ -40,7 +41,24 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_FALSE(options.UseFlashAttention());
     ASSERT_FALSE(options.UseEfficientAttention());
     ASSERT_TRUE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_TRUE(options.UseUnfusedAttention());
+    ASSERT_FALSE(options.UseTrtFlashAttention());
+    ASSERT_FALSE(options.UseTrtCrossAttention());
+    ASSERT_FALSE(options.UseTrtCausalAttention());
+    EXPECT_EQ(options.MinSeqLenForFlashAttentionPackedQkv(), 0);
+    EXPECT_EQ(options.MinSeqLenForEfficientAttentionFp32(), 0);
+  }
+
+  {
+    AttentionKernelOptions options;
+    int value = static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION);
+    options.InitializeOnce(value, false);
+    ASSERT_FALSE(options.UseFlashAttention());
+    ASSERT_FALSE(options.UseEfficientAttention());
+    ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_TRUE(options.UseCudnnFlashAttention());
+    ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_FALSE(options.UseTrtFlashAttention());
     ASSERT_FALSE(options.UseTrtCrossAttention());
     ASSERT_FALSE(options.UseTrtCausalAttention());
@@ -55,6 +73,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_FALSE(options.UseFlashAttention());
     ASSERT_FALSE(options.UseEfficientAttention());
     ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_TRUE(options.UseTrtFlashAttention());
     ASSERT_FALSE(options.UseTrtCrossAttention());
@@ -70,6 +89,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_FALSE(options.UseFlashAttention());
     ASSERT_FALSE(options.UseEfficientAttention());
     ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_FALSE(options.UseTrtFlashAttention());
     ASSERT_TRUE(options.UseTrtCrossAttention());
@@ -79,13 +99,14 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
   }
 
   // Test environment variables are ignored when option value is non-zero
-  // Test default min sequence lenghts are zeros
+  // Test default min sequence lengths are zeros
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
+            {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
             {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
@@ -96,6 +117,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_TRUE(options.UseFlashAttention());
     ASSERT_FALSE(options.UseEfficientAttention());
     ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_FALSE(options.UseTrtFlashAttention());
     ASSERT_FALSE(options.UseTrtCrossAttention());
@@ -104,7 +126,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     EXPECT_EQ(options.MinSeqLenForEfficientAttentionFp32(), 0);
   }
 
-  // Test min sequence lenghts can be parsed from environment variables when option value is non-zero
+  // Test min sequence lengths can be parsed from environment variables when option value is non-zero
   {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
@@ -123,6 +145,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
     ASSERT_TRUE(options.UseFlashAttention());
     ASSERT_FALSE(options.UseEfficientAttention());
     ASSERT_FALSE(options.UseTrtFusedAttention());
+    ASSERT_FALSE(options.UseCudnnFlashAttention());
     ASSERT_FALSE(options.UseUnfusedAttention());
     ASSERT_FALSE(options.UseTrtFlashAttention());
     ASSERT_FALSE(options.UseTrtCrossAttention());
@@ -140,6 +163,7 @@ TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
           {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
@@ -151,6 +175,7 @@ TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
   ASSERT_TRUE(options.UseFlashAttention());
   ASSERT_TRUE(options.UseEfficientAttention());
   ASSERT_TRUE(options.UseTrtFusedAttention());
+  ASSERT_TRUE(options.UseCudnnFlashAttention());
   ASSERT_TRUE(options.UseUnfusedAttention());
   ASSERT_TRUE(options.UseTrtFlashAttention());
   ASSERT_TRUE(options.UseTrtCrossAttention());
@@ -160,7 +185,7 @@ TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
   EXPECT_EQ(options.MinSeqLenForEfficientAttentionFp32(), 256);
 }
 
-// Test default min sequence lenghts when environment variables are not set.
+// Test default min sequence lengths when environment variables are not set.
 TEST(AttentionKernelOptionsTest, DefaultMinSeqLens) {
   constexpr int value = 0;
   ScopedEnvironmentVariables scoped_env_vars{
@@ -169,6 +194,7 @@ TEST(AttentionKernelOptionsTest, DefaultMinSeqLens) {
           {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
           {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
           {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
           {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"}}};
@@ -177,6 +203,7 @@ TEST(AttentionKernelOptionsTest, DefaultMinSeqLens) {
   ASSERT_FALSE(options.UseFlashAttention());
   ASSERT_FALSE(options.UseEfficientAttention());
   ASSERT_FALSE(options.UseTrtFusedAttention());
+  ASSERT_FALSE(options.UseCudnnFlashAttention());
   ASSERT_TRUE(options.UseUnfusedAttention());
   ASSERT_FALSE(options.UseTrtFlashAttention());
   ASSERT_FALSE(options.UseTrtCrossAttention());
