@@ -40,9 +40,6 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
-  if (kernel_options_->AllowDebugInfo()) {
-    node_name_ = info.node().Name();
-  }
 
   disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
 
@@ -219,18 +216,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      if (is_unidirectional_) {
-        debug_info.use_trt_causal_attention = true;
-      } else if (enable_trt_flash_attention_ && sequence_length >= kMinSequenceLengthFlashAttention) {
-        debug_info.use_trt_flash_attention = true;
-      } else {
-        debug_info.use_trt_fused_attention = true;
-      }
+      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
     }
-    debug_info.is_float16 = sizeof(T) == 2;
-    debug_info.operator_name = "Attention";
-    debug_info.node_name = &(node_name_);
-    debug_info.Print();
+
+    debug_info.Print("Attention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);

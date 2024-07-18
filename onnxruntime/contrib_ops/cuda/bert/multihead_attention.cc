@@ -47,9 +47,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   ORT_ENFORCE(!is_unidirectional_, "Unidirectional MHA does not support CUDA kernel. Consider using Attention or GQA instead.");
 
   kernel_options_ = this->GetAttentionKernelOptions();
-  if (kernel_options_->AllowDebugInfo()) {
-    node_name_ = info.node().Name();
-  }
 
   disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
@@ -243,16 +240,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     debug_info.use_trt_cross_attention = fused_cross_attention_kernel != nullptr;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_fp16_runner_ != nullptr) {
-      if (enable_trt_flash_attention_ && sequence_length >= kMinSequenceLengthFlashAttention) {
-        debug_info.use_trt_flash_attention = true;
-      } else {
-        debug_info.use_trt_fused_attention = true;
-      }
+      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
     }
-    debug_info.is_float16 = sizeof(T) == 2;
-    debug_info.operator_name = "MultiHeadAttention";
-    debug_info.node_name = &(node_name_);
-    debug_info.Print();
+
+    debug_info.Print("MultiHeadAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
   }
 
   // When packed kv or packed qkv is used, there is no needed for add bias transpose thus no qkv workspace.

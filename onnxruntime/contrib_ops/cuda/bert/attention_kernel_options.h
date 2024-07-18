@@ -15,11 +15,8 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> use_trt_flash_attention = std::nullopt;
   std::optional<bool> use_trt_cross_attention = std::nullopt;
   std::optional<bool> use_trt_causal_attention = std::nullopt;
-  const char* operator_name = nullptr;
-  const std::string* node_name = nullptr;
-  bool is_float16 = false;
-  bool is_bfloat16 = false;
-  void Print() const;
+  void SetTrtFusedKernel(bool causal, bool enable_trt_flash_attention, int sequence_length);
+  void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
 };
 
 class AttentionKernelOptions {

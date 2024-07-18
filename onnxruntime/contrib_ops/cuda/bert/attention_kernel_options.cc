@@ -8,6 +8,7 @@
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 
 using namespace onnxruntime::contrib::attention;
 
@@ -82,14 +83,26 @@ void AttentionKernelOptions::Print() const {
   std::cout << "\x1B[36m" << sstream.str() << "\x1B[0m" << std::endl;
 }
 
-void AttentionKernelDebugInfo::Print() const {
-  std::stringstream sstream;
-  if (operator_name != nullptr) {
-    sstream << "Operator=" << operator_name;
+// Classify the kernel used in TRT fused runner.
+void AttentionKernelDebugInfo::SetTrtFusedKernel(bool causal, bool enable_trt_flash_attention, int sequence_length) {
+  if (causal) {
+    use_trt_causal_attention = true;
+  } else if (enable_trt_flash_attention && sequence_length >= contrib::cuda::kMinSequenceLengthFlashAttention) {
+    use_trt_flash_attention = true;
+  } else {
+    use_trt_fused_attention = true;
   }
+}
 
-  if (node_name != nullptr && node_name->length() > 0) {
-    sstream << " Node=" << *(node_name);
+void AttentionKernelDebugInfo::Print(const char* operator_name,
+                                     const std::string& node_name,
+                                     bool is_float16,
+                                     bool is_bfloat16) const {
+  std::stringstream sstream;
+  sstream << "Operator=" << operator_name;
+
+  if (node_name.length() > 0) {
+    sstream << " Node=" << node_name;
   }
 
   if (is_bfloat16) {

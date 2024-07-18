@@ -34,7 +34,6 @@ class GroupQueryAttention final : public CudaKernel {
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
   const AttentionKernelOptions* kernel_options_;
-  std::string node_name_;
 };
 
 }  // namespace cuda

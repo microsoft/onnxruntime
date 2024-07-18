@@ -267,16 +267,13 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      if (this->enable_trt_flash_attention_ && parameters.sequence_length >= kMinSequenceLengthFlashAttention) {
-        debug_info.use_trt_flash_attention = true;
-      } else {
-        debug_info.use_trt_fused_attention = true;
-      }
+      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
     }
-    debug_info.is_float16 = std::is_same<T, MLFloat16>::value;
-    debug_info.operator_name = "PackedMultiHeadAttention";
-    debug_info.node_name = &(this->node_name_);
-    debug_info.Print();
+
+    debug_info.Print("PackedMultiHeadAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;

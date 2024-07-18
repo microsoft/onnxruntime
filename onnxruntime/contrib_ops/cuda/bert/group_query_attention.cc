@@ -53,9 +53,6 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   kernel_options_ = this->GetAttentionKernelOptions();
-  if (kernel_options_->AllowDebugInfo()) {
-    node_name_ = info.node().Name();
-  }
 
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
 
@@ -201,11 +198,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
-    debug_info.is_float16 = std::is_same<T, MLFloat16>::value;
-    debug_info.is_bfloat16 = std::is_same<T, BFloat16>::value;
-    debug_info.operator_name = "GroupQueryAttention";
-    debug_info.node_name = &(node_name_);
-    debug_info.Print();
+
+    debug_info.Print("GroupQueryAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
   }
 
   // seqlens_k buffer
