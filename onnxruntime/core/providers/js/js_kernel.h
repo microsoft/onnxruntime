@@ -200,7 +200,7 @@ class JsKernel : public OpKernel {
       return status;
     }
 
-    intptr_t status_code = EM_ASM_INT(
+    int status_code = EM_ASM_INT(
         { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
         this, reinterpret_cast<uintptr_t>(p_serialized_kernel_context));
 

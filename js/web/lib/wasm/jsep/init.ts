@@ -217,7 +217,7 @@ export const init =
 
             await backend.download(
                 Number(gpuDataId),
-                () => module.HEAPU8.subarray(Number(dataOffset) >>> 0, Number(dataOffset + size) >>> 0));
+                () => module.HEAPU8.subarray(Number(dataOffset) >>> 0, Number(dataOffset) >>> 0 + Number(size)));
           },
 
       // jsepCreateKernel

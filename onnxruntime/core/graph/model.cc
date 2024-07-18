@@ -552,12 +552,13 @@ static Status SaveModel(Model& model, const T& file_path) {
   model_proto.SerializeToArray(buffer, buffer_size);
 
   EM_ASM(({
-           const buffer = $0;
-           const buffer_size = $1;
+           const buffer = Number($0);
+           const buffer_size = Number($1);
            const file_path = UTF8ToString($2);
            const bytes = new Uint8Array(buffer_size);
-           bytes.set(HEAPU8.subarray(Number(buffer), Number(buffer) + buffer_size));
-           if (typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string') {
+           bytes.set(HEAPU8.subarray(buffer, buffer + buffer_size));
+           if (typeof process == 'object' && typeof process.versions == 'object' &&
+               typeof process.versions.node == 'string') {
              // Node.js
              require('fs').writeFileSync(file_path, bytes);
            } else {
