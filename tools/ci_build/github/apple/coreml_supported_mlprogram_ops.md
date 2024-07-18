@@ -18,3 +18,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Sub||
+|ai.onnx:Sigmoid||
+|ai:onnx:Tanh||
+|ai:onnx:Transpose||
