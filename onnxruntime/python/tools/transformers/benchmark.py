@@ -117,6 +117,7 @@ def run_onnxruntime(
     if (
         use_gpu
         and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers())
+        and ("MIGraphXExecutionProvider" not in onnxruntime.get_available_providers())
         and ("ROCMExecutionProvider" not in onnxruntime.get_available_providers())
         and ("DmlExecutionProvider" not in onnxruntime.get_available_providers())
     ):
