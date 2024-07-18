@@ -6,7 +6,6 @@
 #include <emscripten.h>
 #include "core/framework/tensor.h"
 
-
 namespace onnxruntime {
 namespace webnn {
 
@@ -23,6 +22,11 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     void* dst_data = dst.MutableDataRaw();
 
     const auto& dst_device = dst.Location().device;
+
+    if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
+      // We don't need to transfer the buffer to an MLBuffer, so we don't need to copy the buffer.
+      return Status::OK();
+    }
 
     if (dst_device.Type() == OrtDevice::GPU) {
       EM_ASM({

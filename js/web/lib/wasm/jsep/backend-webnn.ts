@@ -8,37 +8,25 @@
 
 import {Tensor} from 'onnxruntime-common';
 
+import {DataType} from '../wasm-common';
+import {getInstance} from '../wasm-factory';
+
 import {createView} from './tensor-view';
 import {BufferId, BufferManager, createBufferManager} from './webnn/buffer-manager';
 
 /*
- * TensorProto::data_type from the ONNX specification.
- */
-enum TensorProtoDataType {
-  float = 1,
-  uint8 = 2,
-  int8 = 3,
-  int32 = 6,
-  int64 = 7,
-  bool = 9,
-  float16 = 10,
-  uint32 = 12,
-  uint64 = 13,
-}
-
-/*
  * TensorProto::data_type to WebNN OperandType mapping.
  */
-const onnxDataTypeToWebnnDataType = new Map<TensorProtoDataType, MLOperandDataType>([
-  [TensorProtoDataType.float, 'float32'],
-  [TensorProtoDataType.float16, 'float16'],
-  [TensorProtoDataType.int32, 'int32'],
-  [TensorProtoDataType.uint32, 'uint32'],
-  [TensorProtoDataType.int64, 'int64'],
-  [TensorProtoDataType.uint64, 'uint64'],
-  [TensorProtoDataType.int8, 'int8'],
-  [TensorProtoDataType.uint8, 'uint8'],
-  [TensorProtoDataType.bool, 'uint8'],
+const onnxDataTypeToWebnnDataType = new Map<DataType, MLOperandDataType>([
+  [DataType.float, 'float32'],
+  [DataType.float16, 'float16'],
+  [DataType.int32, 'int32'],
+  [DataType.uint32, 'uint32'],
+  [DataType.int64, 'int64'],
+  [DataType.uint64, 'uint64'],
+  [DataType.int8, 'int8'],
+  [DataType.uint8, 'uint8'],
+  [DataType.bool, 'uint8'],
 ]);
 
 /**
@@ -130,6 +118,10 @@ export class WebNNBackend {
   }
 
   public uploadBuffer(bufferId: BufferId, data: Uint8Array): void {
+    const wasm = getInstance();
+    if (!wasm.shouldTransferToMLBuffer) {
+      throw new Error('Trying to upload to a MLBuffer while shouldTransferToMLBuffer is false');
+    }
     this.bufferManager.upload(bufferId, data);
   }
 

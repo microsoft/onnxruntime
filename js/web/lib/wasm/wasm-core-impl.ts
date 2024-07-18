@@ -261,6 +261,7 @@ export const createSession = async(
     for (const provider of options?.executionProviders ?? []) {
       const providerName = typeof provider === 'string' ? provider : provider.name;
       if (providerName === 'webnn') {
+        wasm.shouldTransferToMLBuffer = false;
         if (wasm.currentContext) {
           throw new Error('WebNN execution provider is already set.');
         }
@@ -294,6 +295,7 @@ export const createSession = async(
     if (wasm.currentContext) {
       wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
       wasm.currentContext = undefined;
+      wasm.shouldTransferToMLBuffer = true;
     }
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
@@ -691,15 +693,18 @@ export const run = async(
               'gpu-buffer'
             ]);
           } else if (preferredLocation === 'ml-buffer' && size > 0) {
-            const getMLBuffer = wasm.jsepGetMLBuffer;
-            if (!getMLBuffer) {
+            const ensureBuffer = wasm.jsepEnsureBuffer;
+            if (!ensureBuffer) {
               throw new Error('preferredLocation "ml-buffer" is not supported without using WebNN.');
             }
-            const mlBuffer = getMLBuffer(dataOffset);
             const elementSize = getTensorElementSize(dataType);
             if (elementSize === undefined || !isMLBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
+
+            // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
+            // ensureBuffer to get/create the MLBuffer.
+            const mlBuffer = ensureBuffer(dataOffset, dataType, dims);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;

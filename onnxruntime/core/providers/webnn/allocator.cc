@@ -12,6 +12,10 @@ void* WebNNBufferAllocator::Alloc(size_t size) {
   if (size == 0) {
     return nullptr;
   }
+  if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
+    // We don't need to transfer the buffer to an MLBuffer, so we don't need to allocate buffer id.
+    return nullptr;
+  }
   void* p = EM_ASM_PTR({ return Module.jsepReserveBufferId(); });
   allocations_[p] = size;
   stats_.num_allocs++;

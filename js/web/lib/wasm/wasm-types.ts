@@ -127,6 +127,11 @@ export declare namespace JSEP {
     currentContext: MLContext;
 
     /**
+     * Disables creating MLBuffers. This is used to avoid creating MLBuffers for graph initializers.
+     */
+    shouldTransferToMLBuffer: boolean;
+
+    /**
      * [exported from pre-jsep.js] Register MLContext for a session.
      * @param sessionId - specify the session ID.
      * @param context - specify the MLContext.
