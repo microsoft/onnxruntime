@@ -551,7 +551,7 @@ if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 find_package(Patch)
-if (WIN32 AND NOT Patch_FOUND)
+if (CMAKE_HOST_WIN32 AND NOT Patch_FOUND)
     # work around CI machines missing patch from the git install by falling back to the binary in this repo.
     # replicate what happens in https://github.com/Kitware/CMake/blob/master/Modules/FindPatch.cmake but without
     # the hardcoded suffixes in the path to the patch binary.
@@ -1140,6 +1140,13 @@ endfunction()
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
   onnxruntime_configure_target(${target_name})
+  if(WIN32)
+        target_compile_definitions(${target_name} PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_STRING=\"${VERSION_STRING}\")
+  endif()
 endfunction()
 
 function(onnxruntime_add_static_library target_name)
@@ -1154,6 +1161,13 @@ function(onnxruntime_add_shared_library_module target_name)
   else()
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
     add_library(${target_name} MODULE ${ARGN})
+    if(WIN32)
+        target_compile_definitions(${target_name} PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+        target_compile_definitions(${target_name} PRIVATE VER_STRING=\"${VERSION_STRING}\")
+    endif()
   endif()
 
   onnxruntime_configure_target(${target_name})
@@ -1636,6 +1650,14 @@ set(VERSION_MINOR_PART   0 CACHE STRING "Second part of numeric file/product ver
 set(VERSION_BUILD_PART       0 CACHE STRING "Third part of numeric file/product version.")
 set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product version.")
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
+if(VERSION_MAJOR_PART STREQUAL "0" AND VERSION_MINOR_PART STREQUAL "0" AND VERSION_BUILD_PART STREQUAL "0" AND VERSION_PRIVATE_PART STREQUAL "0")
+    string(REPLACE "." ";"  ORT_VERSION_STRING_LIST ${ORT_VERSION})
+    list(GET ORT_VERSION_STRING_LIST 0 VERSION_MAJOR_PART)
+    list(GET ORT_VERSION_STRING_LIST 1 VERSION_MINOR_PART)
+    list(GET ORT_VERSION_STRING_LIST 2 VERSION_BUILD_PART)
+    set(VERSION_STRING ORT_VERSION)
+endif()
+
 
 if (WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
