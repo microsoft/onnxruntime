@@ -64,6 +64,9 @@ file(MAKE_DIRECTORY ${dist_folder})
 set_target_properties(onnxruntime_binding PROPERTIES
   PREFIX "" SUFFIX ".node"
   RUNTIME_OUTPUT_DIRECTORY ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${dist_folder}
   BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
