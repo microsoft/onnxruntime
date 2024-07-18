@@ -26,7 +26,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if !defined(_AIX)
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 #include <iostream>

@@ -435,7 +435,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   shape_initializer_proto.set_name(shape_def->Name());
   shape_initializer_proto.add_dims(static_cast<int64_t>(shape_value.size()));
   shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  shape_initializer_proto.set_raw_data(shape_value.data(), shape_value.size() * sizeof(int64_t));
+  utils::SetRawDataInTensorProto(shape_initializer_proto, shape_value.data(), shape_value.size() * sizeof(int64_t));
   auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
 
   // Safely remove concat parent nodes which have only one output
