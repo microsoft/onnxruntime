@@ -152,10 +152,10 @@ enum class AttentionBackend : int {
   FLASH_ATTENTION = 1,
   EFFICIENT_ATTENTION = 2,
   TRT_FUSED_ATTENTION = 4,
-  CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention
-  MATH = 16,                  // unfused
+  CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention.
+  MATH = 16,                  // unfused kernel cannot be disabled right now.
 
-  // The following kernels might be deprected in the future.
+  // The following kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
   TRT_CAUSAL_ATTENTION = 128,

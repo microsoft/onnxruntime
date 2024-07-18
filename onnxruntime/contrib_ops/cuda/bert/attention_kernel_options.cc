@@ -79,6 +79,11 @@ void AttentionKernelOptions::Print() const {
   sstream << " TRT_CAUSAL_ATTENTION=" << int(use_trt_causal_attention_);
   sstream << " MATH=" << int(use_unfused_);
 
+  if (!use_unfused_) {
+    sstream << std::endl
+            << "Warning: Unfused kernel cannot be disabled right now. MATH=0 is ignored.";
+  }
+
   // Output text in Cyan color to make it easier to spot
   std::cout << "\x1B[36m" << sstream.str() << "\x1B[0m" << std::endl;
 }
@@ -134,11 +139,11 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   }
 
   if (use_trt_cross_attention.has_value() && use_trt_cross_attention.value()) {
-    sstream << " TRT_FLASH_ATTENTION=" << int(use_trt_cross_attention.value());
+    sstream << " TRT_CROSS_ATTENTION=" << int(use_trt_cross_attention.value());
   }
 
   if (use_trt_causal_attention.has_value() && use_trt_causal_attention.value()) {
-    sstream << " TRT_FLASH_ATTENTION=" << int(use_trt_causal_attention.value());
+    sstream << " TRT_CAUSAL_ATTENTION=" << int(use_trt_causal_attention.value());
   }
 
   bool use_fused = (use_flash_attention.has_value() && use_flash_attention.value()) ||
