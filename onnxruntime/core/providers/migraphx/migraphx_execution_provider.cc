@@ -1212,7 +1212,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     map_input_index_[fused_node.Name()] = input_name_index;
     map_no_input_shape_[fused_node.Name()] = no_input_shape;
     NodeComputeInfo compute_info;
-    compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+    compute_info.create_state_func = [=,this](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
