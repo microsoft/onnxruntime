@@ -433,7 +433,7 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceTy
     NodeAttrHelper helper(node);
     const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
     const auto group = helper.Get("group", 1);
-    if (dilations[0] !=1 || (dilations.size() > 1 && dilations[1] != 1)) {
+    if (dilations[0] != 1 || (dilations.size() > 1 && dilations[1] != 1)) {
       LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default dilation 1.";
       return false;
     }
