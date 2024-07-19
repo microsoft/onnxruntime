@@ -56,7 +56,8 @@ void DnnlTranspose::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     strides_inverse.push_back(strides[ndata_dims - i - 1]);
   }
 
-  // Memory descriptor describes the memory reorder but will not have the correct output dimensions or the correct dnnl::memory::format
+  // Memory descriptor describes the memory reorder but will not have the correct output dimensions
+  // or the correct dnnl::memory::format
   dnnl::memory::desc intermediate_md = dnnl::memory::desc(data_dims, node.Input(IN_DATA).Type(), strides);
   dnnl::memory intermediate_mem = dnnl::memory(intermediate_md, dnnl_engine);
 

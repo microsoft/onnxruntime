@@ -204,12 +204,14 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
-      ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.", cxxopts::value<std::vector<std::string>>()->default_value(""))
-      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
-      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
-      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
-      "separated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
-      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("pipeline_stage_paths", "Specify the forward ONNX files for pipeline evaluation.",
+      cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info "
+      "of size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the "
+      "first cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each "
+      "CutEdge is separated by ':'. If consumer nodes need to be specified, specify them after producer node with a "
+      "'-' delimiter and separate each consumer node with a '/'. ",
+      cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
         cxxopts::value<bool>()->default_value("true"))
       ("enable_gelu_approximation", "Specify whether to enable GELU approximation.",
