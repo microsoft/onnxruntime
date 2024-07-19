@@ -288,17 +288,6 @@ DQMatMulToMatMulNBitsAction::DQMatMulToMatMulNBitsAction(int64_t accuracy_level,
       }()},
       intra_op_thread_pool_{intra_op_thread_pool} {
   ORT_ENFORCE(accuracy_level_ >= 0 && accuracy_level_ <= 4, "MatMulNBits accuracy level must be between 0 and 4");
-
-// Webassembly only has a global thread pool. It's not possible to create a new thread pool.
-#if !defined(__wasm__)
-  if (!intra_op_thread_pool) {
-    OrtThreadPoolParams to;
-    intra_op_thread_pool_optional_ = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
-                                                                   concurrency::ThreadPoolType::INTRA_OP);
-  }
-#else
-  ORT_UNUSED_PARAMETER(intra_op_thread_pool_optional_);
-#endif
 }
 
 NodeAttributes
@@ -322,10 +311,6 @@ DQMatMulToMatMulNBitsAction::ExtraAttributes(const RuntimeState& runtime_state) 
 Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
-// Webassembly only has a global thread pool. To call into this method, the global thread pool must pass in.
-#if defined(__wasm__)
-  ORT_RETURN_IF_NOT(intra_op_thread_pool_, "Thread pool is required for DQMatMulToMatMulNBitsAction");
-#endif
   const auto* dq_node = selected_nodes.Input(0);
   const auto* weight_arg = dq_node->InputDefs()[0];
   const auto* scale_arg = dq_node->InputDefs()[1];
@@ -373,10 +358,6 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                    std::vector<int64_t>{N * ((quant_num + 1) / 2)});
   }
 
-  auto* thread_pool = intra_op_thread_pool_
-                          ? intra_op_thread_pool_
-                          : intra_op_thread_pool_optional_.value().get();
-
   if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
       MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
@@ -390,7 +371,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          thread_pool);
+          intra_op_thread_pool_);
     } else {
       MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
           weight_src.DataAsByteSpan().data(),
@@ -403,7 +384,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          thread_pool);
+          intra_op_thread_pool_);
     }
   } else {
     if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
@@ -418,7 +399,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          thread_pool);
+          intra_op_thread_pool_);
 
     } else {
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(
@@ -432,7 +413,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
           static_cast<int>(K),
           static_cast<int>(N),
           static_cast<int>(block_size),
-          thread_pool);
+          intra_op_thread_pool_);
     }
   }
 

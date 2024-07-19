@@ -161,6 +161,7 @@ struct ReplaceWithNew : public Action {
   // For the changes that cannot be done by simply moving node args around, use this method to make
   // additional changes to the new node and the graph. e.g., DQMatMulToMatMulNBitsAction transposes
   // the second weight of MatMul ops, delete old node args, and create new node args.
+  // Note: This method is only used in Run(), but not in RunForSave().
   virtual Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const { return Status::OK(); }
 
   RemoveNodes node_remover_;
