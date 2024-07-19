@@ -2139,7 +2139,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                 "pip",
                                 "install",
                                 "-r",
-                                "requirements/requirements-transformers-test.txt",
+                                "requirements/transformers-test/requirements.txt",
                             ],
                             cwd=SCRIPT_DIR,
                         )
@@ -2813,7 +2813,7 @@ def main():
 
         if args.enable_pybind and is_windows():
             run_subprocess(
-                [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements-pybind.txt"],
+                [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
                 cwd=SCRIPT_DIR,
             )
 
