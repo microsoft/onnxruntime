@@ -199,7 +199,6 @@ struct Module {
   CheckpointState* state_;  // Non owning pointer to the state.
 
   bool accumulate_gradient_ = false;
-  std::optional<std::string> eval_model_path_;
   size_t eval_user_input_count_{0U};
 };
 
