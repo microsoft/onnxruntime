@@ -17,7 +17,7 @@ parameters:
 variables:
   - name: ArtifactFeed
     ${{ if eq(parameters.isReleaseBuild, false) }}:
-      value: ort-cuda-12-nightly
+      value: ORT-Nightly
     ${{ else }}:
       value: onnxruntime-cuda-12
 
