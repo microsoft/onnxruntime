@@ -4672,7 +4672,7 @@ struct OrtApi {
    */
 
   ORT_API2_STATUS(GraphViewer_IsConstantInitializer, _In_ const OrtGraphViewer* graph_viewer, _In_ const char* name,
-                  _In_ bool check_outer_scope, _Out_ bool** out);
+                  _In_ bool check_outer_scope, _Out_ bool* out);
 };
 
 /*

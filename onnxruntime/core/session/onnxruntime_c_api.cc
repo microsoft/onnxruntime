@@ -2337,6 +2337,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GraphViewer_IsConstantInitializer, _In_ const OrtGraphViewer* graph_viewer, _In_ const char* name,
+                  _In_ bool check_outer_scope, _Out_ bool* out) {
+  API_IMPL_BEGIN
+  const onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const onnxruntime::GraphViewer*>(graph_viewer);
+  *out = graph_viewer->IsConstantInitializer(std::string(name), check_outer_scope);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
   if (version >= 13 && version <= ORT_API_VERSION)
@@ -2730,6 +2739,8 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::KernelInfoGetAllocator,
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GraphViewer_IsConstantInitializer,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

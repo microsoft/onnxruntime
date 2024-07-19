@@ -1677,6 +1677,15 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
 #pragma clang diagnostic pop
 #endif
 
+inline GraphViewer::GraphViewer(OrtGraphViewer* viewer) : viewer_(viewer) {
+}
+
+inline bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
+  bool out = false;
+  Ort::ThrowOnError(GetApi().GraphViewer_IsConstantInitializer(viewer_, name.c_str(), check_outer_scope, &out));
+  return out;
+}
+
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
 }
 

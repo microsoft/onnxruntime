@@ -2057,6 +2057,9 @@ struct GraphViewer {
   int NumberOfNodes() const noexcept;
   const std::vector<const NodeArg*>& GetInputs() const noexcept;
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
+
+ private:
+  OrtGraphViewer* viewer_;
 };
 
 /// <summary>
