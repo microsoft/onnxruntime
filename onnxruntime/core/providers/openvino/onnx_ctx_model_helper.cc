@@ -86,7 +86,7 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer, bool embed_mode) {
+Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer) {
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
   ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) > 0);
