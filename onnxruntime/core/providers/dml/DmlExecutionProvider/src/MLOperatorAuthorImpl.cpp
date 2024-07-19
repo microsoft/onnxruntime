@@ -842,7 +842,7 @@ namespace Windows::AI::MachineLearning::Adapter
               const onnx::TensorProto* tensorProto = &attributeProto->t();
 
               // An empty path is used as external weights are not currently supported in this case
-              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), onnxruntime::Path());
+              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), std::filesystem::path());
               *tensor = tensorWrapper.Detach();
               return S_OK;
             }
@@ -1545,7 +1545,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
+    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
         if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
@@ -2826,7 +2826,7 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 // An empty path is used as external weights are not currently supported in this case
                 Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
-                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), onnxruntime::Path());
+                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), std::filesystem::path());
                 return tensorWrapper;
             }
         );
@@ -3018,7 +3018,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
         const onnx::TensorProto& initializer,
-        const onnxruntime::Path& modelPath)
+        const std::filesystem::path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;

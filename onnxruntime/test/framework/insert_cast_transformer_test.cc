@@ -139,7 +139,7 @@ TEST(TransformerTest, CastRemovalDoesNotLowerPrecisionTest) {
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // When casting f64 -> f32 -> f64 we should not be optimising away the cast since there is a loss of precision.
+  // When casting f64 -> f32 -> f64 we should not be optimizing away the cast since there is a loss of precision.
   EXPECT_EQ(graph.NumberOfNodes(), 2);
 }
 
@@ -171,7 +171,7 @@ TEST(TransformerTest, CastRemovalDoesNotRemoveSignednessTest) {
   status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  // When casting i32 -> ui32 -> i32 we should not be optimising away the cast since applying the casts produces a very different result.
+  // When casting i32 -> ui32 -> i32 we should not be optimizing away the cast since applying the casts produces a very different result.
   EXPECT_EQ(graph.NumberOfNodes(), 2);
 }
 

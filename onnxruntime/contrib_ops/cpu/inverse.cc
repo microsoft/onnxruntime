@@ -53,7 +53,7 @@ struct Inverse::ComputeImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output,
                   int64_t batch_num, int64_t rows, int64_t cols) const {
     auto batch_offset = batch_num * rows * cols;
-    // Direct cast to half as it just as MLFloat16 containes only uint16_t
+    // Direct cast to half as it just as MLFloat16 contains only uint16_t
     const auto* input_data = reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>() + batch_offset);
     auto* output_data = reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>() + batch_offset);
 

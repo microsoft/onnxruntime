@@ -151,7 +151,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
  * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
  * size of stashed activation.
- * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+ * @param can_compromise_stashed_activation A bool return value, to indicate there are opportunities for finding a
  * compromised subgraph.
  */
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,

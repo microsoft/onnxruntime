@@ -1357,7 +1357,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtAllocatorType allocatorType,
             int identifier,
             OrtMemType memType,
-            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transfered to caller
+            out IntPtr /*(OrtMemoryInfo*)*/ allocatorInfo // memory ownership transferred to caller
         );
 
         public static DOrtCreateMemoryInfo OrtCreateMemoryInfo;

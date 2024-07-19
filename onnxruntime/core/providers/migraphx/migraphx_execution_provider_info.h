@@ -14,7 +14,7 @@ namespace onnxruntime {
 // Information needed to construct trt execution providers.
 struct MIGraphXExecutionProviderInfo {
   std::string target_device;
-  int device_id{0};
+  OrtDevice::DeviceId device_id{0};
   bool fp16_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};

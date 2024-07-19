@@ -330,7 +330,7 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
         for (const auto& tensor_proto : tensor_protos) {
           flatbuffers::Offset<fbs::Tensor> fbs_tensor;
           ORT_RETURN_IF_ERROR(
-              fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, Path(), fbs_tensor, external_data_writer));
+              fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, std::filesystem::path(), fbs_tensor, external_data_writer));
           fbs_tensors.push_back(fbs_tensor);
         }
 

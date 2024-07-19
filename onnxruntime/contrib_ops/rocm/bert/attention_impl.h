@@ -170,6 +170,13 @@ Status ClassifyAttentionMode(AttentionType type,
                              const std::vector<Tensor*>& present);
 
 template <typename T>
+Status LaunchStridedCopy(
+    hipStream_t stream,
+    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    int max_threads_per_block);
+
+template <typename T>
 Status LaunchStridedCopy(hipStream_t stream,
                          const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
                          T* out, longlong4 out_strides,                     // coord (b,n,s,h)
