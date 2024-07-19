@@ -6,6 +6,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
+#include "core/providers/utils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
@@ -423,21 +424,17 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     } else if (scale_h <= 1.f && scale_w <= 1.f) {
       // downsample
       if (input_params.create_mlprogram) {
-        // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24
-        // and the max integer value a 32-bit float can represent accurately with its mantissa
         auto h_in = input_shape[input_rank - 2];
         auto w_in = input_shape[input_rank - 1];
-        auto h_out = static_cast<double>(h_in) * scale_h;
-        auto w_out = static_cast<double>(w_in) * scale_w;
 
-        if (std::floor(h_out) != h_out) {
-          LOGS(logger, VERBOSE) << "Resize: downsampling output height: " << h_out
+        if (!utils::IsScaleDividingByFactorOfN(h_in, scale_h)) {
+          LOGS(logger, VERBOSE) << "Resize: downsampling scale " << scale_h
                                 << " is not a factor of input height: " << h_in;
           return false;
         }
 
-        if (std::floor(w_out) != w_out) {
-          LOGS(logger, VERBOSE) << "Resize: downsampling output width: " << w_out
+        if (!utils::IsScaleDividingByFactorOfN(w_in, scale_w)) {
+          LOGS(logger, VERBOSE) << "Resize: downsampling scale " << scale_w
                                 << " is not a factor of input width: " << w_in;
           return false;
         }

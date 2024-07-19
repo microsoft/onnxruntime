@@ -11,6 +11,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/xnnpack/xnnpack_init.h"
+#include "core/providers/utils.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -84,11 +85,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
         float scale_h = scales[2];
         float scale_w = scales[3];
-        // use double when applying the scale in case we get a value > 16,777,216, which is 1 << 24
-        // and the max integer value a 32-bit float can represent accurately with its mantissa
-        auto h_out = static_cast<double>(h_in) * scale_h;
-        auto w_out = static_cast<double>(w_in) * scale_w;
-        if (std::floor(h_out) != h_out || std::floor(w_in) != w_out) {
+        if (!utils::IsScaleDividingByFactorOfN(h_in, scale_h) ||
+            !utils::IsScaleDividingByFactorOfN(w_in, scale_w)) {
           break;
         }
       }
