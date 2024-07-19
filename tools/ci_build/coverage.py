@@ -58,7 +58,7 @@ def main():
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
     cwd_cmakefiles = os.path.join(cwd, "CMakeFiles")
-    run_subprocess(f"ls -R {cwd_cmakefiles}".split(" "), cwd=cwd)
+    # run_subprocess(f"ls -R {cwd_cmakefiles}".split(" "), cwd=cwd)
     run_subprocess(cmd, cwd=cwd_cmakefiles)
     run_subprocess(f"find {source_dir} -name coverage_rpt.txt".split(" "), cwd=cwd)
 
