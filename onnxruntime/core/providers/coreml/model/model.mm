@@ -26,13 +26,6 @@
 #include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 
-// manually enable to test logic for handling non-contiguous MLMultiArray as we don't have a unit test setup
-// that can hit that.
-// #define TEST_MLMULTIARRAY_HANDLING
-#ifdef TEST_MLMULTIARRAY_HANDLING
-#include <assert.h>
-#endif
-
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
 asm(".linker_option \"-framework\", \"CoreML\"");
@@ -181,131 +174,6 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   return Status::OK();
 }
 
-Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride) {
-  const auto* shape = array.shape;
-  const auto rank = shape.count;
-
-  int64_t array_total_elements = [array.strides[0] longLongValue] * [shape[0] longLongValue];
-
-  int64_t data_elems = 1;  // actual values
-  int64_t total_elems = 1; // elems including empty slots if non-contiguous
-  for (unsigned long i = 1; i <= rank; i++) {
-    int64_t this_stride = [array.strides[rank - i] longLongValue];
-    if (this_stride != total_elems) {
-      // non-contigous if we have to move more than batch_elems for each entry
-      if (*block_size != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Multiple non-contiguous dimensions in MLMultiArray are not supported.");
-      }
-
-      *block_size = data_elems;
-      *stride = this_stride;
-    }
-
-    const auto elems_this_dim = [shape[rank - i] longLongValue];
-    data_elems *= elems_this_dim;
-    total_elems = elems_this_dim * this_stride;
-  }
-
-  if (*block_size == 0) {
-    // contiguous
-    *block_size = data_elems;
-    *stride = array_total_elements;
-  }
-
-  *num_blocks = data_elems / *block_size;
-
-  ORT_ENFORCE(array_total_elements == total_elems, "Logic error calculating copy info");
-  ORT_ENFORCE(*stride >= *block_size, "Logic error calculating copy info");
-  ORT_ENFORCE(*stride * *num_blocks == total_elems, "Logic error calculating copy info");
-
-  return Status::OK();
-}
-
-#ifdef TEST_MLMULTIARRAY_HANDLING
-void ValidateGetInfo(MLMultiArray* array,
-                     int64_t expected_num_blocks, int64_t expected_block_size, int64_t expected_stride, bool valid) {
-
-    int64_t num_blocks = 0;
-    int64_t block_size = 0;
-    int64_t stride = 0;
-    auto status = GetMLMultiArrayCopyInfo(array, &num_blocks, &block_size, &stride);
-
-    if (!valid) {
-      assert(!status.IsOK());
-      return;
-    }
-
-    assert(status.IsOK());
-    assert(num_blocks == expected_num_blocks);
-    assert(block_size == expected_block_size);
-    assert(stride == expected_stride);
-}
-
-void ValidateMLMultiArrayHandling() {
-    void* data = reinterpret_cast<void*>(0xfeedf00d);
-
-    // dim -1 with stride
-    {
-      NSArray<NSNumber*> *shape = @[@1, @1, @8, @8];
-      NSArray<NSNumber*> *strides = @[@128, @128, @16, @2];
-
-      auto* array = [[MLMultiArray alloc] initWithDataPointer:data
-                                                        shape:shape
-                                                    dataType:MLMultiArrayDataTypeInt32
-                                                      strides:strides
-                                                  deallocator:^(void* /* bytes */) {}
-                                                        error:nil];
-      ValidateGetInfo(array, 64, 1, 2, true);
-    }
-
-    // dim -2 with stride
-    {
-      NSArray<NSNumber *> *shape = @[@1, @1, @8, @8];
-      NSArray<NSNumber *> *strides = @[@128, @128, @16, @1];
-
-      auto* array = [[MLMultiArray alloc] initWithDataPointer:data
-                                                        shape:shape
-                                                     dataType:MLMultiArrayDataTypeInt32
-                                                      strides:strides
-                                                  deallocator:^(void* /* bytes */) {}
-                                                        error:nil];
-      ValidateGetInfo(array, 8, 8, 16, true);
-    }
-
-    // dim -3 with stride
-    {
-      NSArray<NSNumber *> *shape = @[@1, @2, @4, @4];
-      NSArray<NSNumber *> *strides = @[@48, @24, @4, @1];
-
-      auto* array = [[MLMultiArray alloc] initWithDataPointer:data
-                                                        shape:shape
-                                                    dataType:MLMultiArrayDataTypeInt32
-                                                      strides:strides
-                                                  deallocator:^(void* /* bytes */) {}
-                                                        error:nil];
-
-      ValidateGetInfo(array, 2, 16, 24, true);
-    }
-
-    // two non-contiguous dims
-    {
-      // dim
-      NSArray<NSNumber *> *shape = @[@1, @2, @4, @4];
-      NSArray<NSNumber *> *strides = @[@96, @48, @8, @1];
-
-      auto* array = [[MLMultiArray alloc] initWithDataPointer:data
-                                                        shape:shape
-                                                    dataType:MLMultiArrayDataTypeInt32
-                                                      strides:strides
-                                                  deallocator:^(void* /* bytes */) {}
-                                                        error:nil];
-
-      ValidateGetInfo(array, 0, 0, 0, false);
-    }
-}
-#endif
-
 Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
                               const MLMultiArray* array,
                               const int64_t num_blocks, const int64_t block_size, const int64_t stride,
@@ -320,33 +188,32 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
   const int64_t num_elements = array.count;
 
   ORT_RETURN_IF(array_total_elements != num_blocks * stride ||
-                num_elements != num_blocks * block_size,
+                    num_elements != num_blocks * block_size,
                 "MLMultiArray size does not match the copy info");
 
   const auto onnx_data_type = tensor_info->data_type;
   switch (onnx_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-
-      const auto *src_buffer = static_cast<const float*>(mlmultiarray_buffer);
-      auto *dst_buffer = static_cast<float*>(tensor_buffer);
+      const auto* src_buffer = static_cast<const float*>(mlmultiarray_buffer);
+      auto* dst_buffer = static_cast<float*>(tensor_buffer);
       const auto block_byte_size = block_size * sizeof(float);
 
       for (int64_t idx = 0; idx < num_blocks; ++idx) {
-          memcpy(dst_buffer, src_buffer, block_byte_size);
-          src_buffer += stride;
-          dst_buffer += block_size;
+        memcpy(dst_buffer, src_buffer, block_byte_size);
+        src_buffer += stride;
+        dst_buffer += block_size;
       }
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-      const auto *src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
-      auto *dst_buffer = static_cast<int32_t*>(tensor_buffer);
+      const auto* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
+      auto* dst_buffer = static_cast<int32_t*>(tensor_buffer);
       const auto block_byte_size = block_size * sizeof(int32_t);
 
       for (int64_t idx = 0; idx < num_blocks; ++idx) {
-          memcpy(dst_buffer, src_buffer, block_byte_size);
-          src_buffer += stride;
-          dst_buffer += block_size;
+        memcpy(dst_buffer, src_buffer, block_byte_size);
+        src_buffer += stride;
+        dst_buffer += block_size;
       }
 
       break;
@@ -358,8 +225,8 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
       ORT_RETURN_IF(array.dataType != MLMultiArrayDataTypeInt32,
                     "CoreML output data type is not MLMultiArrayDataTypeInt32");
 
-      const int32_t *src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
-      int64_t *dst_buffer = static_cast<int64_t*>(tensor_buffer);
+      const int32_t* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
+      int64_t* dst_buffer = static_cast<int64_t*>(tensor_buffer);
 
       for (int64_t idx = 0; idx < num_blocks; ++idx) {
         auto input_span = gsl::span{src_buffer, static_cast<size_t>(block_size)};
@@ -587,6 +454,47 @@ NS_ASSUME_NONNULL_END
 namespace onnxruntime {
 namespace coreml {
 
+Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride) {
+  const auto* shape = array.shape;
+  const auto rank = shape.count;
+
+  int64_t array_total_elements = [array.strides[0] longLongValue] * [shape[0] longLongValue];
+
+  int64_t data_elems = 1;   // actual values
+  int64_t total_elems = 1;  // elems including empty slots if non-contiguous
+  for (unsigned long i = 1; i <= rank; i++) {
+    int64_t this_stride = [array.strides[rank - i] longLongValue];
+    if (this_stride != total_elems) {
+      // non-contigous if we have to move more than batch_elems for each entry
+      if (*block_size != 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Multiple non-contiguous dimensions in MLMultiArray are not supported.");
+      }
+
+      *block_size = data_elems;
+      *stride = this_stride;
+    }
+
+    const auto elems_this_dim = [shape[rank - i] longLongValue];
+    data_elems *= elems_this_dim;
+    total_elems = elems_this_dim * this_stride;
+  }
+
+  if (*block_size == 0) {
+    // contiguous
+    *block_size = data_elems;
+    *stride = array_total_elements;
+  }
+
+  *num_blocks = data_elems / *block_size;
+
+  ORT_ENFORCE(array_total_elements == total_elems, "Logic error calculating copy info");
+  ORT_ENFORCE(*stride >= *block_size, "Logic error calculating copy info");
+  ORT_ENFORCE(*stride * *num_blocks == total_elems, "Logic error calculating copy info");
+
+  return Status::OK();
+}
+
 // Internal Execution class
 // This class will bridge Model (c++) with CoreMLExecution (objective c++)
 class Execution {
@@ -664,11 +572,6 @@ Model::Model(const std::string& path,
 Model::~Model() {}
 
 Status Model::LoadModel() {
- // arbitrary place to run this when manually enabled for temporary testing
-#ifdef TEST_MLMULTIARRAY_HANDLING
-  ValidateMLMultiArrayHandling();
-#endif
-
   return execution_->LoadModel();
 }
 

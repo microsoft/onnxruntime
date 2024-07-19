@@ -13,6 +13,13 @@
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
 
+#if defined(__APPLE__)
+#ifdef __OBJC__
+@class MLMultiArray;
+#else
+typedef struct objc_object MLMultiArray;
+#endif
+
 namespace onnxruntime {
 namespace coreml {
 
@@ -31,6 +38,10 @@ struct OnnxTensorData {
 using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& name,
                                                             int32_t requested_onnx_tensor_element_type,
                                                             gsl::span<const int64_t> static_shape)>;
+
+// helper function that we unit test
+Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride);
+#endif
 
 class Model {
  public:
