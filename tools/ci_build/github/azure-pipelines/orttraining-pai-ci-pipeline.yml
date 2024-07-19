@@ -25,7 +25,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.0
+    value: 6.1
   - name: RocmVersionPatchSuffix
     value: ".3"
   - name: BuildConfig
