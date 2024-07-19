@@ -28,7 +28,7 @@ bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
   return (std::find(input_names.begin(), input_names.end(), name) != input_names.end());
 }
 
-bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, bool check_outer_scope = true) {
+bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, [[maybe_unused]] bool check_outer_scope = true) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   return graph.GetInitializedTensor(name, initializer);
 }

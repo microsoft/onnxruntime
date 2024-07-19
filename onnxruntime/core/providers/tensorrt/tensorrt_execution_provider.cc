@@ -70,7 +70,14 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
     const std::string tensor_name = network.getInput(i)->getName();
     auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
     if (dynamic_range_iter != dynamic_range_map.end()) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       if (!network.getInput(i)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
         LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for network input " << tensor_name;
         return false;
       }
@@ -84,7 +91,14 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
       const std::string tensor_name = trt_layer->getOutput(j)->getName();
       auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
       if (dynamic_range_iter != dynamic_range_map.end()) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         if (!trt_layer->getOutput(j)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
           LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for tensor " << tensor_name;
           return false;
         }
@@ -122,7 +136,14 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
           LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for layer " << const_layer_name;
           return false;
         }
@@ -2232,7 +2253,14 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
@@ -3074,7 +3102,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       } else {
         // Set INT8 per tensor dynamic range
         if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
           trt_config->setInt8Calibrator(nullptr);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
           if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
@@ -3193,7 +3228,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: Creating an execution context from an engine is thread safe per TRT doc
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     if (context_memory_sharing_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       if (mem_size > max_ctx_mem_size_) {
         max_ctx_mem_size_ = mem_size;
       }
@@ -3466,7 +3508,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
       // Set INT8 Per Tensor Dynamic range
       if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         trt_config->setInt8Calibrator(nullptr);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
         if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
         }
@@ -3734,7 +3783,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
@@ -3865,7 +3921,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   // Note: Creating an execution context from an engine is thread safe per TRT doc
   // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   if (context_memory_sharing_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     if (mem_size > max_ctx_mem_size_) {
       max_ctx_mem_size_ = mem_size;
     }
@@ -4038,7 +4101,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
     // Set execution context memory
     if (trt_state->context_memory_sharing_enable) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
       }
