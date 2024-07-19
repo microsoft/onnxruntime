@@ -1932,7 +1932,7 @@ void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
   if (disable_cpu_fallback)
     ov_options["disable_cpu_fallback"] = "true";
 
-  //values from session options will override the providerOptions Value
+  // values from session options will override the providerOptions Value
   bool so_epctx_enable = session_options->config_options.GetConfigOrDefault(
                              kOrtSessionOptionEpContextEnable, "0") == "1";
   if (so_epctx_enable)

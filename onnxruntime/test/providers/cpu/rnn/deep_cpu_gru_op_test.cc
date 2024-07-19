@@ -98,12 +98,12 @@ static void RunGruTest(const std::vector<float>& X_data,
     test.AddOptionalOutputEdge<float>();
   }
 
-  // TensorRT, OpenVINO failed on GRU tests
-  #if defined(USE_OPENVINO)
+// TensorRT, OpenVINO failed on GRU tests
+#if defined(USE_OPENVINO)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-  #else
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  #endif
+#endif
 }
 
 void DefaultActivationsSimpleWeightsNoBias(std::string direction,

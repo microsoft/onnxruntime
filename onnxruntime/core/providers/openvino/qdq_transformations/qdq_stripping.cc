@@ -338,9 +338,9 @@ static bool CheckDQRuleSet(const NodeUnit& node_unit,
 }
 
 static bool CheckQFeedsIntoQuantizedOutput(const NodeUnit& node_unit,
-                          const std::unordered_map<std::string, std::string> graph_op_data_type) {
+                                           const std::unordered_map<std::string, std::string> graph_op_data_type) {
   auto op_of_quantized_layer = node_unit.Outputs();
-  for (auto &itr : op_of_quantized_layer) {
+  for (auto& itr : op_of_quantized_layer) {
     auto it = graph_op_data_type.find(itr.node_arg.Name());
     if (it != graph_op_data_type.end() && it->second == "tensor(uint8)") {
       return true;
@@ -563,7 +563,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
   // Add Node args for inputs
   for (const auto& node_unit_input : node_unit_inputs) {
-    const auto &node_arg_name = node_unit_input.node_arg.Name();
+    const auto& node_arg_name = node_unit_input.node_arg.Name();
     if (auto dq_node_arg = dq_node_args_to_keep.find(node_arg_name); dq_node_arg != dq_node_args_to_keep.end()) {
       // Add supported DQ as an input arg for the target node
       input_args.push_back(dq_node_arg->second);

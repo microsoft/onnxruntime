@@ -58,7 +58,7 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std
     ov::AnyVector params{&modelStream, model_path};
 
     FE = manager.load_by_model(params);
-    if(FE) {
+    if (FE) {
       inputModel = FE->load(params);
       return FE->convert(inputModel);
     } else {

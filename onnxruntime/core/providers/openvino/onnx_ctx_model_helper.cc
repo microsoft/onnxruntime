@@ -77,9 +77,12 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   // Finally, dump the model
-  std::ofstream dump(graph_name + "-ov_" + device_type + "_blob.onnx",
-                     std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto->SerializeToOstream(dump);
+  std::ofstream epctx_onnx_model(graph_name,
+                                 std::ios::out | std::ios::trunc | std::ios::binary);
+  if (!epctx_onnx_model) {
+    ORT_THROW("Unable to create epctx onnx model file ");
+  }
+  model_proto->SerializeToOstream(epctx_onnx_model);
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
 
