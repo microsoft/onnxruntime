@@ -30,7 +30,7 @@ bool IsScalingByAFactorOfN(int64_t n, float scale) {
     const double factor = 1.0 / scale;
     const double factor_rounded = std::round(factor);
     constexpr double epsilon = 1.0e-4;  // arbitrarily small enough
-    if (std::abs(factor - factor_rounded) > epsilon) {
+    if (std::abs(factor - factor_rounded) < epsilon) {
       // result is integer. check if a factor of n
       const int64_t factor_i = static_cast<int64_t>(factor_rounded);
       is_factor = n % factor_i == 0;
