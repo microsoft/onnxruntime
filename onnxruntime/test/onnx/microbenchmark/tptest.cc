@@ -102,9 +102,10 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
-        volatile size_t x = 0;
-        for (size_t i = 0; i < body; i++) {
-          x++;
+        volatile size_t volatile_x = 0;
+        for (size_t x = 0; x < body; x++) {
+            volatile_x = x;
+            // Your code here, using volatile_x if necessary
         }
       });
     }
