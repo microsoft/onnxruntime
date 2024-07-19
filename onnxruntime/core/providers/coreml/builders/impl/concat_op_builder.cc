@@ -4,6 +4,7 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
@@ -25,7 +26,7 @@ class ConcatOpBuilder : public BaseOpBuilder {
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
-#if defined(COREML_ENABLE_PROGRAM)
+#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -40,8 +41,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       input_names.emplace_back(input->Name());
     }
     AddOperationInputs(*op, "values", input_names);
-    AddOperationInput(*op, "axis", model_builder.AddConstant(op->type(), "axis", *axis));
-    AddOperationInput(*op, "interleave", model_builder.AddConstant(op->type(), "interleave", *interleave);
+    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", *axis));
+    AddOperationInput(*op, "interleave", model_builder.AddScalarConstant(op->type(), "interleave", interleave));
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
 
@@ -76,21 +77,8 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
-  auto rank = input_shape.size();
-  NodeAttrHelper helper(node);
-  auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
-  if (rank != axis + 3) {
-    LOGS(logger, VERBOSE) << "Concat only support axis to be -3, actual axis: " << axis
-                          << ", actual rank: " << rank;
-    return false;
-  }
-
-#if defined(COREML_ENABLE_MLPROGRAM)
-  if (input_params.create_mlprogram) {
-    return true;
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
+  if (!input_params.create_mlprogram) {
+    auto rank = input_shape.size();
     if (rank != 4) {
       // For some reason, the concat in CoreML running on 3d tensor will concat on wrong axis
       // Instead of concat on axis 0, it will concat on axis 1
@@ -98,6 +86,14 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       // TODO, add ExpandDims and Squeeze, 3d -ExpandDims-> 4d -> Concat -Squeeze-> 3d
       LOGS(logger, VERBOSE) << "Concat only support 4d shape for now, input is "
                             << rank << "d shape";
+      return false;
+    }
+
+    NodeAttrHelper helper(node);
+    auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
+    if (rank != axis + 3) {
+      LOGS(logger, VERBOSE) << "Concat only support axis to be -3, actual axis: " << axis
+                            << ", actual rank: " << rank;
       return false;
     }
   }
