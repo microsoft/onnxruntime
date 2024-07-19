@@ -575,10 +575,8 @@ Status FusedAttentionTrt(
   }
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(qkv, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len, qkv, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
