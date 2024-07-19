@@ -113,6 +113,17 @@ class CutlassMoeFCRunner {
 
   size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k);
 
+  void run_moe_fc_arflow(
+    const T *input_activations, const T *gating_output, 
+    const WeightType *fc1_expert_weights, const T *fc1_expert_biases, 
+    const WeightType *fc2_expert_weights, const T *fc2_expert_biases,
+    const WeightType *fc3_expert_weights, const T *fc3_expert_biases,
+    const WeightType *fc4_expert_weights,
+    int num_rows, const int in_features, const int interm_features, const int out_features, int num_experts, 
+    int local_num_experts, int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, int active_rows,
+    T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream);
+
+
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
                   const WeightType* fc3_expert_weights, const T* fc3_scales, const T* fc3_expert_biases,

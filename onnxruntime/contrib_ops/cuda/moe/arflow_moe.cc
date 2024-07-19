@@ -88,20 +88,18 @@ Status ArflowMoE<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
       reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
       reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw()),
-      fc1_experts_bias_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-      activation_type_,
-      fc3_experts_weights_optional == nullptr ? nullptr
-                                              : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->DataRaw()),
-      fc3_experts_bias_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
+      reinterpret_cast<const CudaT*>(fc1_experts_bias->template Data<T>()),
       reinterpret_cast<const CudaT*>(fc2_experts_weights->DataRaw()),
+      reinterpret_cast<const CudaT*>(fc2_experts_bias->template Data<T>()),
+      reinterpret_cast<const CudaT*>(fc3_experts_weights->DataRaw()),
+      reinterpret_cast<const CudaT*>(fc3_experts_bias->template Data<T>()),
+      reinterpret_cast<const CudaT*>(fc4_experts_weights->DataRaw()),
       static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.in_features),
-      static_cast<int>(moe_params.interm_features), static_cast<int>(moe_params.num_experts),
-      static_cast<int>(moe_params.local_num_experts), 0 /*local_experts_start_index_ used in sharded MoE*/,
+      static_cast<int>(moe_params.interm_features), static_cast<int>(moe_params.out_features),
+      static_cast<int>(moe_params.num_experts),
+      static_cast<int>(moe_params.num_experts), 0 /*local_experts_start_index_ used in sharded MoE*/,
       static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
+      static_cast<int>(moe_params.num_rows), // active rows
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
@@ -111,9 +109,7 @@ Status ArflowMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-      fc2_experts_bias_optional == nullptr
-          ? nullptr
-          : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),
+      reinterpret_cast<const CudaT*>(fc4_experts_bias->template Data<T>()),
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(moe_params.num_rows),
