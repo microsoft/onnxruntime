@@ -158,6 +158,9 @@ struct ReplaceWithNew : public Action {
   // specifies how the inputs and outputs for the replaced nodes are moved to the new node
   virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
 
+  // For the changes that cannot be done by simply moving node args around, use this method to make
+  // additional changes to the new node and the graph. e.g., DQMatMulToMatMulNBitsAction transposes
+  // the second weight of MatMul ops, delete old node args, and create new node args.
   virtual Status ProcessNewNode(Graph&, const NodesToOptimize&, Node&) const { return Status::OK(); }
 
   RemoveNodes node_remover_;

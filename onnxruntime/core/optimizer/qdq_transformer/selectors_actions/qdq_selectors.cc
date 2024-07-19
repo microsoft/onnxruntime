@@ -418,7 +418,11 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                       const Node& node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
-  ORT_UNUSED_PARAMETER(q_nodes);
+  // Should not have any Q nodes
+  if (!q_nodes.empty()) {
+    return false;
+  }
+
   const auto& graph = graph_viewer.GetGraph();
 
   // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
