@@ -25,7 +25,8 @@ class ConvTransposeOpBuilder : public BaseOpBuilder {
   bool SupportsMLProgram() const override { return true; }
 };
 
-Status ConvTransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
+                                                     [[maybe_unused]] const Node& node,
                                                      const logging::Logger& /*logger*/) const {
 #if defined(COREML_ENABLE_MLPROGRAM)
   using namespace CoreML::Specification::MILSpec;  // NOLINT
