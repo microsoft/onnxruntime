@@ -303,31 +303,18 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_OPERATOR_DESC opDesc = {};
-        #if FALSE
-          const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
-          DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
-          operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
-          operatorDesc.InputTensor = inputDescs.data();
-          operatorDesc.OutputTensor = outputDescs.data();
-          operatorDesc.InterpolationMode = interpolationMode;
-          operatorDesc.RoundingDirection = roundingDirection;
-          operatorDesc.Scales = paddedScales.data();
-          operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
-          operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
-          operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-          opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
-        #else
-          DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
-          operatorDesc.InputTensor = inputDescs.data();
-          operatorDesc.OutputTensor = outputDescs.data();
-          operatorDesc.InterpolationMode = interpolationMode;
-          operatorDesc.RoundingDirection = roundingDirection;
-          operatorDesc.Scales = paddedScales.data();
-          operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
-          operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
-          operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-          opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
-        #endif
+        const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+        DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
+        operatorDesc.InputTensor = inputDescs.data();
+        operatorDesc.OutputTensor = outputDescs.data();
+        operatorDesc.InterpolationMode = interpolationMode;
+        operatorDesc.RoundingDirection = roundingDirection;
+        operatorDesc.Scales = paddedScales.data();
+        operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
+        operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
+        operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
+        opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
 
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
@@ -371,10 +358,8 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize13, VersionedKernel<DmlOperatorResize, 13>);
-#if FALSE
 DML_OP_DEFINE_CREATION_FUNCTION(Resize18, VersionedKernel<DmlOperatorResize, 18>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize19, VersionedKernel<DmlOperatorResize, 19>);
-#endif
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);

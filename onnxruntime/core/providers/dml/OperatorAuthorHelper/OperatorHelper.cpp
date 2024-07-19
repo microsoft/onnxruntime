@@ -1857,14 +1857,16 @@ namespace OperatorHelper
         DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
-        m_dilations = {dimCount, 1};
-        m_pads = {dimCount * 2, 0};
-        m_strides = {dimCount, 1};
+        m_dilations.resize(dimCount);
+        std::fill(m_dilations.begin(), m_dilations.end(), 1);
+        m_pads.resize(dimCount, 0);
+        std::fill(m_pads.begin(), m_pads.end(), 0);
+        m_strides.resize(dimCount, 1);
+        std::fill(m_strides.begin(), m_strides.end(), 1);
 
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
-            m_dilations.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
@@ -1872,7 +1874,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
-            m_pads.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_pads);
             ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
         }
@@ -1880,7 +1881,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
-            m_strides.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }

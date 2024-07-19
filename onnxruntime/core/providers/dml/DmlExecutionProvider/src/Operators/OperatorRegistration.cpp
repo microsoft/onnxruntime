@@ -1023,7 +1023,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 10,  Resize,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,      requiredConstantCpuInputs(1) /*scales*/)},
     {REG_INFO_VER( 11,  Resize,                             typeNameListTwo,                supportedTypeListResize11,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 13,  Resize,                             typeNameListTwo,                supportedTypeListResize13,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
-#if FALSE
+#if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 18,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
     {REG_INFO_VER( 19,  Resize,                             typeNameListTwo,                supportedTypeListResize18,              DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*roi, scales, sizes*/, std::nullopt, QueryResize)},
 #endif
