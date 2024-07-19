@@ -227,26 +227,6 @@ stages:
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
 
       - script: |
-          if command -v gcovr >/dev/null 2>&1; then
-              echo "gcovr is installed."
-          else
-              echo "gcovr is not installed.  Installing gcovr from pip" && python3 -m pip install gcovr
-          fi
-          
-          if command -v gcovr >/dev/null 2>&1; then
-              echo "gcovr is installed."
-          else
-              echo "gcovr is not installed. Installing gcovr from apt-get" && sudo apt-get update && sudo apt-get install -y gcovr 
-          fi
-          
-          if command -v gcovr >/dev/null 2>&1; then
-              echo "gcovr is installed."
-          else
-              echo "Error: gcovr is still not installed." && exit 1
-          fi
-        displayName: Check if gcovr is installed
-
-      - script: |
           set -e -x && \
           python3 tools/ci_build/coverage.py \
             --build_dir build_nnapi \
@@ -256,10 +236,6 @@ stages:
       - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
         displayName: Print coverage report
 
-      - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
-        # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
-        displayName: Build Minimal ORT with NNAPI and run tests
-
       - task: AzureCLI@2
         displayName: 'Post Android Code Coverage To DashBoard'
         inputs:
@@ -268,6 +244,10 @@ stages:
           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
           arguments: '"$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
           workingDirectory: '$(Build.BinariesDirectory)'
+
+      - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+        # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+        displayName: Build Minimal ORT with NNAPI and run tests
 
       - template: templates/use-android-emulator.yml
         parameters:
