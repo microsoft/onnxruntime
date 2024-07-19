@@ -704,40 +704,27 @@ void elementWiseMul(T *output, T const *input, int inter_size, int num_tokens, c
 template <typename T>
 struct ELU {
   __device__ __inline__ T operator()(const T& a) const {
-    return a > (T)0 ? a : (T) * (exp(a) - (T)1);
+    // alpha = 1.0
+    return a > (T)0 ? a : (T)(exp((float)a) - 1);
   }
 };
 
-template <typename T> __global__ void inplaceEluKernel(T input) {
+template <typename T> __global__ void inplaceEluKernel(T* input, int interm_features) {
     int const tid = threadIdx.x;
     int const token = blockIdx.x;
 
-    output = output + token * inter_size;
-    input = input + token * inter_size;
-    for (int i = tid; i < inter_size; i += blockDim.x) {
-        T fc1_value = input[i];
-        output[i] = fc1_value * output[i];
+    input = input + token * interm_features;
+    for (int i = tid; i < interm_features; i += blockDim.x) {
+        input[i] = ELU<T>()(input[i]);
     }
 }
 
 template <typename T>
-void inplaceElu(T *in_out, T const *input, int interm_features, int num_tokens, cudaStream_t stream) {
+void inplaceElu(T *in_out, int interm_features, int num_tokens, cudaStream_t stream) {
+    // Can use vectorized load to improve performance
     int const blocks = num_tokens;
-
-    if (inter_size & 3 == 0) {
-        using vec_type = typename T4<T>::Type;
-        int const threads = std::min(inter_size / 4, 1024);
-        elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
-            reinterpret_cast<vec_type *>(output), reinterpret_cast<vec_type const *>(input), inter_size / 4);
-    } else if (inter_size & 1 == 0) {
-        using vec_type = typename T2<T>::Type;
-        int const threads = std::min(inter_size / 2, 1024);
-        elementWiseMulKernel<vec_type><<<blocks, threads, 0, stream>>>(
-            reinterpret_cast<vec_type *>(output), reinterpret_cast<vec_type const *>(input), inter_size / 2);
-    } else {
-        int const threads = std::min(inter_size, 1024);
-        elementWiseMulKernel<T><<<blocks, threads, 0, stream>>>(output, input, inter_size);
-    }
+    int const threads = std::min(interm_features, 1024);
+    inplaceEluKernel<T><<<blocks, threads, 0, stream>>>(in_out, interm_features);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -863,6 +850,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
         fc1_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, in_features, local_num_experts, no_activation_type, stream);
 
+    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
+
     if (!has_fc3_) {
         ORT_THROW("Need FC3 as pingpong buffer for ARFlow");
     }
@@ -873,11 +862,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
         fc3_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, interm_features, local_num_experts, no_activation_type, stream);
 
+    inplaceElu(fc3_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
+
     // fc3
     moe_gemm_runner_.moe_gemm_bias_act(
         fc3_result_ + total_past_rows_ * interm_features, fc3_expert_weights, scales_placeholder, fc3_expert_biases,
         fc1_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, interm_features, local_num_experts, no_activation_type, stream);
+
+    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
 
     // fc4
     moe_gemm_runner_.moe_gemm(
