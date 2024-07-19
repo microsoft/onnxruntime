@@ -304,6 +304,7 @@ public:
 
         DML_OPERATOR_DESC opDesc = {};
         const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+
         DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
         operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
         operatorDesc.InputTensor = inputDescs.data();
