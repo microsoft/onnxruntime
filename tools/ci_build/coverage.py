@@ -52,16 +52,15 @@ def main():
     adb_shell("cd /data/local/tmp && tar -zcf gcda_files.tar.gz *.dir")
     adb_pull("/data/local/tmp/gcda_files.tar.gz", cwd)
     os.chdir(cwd)
-    run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(" "),cwd=cwd)
+    run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(" "), cwd=cwd)
     cmd = ["gcovr", "-s", "-r"]
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
-    cwd_cmakefiles=os.path.join(cwd, "CMakeFiles")
-    run_subprocess(f"ls -R {cwd_cmakefiles}".split(" "),cwd=cwd)
+    cwd_cmakefiles = os.path.join(cwd, "CMakeFiles")
+    run_subprocess(f"ls -R {cwd_cmakefiles}".split(" "), cwd=cwd)
     run_subprocess(cmd, cwd=cwd_cmakefiles)
-    run_subprocess(f"find {source_dir} -name coverage_rpt.txt".split(" "),cwd=cwd)
-
+    run_subprocess(f"find {source_dir} -name coverage_rpt.txt".split(" "), cwd=cwd)
 
 
 if __name__ == "__main__":
