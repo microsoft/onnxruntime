@@ -6,7 +6,7 @@
 
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/common/inlined_containers.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 #ifndef USE_CUDA_MINIMAL
@@ -174,7 +174,11 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
+#if defined(CUDNN_VERSION) && CUDNN_VERSION >= 8200
+  return CUDNN_DATA_BFLOAT16;
+#else
   ORT_THROW("cuDNN doesn't support BFloat16.");
+#endif
 }
 
 template <>

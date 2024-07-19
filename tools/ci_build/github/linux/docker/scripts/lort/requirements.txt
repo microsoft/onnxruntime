@@ -8,7 +8,8 @@ onnx==1.16.1
 astunparse
 expecttest!=0.2.0
 hypothesis
-numpy
+numpy==1.21.6 ; python_version < '3.9'
+numpy==2.0.0 ; python_version >= '3.9'
 psutil
 pyyaml
 requests

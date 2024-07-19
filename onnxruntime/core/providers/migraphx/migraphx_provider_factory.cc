@@ -6,7 +6,7 @@
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
 #include "migraphx_provider_factory_creator.h"
-#include "hip_allocator.h"
+#include "migraphx_allocator.h"
 #include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
 
@@ -33,10 +33,23 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 
+struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
+  std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<MIGraphXAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<HIPPinnedAllocator>(device_id, name);
+  }
+
+} g_info;
+
 struct MIGraphX_Provider : Provider {
+  void* GetInfo() override { return &g_info; }
+
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     MIGraphXExecutionProviderInfo info;
-    info.device_id = device_id;
+    info.device_id = static_cast<OrtDevice::DeviceId>(device_id);
     info.target_device = "gpu";
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
@@ -44,7 +57,7 @@ struct MIGraphX_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
-    info.device_id = options.device_id;
+    info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
     info.int8_enable = options.migraphx_int8_enable;

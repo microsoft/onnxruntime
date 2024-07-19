@@ -38,20 +38,12 @@ parameters:
   type: number
   default: 0
 
-resources:
-  repositories:
-  - repository: LLaMa2Onnx
-    type: Github
-    endpoint: Microsoft
-    name: Microsoft/Llama-2-Onnx
-    ref: main
-
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
     value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
   - name: linux_trt_version
-    value: 10.0.1.6-1.cuda11.8
+    value: 10.2.0.19-1.cuda11.8
   - name: Repository
     value: 'onnxruntimecuda11manylinuxbuild'
 
@@ -287,11 +279,12 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       condition: ne(variables.hitAnother, 'True')
 
-- stage: Llama2_ONNX_FP16
+- stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
   jobs:
-  - job: Llama2_ONNX_FP16
+  - job: Llama2_7B_ONNX
+    timeoutInMinutes: 120
     variables:
       skipComponentGovernanceDetection: true
     workspace:
@@ -319,7 +312,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0_torch
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "
@@ -327,7 +320,7 @@ stages:
         --build-arg BASEIMAGE=${{ variables.docker_base_image }}
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
-        Repository: onnxruntimeubi8packagestest
+        Repository: onnxruntimeubi8packagestest_torch
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
@@ -343,7 +336,7 @@ stages:
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
-           onnxruntimeubi8packagestest \
+           onnxruntimeubi8packagestest_torch \
             bash -c "
               set -ex; \
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
@@ -352,12 +345,54 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
+              ls -l llama2-7b-fp16; \
+              du -sh llama2-7b-fp16; \
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           onnxruntimeubi8packagestest_torch \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
+              ls -l llama2-7b-fp32-gpu; \
+              du -sh llama2-7b-fp32-gpu; \
+              popd ; \
+            "
+      displayName: 'Run Llama2 to Onnx fp32 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           onnxruntimeubi8packagestest_torch \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
+              ls -l llama2-7b-int4-gpu; \
+              du -sh llama2-7b-int4-gpu; \
+              popd ; \
+            "
+      displayName: 'Run Llama2 to Onnx INT4 and parity Test'
       workingDirectory: $(Build.SourcesDirectory)
 
 - stage: Whisper_ONNX

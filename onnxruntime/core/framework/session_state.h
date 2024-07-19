@@ -10,7 +10,7 @@
 
 #include "core/common/flatbuffers.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"

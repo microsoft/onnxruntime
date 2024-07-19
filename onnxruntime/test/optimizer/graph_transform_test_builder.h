@@ -13,6 +13,7 @@
 #include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -249,7 +250,7 @@ class ModelTestBuilder {
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<bool>());
     std::unique_ptr<bool[]> data_buffer = std::make_unique<bool[]>(data.size());
     for (size_t i = 0; i < data.size(); ++i) data_buffer[i] = data[i];
-    tensor_proto.set_raw_data(data_buffer.get(), data.size());
+    utils::SetRawDataInTensorProto(tensor_proto, data_buffer.get(), data.size());
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
@@ -339,8 +340,10 @@ class ModelTestBuilder {
                         bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain, attributes);
@@ -415,8 +418,10 @@ class ModelTestBuilder {
                           bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain, attributes);

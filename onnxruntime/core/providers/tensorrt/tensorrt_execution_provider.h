@@ -3,9 +3,13 @@
 
 #pragma once
 #include <ctime>
+#ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
-#include <cublas_v2.h>
-
+#else
+typedef void* cudnnHandle_t;
+typedef void* cublasHandle_t;
+typedef void* cudnnStatus_t;
+#endif
 #include "core/providers/tensorrt/nv_includes.h"
 
 #include "core/platform/ort_mutex.h"
@@ -116,8 +120,11 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
+#if NV_TENSORRT_MAJOR >= 10
+  void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
+#else
   void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-
+#endif
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {

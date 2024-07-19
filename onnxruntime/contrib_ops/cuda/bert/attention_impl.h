@@ -5,7 +5,7 @@
 
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/allocator.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -175,6 +175,13 @@ Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                            const T* biases,
                                            const T* qkv_buffer,
                                            T* present);
+
+template <typename T>
+Status LaunchStridedCopy(
+    cudaStream_t stream,
+    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,

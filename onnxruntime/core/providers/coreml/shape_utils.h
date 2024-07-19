@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/graph/node_arg.h"
 
