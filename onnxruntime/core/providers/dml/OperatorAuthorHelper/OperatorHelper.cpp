@@ -852,7 +852,7 @@ namespace OperatorHelper
             {
                 ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
                     "Output channel must be equivalent to filter channel.");
-            } 
+            }
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
@@ -1857,12 +1857,9 @@ namespace OperatorHelper
         DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
-        m_dilations.resize(dimCount);
-        std::fill(m_dilations.begin(), m_dilations.end(), 1);
-        m_pads.resize(dimCount, 0);
-        std::fill(m_pads.begin(), m_pads.end(), 0);
-        m_strides.resize(dimCount, 1);
-        std::fill(m_strides.begin(), m_strides.end(), 1);
+        m_dilations.assign(dimCount, 1);
+        m_pads.assign(dimCount, 0);
+        m_strides.assign(dimCount, 1);
 
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
