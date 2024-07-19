@@ -1407,6 +1407,38 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+constexpr const char* Arflow_MoE_ver1_doc = R"DOC(
+      todo.
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(ArflowMoE, 1,
+                            OpSchema()
+                                .SetDoc(Arflow_MoE_ver1_doc)
+                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+                                .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Input(0, "input", "2D input tensor with shape (num_rows, in_features) or 3D input tensor with shape (batch_size, sequence_length, in_features)", "T")
+                                .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
+                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, in_features, interm_features)", "T")
+                                .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, interm_features)", "T")
+                                .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, interm_features, interm_features)", "T")
+                                .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, interm_features)", "T")
+                                .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, interm_features, interm_features)", "T")
+                                .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, interm_features)", "T")
+                                .Input(8, "fc4_experts_weights", "3D optional input tensor with shape (num_experts, interm_features, out_features)", "T")
+                                .Input(9, "fc4_experts_bias", "2D optional input tensor with shape (num_experts, out_features)", "T")
+                                .Output(0, "output", "2D input tensor with shape (num_rows, out_features) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  int64_t num_rows = getInputShape(ctx, 0).dim()[0].dim_value();
+                                  int64_t out_features = getInputShape(ctx, 9).dim()[1].dim_value();
+                                  ONNX_NAMESPACE::TensorShapeProto resultShape;
+                                  resultShape.add_dim()->set_dim_value(num_rows);
+                                  resultShape.add_dim()->set_dim_value(out_features);
+                                  updateOutputShape(ctx, 0, resultShape);
+                                }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QMoE, 1,
     OpSchema()
