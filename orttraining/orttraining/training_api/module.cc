@@ -65,20 +65,6 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   return Status::OK();
 }
 
-//TODO: REMOVE THIS METHOD BEFORE YOUR PR ITS JUST FOR DEBUGGING PURPOSES
-Status RemoveThisMethodBeforeYourPR(Graph& inference_graph) {
-  GraphViewer graph_viewer(inference_graph);
-  const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t idx = node_indices.size(); idx > 0; --idx) {
-    const NodeIndex node_index = idx - 1;
-    auto* node = inference_graph.GetNode(node_index);
-    if (node->Name().empty()) {
-      inference_graph.RemoveNode(node_index);
-    }
-  }
-
-  return Status::OK();
-}
 Status TransformModelOutputsForInference(Graph& inference_graph,
                                          gsl::span<const std::string> inference_graph_outputs) {
   // Model is updated to remove any outputs that are not defined in inference_graph_outputs. Nodes
@@ -449,7 +435,8 @@ size_t Module::GetTrainingModelOutputCount() const noexcept {
   return train_output_names_.size();
 }
 
-size_t Module::GetEvalModelOutputCount() const noexcept {
+size_t Module::GetEvalModelOutputCount() const {
+  ORT_ENFORCE(!finished_training_, "Exporting for inference has modified the eval model. Cannot retrieve EvalModel output count. ");
   return eval_output_names_.size();
 }
 
@@ -459,6 +446,7 @@ std::string Module::GetTrainingModelOutputName(size_t index) const {
 }
 
 std::string Module::GetEvalModelOutputName(size_t index) const {
+  ORT_ENFORCE(!finished_training_, "Exporting for inference has modified the eval model. Cannot retrieve EvalModel output name. ");
   ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-",
               eval_output_names_.size(), "). Actual: ", index);
   return eval_output_names_.at(index);
@@ -682,6 +670,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
                                          gsl::span<const std::string> graph_output_names) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot export the model with a nominal state. Please load the model parameters first.");
+  ORT_RETURN_IF(!eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
 
   // Once finished_training is set to true, will no longer be able to train or evaluate with this module
   // since the eval session graph will have been modified.
@@ -719,7 +708,8 @@ size_t Module::GetTrainingModelInputCount() const noexcept {
   return train_input_names_.UserInputNames().size();
 }
 
-size_t Module::GetEvalModelInputCount() const noexcept {
+size_t Module::GetEvalModelInputCount() const {
+  ORT_ENFORCE(!finished_training_, "Exporting for inference has modified the eval model. Cannot retrieve EvalModel input count. ");
   return eval_user_input_count_;
 }
 
@@ -731,6 +721,7 @@ std::string Module::GetTrainingModelInputName(size_t index) const {
 }
 
 std::string Module::GetEvalModelInputName(size_t index) const {
+  ORT_ENFORCE(!finished_training_, "Exporting for inference has modified the eval model. Cannot retrieve EvalModel input name. ");
   ORT_ENFORCE(index < eval_user_input_count_,
               "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
               index);
@@ -741,7 +732,8 @@ std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() 
   return train_sess_->GetModelInputs();
 }
 
-std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
+std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const {
+  ORT_ENFORCE(!finished_training_, "Exporting for inference has modified the eval model. Cannot retrieve EvalModel inputs. ");
   return eval_sess_->GetModelInputs();
 }
 

@@ -116,7 +116,7 @@ struct Module {
   size_t GetTrainingModelOutputCount() const noexcept;
 
   // Returns the output count for eval graph
-  size_t GetEvalModelOutputCount() const noexcept;
+  size_t GetEvalModelOutputCount() const;
 
   // Returns the output names for train graph
   std::string GetTrainingModelOutputName(size_t index) const;
@@ -151,7 +151,7 @@ struct Module {
   size_t GetTrainingModelInputCount() const noexcept;
 
   // Returns the user input count for eval graph
-  size_t GetEvalModelInputCount() const noexcept;
+  size_t GetEvalModelInputCount() const;
 
   // Returns the user input name for train graph at given index
   std::string GetTrainingModelInputName(size_t index) const;
@@ -163,7 +163,7 @@ struct Module {
   std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
 
   // Returns the input definitions of the Eval model
-  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const;
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};

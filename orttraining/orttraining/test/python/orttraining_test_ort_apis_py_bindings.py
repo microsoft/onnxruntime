@@ -16,7 +16,7 @@ import torch
 from orttraining_test_ort_apis_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime import OrtValue, SessionOptions, InferenceSession
+from onnxruntime import InferenceSession, OrtValue, SessionOptions
 from onnxruntime.training import artifacts
 from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 

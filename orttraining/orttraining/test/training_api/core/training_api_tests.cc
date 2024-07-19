@@ -32,19 +32,6 @@ namespace {
 constexpr int64_t TOTAL_STEP_COUNT = 100;
 constexpr float INITIAL_LR = 1e-3f;
 
-std::vector<uint8_t> ReadFileIntoBuffer(const std::string& file_path) {
-  size_t num_bytes = 0;
-  ASSERT_STATUS_OK(Env::Default().GetFileLength(file_path.c_str(), num_bytes));
-  std::vector<uint8_t> buffer(num_bytes);
-
-  std::ifstream bytes_stream(file_path, std::ifstream::in | std::ifstream::binary);
-  bytes_stream.read(reinterpret_cast<char*>(buffer.data()), num_bytes);
-
-  ASSERT_TRUE(bytes_stream);
-
-  return buffer;
-}
-
 /**
  * @brief Create a Fake Optimizer Checkpoint State On CPU.
  *
@@ -109,66 +96,6 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(training_model_uri),
                                            std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_uri)),
-                                           std::nullopt);
-  auto model = std::make_unique<onnxruntime::training::api::Module>(
-      model_identifier, &state, onnxruntime::SessionOptions(),
-      *env, providers);
-
-  auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
-  if (Env::Default().FolderExists(test_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(test_dir).IsOK());
-  }
-  onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
-  PathString inference_model_path{
-      ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
-
-  std::vector<std::string> graph_output_names({"output-0"});
-  ASSERT_STATUS_OK(model->ExportModelForInferencing(ToUTF8String(inference_model_path), graph_output_names));
-
-  // Load model
-  ONNX_NAMESPACE::ModelProto eval_model;
-  ONNX_NAMESPACE::ModelProto inference_model;
-  ORT_THROW_IF_ERROR(Model::Load(eval_model_uri, eval_model));
-  ORT_THROW_IF_ERROR(Model::Load(inference_model_path, inference_model));
-
-  // Check it has only one graph input
-  ASSERT_EQ(eval_model.graph().input().size(), 6);
-  ASSERT_EQ(inference_model.graph().input().size(), 1);
-  ASSERT_EQ(inference_model.graph().input()[0].name(), "input-0");
-
-  // Check that it does not have any node which has op type SoftmaxCrossEntropyLoss
-  auto softmaxceloss_node_found = [](auto& model) -> bool {
-    for (auto& node : model.graph().node()) {
-      if (node.op_type() == "SoftmaxCrossEntropyLoss") {
-        return true;
-      }
-    }
-    return false;
-  };
-  ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
-  ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
-
-  RunInferenceSession(*env, inference_model_path);
-}
-
-void TestModuleExportFromBuffer(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
-  auto training_model_uri = MODEL_FOLDER "training_model.onnx";
-  auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
-
-  onnxruntime::training::api::CheckpointState state;
-  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
-  // Load checkpoint, eval model, and training model into buffers
-  std::vector<uint8_t> checkpoint_bytes = ReadFileIntoBuffer(checkpoint_to_load_path);
-  std::vector<uint8_t> training_model_bytes = ReadFileIntoBuffer(training_model_uri);
-  std::vector<uint8_t> eval_model_bytes = ReadFileIntoBuffer(eval_model_uri);
-
-  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpointFromBuffer(checkpoint_bytes, state));
-
-  // load training and eval model into buffers
-  std::unique_ptr<Environment> env;
-  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  auto model_identifier = ModelIdentifiers(training_model_bytes,
-                                           std::optional<std::vector<uint8_t>>(eval_model_bytes),
                                            std::nullopt);
   auto model = std::make_unique<onnxruntime::training::api::Module>(
       model_identifier, &state, onnxruntime::SessionOptions(),
@@ -566,11 +493,6 @@ TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test)
 TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCpuExecutionProvider()};
   TestModuleExport(providers);
-}
-
-TEST(TrainingApiTest, ModuleFromBufferExportModelForInferencingCPU) {
-  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCpuExecutionProvider()};
-  TestModuleExportFromBuffer(providers);
 }
 
 TEST(TrainingApiTest, ModuleExportModelForInferencingCPU_WithExternalData) {

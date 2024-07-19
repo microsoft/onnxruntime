@@ -265,6 +265,75 @@ TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
                                                                train_model_data);
 }
 
+TEST(TrainingCApiTest, LoadONNXModelsFromBufferThenExport) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+  size_t model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(model_path, model_data_len));
+  std::vector<uint8_t> train_model_data(model_data_len);
+  std::ifstream bytes_stream(model_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(train_model_data.data()), model_data_len);
+  ASSERT_TRUE(train_model_data.size() == model_data_len);
+
+  auto eval_model_path = MODEL_FOLDER "eval_model.onnx";
+  size_t eval_model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(eval_model_path, eval_model_data_len));
+  std::vector<uint8_t> eval_model_data(eval_model_data_len);
+  std::ifstream eval_bytes_stream(eval_model_path, std::ifstream::in | std::ifstream::binary);
+  eval_bytes_stream.read(reinterpret_cast<char*>(eval_model_data.data()), eval_model_data_len);
+  ASSERT_TRUE(eval_model_data.size() == eval_model_data_len);
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_data,
+                                                               eval_model_data);
+
+  // randomly selected output name
+  std::vector<std::string> graph_output_names({"onnx::loss::21273"});
+  training_session.ExportModelForInferencing(MODEL_FOLDER "inference_model.onnx", graph_output_names);
+
+  // Check that the model is a valid inference model by loading into an InferenceSession
+  std::unique_ptr<Environment> environment;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, environment));
+  InferenceSession inference_session = InferenceSession(SessionOptions(), *environment, MODEL_FOLDER "inference_model.onnx");
+
+  // Check that you can no longer train or evaluate after exporting. Since passing incorrect inputs will also cause
+  // TrainStep and EvalStep to throw errors, we check for the error message.
+  ORT_TRY {
+    training_session.TrainStep({});
+    FAIL() << "TrainStep after exporting for inference should have thrown an error.";
+  }
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      ASSERT_THAT(e.what(),
+                  testing::HasSubstr("Cannot train after exporting for inferencing. To continue training from this point, please save the checkpoint and create a new TrainingSession."));
+    });
+  }
+  ORT_CATCH(...) {
+    FAIL() << "TrainStep after exporting for inference should have thrown an Ort::Exception.";
+  }
+
+  ORT_TRY {
+    training_session.EvalStep({});
+    FAIL() << "EvalStep after exporting for inference should have thrown an Ort::Exception.";
+  }
+  ORT_CATCH(const Ort::Exception& e) {
+    ORT_HANDLE_EXCEPTION([&e]() {
+      ASSERT_THAT(e.what(),
+                  testing::HasSubstr("Cannot evaluate after exporting for inferencing. To continue training from this point, please save the checkpoint and create a new TrainingSession."));
+    });
+  }
+  ORT_CATCH(...) {
+    FAIL() << "EvalStep after exporting for inference should have thrown an Ort::Exception.";
+  }
+
+  // attempt to retrieve the input & output names of the eval model
+  ASSERT_THROW(training_session.InputNames(false), Ort::Exception);
+  ASSERT_THROW(training_session.OutputNames(false), Ort::Exception);
+}
+
 TEST(TrainingCApiTest, LoadORTFormatModelsFromBuffer) {
   auto train_model_path = ORT_FORMAT_MODEL_FOLDER "training_model.ort";
   auto eval_model_path = ORT_FORMAT_MODEL_FOLDER "eval_model.ort";
