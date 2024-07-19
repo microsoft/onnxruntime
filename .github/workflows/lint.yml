@@ -20,7 +20,7 @@ jobs:
           locale: "US"
           reporter: github-pr-check
           level: info
-          filter_mode: diff_context
+          filter_mode: file
       - name: shellcheck # Static check shell scripts
         uses: reviewdog/action-shellcheck@v1
         with:
