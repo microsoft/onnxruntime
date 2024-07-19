@@ -2048,6 +2048,17 @@ struct Logger {
   OrtLoggingLevel cached_severity_level_{};
 };
 
+struct NodeArg;
+
+// This class wraps a raw pointer OrtGraphViewer* that is passed to the EP Compile() method.
+struct GraphViewer {
+  explicit GraphViewer(OrtGraphViewer* viewer);
+  bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+  int NumberOfNodes() const noexcept;
+  const std::vector<const NodeArg*>& GetInputs() const noexcept;
+  const std::vector<const NodeArg*>& GetOutputs() const noexcept;
+};
+
 /// <summary>
 /// This class wraps a raw pointer OrtKernelContext* that is being passed
 /// to the custom kernel Compute() method. Use it to safely access context

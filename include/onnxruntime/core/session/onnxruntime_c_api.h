@@ -304,6 +304,7 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(GraphViewer);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -4665,6 +4666,13 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
+
+  /*
+   * GraphViewer related C APIs
+   */
+
+  ORT_API2_STATUS(GraphViewer_IsConstantInitializer, _In_ const OrtGraphViewer* graph_viewer, _In_ const char* name,
+                  _In_ bool check_outer_scope, _Out_ bool** out);
 };
 
 /*
@@ -4687,6 +4695,40 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
   INPUT_OUTPUT_OPTIONAL,
   INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
+
+/******************************************************************************
+ * Following code is duplicated from func_api.h, we can modify func_api.h later
+ ******************************************************************************/
+
+ // AllocateFunc(void* handle, size_t alignment, size_t size)
+using AllocateFunc = void* (*)(void*, size_t, size_t);
+using DestroyFunc = void (*)(void*, void*);
+using AllocatorHandle = void*;
+
+typedef struct {
+  // right now we only include allocation for host memory
+  AllocateFunc allocate_func;
+  DestroyFunc release_func;
+  AllocatorHandle allocator_handle;
+  const char* node_name;
+} ComputeContext;
+
+using FunctionState = void*;
+
+// CreateFunctionStateFunc, ComputeFunc and DestroyFunctionStateFunc defined in execution_provider.h uses std::function which is not ABI compatible.
+// Use C function pointer instead.
+struct OrtNodeComputeInfo {
+  int(ORT_API_CALL* create_state_func)(ComputeContext* context, FunctionState* state);
+  OrtStatus*(ORT_API_CALL* compute_func)(FunctionState state, const OrtApi* api, OrtKernelContext* context);
+  void*(ORT_API_CALL* release_state_func)(FunctionState state);
+};
+
+/********************************************************************/
+
+struct OrtExecutionProvider {
+  OrtStatus*(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* ep, const OrtGraphViewer* viewer);
+  OrtStatus*(ORT_API_CALL* Compile)(const OrtExecutionProvider* ep, OrtNodeComputeInfo* compute_info);
+};
 
 /*
  * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
