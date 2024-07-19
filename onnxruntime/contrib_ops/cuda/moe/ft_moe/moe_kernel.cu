@@ -782,6 +782,73 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                               hidden_size, inter_size, local_num_experts, stream);
 }
 
+template <typename T, typename WeightType, typename Enable>
+void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
+    const T *input_activations, const T *gating_output, 
+    const WeightType *fc1_expert_weights, const T *fc1_expert_biases, 
+    const WeightType *fc2_expert_weights, const T *fc2_expert_biases,
+    const WeightType *fc3_expert_weights, const T *fc3_expert_biases,
+    const WeightType *fc4_expert_weights,
+    int num_rows, const int in_features, const int interm_features, int num_experts, int local_num_experts,
+    int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, const bool *finished, int active_rows,
+    T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream) {
+
+    configure_ws_ptrs(workspace_ptr, static_cast<size_t>(num_rows), static_cast<size_t>(hidden_size),
+                      static_cast<size_t>(inter_size), static_cast<size_t>(num_experts), static_cast<size_t>(k));
+    topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
+                                          source_rows_, num_rows, num_experts, k, normalize_routing_weights_, stream);
+
+    const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
+    sorter_.run(reinterpret_cast<void *>(fc1_result_), sorter_ws_size_bytes, expert_for_source_row, permuted_experts_,
+                source_rows_, permuted_rows_, k * num_rows, stream);
+
+    initialize_moe_routing_kernelLauncher(input_activations, permuted_data_, permuted_rows_,
+                                          expanded_source_row_to_expanded_dest_row, num_rows, active_rows, hidden_size,
+                                          k, stream);
+
+    const int expanded_active_expert_rows = k * active_rows;
+    compute_total_rows_before_expert(permuted_experts_, expanded_active_expert_rows, num_experts,
+                                     total_rows_before_expert_, stream);
+
+    if (local_num_experts < num_experts) {
+        dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index,
+                             stream);
+    }
+
+    // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size, expanded_active_expert_rows);
+    moe_gemm_runner_.moe_gemm_bias_act(
+        permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales, fc1_expert_biases,
+        fc1_result_ + total_past_rows_ * inter_size, total_rows_before_expert_ + local_experts_start_index,
+        expanded_active_expert_rows, inter_size, hidden_size, local_num_experts, fc1_activation_type, stream);
+
+    if (has_fc3_) {
+        if (scales_required) {
+            if (fc3_scales == nullptr) {
+                ORT_THROW("[Run MoE FC] Scales expected but scale for third matmul is a null pointer");
+            }
+        } else {
+            if (fc3_scales != nullptr) {
+                ORT_THROW("[Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC3");
+            }
+        }
+        if (fc3_expert_weights == nullptr) {
+            ORT_THROW("[Run MoE FC] FC3 weights are null");
+        }
+        moe_gemm_runner_.moe_gemm(permuted_data_ + total_past_rows_ * hidden_size, fc3_expert_weights, fc3_scales,
+                                  fc3_expert_biases, fc3_result_ + total_past_rows_ * inter_size,
+                                  total_rows_before_expert_ + local_experts_start_index, expanded_active_expert_rows,
+                                  inter_size, hidden_size, local_num_experts, stream);
+
+        elementWiseMul(fc1_result_ + total_past_rows_ * inter_size, fc3_result_ + total_past_rows_ * inter_size,
+                       static_cast<int>(inter_size), static_cast<int>(total_covered_rows_), stream);
+    }
+
+    moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size, fc2_expert_weights, fc2_scales, nullptr,
+                              fc2_result + total_past_rows_ * hidden_size,
+                              total_rows_before_expert_ + local_experts_start_index, expanded_active_expert_rows,
+                              hidden_size, inter_size, local_num_experts, stream);
+}
+
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
 template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T *, const T *, const WeightType *, const T *,

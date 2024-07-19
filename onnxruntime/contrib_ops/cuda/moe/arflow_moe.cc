@@ -64,9 +64,9 @@ Status ArflowMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                                                      normalize_routing_weights_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
-      static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
-      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
-  size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
+      static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.in_features),
+      static_cast<size_t>(moe_params.interm_features), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_));
+  size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.out_features * sizeof(CudaT);
   size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
   size_t expert_for_source_row_size = k_ * moe_params.num_rows * sizeof(int);
@@ -84,32 +84,30 @@ Status ArflowMoE<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> expert_for_source_row =
       IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
-  const CudaT* fc_scales_ptr = nullptr;
-
-  moe_runner.run_moe_fc(
+  moe_runner.run_moe_fc_arflow(
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
       reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
-      reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw()), fc_scales_ptr,
+      reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw()),
       fc1_experts_bias_optional == nullptr
           ? nullptr
           : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
       activation_type_,
       fc3_experts_weights_optional == nullptr ? nullptr
                                               : reinterpret_cast<const CudaT*>(fc3_experts_weights_optional->DataRaw()),
-      fc_scales_ptr,
       fc3_experts_bias_optional == nullptr
           ? nullptr
           : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
-      reinterpret_cast<const CudaT*>(fc2_experts_weights->DataRaw()), fc_scales_ptr,
-      static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
-      static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),
+      reinterpret_cast<const CudaT*>(fc2_experts_weights->DataRaw()),
+      static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.in_features),
+      static_cast<int>(moe_params.interm_features), static_cast<int>(moe_params.num_experts),
       static_cast<int>(moe_params.local_num_experts), 0 /*local_experts_start_index_ used in sharded MoE*/,
       static_cast<int>(k_), reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
 
-  Tensor* output = context->Output(0, input->Shape());
+  TensorShape output_shape({moe_params.num_rows, moe_params.out_features});
+  Tensor* output = context->Output(0, output_shape);
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
@@ -119,7 +117,7 @@ Status ArflowMoE<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<CudaT*>(expert_scales.get()),
       reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
       reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(moe_params.num_rows),
-      static_cast<int>(moe_params.hidden_size), static_cast<int>(k_), Stream(context));
+      static_cast<int>(moe_params.out_features), static_cast<int>(k_), Stream(context));
 
   return Status::OK();
 }
