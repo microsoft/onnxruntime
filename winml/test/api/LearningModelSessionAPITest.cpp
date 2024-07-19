@@ -2117,65 +2117,15 @@ static void ModelBuilding_HannWindow() {
 }
 
 static void ModelBuilding_HammingWindow() {
-  auto input = 
-    std::vector<float>{0.0, 0.0, 0.0, 0.0,
-                       1.0, 1.0, 1.0, 1.0,
-                       1.0, 1.0, 1.0, 1.0,
-                       1.0, 1.0, 1.0, 1.0,
-                       0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0,
-                       0.0, 0.0, 0.0, 0.0,
-                       1.0, 1.0, 1.0, 1.0,
-                       0.0, 0.0, 0.0, 0.0,
-                       };
+#if !defined(BUILD_INBOX)
   auto expected =
-    std::vector<float>{0.f, 1.f, 1.f, 1.f, 1.f,
-                       1.f, 0.f, 1.f, 0.f, 0.f,
-                       0.f, 2.f, 1.f, 2.f, 1.f,
-                       1.f, 0.f, 1.f, 0.f, 0.f,
-                       0.f, 1.f, 0.f, 1.f, 0.f};
-
-  std::vector<int64_t> input_shape = {1,9,4};
-  std::vector<int64_t> output_shape = {1,1,5,5};
-  
-  auto model = LearningModelBuilder::Create(18)
-                 .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Float, input_shape))
-                 .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", TensorKind::Float, output_shape))
-                 .Operators()
-                 .Add(Operator(L"Col2Im")
-                   .SetInput(L"input", L"Input")
-                   .SetAttribute(
-                     L"strides", TensorInt64Bit::CreateFromArray({2}, {INT64(2), INT64(2)})
-                   )
-                   .SetConstant(
-                     L"image_shape", TensorInt64Bit::CreateFromArray({2}, {INT64(5), INT64(5)})
-                   )
-                   .SetConstant(
-                     L"block_shape", TensorInt64Bit::CreateFromArray({2}, {INT64(3), INT64(3)})
-                   )
-                   .SetOutput(L"output", L"Output"))
-                 .CreateModel();
-
-  auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
-  LearningModelSession session(model, device);
-  LearningModelBinding binding(session);
-
-  binding.Bind(L"Input", TensorFloat::CreateFromArray(input_shape, input));
-
-  // Evaluate
-  auto result = session.Evaluate(binding, L"");
-
-  // Check results
- // constexpr float error_threshold = .001f;
-  auto y_tensor = result.Outputs().Lookup(L"Output").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  for (uint32_t i = 0; i < y_ivv.Size(); i++) {
-    if (i % 5 == 0) {
-      printf("\n");
-    }
-    printf("%f, ", y_ivv.GetAt(i));
-    //WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - expected[i]) < error_threshold);
-  }
+    std::vector<float>{0.086957f, 0.095728f, 0.121707f, 0.163894f, 0.220669f, 0.289848f, 0.368775f, 0.454415f,
+                       0.543478f, 0.632541f, 0.718182f, 0.797108f, 0.866288f, 0.923062f, 0.965249f, 0.991228f,
+                       1.000000f, 0.991228f, 0.965249f, 0.923062f, 0.866288f, 0.797108f, 0.718182f, 0.632541f,
+                       0.543478f, 0.454415f, 0.368775f, 0.289848f, 0.220669f, 0.163894f, 0.121707f, 0.095728f};
+  WindowFunction(L"HammingWindow", TensorKind::Float, expected);
+  WindowFunction(L"HammingWindow", TensorKind::Double, expected);
+#endif
 }
 
 static void ModelBuilding_BlackmanWindow() {
