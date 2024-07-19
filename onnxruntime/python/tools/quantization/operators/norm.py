@@ -12,7 +12,7 @@ class QDQNormalization(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "InstanceNormalization" or node.op_type == "LayerNormalization"
+        assert node.op_type == "InstanceNormalization" or node.op_type == "LayerNormalization" or node.op_type == "BatchNormalization"
 
         # Input
         self.quantizer.quantize_activation_tensor(node.input[0])
