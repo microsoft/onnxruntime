@@ -7,10 +7,10 @@ import copy
 import gc
 import inspect
 from collections import OrderedDict, abc
+from functools import partial
 from logging import Logger
-from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-import onnx
 import torch
 
 from onnxruntime.training.utils import (
@@ -20,9 +20,9 @@ from onnxruntime.training.utils import (
     extract_data_and_schema,
     unflatten_data_using_schema,
 )
+from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._runtime_inspector import RuntimeInspector
+from ._fallback import ORTModuleIOError, wrap_exception
 
 
 class _OutputIdentityOp(torch.autograd.Function):
@@ -76,204 +76,6 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-def flatten_kwargs(kwargs, device):
-    def _flatten_kwargs(value, name):
-        if PrimitiveType.is_primitive_type(value):
-            flattened_kwargs[name] = PrimitiveType.get_tensor(value, device)
-        elif isinstance(value, torch.Tensor):
-            flattened_kwargs[name] = value
-        elif isinstance(value, abc.Sequence):
-            # If the input is a sequence (like a list), expand the list so that
-            # each element of the list has a corresponding entry in the flattened
-            # kwargs dict
-            for idx, val in enumerate(value):
-                _flatten_kwargs(val, f"{name}_{idx}")
-        elif isinstance(value, abc.Mapping):
-            # If the input is a mapping (like a dict), expand the dict so that
-            # each element of the dict has an entry in the flattened kwargs dict
-            for key, val in value.items():
-                _flatten_kwargs(val, f"{name}_{key}")
-
-    flattened_kwargs = {}
-    for key, value in kwargs.items():
-        _flatten_kwargs(value, key)
-
-    return flattened_kwargs
-
-
-class _InputInfo:
-    def __init__(
-        self,
-        names: List[str],
-        shape: List[List[int]],
-        require_grad_names: Optional[List[str]] = None,
-        dynamic_axes: Optional[Dict[str, Dict[int, str]]] = None,
-        schema: Optional[ORTModelInputOutputSchemaType] = None,
-        num_positionals=0,
-    ):
-        self.names: List[str] = names
-        self.shape: List[List[int]] = shape
-        self.require_grad_names: List[str] = require_grad_names if require_grad_names else []
-        self.dynamic_axes: Dict[str, Dict[int, str]] = dynamic_axes if dynamic_axes else {}
-        self.schema: ORTModelInputOutputSchemaType = schema if schema else []
-        self.num_positionals = num_positionals
-        self.kwargs = None
-
-    def __repr__(self) -> str:
-        return f"""_InputInfo class:
-            \tNames:                            {self.names}
-            \tShape:                            {self.shape}
-            \tRequire gradient:                 {self.require_grad_names}
-            \tDynamic axes:                     {self.dynamic_axes}
-            \tSchema:                           {self.schema}
-            \t#Positionals (total):             {self.num_positionals}"""
-
-    def flatten(
-        self,
-        args: Sequence[ORTModelInputOutputType],
-        kwargs: Mapping[str, ORTModelInputOutputType],
-        device: torch.device,
-    ) -> Sequence[ORTModelInputOutputType]:
-        """Flatten args and kwargs in a single tuple of tensors with strict ordering"""
-
-        ret = [PrimitiveType.get_tensor(arg, device) if PrimitiveType.is_primitive_type(arg) else arg for arg in args]
-        flattened_kwargs = flatten_kwargs(kwargs, device)
-        ret += [flattened_kwargs[name] for name in self.names if name in flattened_kwargs]
-        self.kwargs = kwargs
-
-        # if kwargs is empty, append an empty dictionary at the end of the sample inputs to make exporter
-        # happy. This is because the exporter is confused with kwargs and dictionary inputs otherwise.
-        if not kwargs:
-            ret.append({})
-
-        return ret
-
-    def unflatten(
-        self, flat_args: Sequence[ORTModelInputOutputType]
-    ) -> Tuple[Sequence[ORTModelInputOutputType], Mapping[str, ORTModelInputOutputType]]:
-        """Unflatten tuple of tensors into args and kwargs"""
-
-        args = tuple(flat_args[: self.num_positionals])
-        kwargs = self.kwargs
-        self.kwargs = None
-        return args, kwargs
-
-
-def _combine_input_buffers_initializers(
-    params: List[torch.nn.parameter.Parameter],
-    onnx_input_names: List[str],
-    input_info: Optional[_InputInfo],
-    named_buffer: Iterator[Tuple[str, torch.Tensor]],
-    inputs: Sequence[ORTModelInputOutputType],
-    kwargs: Mapping[str, ORTModelInputOutputType],
-    device: torch.device,
-    rt_inspector: RuntimeInspector,
-    zero_stage3_offload_param_map: Optional[Dict[str, torch.nn.parameter.Parameter]],
-):
-    """Creates forward `*inputs` list from user input and PyTorch initializers
-
-    ONNX Runtime forward requires an ordered list of:
-        * User input: computed from forward InferenceSession
-        * Initializers: computed from original PyTorch model parameters.
-    """
-
-    def _expand_inputs(current_input, non_none_inputs, name=""):
-        # The exporter handles input lists by expanding them so that each
-        # element of the list is its own input.
-        # ORTModule must match this behavior by also expanding the inputs.
-        if current_input is None or isinstance(current_input, str):
-            # Drop all None and string inputs
-            return
-        if isinstance(current_input, abc.Sequence):
-            # If the input is a sequence (like a list), expand the list so that
-            # each element of the list is an input by itself
-            for i, inp in enumerate(current_input):
-                _expand_inputs(inp, non_none_inputs, f"{name}_{i}" if name else str(i))
-        elif isinstance(current_input, abc.Mapping):
-            # If the input is a mapping (like a dict), expand the dict so that
-            # each element of the dict is an input by itself
-            for key, val in current_input.items():
-                _expand_inputs(val, non_none_inputs, f"{name}_{key}" if name else key)
-        else:
-            # else just collect all the non none inputs within non_none_inputs
-            if isinstance(non_none_inputs, abc.Sequence):
-                non_none_inputs.append(current_input)
-            elif isinstance(non_none_inputs, abc.Mapping):
-                non_none_inputs[name] = current_input
-
-    # User inputs
-    non_none_inputs = []
-    _expand_inputs(inputs, non_none_inputs)
-    flattened_kwargs_inputs = {}
-    _expand_inputs(kwargs, flattened_kwargs_inputs)
-    buffer_names_dict = None
-    result = []
-    embed_sparsity_results = OrderedDict()
-    label_sparsity_results = OrderedDict()
-    onnx_input_to_value_map = OrderedDict()
-
-    for input_idx, name in enumerate(onnx_input_names):
-        inp = None
-        if name in flattened_kwargs_inputs and flattened_kwargs_inputs[name] is not None:
-            # Only use keywords coming from user that are expected by ONNX model
-            inp = flattened_kwargs_inputs[name]
-
-        if inp is None:
-            try:
-                # Only use positionals coming from user that are expected by ONNX model
-                # if input_idx >= len(input_info.names), IndexError will be thrown
-                if name != input_info.names[input_idx]:
-                    # When ONNX drops unused inputs, get correct index from user input
-                    # if name is not in input_info.names, ValueError will be thrown
-                    input_idx = input_info.names.index(name)  # noqa: PLW2901
-                inp = non_none_inputs[input_idx]
-            except (IndexError, ValueError):
-                # ONNX input name is not present in input_info.names.
-                pass
-
-        if inp is None:
-            # Registered buffers are translated to user_input+initializer in ONNX
-            if buffer_names_dict is None:
-                buffer_names_dict = {buffer_name: i for buffer_name, i in named_buffer}
-            try:  # noqa: SIM105
-                inp = buffer_names_dict[name]
-            except KeyError:
-                # ONNX input name is not present in the registered buffer dict.
-                pass
-
-        if inp is not None:
-            if PrimitiveType.is_primitive_type(inp):
-                inp = PrimitiveType.get_tensor(inp, device)
-
-            found, embedding_density, label_density = rt_inspector.inspect_input(name, inp)
-            if found:
-                if embedding_density < 100:
-                    embed_sparsity_results[name] = embedding_density
-                if label_density < 100:
-                    label_sparsity_results[name] = label_density
-            result.append(inp)
-
-            onnx_input_to_value_map[name] = inp
-        else:
-            raise wrap_exception(
-                ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
-            )
-
-    # params is a list of all initializers known to the onnx graph
-    if zero_stage3_offload_param_map:
-        for p in params:
-            if p not in zero_stage3_offload_param_map.values():
-                result.append(p)
-    else:
-        result.extend(params)
-
-    if rt_inspector.memory_ob.is_enabled() and not rt_inspector.memory_ob.symbolic_dim_collecting_completed:
-        rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
-        rt_inspector.memory_ob.symbolic_dim_collecting_completed = True
-
-    return result, embed_sparsity_results, label_sparsity_results
-
-
 def deepcopy_model_input(
     *args, **kwargs
 ) -> Tuple[Sequence[ORTModelInputOutputType], Mapping[str, ORTModelInputOutputType]]:
@@ -297,90 +99,14 @@ def deepcopy_model_input(
     return sample_args_copy, sample_kwargs_copy
 
 
-def unflatten_user_output(output_schema: Optional[ORTModelInputOutputSchemaType], outputs: List[torch.Tensor]):
+def _extract_schema(
+    data: ORTModelInputOutputType, device
+) -> Tuple[Sequence[ORTModelInputOutputType], ORTModelInputOutputSchemaType]:
     try:
-        return unflatten_data_using_schema(outputs, output_schema)
-    except TypeError as e:
-        raise wrap_exception(
-            ORTModuleIOError,
-            TypeError(f"ORTModule fails to unflatten user output: {e}"),
-        ) from None
-
-
-def _extract_schema(data: ORTModelInputOutputType, device) -> ORTModelInputOutputSchemaType:
-    try:
-        _, schema = extract_data_and_schema(data, constant_as_tensor=True, device=device)
-        return schema
+        flatten_data, schema = extract_data_and_schema(data, constant_as_tensor=True, device=device)
+        return flatten_data, schema
     except TypeError as e:
         raise wrap_exception(ORTModuleIOError, TypeError(f"ORTModule fails to extract schema from data: {e}")) from None
-
-
-def _parse_outputs_and_extract_names_and_dynamic_axes(module_output) -> Tuple[List[str], Dict[str, Dict[int, str]]]:
-    """Parses through the module output and returns output names and dynamic axes"""
-
-    def _populate_output_names_and_dynamic_axes(
-        output, output_names: List[str], output_dynamic_axes: Dict[str, Dict[int, str]], output_idx: List[int]
-    ):
-        # Depth first traversal to traverse through the entire output collecting output names and dynamic axes
-
-        if output is None:
-            return
-        elif isinstance(output, torch.Tensor):
-            # Naming the outputs with a hyphen ensures that there can be no input with the same
-            # name, preventing collisions with other NodeArgs (for example an input to forward called output0)
-            output_name = f"output-{output_idx[0]}"
-            output_idx[0] += 1
-            output_names.append(output_name)
-            output_dynamic_axes[output_name] = {}
-            for dim_idx in range(len(output.shape)):
-                output_dynamic_axes[output_name].update({dim_idx: f"{output_name}_dim{dim_idx}"})
-            return
-
-        if isinstance(output, abc.Sequence):
-            for value in output:
-                _populate_output_names_and_dynamic_axes(value, output_names, output_dynamic_axes, output_idx)
-        elif isinstance(output, abc.Mapping):
-            for _, value in sorted(output.items()):
-                _populate_output_names_and_dynamic_axes(value, output_names, output_dynamic_axes, output_idx)
-        else:
-            raise wrap_exception(
-                ORTModuleIOError,
-                TypeError(f"ORTModule does not support the following model output type {type(output)}"),
-            )
-
-    output_names: List[str] = []
-    output_dynamic_axes: Dict[str, Dict[int, str]] = {}
-    output_idx: List[int] = [0]
-    _populate_output_names_and_dynamic_axes(module_output, output_names, output_dynamic_axes, output_idx)
-
-    return output_names, output_dynamic_axes
-
-
-def _transform_output_to_flat_tuple(data):
-    """Converts the data to a flat tuple by iterating over the entire data structure"""
-
-    def _flatten_data(data, flat_data):
-        # Recursively traverse over the data and populate the flat_data with torch.Tensors
-
-        if data is None:
-            return
-        elif isinstance(data, torch.Tensor):
-            identity = _OutputIdentityOp.apply
-            flat_data.append(identity(data))
-        elif isinstance(data, abc.Sequence):
-            for value in data:
-                _flatten_data(value, flat_data)
-        elif isinstance(data, abc.Mapping):
-            for _, value in sorted(data.items()):
-                _flatten_data(value, flat_data)
-        else:
-            raise wrap_exception(
-                ORTModuleIOError, TypeError(f"ORTModule does not support the following data type {type(data)}.")
-            )
-
-    flat_data = []
-    _flatten_data(data, flat_data)
-    return tuple(flat_data)
 
 
 class _FlattenedModule(torch.nn.Module):
@@ -388,22 +114,138 @@ class _FlattenedModule(torch.nn.Module):
         super().__init__()
         self._original_module: torch.nn.Module = original_module
 
-        # Before `forward` is called, _ort_module must be assigned
-        # Updated input info is needed to expand args into *args, **kwargs
-        self._input_info: Optional[_InputInfo] = None
+        # Before ONNX export, we flatten the args and kwargs into a 1-D list of tensors to make torch.export happy.
+        # As a result, we need to unflatten the args and kwargs back to the original structure before calling the
+        # original module's forward function.
+        # So we need set those information that are needed to unflatten the args and kwargs, before calling the
+        # torch.export.
+        self._device: Optional[torch.device] = None
+        self._args_schema: Optional[ORTModelInputOutputSchemaType] = None
+        self._kwargs_schema: Optional[ORTModelInputOutputSchemaType] = None
+        self._num_positionals: Optional[int] = None
+
+        # Similarly, to make torch.export happy, we need to flatten the original module's outputs into a 1-D list of tensors.
+        # Need to keep the output schema to unflatten the outputs back to the original structure.
+        # Then those code depends on the original structure of the outputs can work properly.
+        self._output_schema: Optional[ORTModelInputOutputSchemaType] = None
 
     def forward(self, *args):
-        new_args, new_kwargs = self._input_info.unflatten(args)
-        return _transform_output_to_flat_tuple(self._original_module(*new_args, **new_kwargs))
+        new_args = unflatten_data_using_schema(args[: self._num_positionals], self._args_schema)
+
+        new_kwargs = unflatten_data_using_schema(args[self._num_positionals :], self._kwargs_schema)
+
+        original_outputs = self._original_module(*new_args, **new_kwargs)
+
+        # Flatten the outputs
+        flatten_outputs, self._output_schema = _extract_schema(original_outputs, self._device)
+
+        # Append _OutputIdentityOp to the outputs to support passthrough outputs
+        final_flatten_outputs = []
+        for output in flatten_outputs:
+            final_flatten_outputs.append(_OutputIdentityOp.apply(output))
+
+        return final_flatten_outputs
+
+
+class ModelInfoForExport:
+    def __init__(
+        self,
+        onnx_graph_input_names: List[str],
+        onnx_graph_input_names_require_grad: List[str],
+        onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
+        onnx_graph_input_shapes: List[List[int]],
+        onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = None,
+        onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = None,
+        onnx_graph_input_arg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
+        onnx_graph_input_kwarg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
+        num_positional_args: int = 0,
+        export_mode: Optional[int] = None,
+        export_extra_kwargs: Optional[Dict[str, any]] = None,
+    ):
+        # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
+        self.export_mode = export_mode
+
+        # Exporter can take extra arguments for ORTModule extensions
+        # It cannot overlap with required/immutable arguments (validated in runtime)
+        self.export_extra_kwargs = export_extra_kwargs
+
+        # Input names parsed and then flatten from the model's forward function signature.
+        # This should contains ONLY the user defined input names
+        # Be noted: some of the input might not be used by the model for its compute.
+        self.onnx_graph_input_names: List[str] = onnx_graph_input_names
+
+        # A subset of onnx_graph_input_names.
+        # Input names that require gradient parsed and then flatten from the model's forward function signature
+        # This should contains ONLY the user defined input names
+        # Be noted: some of the input might not be used by the model for its compute.
+        self.onnx_graph_input_names_require_grad: List[str] = onnx_graph_input_names_require_grad
+
+        # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
+        # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
+        # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
+        self.onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]] = onnx_graph_input_dynamic_axes_map
+
+        self.onnx_graph_input_shapes: List[List[int]] = onnx_graph_input_shapes
+
+        # The input args schema for the original model's forward function.
+        # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
+        # of the export model).
+        self.onnx_graph_input_arg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_arg_schema
+
+        # The input kwargs schema for the original model's forward function.
+        # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
+        # of the export model).
+        self.onnx_graph_input_kwarg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_kwarg_schema
+
+        self.num_positional_args: int = num_positional_args
+
+        # A function to access the input data from the args and kwargs.
+        # If it is not None, the length is same as onnx_graph_input_names.
+        # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
+        self.onnx_graph_input_data_accessor_user_defined: Optional[Dict[str, callable]] = (
+            onnx_graph_input_data_accessor_user_defined
+        )
+
+        self.onnx_graph_input_const_as_tensor: Optional[Dict[str, torch.device]] = onnx_graph_input_const_as_tensor
+
+    def __str__(self) -> str:
+        return f"""ModelInfoForExport class:
+            \tExport mode:                      {self.export_mode}
+            \tExport extra kwargs:              {self.export_extra_kwargs}
+            \tInput names:                      {self.onnx_graph_input_names}
+            \tInput names require grad:         {self.onnx_graph_input_names_require_grad}
+            \tInput dynamic axes:               {self.onnx_graph_input_dynamic_axes_map}
+            \tInput shapes:                     {self.onnx_graph_input_shapes}
+            \tInput args schema:                {self.onnx_graph_input_arg_schema}
+            \tInput kwargs schema:              {self.onnx_graph_input_kwarg_schema}
+            \tNum input args:              {self.num_positional_args}"""
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+def _arg_access_with_index_func(arg_index, args, kwargs):
+    return args[arg_index]
+
+
+def _kwarg_access_with_name_func(name, args, kwargs):
+    return kwargs[name]
+
+
+class SkipRetValue:
+    """A placeholder class to indicate that the return value of a function should be skipped"""
 
 
 def parse_inputs_for_onnx_export(
     all_input_parameters: List[inspect.Parameter],
-    onnx_graph: Optional[onnx.ModelProto],
-    schema: ORTModelInputOutputSchemaType,
     args: Sequence[ORTModelInputOutputType],
     kwargs: Mapping[str, ORTModelInputOutputType],
-) -> _InputInfo:
+    constant_as_tensor: bool,
+    device: torch.device,
+    export_mode: int,
+    logger: Logger,
+    export_extra_kwargs: Optional[Dict[str, any]] = None,
+) -> ModelInfoForExport:
     """Parses through the model inputs and returns _InputInfo.
 
     Loop through all input parameters, try to flatten them into a 1-D list of inputs. For nested data in the inputs,
@@ -423,12 +265,15 @@ def parse_inputs_for_onnx_export(
 
     Args:
         all_input_parameters: All inspected input parameters from the original model forward function signature.
-        onnx_graph: (optional) The onnx graph.
-        schema: The schema extracted from the positional arguments and keyword arguments of the model.
         args: The positional arguments of the model.
         kwargs: The keyword arguments of the model.
+        constant_as_tensor: Whether to treat constant inputs as tensors.
+        device: The device to be used for constant inputs.
 
     """
+
+    arg_tensor_idx = [-1]
+    kwarg_tensor_idx = [-1]
 
     def _add_dynamic_shape(name, input) -> Dict[str, Dict[int, str]]:
         dynamic_axes[name] = {}
@@ -436,54 +281,133 @@ def parse_inputs_for_onnx_export(
             dynamic_axes[name].update({dim_idx: f"{name}_dim{dim_idx}"})
         return dynamic_axes
 
-    def _add_input(name, input_value, onnx_graph, onnx_graph_input_names):
+    def _warn_of_constant_inputs(data):
+        logger.info(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
+
+    def _add_input(
+        name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable, tensor_idx: List[int]
+    ):
         """Returns number of expanded non none inputs that _add_input processed"""
 
-        if name in input_names or input_value is None or isinstance(input_value, str):
-            # Drop all None and string inputs and return 0.
-            return
+        # in case the input is already handled.
+        if name in visited_input_names:
+            return SkipRetValue()
 
-        if isinstance(input_value, abc.Sequence):
+        visited_input_names.append(name)
+
+        value = input_value
+        primitive_dtype = None
+        if value is None:
+            _warn_of_constant_inputs(value)
+            data_accessors[name] = cur_func
+            return value
+        elif isinstance(value, str):
+            _warn_of_constant_inputs(value)
+            data_accessors[name] = cur_func
+            return value
+        elif PrimitiveType.is_primitive_type(value):
+            if constant_as_tensor:
+                # This has special handling for bool type to string conversion.
+                primitive_dtype = PrimitiveType.get_primitive_dtype(value)
+                value = PrimitiveType.get_tensor(value, device)
+                const_to_tensor_inputs[name] = device
+
+            else:
+                data_accessors[name] = cur_func
+                _warn_of_constant_inputs(value)
+                return value
+        elif isinstance(value, abc.Sequence):
+            sequence_type = type(value)
+            stubbed_schema = []
+
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself.
-            for i, val in enumerate(input_value):
+            for i, val in enumerate(value):
                 # Name each input with the index appended to the original name of the
                 # argument.
-                _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
+
+                def _access_func(i, cur_func, args, kwargs):
+                    return cur_func(args, kwargs)[i]
+
+                input_schema = _add_input(
+                    f"{name}_{i}",
+                    val,
+                    onnx_graph_input_names,
+                    partial(_access_func, i, cur_func),
+                    tensor_idx,
+                )
+
+                if not isinstance(input_schema, SkipRetValue):
+                    stubbed_schema.append(input_schema)
 
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
-            return
-        elif isinstance(input_value, abc.Mapping):
+
+            try:
+                # namedtuple can be created by passing the list sequence to method _make
+                stubbed_schema = sequence_type._make(stubbed_schema)
+            except AttributeError:
+                # If attribute error is encountered, create the sequence directly
+                stubbed_schema = sequence_type(stubbed_schema)
+            return stubbed_schema
+
+        elif isinstance(value, abc.Mapping):
+            dict_type = type(value)
+            stubbed_schema = OrderedDict()
+
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself.
-            for key, val in input_value.items():
-                _add_input(f"{name}_{key}", val, onnx_graph, onnx_graph_input_names)
+            for key, val in value.items():
+
+                def _access_func(key, cur_func, args, kwargs):
+                    return cur_func(args, kwargs)[key]
+
+                input_schema = _add_input(
+                    f"{name}_{key}",
+                    val,
+                    onnx_graph_input_names,
+                    partial(_access_func, key, cur_func),
+                    tensor_idx,
+                )
+
+                if not isinstance(input_schema, SkipRetValue):
+                    stubbed_schema[key] = input_schema
 
             # Return here since the dict by itself is not a valid input.
             # All the elements of the dict have already been added as inputs individually.
-            return
 
-        # InputInfo should contain all the names irrespective of whether they are
-        # a part of the onnx graph or not.
-        input_names.append(name)
+            stubbed_schema = dict_type(**stubbed_schema)
+            return stubbed_schema
 
-        if (onnx_graph is None or name in onnx_graph_input_names) and isinstance(input_value, torch.Tensor):
-            if input_value.requires_grad:
+        if isinstance(value, torch.Tensor):
+            onnx_graph_input_names.append(name)
+            data_accessors[name] = cur_func
+            if value.requires_grad:
                 input_names_require_grad.append(name)
-            dynamic_axes.update(_add_dynamic_shape(name, input_value))
-            input_shape.append(list(input_value.size()))
+            dynamic_axes.update(_add_dynamic_shape(name, value))
+            input_shape.append(list(value.size()))
+            tensor_idx[0] += 1
+            return _TensorStub(
+                tensor_idx[0],
+                dtype=primitive_dtype if primitive_dtype else str(value.dtype),  # special handle for bool primitive
+                shape_dims=len(value.size()),
+                name=name,
+            )
 
-    # Ignore optional inputs explicitly specified as None
-    # ONNX exporter may remove unused inputs
+        raise ORTModuleIOError(f"ORTModule does not support input type {type(value)} for input {name}")
+
+    visited_input_names: List[str] = []
+
     onnx_graph_input_names: List[str] = []
-    if onnx_graph is not None:
-        onnx_graph_input_names = {inp.name for inp in onnx_graph.graph.input}
-
-    input_names: List[str] = []
     dynamic_axes: Dict[str, Dict[int, str]] = {}
     input_names_require_grad: List[str] = []
     input_shape: List[List[int]] = []
+    input_arg_schema: ORTModelInputOutputSchemaType = []
+    input_kwarg_schema: ORTModelInputOutputSchemaType = OrderedDict()
+    data_accessors: Dict[str, Callable] = OrderedDict()
+    const_to_tensor_inputs: Dict[str, torch.device] = OrderedDict()
+    num_positional_args: int = 0
+
     var_positional_idx = 0
 
     # Be noted, all_input_parameters is a list of inspect.Parameters parsed from the original module's forward method.
@@ -513,7 +437,17 @@ def parse_inputs_for_onnx_export(
                 name = f"{input_parameter.name}_{var_positional_idx}"
                 var_positional_idx += 1
                 inp = args[args_i]
-                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                pre_tensor_idx = arg_tensor_idx[0]
+                schema = _add_input(
+                    name,
+                    inp,
+                    onnx_graph_input_names,
+                    partial(_arg_access_with_index_func, args_i),
+                    arg_tensor_idx,
+                )
+                num_positional_args += arg_tensor_idx[0] - pre_tensor_idx
+                if not isinstance(schema, SkipRetValue):
+                    input_arg_schema.append(schema)
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
             or input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -523,24 +457,50 @@ def parse_inputs_for_onnx_export(
             name = input_parameter.name
             inp = None
             input_idx += var_positional_idx  # noqa: PLW2901
-            if input_idx < len(args) and args[input_idx] is not None:
+            access_func = None
+            if input_idx < len(args):
                 inp = args[input_idx]
-            elif name in kwargs and kwargs[name] is not None:
+                access_func = partial(_arg_access_with_index_func, input_idx)
+                pre_tensor_idx = arg_tensor_idx[0]
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func, arg_tensor_idx)
+                num_positional_args += arg_tensor_idx[0] - pre_tensor_idx
+                if not isinstance(schema, SkipRetValue):
+                    input_arg_schema.append(schema)
+            elif name in kwargs:
                 inp = kwargs[name]
-            _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                access_func = partial(_kwarg_access_with_name_func, name)
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func, kwarg_tensor_idx)
+                if not isinstance(schema, SkipRetValue):
+                    input_kwarg_schema[name] = schema
+
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
-                _add_input(name, inp, onnx_graph, onnx_graph_input_names)
+                schema = _add_input(
+                    name,
+                    inp,
+                    onnx_graph_input_names,
+                    partial(_kwarg_access_with_name_func, name),
+                    kwarg_tensor_idx,
+                )
+                if not isinstance(schema, SkipRetValue):
+                    input_kwarg_schema[name] = schema
 
-    return _InputInfo(
-        names=input_names,
-        shape=input_shape,
-        require_grad_names=input_names_require_grad,
-        dynamic_axes=dynamic_axes,
-        schema=schema,
-        num_positionals=len(args),
+    exported_graph = ModelInfoForExport(
+        onnx_graph_input_names=onnx_graph_input_names,
+        onnx_graph_input_names_require_grad=input_names_require_grad,
+        onnx_graph_input_dynamic_axes_map=dynamic_axes,
+        onnx_graph_input_shapes=input_shape,
+        onnx_graph_input_data_accessor_user_defined=data_accessors,
+        onnx_graph_input_const_as_tensor=const_to_tensor_inputs,
+        onnx_graph_input_arg_schema=input_arg_schema,
+        onnx_graph_input_kwarg_schema=input_kwarg_schema,
+        num_positional_args=num_positional_args,
+        export_mode=export_mode,
+        export_extra_kwargs=export_extra_kwargs,
     )
+
+    return exported_graph
 
 
 def calculate_total_parameter_size_in_bytes(module: torch.nn.Module) -> int:
@@ -577,20 +537,19 @@ def can_module_be_deep_cloned(module: torch.nn.Module, device: Optional[torch.de
 
 def parse_outputs_for_onnx_export_and_extract_schema(
     module,
-    args: Sequence[ORTModelInputOutputType],
-    kwargs: Mapping[str, ORTModelInputOutputType],
+    flatten_args: Sequence[ORTModelInputOutputType],
     logger: Logger,
-    device: Optional[torch.device],
     clone_module: bool,
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     deep_copied = False
+    kwargs = {}
     logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
-        sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
+        sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*flatten_args, **kwargs)
         try:
             if clone_module:
                 # Deepcopy model, in case model is stateful and changes after model run.
@@ -609,9 +568,17 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         sample_outputs = model_copy(*sample_args_copy, **sample_kwargs_copy)
 
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
-        output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
+        output_names: List[str] = []
+        output_dynamic_axes: Dict[str, Dict[int, str]] = {}
+        for output_idx, output in enumerate(sample_outputs):
+            output_name = f"output-{output_idx}"
+            output_names.append(output_name)
+            output_dynamic_axes[output_name] = {}
+            for dim_idx in range(len(output.shape)):
+                output_dynamic_axes[output_name].update({dim_idx: f"{output_name}_dim{dim_idx}"})
 
-    output_schema = _extract_schema(sample_outputs, device)
+        original_module_output_schema = model_copy._output_schema
+
     if deep_copied:
         del model_copy
         gc.collect()
@@ -620,4 +587,4 @@ def parse_outputs_for_onnx_export_and_extract_schema(
             # Release the memory cached by torch.
             torch.cuda.empty_cache()
     # Return output names, output dynamic axes and output schema
-    return output_names, output_dynamic_axes, output_schema
+    return output_names, output_dynamic_axes, original_module_output_schema

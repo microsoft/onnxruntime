@@ -13,7 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/graph/op_identifier.h"

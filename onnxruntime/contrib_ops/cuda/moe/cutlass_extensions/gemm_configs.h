@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <string>
+
 namespace ort_fastertransformer {
 // Note: The shapes are in the format MxNxK. The K shape of the runtime config MUST match the K shape
 //       in the kernel layout details when doing weight only quantization.
@@ -120,6 +122,68 @@ struct CutlassGemmConfig {
         mainloop_schedule(mainloop_schedule),
         epilogue_schedule(epilogue_schedule),
         cluster_shape(cluster_shape) {}
+
+  CutlassGemmConfig& operator=(const CutlassGemmConfig& other) {
+    tile_config = other.tile_config;
+    split_k_style = other.split_k_style;
+    split_k_factor = other.split_k_factor;
+    stages = other.stages;
+    return *this;
+  }
+
+  std::string to_string() {
+    std::string str = "tile_config: ";
+    switch (tile_config) {
+      case CutlassTileConfig::Undefined:
+        str += "Undefined";
+        break;
+      case CutlassTileConfig::ChooseWithHeuristic:
+        str += "ChooseWithHeuristic";
+        break;
+      case CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8:
+        str += "CtaShape128x128x8_WarpShape64x64x8";
+        break;
+      case CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64:
+        str += "CtaShape16x128x64_WarpShape16x32x64";
+        break;
+      case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
+        str += "CtaShape32x128x64_WarpShape32x32x64";
+        break;
+      case CutlassTileConfig::CtaShape64x128x64_WarpShape32x64x64:
+        str += "CtaShape64x128x64_WarpShape32x64x64";
+        break;
+      case CutlassTileConfig::CtaShape64x64x128_WarpShape32x64x64:
+        str += "CtaShape64x64x128_WarpShape32x64x64";
+        break;
+      case CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64:
+        str += "CtaShape64x128x64_WarpShape64x32x64";
+        break;
+      case CutlassTileConfig::CtaShape128x64x64_WarpShape64x32x64:
+        str += "CtaShape128x64x64_WarpShape64x32x64";
+        break;
+      case CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64:
+        str += "CtaShape128x128x64_WarpShape64x32x64";
+        break;
+      case CutlassTileConfig::CtaShape128x128x64_WarpShape64x64x64:
+        str += "CtaShape128x128x64_WarpShape64x64x64";
+        break;
+      case CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64:
+        str += "CtaShape128x128x64_WarpShape128x32x64";
+        break;
+      case CutlassTileConfig::CtaShape128x256x64_WarpShape64x64x64:
+        str += "CtaShape128x256x64_WarpShape64x64x64";
+        break;
+      case CutlassTileConfig::CtaShape256x128x64_WarpShape64x64x64:
+        str += "CtaShape256x128x64_WarpShape64x64x64";
+        break;
+      case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
+        str += "CtaShape16x256x64_WarpShape16x64x64";
+        break;
+    }
+    str += ", stages: ";
+    str += std::to_string(stages);
+    return str;
+  }
 };
 
 }  // namespace ort_fastertransformer

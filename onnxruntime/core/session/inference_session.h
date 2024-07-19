@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -34,6 +35,10 @@
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
+#endif
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/platform/windows/telemetry.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -124,6 +129,8 @@ class InferenceSession {
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
 
  public:
@@ -223,13 +230,12 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
-    * Register a graph transformer. If you've one to register, call this before invoking Initialize().
-    * Calling this API is optional.
-    * @param[in] - providers Optional. If providers is non-empty this transformer will only to
-      applied to nodes which are assigned to given providers.
-    * @param[in] - level Optional. Level to which this transformer should be registered. Default is set to 2.
-    * @return OK if success.
-    */
+   * Register a graph transformer. If you've one to register, call this before invoking Initialize().
+   * Calling this API is optional.
+   * @param p_graph_transformer The graph transformer to register.
+   * @param level Optional. Level to which this transformer should be registered. Default is set to 2.
+   * @return OK if success.
+   */
   [[nodiscard]] common::Status RegisterGraphTransformer(std::unique_ptr<onnxruntime::GraphTransformer> p_graph_transformer,
                                                         TransformerLevel level = TransformerLevel::Level2);
 
@@ -378,8 +384,8 @@ class InferenceSession {
   /**
    * Partially run a pre-loaded and pre-intialized model.
    * @param run_options run options.
-   * @param feeds inputs owned by client code and should not be changed during
-   *        execution of this function.
+   * @param mutable_feeds inputs owned by client code and will be released as long as the feeds be set in session states.
+   * Then the feeds will purely managed in the session states.
    * @param fetches outputs produced after the executin of this function.
    * @param state State of the graph needed to resume partial graph run.
    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
@@ -389,7 +395,7 @@ class InferenceSession {
    * @param partial_graph_index Index of the partial graph to run.
    */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
-                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& mutable_feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
                             FeedsFetchesManager& feeds_fetches_manager,
@@ -616,7 +622,7 @@ class InferenceSession {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveToOrtFormat(const PathString& filepath) const;
+  common::Status SaveToOrtFormat(const std::filesystem::path& filepath) const;
 #endif
 
   /**

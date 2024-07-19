@@ -13,7 +13,8 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           const char* cache_dir, const char* model_priority,
                           int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
-                          bool export_ep_ctx_blob)
+                          bool export_ep_ctx_blob, bool enable_qdq_optimizer,
+                          bool disable_cpu_fallback)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
@@ -22,7 +23,9 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
-        export_ep_ctx_blob_(export_ep_ctx_blob) {
+        export_ep_ctx_blob_(export_ep_ctx_blob),
+        enable_qdq_optimizer_(enable_qdq_optimizer),
+        disable_cpu_fallback_(disable_cpu_fallback) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
   }
@@ -43,12 +46,15 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool enable_opencl_throttling_;
   bool disable_dynamic_shapes_;
   bool export_ep_ctx_blob_;
+  bool enable_qdq_optimizer_;
+  bool disable_cpu_fallback_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
-                                     disable_dynamic_shapes_, export_ep_ctx_blob_);
+                                     disable_dynamic_shapes_, export_ep_ctx_blob_, enable_qdq_optimizer_,
+                                     disable_cpu_fallback_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
@@ -95,6 +101,10 @@ struct OpenVINO_Provider : Provider {
 
     void* context = nullptr;
 
+    bool enable_qdq_optimizer = false;
+
+    bool disable_cpu_fallback = false;
+
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
 
@@ -128,7 +138,7 @@ struct OpenVINO_Provider : Provider {
       LOGS_DEFAULT(WARNING) << "[OpenVINO] The options 'device_id' is deprecated. "
                             << "Upgrade to set deice_type and precision session options.\n";
       if (dev_id == "CPU" || dev_id == "GPU" || dev_id == "NPU") {
-        device_type = dev_id;
+        device_type = std::move(dev_id);
       } else {
         ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
       }
@@ -214,6 +224,15 @@ struct OpenVINO_Provider : Provider {
       bool_flag = "";
     }
 
+    if (provider_options_map.find("enable_qdq_optimizer") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("enable_qdq_optimizer");
+      if (bool_flag == "true" || bool_flag == "True")
+        enable_qdq_optimizer = true;
+      else if (bool_flag == "false" || bool_flag == "False")
+        enable_qdq_optimizer = false;
+      bool_flag = "";
+    }
+
     // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to static shape at runtime and execute.
     // Always true for NPU plugin.
     bool disable_dynamic_shapes = false;
@@ -243,6 +262,15 @@ struct OpenVINO_Provider : Provider {
         export_ep_ctx_blob = false;
       bool_flag = "";
     }
+
+    if (provider_options_map.find("disable_cpu_fallback") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("disable_cpu_fallback");
+      if (bool_flag == "true" || bool_flag == "True")
+        disable_cpu_fallback = true;
+      else if (bool_flag == "false" || bool_flag == "False")
+        disable_cpu_fallback = false;
+      bool_flag = "";
+    }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      const_cast<char*>(precision.c_str()),
                                                      enable_npu_fast_compile,
@@ -253,7 +281,9 @@ struct OpenVINO_Provider : Provider {
                                                      context,
                                                      enable_opencl_throttling,
                                                      disable_dynamic_shapes,
-                                                     export_ep_ctx_blob);
+                                                     export_ep_ctx_blob,
+                                                     enable_qdq_optimizer,
+                                                     disable_cpu_fallback);
   }
 
   void Initialize() override {

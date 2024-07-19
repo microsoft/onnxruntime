@@ -215,10 +215,10 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
 
-  auto elem_count = narrow<size_t>(tensor_shape.Size());
-  size_t size_to_allocate;
-  if (!IAllocator::CalcMemSizeForArray(ml_type->Size(), elem_count, &size_to_allocate)) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "size overflow");
+  size_t size_to_allocate = 0;
+  Status status = Tensor::CalculateTensorStorageSize(ml_type, tensor_shape, 0 /*alignment*/, size_to_allocate);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
   }
   if (size_to_allocate > p_data_len) {
     std::ostringstream oss;
@@ -2396,7 +2396,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_18 = {
+static constexpr OrtApi ort_api_1_to_19 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2723,10 +2723,14 @@ static constexpr OrtApi ort_api_1_to_18 = {
     &OrtApis::SetDeterministicCompute,
     &OrtApis::KernelContext_ParallelFor,
     &OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+    // End of Version 17 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
     &OrtApis::KernelContext_GetScratchBuffer,
     &OrtApis::KernelInfoGetAllocator,
-    &OrtApis::AddExternalInitializersFromFilesInMemory};
+    &OrtApis::AddExternalInitializersFromFilesInMemory,
+    // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
+};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
 static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");
@@ -2755,19 +2759,20 @@ static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 22
 static_assert(offsetof(OrtApi, GetSessionConfigEntry) / sizeof(void*) == 238, "Size of version 14 API cannot change");
 static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size of version 15 API cannot change");
 static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
-static_assert(offsetof(OrtApi, SetUserLoggingFunction) / sizeof(void*) == 266, "Size of version 17 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_OpenVINO_V2) / sizeof(void*) == 275, "Size of version 17 API cannot change");
+static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeof(void*) == 279, "Size of version 18 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.18.0",
+static_assert(std::string_view(ORT_VERSION) == "1.19.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_18 above:
+// 2. If there were any APIs added to ort_api_1_to_19 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_18;
+    return &ort_api_1_to_19;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

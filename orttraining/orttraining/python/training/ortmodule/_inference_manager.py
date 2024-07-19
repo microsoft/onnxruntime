@@ -11,11 +11,10 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._io import unflatten_user_output
 from ._logger import ORTModuleInitPhase, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
@@ -109,22 +108,25 @@ class InferenceManager(GraphExecutionManager):
             build_graph = False
             if (
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
-                or not self._onnx_models.exported_model
+                or not self._graph_transition_manager._exported_model_info
             ):
                 self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
 
                 # Exporting module to ONNX for the first time
-                build_graph = self._export_model(*inputs, **kwargs)
+
+                (
+                    build_graph,
+                    post_export_processed_model_info,
+                ) = self._graph_transition_manager.get_post_processed_model(inputs, kwargs)
                 if build_graph:
-                    # If model was exported, then initialize the graph builder.
-                    self._initialize_graph_builder()
+                    # TODO(): do we need call it for inferencing mode???
+                    self._initialize_graph_builder(post_export_processed_model_info)
 
                 # Build the inference graph
                 if build_graph:
-                    graph_transformer_config = self._get_graph_transformer_config()
-                    # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    self._detect_from_inputs(inputs, kwargs)
 
+                    graph_transformer_config = self._get_graph_transformer_config()
                     # Build the graph
                     self._build_graph(graph_transformer_config)
 
@@ -135,7 +137,7 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
                 or not self._execution_agent
             ):
-                module_device = _utils.get_device_from_module(self._original_module)
+                module_device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
 
                 create_execution_session = (
                     build_graph
@@ -145,7 +147,7 @@ class InferenceManager(GraphExecutionManager):
                 _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
 
                 if self._device != module_device:
-                    self._device = module_device
+                    self._graph_transition_manager._device = module_device
 
             if create_execution_session:
                 # Create execution session creates the inference_session
@@ -161,23 +163,15 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
-                self._graph_info.user_input_names,
-                self._input_info,
-                self._flattened_module.named_buffers(),
-                inputs,
-                kwargs,
-                self._device,
-                self._runtime_inspector,
-                self._zero_stage3_param_map,
+            prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
+                inputs, kwargs, True, self._device
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
                 self._onnx_models.optimized_model,
                 self._device,
-                *prepared_input_list,
+                *prepared_input_map.values(),
             )
 
             if (
@@ -189,7 +183,8 @@ class InferenceManager(GraphExecutionManager):
                     self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
                 )
 
-            return unflatten_user_output(self._module_output_schema, user_outputs)
+            return self._graph_transition_manager._post_export_processed_model_info.restore_outputs(user_outputs)
+
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)

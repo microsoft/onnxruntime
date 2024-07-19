@@ -192,13 +192,13 @@ Status CheckInputs(const Tensor* query,
                              "head_size shall be a multiple of 16. Got head_size % 16 == ",
                              head_size % 16);
     }
-    if (cos_dims[0] < present_sequence_length) {
+    if (cos_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be of max_sequence_length.");
+                             "cos_cache dimension 0 should be not be less than total_sequence_length.");
     }
-    if (sin_dims[0] < present_sequence_length) {
+    if (sin_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be of max_sequence_length.");
+                             "sin_cache dimension 0 should be not be less than total_sequence_length.");
     }
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -263,37 +263,6 @@ Status CheckInputs(const Tensor* query,
 
   return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
 }
-
-template <typename T>
-Status PackVIntoRotaryQKV(concurrency::ThreadPool* tp, GroupQueryAttentionParameters parameters, const T* input,
-                          T* output) {
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  int n_heads = parameters.num_heads;
-  const int kv_n_heads = parameters.kv_num_heads;
-  const int head_size = parameters.head_size;
-  int seq_stride = head_size;
-  int head_stride = sequence_length * seq_stride;
-  int batch_stride = (n_heads + 2 * kv_n_heads) * head_stride;
-
-  const int loop_len = batch_size * sequence_length * kv_n_heads;
-  const double cost = static_cast<double>(head_size);
-  ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-    for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
-      const int b = static_cast<int>((ptr / kv_n_heads) / sequence_length);
-      const int s = static_cast<int>((ptr / kv_n_heads) % sequence_length);
-      const int n = static_cast<int>(ptr % kv_n_heads);
-      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
-      const T* input_data = input + block_offset;
-      T* output_data = output + block_offset;
-      for (int i = 0; i < head_size; i++) {
-        output_data[i] = input_data[i];
-      }
-    }
-  });
-  return Status::OK();
-}
-
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime

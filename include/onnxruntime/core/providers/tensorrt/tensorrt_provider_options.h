@@ -64,10 +64,21 @@ struct OrtTensorRTProviderOptionsV2 {
    *       - if "trt_engine_cache_path" is "" -> the engine cache will be saved to "./context_model_dir"
    *       - if "trt_engine_cache_path" is "engine_dir" -> the engine cache will be saved to "./context_model_dir/engine_dir"
    *
+   * 3. In the case of building weight-stripped engines, the same security reasons as listed in 1) apply to the
+   *    "onnx_model_filename" node attribute of EP context node, which contains a filename of the ONNX model with the
+   *    weights needed for the refit process. User can specify a folder path relative to the current working
+   *    directory by means of the "trt_onnx_model_folder_path" option.
+   *
    */
-  int trt_dump_ep_context_model{0};               // Dump EP context node model
-  const char* trt_ep_context_file_path{nullptr};  // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
-  int trt_ep_context_embed_mode{0};               // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_dump_ep_context_model{0};                 // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};    // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
+  int trt_ep_context_embed_mode{0};                 // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_weight_stripped_engine_enable{0};         // Enable weight-stripped engine build. Default 0 = false,
+                                                    // nonzero = true
+  const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
+                                                    // the ONNX model containing the weights (applicable only when
+                                                    // the "trt_weight_stripped_engine_enable" option is enabled)
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
+  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
 };

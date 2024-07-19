@@ -59,8 +59,10 @@ DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(co
   return device_stream_collection_.get();
 }
 
-StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs,
+                                                                        std::vector<OrtValue>& feeds,
+                                                                        gsl::span<const int>& fetch_mlvalue_idxs,
+                                                                        std::vector<OrtValue>& fetches,
                                                                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
@@ -81,7 +83,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
         execution_plan->num_barriers,
         device_streams,
         feed_mlvalue_idxs,
-        feeds,
+        std::move(feeds),
         fetch_mlvalue_idxs,
         fetches,
         fetch_allocators,
@@ -89,7 +91,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
         // partial executor in training can only be run with single thread
         true);
   } else {
-    execution_context_->GetExecutionFrame().UpdateFeeds(feed_mlvalue_idxs, feeds);
+    execution_context_->GetExecutionFrame().UpdateFeeds(feed_mlvalue_idxs, std::move(feeds));
     execution_context_->GetExecutionFrame().UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
     execution_context_->SetLogger(sess_logger);
   }

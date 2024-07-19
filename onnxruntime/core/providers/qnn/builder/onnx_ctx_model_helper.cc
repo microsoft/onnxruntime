@@ -46,11 +46,13 @@ bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGr
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                           QnnBackendManager* qnn_backend_manager,
                           const logging::Logger& logger,
-                          int& main_context_pos,
+                          std::vector<int>& main_context_pos,
                           std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
-  main_context_pos = -1;
   for (size_t i = 0; i < fused_nodes_and_graphs.size(); ++i) {
+    // Only EPContext nodes are filtered in
+    // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
+    ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const auto& ep_context_node = graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
     qnn_models.emplace(ep_context_node->Name(),
@@ -58,11 +60,11 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     NodeAttrHelper node_helper(*ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
-      main_context_pos = static_cast<int>(i);
+      main_context_pos.push_back(static_cast<int>(i));
     }
   }
 
-  ORT_RETURN_IF(main_context_pos < 0, "Failed to find the EPContext node with main_context=1");
+  ORT_RETURN_IF(main_context_pos.size() < 1, "Failed to find the EPContext node with main_context=1");
   return Status::OK();
 }
 
@@ -97,6 +99,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
+                                                               main_context_node.Name(),
                                                                qnn_models);
   }
 
@@ -145,6 +148,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   cache_file.close();
   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
                                                              static_cast<uint64_t>(buffer_size),
+                                                             main_context_node.Name(),
                                                              qnn_models);
 }
 
@@ -153,12 +157,14 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnBackendManager* qnn_backend_manager,
                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                                const logging::Logger& logger) {
-  Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager, qnn_models);
+  for (const auto& ep_context_node : graph_viewer.Nodes()) {
+    Status status = GetEpContextFromMainNode(ep_context_node, ctx_onnx_model_path, qnn_backend_manager, qnn_models);
 
-  // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
+    // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
+    if (!status.IsOK()) {
+      LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
+    }
   }
 
   return Status::OK();

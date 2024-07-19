@@ -13,7 +13,7 @@
  */
 
 #pragma once
-
+#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
 #include "test/cuda_host/blkq4_fp16_quant_sm80.h"
 
 #include <random>
@@ -151,6 +151,7 @@ inline void blkq4_weights_gen(
   MatrixRef<ElementT, ColumnMajorLayout> tensor_dequant(dequants, make_Position(rows, columns));
 
   // Dequantize weights and save into matrix B
+  // fprintf(stderr, "========= Dequantized weights: =========\n");
   for (int col = 0; col < tensor_dequant.shape()[1]; ++col) {
     for (int row = 0; row < tensor_dequant.shape()[0]; ++row) {
       auto weight_cord = make_Position(row / 2, col);
@@ -173,9 +174,11 @@ inline void blkq4_weights_gen(
       float dequant = scale * float(w - offset);
       tensor_dequant.at(row, col) = ElementT(dequant);
       // Prints for help debugging in case of test failure
-      // fprintf(stderr, "(%2d,%2d)= %2d, %2d, %f, %f\n", row, col, w, offset, scale, dequant);
+      // fprintf(stderr, "%f = (%d-%d) x %f, ", dequant, w, offset, scale);
     }
+    // fprintf(stderr, "\n");
   }
+  // fprintf(stderr, "=======================================\n");
 }
 
 template <
@@ -185,6 +188,13 @@ template <
     bool has_offsets>
 void run_blkq4_gemm(int m, int n, int k);
 
+template <
+    int block_size,
+    bool column_wise_blocking,
+    bool has_offsets>
+void run_blkq4_small_gemm(int m, int n, int k);
+
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

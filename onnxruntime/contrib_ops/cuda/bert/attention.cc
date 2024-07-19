@@ -145,7 +145,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
         parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = num_splits;
+    parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
@@ -219,11 +219,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       !disable_memory_efficient_attention_ &&
       nullptr == past &&
       nullptr == present &&
-      (parameters.head_size & 7) == 0 &&
-      (parameters.v_head_size & 7) == 0 &&
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2);
+      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 
   if (use_memory_efficient_attention) {
     bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;

@@ -33,19 +33,21 @@
   )
 
 
-  if (onnxruntime_CUDA_MINIMAL)
-    set(onnxruntime_providers_cuda_shared_srcs "")
-  else()
+  if (NOT onnxruntime_CUDA_MINIMAL)
     file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     )
+  else()
+    set(onnxruntime_providers_cuda_cu_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        )
   endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
@@ -153,7 +155,7 @@
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
+      set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
 
@@ -173,6 +175,10 @@
         # granularity.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
       endif()
+    endif()
+
+    if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)

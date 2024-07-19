@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// WebNN API currently does not have a TypeScript definition file. This file is a workaround with types generated from
+// WebNN API specification.
+// https://github.com/webmachinelearning/webnn/issues/677
+/// <reference path="jsep/webnn/webnn.d.ts" />
+
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
 import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
@@ -69,7 +74,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
 };
 
 /**
- * intialize runtime environment.
+ * initialize runtime environment.
  * @param env passed in the environment config object.
  */
 export const initRuntime = async(env: Env): Promise<void> => {
@@ -84,7 +89,7 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async(env: Env, epName: string): Promise<void> => {
-  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+  if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
 
@@ -118,11 +123,6 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
             typeof adapter.requestDevice !== 'function') {
           throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
         }
-      }
-
-      if (!env.wasm.simd) {
-        throw new Error(
-            'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
       }
 
       await initJsep('webgpu', getInstance(), env, adapter);
@@ -258,9 +258,41 @@ export const createSession = async(
       await Promise.all(loadingPromises);
     }
 
+    for (const provider of options?.executionProviders ?? []) {
+      const providerName = typeof provider === 'string' ? provider : provider.name;
+      if (providerName === 'webnn') {
+        if (wasm.currentContext) {
+          throw new Error('WebNN execution provider is already set.');
+        }
+        if (typeof provider !== 'string') {
+          const webnnOptions = provider as InferenceSession.WebNNExecutionProviderOption;
+          const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
+          const gpuDevice = (webnnOptions as InferenceSession.WebNNOptionsWebGpu)?.gpuDevice;
+          const deviceType = (webnnOptions as InferenceSession.WebNNContextOptions)?.deviceType;
+          const numThreads = (webnnOptions as InferenceSession.WebNNContextOptions)?.numThreads;
+          const powerPreference = (webnnOptions as InferenceSession.WebNNContextOptions)?.powerPreference;
+          if (context) {
+            wasm.currentContext = context as MLContext;
+          } else if (gpuDevice) {
+            wasm.currentContext = await navigator.ml.createContext(gpuDevice);
+          } else {
+            wasm.currentContext = await navigator.ml.createContext({deviceType, numThreads, powerPreference});
+          }
+        } else {
+          wasm.currentContext = await navigator.ml.createContext();
+        }
+        break;
+      }
+    }
+
     sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
     if (sessionHandle === 0) {
       checkLastError('Can\'t create a session.');
+    }
+
+    // clear current MLContext after session creation
+    if (wasm.currentContext) {
+      wasm.currentContext = undefined;
     }
 
     const [inputCount, outputCount] = getSessionInputOutputCount(sessionHandle);
@@ -287,7 +319,7 @@ export const createSession = async(
       const nameString = wasm.UTF8ToString(name);
       outputNames.push(nameString);
 
-      if (!BUILD_DEFS.DISABLE_WEBGPU) {
+      if (!BUILD_DEFS.DISABLE_JSEP) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
           outputPreferredLocations.push('gpu-buffer');
           continue;
@@ -308,7 +340,7 @@ export const createSession = async(
 
     // use IO binding only when at least one output is preffered to be on GPU.
     let bindingState: IOBindingState|null = null;
-    if (!BUILD_DEFS.DISABLE_WEBGPU && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
+    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
         checkLastError('Can\'t create IO binding.');
@@ -511,7 +543,7 @@ export const run = async(
       wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
     }
 
-    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState && !inputOutputBound) {
+    if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState && !inputOutputBound) {
       const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
 
       if (inputNamesUTF8Encoded.length !== inputCount) {
@@ -555,7 +587,7 @@ export const run = async(
 
     wasm.jsepOnRunStart?.(sessionHandle);
     let errorCode: number;
-    if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
+    if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
           sessionHandle, ioBindingState.handle, outputCount, outputValuesOffset, runOptionsHandle);
     } else {

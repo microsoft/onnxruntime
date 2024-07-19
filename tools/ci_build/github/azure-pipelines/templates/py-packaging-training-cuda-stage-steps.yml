@@ -66,11 +66,7 @@ stages:
               --build-arg OPSET_VERSION=${{ parameters.opset_version }}
               --build-arg PYTHON_VERSION=${{ parameters.python_version }}
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
-              --build-arg BUILD_UID=$(id -u)
-              --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
-              --build-arg DEVTOOLSET_ROOTPATH=/usr
-              --build-arg PREPEND_PATH=/usr/local/cuda/bin:
-              --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
+              --build-arg BUILD_UID=$(id -u)              
             Repository: $(Repository)
 
         - task: CmdLine@2
@@ -79,7 +75,7 @@ stages:
             script: |
               set -e -x
               mkdir -p $HOME/.onnx
-              docker run --rm -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              docker run --rm \
                 --volume /data/onnx:/data/onnx:ro \
                 --volume $(Build.SourcesDirectory):/onnxruntime_src \
                 --volume $(Build.BinariesDirectory):/build \
@@ -153,6 +149,8 @@ stages:
           clean: true
           submodules: none
 
+        - template: jobs/download_training_test_data.yml
+
         - template: set-python-manylinux-variables-step.yml
 
         - template: flex-downloadPipelineArtifact.yml
@@ -182,26 +180,8 @@ stages:
               --build-arg PYTHON_VERSION=${{ parameters.python_version }}
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
               --build-arg BUILD_UID=$(id -u)
-              --network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64
-              --build-arg DEVTOOLSET_ROOTPATH=/usr
-              --build-arg PREPEND_PATH=/usr/local/cuda/bin:
-              --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64
+              --network=host
             Repository: $(Repository)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-          displayName: 'Mount MNIST'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
-          displayName: 'Mount bert-data'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
-
-        - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
-          displayName: 'Mount hf-models-cache'
-          condition: succeededOrFailed()
-          workingDirectory: $(Build.SourcesDirectory)
 
         - task: CmdLine@2
           displayName: 'test ortmodule'
@@ -215,9 +195,7 @@ stages:
                 --gpus all \
                 -e NVIDIA_VISIBLE_DEVICES=all \
                 --volume $(Build.ArtifactStagingDirectory):/build \
-                --volume /mnist:/mnist \
-                --volume /bert_data:/bert_data \
-                --volume /hf_models_cache:/hf_models_cache \
+                --volume $(Agent.TempDirectory)/MNIST:/mnist \
                 $(Repository) \
                   bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$basefilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
             workingDirectory: $(Build.SourcesDirectory)

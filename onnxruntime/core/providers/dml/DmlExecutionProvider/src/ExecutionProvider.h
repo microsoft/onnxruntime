@@ -38,7 +38,8 @@ namespace Dml
             Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
             bool enableGraphCapture,
-            bool enableCpuSyncSpinning);
+            bool enableCpuSyncSpinning,
+            bool disableMemoryArena);
 
         void ReleaseCompletedReferences();
 
@@ -207,6 +208,7 @@ namespace Dml
         std::unordered_set<int> m_graphCapturingDone;
         bool m_sessionInitialized = false;
         bool m_cpuSyncSpinningEnabled = false;
+        bool m_memoryArenaDisabled = false;
         ComPtr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
@@ -260,7 +262,8 @@ namespace Dml
             Dml::ExecutionContext* executionContext,
             bool enableMetacommands,
             bool enableGraphCapture,
-            bool enableSyncSpinning
+            bool enableSyncSpinning,
+            bool disableMemoryArena
         );
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override

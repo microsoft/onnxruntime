@@ -201,6 +201,7 @@ export declare namespace InferenceSession {
     webgl: WebGLExecutionProviderOption;
     webgpu: WebGpuExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
+    qnn: QnnExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
   }
 
@@ -241,11 +242,65 @@ export declare namespace InferenceSession {
     readonly name: 'webgpu';
     preferredLayout?: 'NCHW'|'NHWC';
   }
-  export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
+
+  // #region WebNN options
+
+  interface WebNNExecutionProviderName extends ExecutionProviderOption {
     readonly name: 'webnn';
+  }
+
+  /**
+   * Represents a set of options for creating a WebNN MLContext.
+   *
+   * @see https://www.w3.org/TR/webnn/#dictdef-mlcontextoptions
+   */
+  export interface WebNNContextOptions {
     deviceType?: 'cpu'|'gpu'|'npu';
     numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider without MLContext.
+   */
+  export interface WebNNOptionsWithoutMLContext extends WebNNExecutionProviderName, WebNNContextOptions {
+    context?: never;
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider with MLContext.
+   *
+   * When MLContext is provided, the deviceType is also required so that the WebNN EP can determine the preferred
+   * channel layout.
+   *
+   * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
+   */
+  export interface WebNNOptionsWithMLContext extends WebNNExecutionProviderName,
+                                                     Omit<WebNNContextOptions, 'deviceType'>,
+                                                     Required<Pick<WebNNContextOptions, 'deviceType'>> {
+    context: unknown /* MLContext */;
+  }
+
+  /**
+   * Represents a set of options for WebNN execution provider with MLContext which is created from GPUDevice.
+   *
+   * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext-gpudevice
+   */
+  export interface WebNNOptionsWebGpu extends WebNNExecutionProviderName {
+    context: unknown /* MLContext */;
+    gpuDevice: unknown /* GPUDevice */;
+  }
+
+  /**
+   * Options for WebNN execution provider.
+   */
+  export type WebNNExecutionProviderOption = WebNNOptionsWithoutMLContext|WebNNOptionsWithMLContext|WebNNOptionsWebGpu;
+
+  // #endregion
+
+  export interface QnnExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'qnn';
+    // TODO add flags
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'coreml';

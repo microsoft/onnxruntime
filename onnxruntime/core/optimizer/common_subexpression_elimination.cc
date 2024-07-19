@@ -491,7 +491,8 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
       if (graph_outputs.count(output_def) > 0) {
         // Currently, we don't support eliminating the graph's outputs.
-        LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name() << "[" << node->OpType() << "] because it's the graph's output.";
+        LOGS(logger, VERBOSE) << "Not eliminating output " << output_def->Name() << " of node " << node->Name()
+                              << "[" << node->OpType() << "] because it's the graph's output.";
         continue;
       }
 

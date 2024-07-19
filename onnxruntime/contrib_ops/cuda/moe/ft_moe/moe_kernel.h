@@ -21,8 +21,8 @@
 #include "moe_gemm_kernels.h"
 #include <cuda_runtime_api.h>
 
-#include "core/common/common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
+#include "core/common/common.h"
 
 #include "cutlass/numeric_types.h"
 
@@ -53,8 +53,8 @@ static inline size_t pad_to_multiple_of_16(size_t input) {
 */
 template <typename T>
 void topk_gating_softmax_kernelLauncher(const T* input, const bool* finished, T* output, T* softmax_temp_out,
-                                        int* indices, int* source_row, int num_rows, int num_experts,
-                                        int k, cudaStream_t stream);
+                                        int* indices, int* source_row, int num_rows, int num_experts, int k,
+                                        cudaStream_t stream);
 
 class CubKeyValueSorter {
  public:
@@ -78,28 +78,28 @@ class CubKeyValueSorter {
 template <typename T>
 void initialize_moe_routing_kernelLauncher(const T* unpermuted_input, T* permuted_output,
                                            const int* expanded_dest_row_to_expanded_source_row,
-                                           int* expanded_source_row_to_expanded_dest_row, int num_rows,
-                                           int active_rows, int cols, int k, cudaStream_t stream);
+                                           int* expanded_source_row_to_expanded_dest_row, int num_rows, int active_rows,
+                                           int cols, int k, cudaStream_t stream);
 
 template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* bias,
                                          const T* scales, const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, int num_rows, int cols,
-                                         int k, cudaStream_t stream);
+                                         const int* expert_for_source_row, int num_rows, int cols, int k,
+                                         cudaStream_t stream);
 
 template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* skip,
                                          const T* bias, const T* scales,
                                          const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, int num_rows, int cols,
-                                         int k, cudaStream_t stream);
+                                         const int* expert_for_source_row, int num_rows, int cols, int k,
+                                         cudaStream_t stream);
 
 template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* skip_1,
                                          const T* skip_2, const T* bias, const T* scales,
                                          const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, int num_rows, int cols,
-                                         int k, cudaStream_t stream);
+                                         const int* expert_for_source_row, int num_rows, int cols, int k,
+                                         cudaStream_t stream);
 
 // Assumes inputs activations are row major. Weights need to be preprocessed by th_op/weight_quantize.cc .
 // Nested in a class to avoid multiple calls to cudaGetDeviceProperties as this call can be expensive.

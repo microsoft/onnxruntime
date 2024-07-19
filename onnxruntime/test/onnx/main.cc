@@ -8,6 +8,8 @@
 #include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
+#elif defined(_AIX)
+#include <thread>
 #else
 #include <getopt.h>
 #include <thread>
@@ -44,7 +46,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
       "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
@@ -169,6 +171,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_qnn = false;
   bool enable_nnapi = false;
+  bool enable_vsinpu = false;
   bool enable_coreml = false;
   bool enable_snpe = false;
   bool enable_dml = false;
@@ -248,6 +251,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_qnn = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("vsinpu"))) {
+            enable_vsinpu = true;
           } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
             enable_coreml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
@@ -563,6 +568,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_vsinpu) {
+#ifdef USE_VSINPU
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(sf));
+#else
+      fprintf(stderr, "VSINPU is not supported in this build");
+      return -1;
+#endif
+    }
     if (enable_coreml) {
 #ifdef USE_COREML
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
@@ -812,7 +825,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
-        ORT_TSTR("sce_none_weights_expanded")};
+        ORT_TSTR("sce_none_weights_expanded"),
+        ORT_TSTR("convtranspose_3d")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

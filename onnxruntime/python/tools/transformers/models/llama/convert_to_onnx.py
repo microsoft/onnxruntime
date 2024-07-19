@@ -263,7 +263,7 @@ def run_torchscript_separate_export(
         device,
         batch_size,
         sequence_length,
-        use_fp16=args.precision == Precision.FLOAT16,
+        use_fp16=False,
         world_size=world_size,
     )
     input_names = [
@@ -343,7 +343,7 @@ def run_torchscript_merged_export(
         sequence_length,
         past_sequence_length,
         max_seq_len=max_sequence_length,
-        use_fp16=args.precision == Precision.FLOAT16,
+        use_fp16=False,
         world_size=world_size,
     )
     input_names = [
@@ -400,7 +400,15 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: AutoConfig, input_path: str, output_path: str, remove_model: bool = True):
+def optimize_export(
+    args: argparse.Namespace,
+    config: AutoConfig,
+    input_path: str,
+    output_path: str,
+    remove_model: bool = True,
+    world_size: int = 1,
+    window_size: int = -1,
+):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
@@ -414,6 +422,8 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
         optimization_options=optimization_options,
         only_onnxruntime=False,
     )
+    if args.use_gqa:
+        model_opt = use_group_query_attention(config, model_opt, world_size, window_size)
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
 
     # Run symbolic shape inference on optimized model to avoid shape errors during runtime
@@ -445,9 +455,7 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
         remove_existing_model(input_path)
 
 
-def convert_to_float16(
-    args: argparse.Namespace, config: AutoConfig, old_paths: list[str], rank: int = 0, world_size: int = 1
-):
+def convert_to_float16(args: argparse.Namespace, old_paths: list[str], rank: int = 0):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
         args.output, f"rank_{rank}_{args.model_name}_decoder_with_past_model_fp16.onnx"
@@ -462,8 +470,6 @@ def convert_to_float16(
         if os.path.exists(fp32_path):
             model = OnnxModel(onnx.load_model(fp32_path, load_external_data=True))
             model.convert_float_to_float16(keep_io_types=False)
-            if args.use_gqa:
-                model = use_group_query_attention(config, model, world_size)
             model.save_model_to_file(fp16_path, use_external_data_format=True)
             del model
             logger.info(f"The ONNX model at {fp32_path} has been converted to float16 and saved at {fp16_path}!")
@@ -473,12 +479,12 @@ def convert_to_float16(
     return new_paths
 
 
-def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1, window_size: int = 0):
+def use_group_query_attention(config: AutoConfig, model_opt: OnnxModel, world_size: int = 1, window_size: int = -1):
     # Replace MultiHeadAttention with GroupQueryAttention
-    fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size)
-    fp16_model_opt.prune_graph()
-    fp16_model_opt.update_graph(allow_remove_graph_inputs=True)
-    return fp16_model_opt
+    model_opt = replace_mha_with_gqa(model_opt, "attention_mask", config.num_key_value_heads, world_size, window_size)
+    model_opt.prune_graph()
+    model_opt.update_graph(allow_remove_graph_inputs=True)
+    return model_opt
 
 
 def smooth_quant(
@@ -577,13 +583,12 @@ def remove_existing_files(output_path: str):
 def optimize_optimum(config: AutoConfig, args: argparse.Namespace):
     tmp_file = os.path.join(args.output, args.model_name + ".tmp.onnx")
     output_file = os.path.join(args.output, args.model_name + ".onnx")
-    optimize_export(config, args.input, tmp_file, remove_model=False)
+    window_size = -1 if not hasattr(config, "sliding_window") else config.sliding_window
+    optimize_export(args, config, args.input, tmp_file, remove_model=False, window_size=window_size)
     logger.info(f"Model successfully optimized to {tmp_file}")
     opt_model = OnnxModel(onnx.load_model(tmp_file, load_external_data=True))
     if args.precision == Precision.FLOAT16:
         opt_model.convert_float_to_float16(keep_io_types=False)
-        window_size = 0 if not hasattr(config, "sliding_window") else config.sliding_window
-        opt_model = use_group_query_attention(config, opt_model, args.world_size, window_size)
         logger.info("Model successfully fused and quantized to FP16!")
     opt_model.save_model_to_file(output_file, use_external_data_format=True)
     logger.info(f"Output model successfully saved to {output_file}")
@@ -829,7 +834,7 @@ def main():
     location = args.original_model_name if use_auth_token else args.input
 
     if args.optimize_optimum:
-        config = AutoConfig.from_pretrained(args.original_model_name)
+        config = AutoConfig.from_pretrained(args.original_model_name, cache_dir=args.cache_dir)
         optimize_optimum(config, args)
         return
 
@@ -901,7 +906,7 @@ def main():
             logger.info("Optimizing models...")
             for orig_path, opt_path in zip(old_paths, new_paths):
                 if os.path.exists(orig_path):
-                    optimize_export(l_config, input_path=orig_path, output_path=opt_path)
+                    optimize_export(args, l_config, input_path=orig_path, output_path=opt_path, world_size=world_size)
 
             # Re-assign default FP32 model paths as their optimized versions
             decoder_model_fp32_path = decoder_model_fp32_opt_path
@@ -915,7 +920,7 @@ def main():
 
             # Change precision of exported models from FP32
             if args.precision == Precision.FLOAT16:
-                new_paths = convert_to_float16(args, l_config, old_paths, rank, world_size)
+                new_paths = convert_to_float16(args, old_paths, rank)
 
             elif args.precision == Precision.INT8:
                 decoder_model_int8_path = os.path.join(
@@ -971,7 +976,7 @@ def main():
 
             elif args.precision == Precision.INT4:
                 if args.execution_provider != "cpu":
-                    old_paths = convert_to_float16(args, l_config, old_paths, rank, world_size)
+                    old_paths = convert_to_float16(args, old_paths, rank)
 
                 decoder_model_int4_path = os.path.join(
                     args.output, f"rank_{rank}_{args.model_name}_decoder_model_int4.onnx"
@@ -1047,7 +1052,8 @@ def main():
             logger.info(f"check parity with cmd: {parity_cmd}")
             parity_check(parity_cmd)
         except Exception as e:
-            logger.warning(f"An error occurred while verifying parity: {e}", exc_info=True)
+            logger.exception(f"An error occurred while verifying parity: {e}")
+            sys.exit(-1)
 
 
 if __name__ == "__main__":

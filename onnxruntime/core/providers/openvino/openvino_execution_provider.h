@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <utility>
 
 #include "core/providers/openvino/backend_manager.h"
 
@@ -72,23 +73,28 @@ struct OpenVINOExecutionProviderInfo {
   bool enable_opencl_throttling_{false};
   bool disable_dynamic_shapes_{false};
   bool export_ep_ctx_blob_{false};
+  bool enable_qdq_optimizer_{false};
+  bool disable_cpu_fallback_{false};
 
   OpenVINOExecutionProviderInfo() = delete;
 
   explicit OpenVINOExecutionProviderInfo(std::string dev_type, std::string precision, bool enable_npu_fast_compile,
                                          size_t num_of_threads, std::string cache_dir, std::string model_priority,
                                          int num_streams, void* context, bool enable_opencl_throttling,
-                                         bool disable_dynamic_shapes, bool export_ep_ctx_blob)
+                                         bool disable_dynamic_shapes, bool export_ep_ctx_blob,
+                                         bool enable_qdq_optimizer, bool disable_cpu_fallback)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
-        cache_dir_(cache_dir),
+        cache_dir_(std::move(cache_dir)),
         model_priority_(model_priority),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
-        export_ep_ctx_blob_(export_ep_ctx_blob) {
+        export_ep_ctx_blob_(export_ep_ctx_blob),
+        enable_qdq_optimizer_(enable_qdq_optimizer),
+        disable_cpu_fallback_(disable_cpu_fallback) {
     std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                        "GPU.0", "GPU.1", "NPU"};
     if (dev_type == "") {
@@ -115,11 +121,11 @@ struct OpenVINOExecutionProviderInfo {
         if (devices[0] == "CPU") {
           precision_ = "FP32";
         }
-        device_type_ = dev_type;
+        device_type_ = std::move(dev_type);
       }
 #endif
     } else if (ov_supported_device_types.find(dev_type) != ov_supported_device_types.end()) {
-      device_type_ = dev_type;
+      device_type_ = std::move(dev_type);
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type);
       device_type_ = dev_type;

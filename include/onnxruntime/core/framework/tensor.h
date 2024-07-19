@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
@@ -145,6 +145,17 @@ class Tensor final {
   /// <returns>Bytes required.</returns>
   static size_t CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape);
 
+  /// <summary>
+  /// Calculate the required storage for the tensor.
+  /// </summary>
+  /// <param name="elt_type">Data type of the tensor elements.</param>
+  /// <param name="shape">Tensor shape.</param>
+  /// <param name="alignment">Power of 2 alignment to include in calculation.
+  /// Bumps up result to the nearest multiple of alignment. Set to 0 to ignore.</param>
+  /// <param name="storage_size">The resulting storage size.</param>
+  /// <returns>Status indicating success or failure.</returns>
+  static Status CalculateTensorStorageSize(MLDataType elt_type, const TensorShape& shape, size_t alignment,
+                                           size_t& storage_size);
   /**
      Returns the data type.
   */
@@ -200,7 +211,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<size_t>(shape_.Size()));
+    return gsl::make_span(data, static_cast<size_t>(NumStorageElements()));
   }
 
   template <typename T>
@@ -217,7 +228,7 @@ class Tensor final {
     ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
                 "T ", "!=", dtype_);
     const T* data = reinterpret_cast<const T*>(static_cast<char*>(p_data_) + byte_offset_);
-    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(shape_.Size()));
+    return gsl::make_span(data, static_cast<typename gsl::span<T>::size_type>(NumStorageElements()));
   }
 
   void* MutableDataRaw(MLDataType type) {
@@ -270,6 +281,19 @@ class Tensor final {
   inline void SetByteOffset(ptrdiff_t byte_offset) {
     byte_offset_ = byte_offset;
   }
+
+  /// <summary>
+  /// The number of Tensor "storage" elements. A single storage element may contain multiple sub-elements for
+  /// sub-byte data types (e.g., int4).
+  ///
+  /// For element types smaller than 1 byte (e.g., int4), a single storage element stores multiple sub-byte elements.
+  /// Example: Tensor<int4> of shape (4,) has 2 storage elements.
+  ///
+  /// For element types >= 1 byte, this function returns the product of the shape.
+  /// Example: Tensor<int8> of shape (4,) has 4 storage elements.
+  /// </summary>
+  /// <returns>Number of tensor storage elements</returns>
+  int64_t NumStorageElements() const;
 
   /**
   The number of bytes of data.

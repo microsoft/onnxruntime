@@ -17,7 +17,9 @@ import java.util.logging.Logger;
 /** * Conversions between fp16, bfloat16 and fp32. */
 public final class Fp16Conversions {
   private static final Logger logger = Logger.getLogger(Fp16Conversions.class.getName());
-  
+
+  private Fp16Conversions() {}
+
   /**
    * Rounds a buffer of floats into a buffer containing fp16 values (stored as shorts in Java).
    *

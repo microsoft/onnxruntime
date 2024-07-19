@@ -2320,6 +2320,9 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 #endif
 
 #ifdef ENABLE_CUDA_NHWC_OPS
+#ifndef DISABLE_CONTRIB_OPS
+  ORT_RETURN_IF_ERROR(::onnxruntime::contrib::cuda::RegisterCudaNhwcContribKernels(kernel_registry));
+#endif
   ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaNhwcKernels(kernel_registry));
 #endif
 

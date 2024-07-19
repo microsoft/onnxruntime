@@ -187,18 +187,26 @@ class QDQQuantizer(BaseQuantizer):
 
         self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
 
+        # User can specify if removable activations, like Clip/Relu, should be kept in the graph.
+        # Used in the QDQRemovableActivation class.
+        self.qdq_keep_removable_activations = extra_options.get("QDQKeepRemovableActivations", False)
+
         # The ONNX spec did not support 16-bit Q/DQ ops before opset 21.
         # So, may have to override the Q/DQ op domain to 'com.microsoft' if the activation or weight types
-        # are 16-bit integers.
+        # are 16-bit or 4-bit integers.
         if self.opset_version < 21:
-            int16_types = (TensorProto.UINT16, TensorProto.INT16)
-            overrides_have_int16 = any(t.tensor_type in int16_types for t in self.tensor_quant_override_qtypes)
+            opset21_types = (TensorProto.UINT16, TensorProto.INT16, TensorProto.UINT4, TensorProto.INT4)
+            overrides_have_opset21_types = any(
+                t.tensor_type in opset21_types for t in self.tensor_quant_override_qtypes
+            )
             if not self.qdq_op_domain and (
-                self.activation_qType in int16_types or self.weight_qType in int16_types or overrides_have_int16
+                self.activation_qType in opset21_types
+                or self.weight_qType in opset21_types
+                or overrides_have_opset21_types
             ):
                 logging.warning(
                     "ONNX QuantizeLinear and DequantizeLinear operators do not support "
-                    "16-bit integer quantization types prior to opset 21. "
+                    "16-bit/4-bit integer quantization types prior to opset 21. "
                     f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
                     "enable support."
                 )
@@ -472,8 +480,9 @@ class QDQQuantizer(BaseQuantizer):
         if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
-            qtype = self.activation_qType
-            if self.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
+
+            qtype = self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType
+            if qtype == onnx.onnx_pb.TensorProto.UINT8:
                 qtype = onnx_proto.TensorProto.INT8
 
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
@@ -632,8 +641,12 @@ class QDQQuantizer(BaseQuantizer):
                                 |        +-> <Graph output>
                                 |
                                 +-> DQ1' ---> Q2 ---> DQ2 ---> <Consumers of converted type>
+
+        5) Tensor T is a graph output that is not consumed by any other nodes.
+
+            <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Graph output>
         """
-        tensor_recv_nodes = set([node.name for node in self.tensor_to_its_receiving_nodes[tensor_name]])
+        tensor_recv_nodes = set([node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])])
 
         if (
             self.dedicated_qdq_pair
