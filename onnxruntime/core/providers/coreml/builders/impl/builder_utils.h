@@ -137,6 +137,17 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
 void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
 
 /// <summary>
+/// Add an output to a MILSpec::Operation for an intermediate operation when the implementation is composed of
+/// multiple MLProgram operations. In this case we don't have a NodeArg for the output.
+/// </summary>
+/// <param name="op">Operation to update.</param>
+/// <param name="name">Name of the intermediate output.</param>
+/// <param name="element_type">onnx::TensorProto_DataType element type of the output.
+///   int32_t as that is what TensorShapeProto uses to store the value.</param>
+/// <param name="shape">Shape of the output if known.</param>
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, const std::string& name,
+                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape);
+/// <summary>
 /// Add pad_type and pad values.
 /// </summary>
 /// <param name="op">Operator to update</param>
