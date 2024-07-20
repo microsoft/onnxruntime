@@ -130,6 +130,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSplitOpBuilder("Split", op_registrations);
   }
 
+  CreateGridSampleOpBuilder("GridSample", op_registrations);
+
   return op_registrations;
 }
 
