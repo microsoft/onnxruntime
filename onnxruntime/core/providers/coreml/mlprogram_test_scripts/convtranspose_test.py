@@ -26,7 +26,6 @@ print(prog)
 
 # Convert to ML program
 m = ct.convert(prog, minimum_deployment_target=target, compute_precision=ct.precision.FLOAT32)
-x = np.ones(x_shape, dtype=np.float32)
 
 # spec = m.get_spec()
 # print(spec)
