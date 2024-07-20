@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+// Modifications: Update interface and implmentation to be thread-safe
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_v2.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/flash_attention/fmha_flash_attention.h"
@@ -36,26 +40,25 @@ void set_alpha_fp16(uint32_t& alpha, float norm) {
 
 class FusedMHARunnerFP16v2::FmhaImpl {
  public:
-  FmhaImpl(FusedMHARunnerFP16v2* interface_)
-      : interface_(interface_),
-        sm_(interface_->sm_),
-        xmma_kernel_(getXMMAKernelsV2(DATA_TYPE_FP16, sm_)) {
-    ORT_ENFORCE((sm_ == kSM_70 || sm_ == kSM_75 || sm_ == kSM_80 || sm_ == kSM_86 || sm_ == kSM_89),
+  FmhaImpl(FusedMHARunnerFP16v2* interface, int sm)
+      : interface_(interface),
+        sm_(sm),
+        xmma_kernel_(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
+    ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86 || sm == kSM_89),
                 "Unsupported architecture");
 
     flash_kernel_ = nullptr;
     if (interface_->enable_flash_attention_) {
-      flash_kernel_ = get_flash_attention_kernels(DATA_TYPE_FP16, sm_);
+      flash_kernel_ = get_flash_attention_kernels(DATA_TYPE_FP16, sm);
     }
   }
 
   ~FmhaImpl() {}
 
   void Setup(Fused_multihead_attention_params_v2& params,
-             int sequence_length, // normalized sequence length
+             int sequence_length,  // normalized sequence length
              int batch_size,
              bool& use_flash_attention) const {
-    // For bert and vit, use flash attention when sequence length is larger than the threshold.
     use_flash_attention = UseFlashAttention(sequence_length);
 
     params.force_unroll = use_flash_attention;
@@ -121,8 +124,8 @@ class FusedMHARunnerFP16v2::FmhaImpl {
   }
 
   void SetupCausal(Fused_multihead_attention_params_v2& params,
-                   const int sequence_length, // normalized sequence length
-                   const int batch_size,
+                   int sequence_length,  // normalized sequence length
+                   int batch_size,
                    bool& use_flash_attention) const {
     const float scale_bmm1 = interface_->scale_;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
@@ -185,7 +188,7 @@ class FusedMHARunnerFP16v2::FmhaImpl {
     return xmma_kernel_->isValid(sequence_length);
   }
 
-  int NormalizeSequenceLength(const int max_seq_len) const {
+  int NormalizeSequenceLength(int max_seq_len) const {
     if (UseFlashAttention(max_seq_len)) {
       return max_seq_len;
     }
@@ -211,7 +214,7 @@ class FusedMHARunnerFP16v2::FmhaImpl {
   }
 
  protected:
-  bool UseFlashAttention(const int sequence_length) const {
+  bool UseFlashAttention(int sequence_length) const {
     ORT_ENFORCE(interface_->is_causal_ == false);
     return interface_->enable_flash_attention_ && sequence_length >= kMinSequenceLengthFlashAttention;
   }
@@ -223,16 +226,15 @@ class FusedMHARunnerFP16v2::FmhaImpl {
   const FusedMultiHeadFlashAttentionKernel* flash_kernel_;
 };
 
-FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int num_heads,
-                                           const int head_size,
-                                           const int sm,
-                                           bool causal_mask,
+FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(int num_heads,
+                                           int head_size,
+                                           int sm,
+                                           bool causal,
                                            bool enable_flash_attention,
-                                           const float scale)
-    : MHARunner(num_heads, head_size, causal_mask, scale),
-      sm_(sm),
+                                           float scale)
+    : MHARunner(num_heads, head_size, causal, scale),
       enable_flash_attention_(enable_flash_attention),
-      impl_(new FmhaImpl(this)) {
+      impl_(new FmhaImpl(this, sm)) {
 }
 
 bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_length,
@@ -278,8 +280,8 @@ bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_lengt
   return sequence_length <= max_sequence_length;
 }
 
-void FusedMHARunnerFP16v2::Run(const int batch_size,
-                               const int normalized_sequence_length,
+void FusedMHARunnerFP16v2::Run(int batch_size,
+                               int normalized_sequence_length,
                                const void* input,
                                const void* cu_seqlens,
                                void* output,
@@ -299,23 +301,23 @@ bool FusedMHARunnerFP16v2::IsValid(int normalized_sequence_length) const {
   return impl_->IsValid(normalized_sequence_length);
 }
 
-int FusedMHARunnerFP16v2::NormalizeSequenceLength(const int max_seq_len) const {
+int FusedMHARunnerFP16v2::NormalizeSequenceLength(int max_seq_len) const {
   return impl_->NormalizeSequenceLength(max_seq_len);
 }
 
-std::unique_ptr<MHARunner> FusedMHARunnerFP16v2::Create(const int num_heads,
-                                                        const int head_size,
-                                                        const int sm,
-                                                        bool causal_mask,
+std::unique_ptr<MHARunner> FusedMHARunnerFP16v2::Create(int num_heads,
+                                                        int head_size,
+                                                        int sm,
+                                                        bool causal,
                                                         bool enable_flash_attention,
                                                         const float scale) {
 #ifdef _MSC_VER
-  return std::make_unique<FusedMHARunnerFP16v2>(num_heads, head_size, sm, causal_mask, enable_flash_attention, scale);
+  return std::make_unique<FusedMHARunnerFP16v2>(num_heads, head_size, sm, causal, enable_flash_attention, scale);
 #else
   // Linux build has error using make_unique: invalid application of ‘sizeof’ to
   // incomplete type ‘onnxruntime::contrib::cuda::FusedMHARunnerFP16v2::FmhaImpl
   std::unique_ptr<MHARunner> runner;
-  runner.reset(new FusedMHARunnerFP16v2(num_heads, head_size, sm, causal_mask, enable_flash_attention, scale));
+  runner.reset(new FusedMHARunnerFP16v2(num_heads, head_size, sm, causal, enable_flash_attention, scale));
   return runner;
 #endif
 }

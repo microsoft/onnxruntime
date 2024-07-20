@@ -14,27 +14,35 @@
  * limitations under the License.
  */
 
+// Modifications: Update interface and implmentation to be thread-safe
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include <memory>
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_common.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 constexpr int kMinSequenceLengthFlashAttention = 385;
 
-// Multi-Head Attention runner
 class MHARunner {
  public:
-  MHARunner(int num_heads, int head_size, bool causal_mask, float scale)
+  MHARunner(int num_heads, int head_size, bool causal, float scale)
       : num_heads_(num_heads),
         head_size_(head_size),
         scale_(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(head_size)) : scale),
-        is_causal_(causal_mask) {
+        is_causal_(causal) {
   }
 
   virtual ~MHARunner() = default;
+
+  virtual int NormalizeSequenceLength(int max_seq_len) const = 0;
+
+  virtual bool IsValid(int normalized_sequence_length) const = 0;
 
   virtual void Run(int batch_size,
                    int normalized_sequence_length,
@@ -42,10 +50,6 @@ class MHARunner {
                    const void* cu_seqlens,
                    void* output,
                    cudaStream_t stream) const = 0;
-
-  virtual bool IsValid(int normalized_sequence_length) const = 0;
-
-  virtual int NormalizeSequenceLength(int max_seq_len) const = 0;
 
  protected:
   int num_heads_;
@@ -56,36 +60,36 @@ class MHARunner {
 
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
-  FusedMHARunnerFP16v2(const int num_heads,
-                       const int head_size,
-                       const int sm,
-                       bool causal_mask,
+  FusedMHARunnerFP16v2(int num_heads,
+                       int head_size,
+                       int sm,
+                       bool causal,
                        bool enable_flash_attention,
-                       const float scale);
+                       float scale);
+
   ~FusedMHARunnerFP16v2() = default;  // for impl_
 
   static bool IsSupported(int sm, int head_size, int sequence_length, bool enable_flash_attention, bool causal);
 
-  void Run(const int batch_size,
-           const int normalized_sequence_length,
+  static std::unique_ptr<MHARunner> Create(int num_heads,
+                                           int head_size,
+                                           int sm,
+                                           bool causal,
+                                           bool enable_flash_attention,
+                                           float scale);
+
+  bool IsValid(int normalized_sequence_length) const override;
+
+  int NormalizeSequenceLength(int max_seq_len) const override;
+
+  void Run(int batch_size,
+           int normalized_sequence_length,
            const void* input,
            const void* cu_seqlens,
            void* output,
            cudaStream_t stream) const override;
 
-  bool IsValid(int normalized_sequence_length) const override;
-
-  int NormalizeSequenceLength(const int max_seq_len) const override;
-
-  static std::unique_ptr<MHARunner> Create(const int num_heads,
-                                           const int head_size,
-                                           const int sm,
-                                           bool causal_mask,
-                                           bool enable_flash_attention,
-                                           const float scale);
-
  private:
-  int sm_;
   bool enable_flash_attention_;
   class FmhaImpl;
   std::unique_ptr<FmhaImpl> impl_;
