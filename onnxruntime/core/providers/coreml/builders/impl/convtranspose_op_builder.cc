@@ -67,7 +67,7 @@ Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuild
   // const auto output_shape = helper.GetInt64s("output_shape");
   // if (output_shape) {
   //  AddOperationInput(*op, "output_shape", model_builder.AddConstant(op_type, "output_shape", *output_shape));
-  //  // these are required despite the spec saying
+  //  // these are required despite the spec saying otherwise
   //  AddOperationInput(*op, "pad_type", model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
   //  std::vector<int64_t> pads(num_spatial_dims * 2, 0);
   //  AddOperationInput(*op, "pad", model_builder.AddConstant(op_type, "pad", pads));
@@ -156,7 +156,7 @@ bool ConvTransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
   } else if (autopad == AutoPadType::NOTSET) {
     // CoreML output is inconsistent if pads are asymmetric.
     // CPU works. Other devices don't seem to (at least on macOS).
-    auto onnx_pads = *helper.GetInt64s("pads");  // 'pads' are requred if auto_pad is NOTSET
+    auto onnx_pads = *helper.GetInt64s("pads");  // 'pads' are required if auto_pad is NOTSET
     const auto pad_value = onnx_pads[0];
     if (!std::all_of(onnx_pads.begin() + 1, onnx_pads.end(),
                      [pad_value](auto value) { return value == pad_value; })) {
