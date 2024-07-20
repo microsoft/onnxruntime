@@ -25,6 +25,8 @@ https://apple.github.io/coremltools/docs-guides/source/model-intermediate-langua
 Usage is reasonably intuitive. The below example defines a model with 2 inputs and a matmul operator.
 The model is printed, and run with randomly generated inputs. The output from doing so is printed.
 
+There are additional test scripts in this directory for different operators.
+
 ```python
 import numpy as np
 import coremltools as ct
