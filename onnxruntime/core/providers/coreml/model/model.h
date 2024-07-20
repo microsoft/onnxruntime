@@ -42,7 +42,7 @@ using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& n
 
 #if defined(__APPLE__)
 // helper function that we unit test
-Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride);
+Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t& num_blocks, int64_t& block_size, int64_t& stride);
 #endif
 
 class Model {

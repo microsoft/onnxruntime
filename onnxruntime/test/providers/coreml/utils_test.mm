@@ -19,7 +19,7 @@ auto ValidateGetInfo(MLMultiArray* array,
   int64_t num_blocks = 0;
   int64_t block_size = 0;
   int64_t stride = 0;
-  auto status = coreml::GetMLMultiArrayCopyInfo(array, &num_blocks, &block_size, &stride);
+  auto status = coreml::GetMLMultiArrayCopyInfo(array, num_blocks, block_size, stride);
 
   if (!expect_valid) {
     ASSERT_STATUS_NOT_OK(status);

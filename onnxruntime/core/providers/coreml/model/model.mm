@@ -419,7 +419,7 @@ NS_ASSUME_NONNULL_BEGIN
         int64_t block_size = 0;
         int64_t stride = 0;
 
-        ORT_RETURN_IF_ERROR(GetMLMultiArrayCopyInfo(data, &num_blocks, &block_size, &stride));
+        ORT_RETURN_IF_ERROR(GetMLMultiArrayCopyInfo(data, num_blocks, block_size, stride));
 
         __block Status copy_status;
         const auto* tensor_info = &output_tensor_info;
@@ -454,7 +454,8 @@ NS_ASSUME_NONNULL_END
 namespace onnxruntime {
 namespace coreml {
 
-Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride) {
+Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
+                               int64_t& num_blocks, int64_t& block_size, int64_t& stride) {
   const auto* shape = array.shape;
   const auto rank = shape.count;
 
@@ -466,13 +467,13 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, i
     int64_t this_stride = [array.strides[rank - i] longLongValue];
     if (this_stride != total_elems) {
       // non-contiguous if we have to move more than batch_elems for each entry
-      if (*block_size != 0) {
+      if (block_size != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Multiple non-contiguous dimensions in MLMultiArray are not supported.");
       }
 
-      *block_size = data_elems;
-      *stride = this_stride;
+      block_size = data_elems;
+      stride = this_stride;
     }
 
     const auto elems_this_dim = [shape[rank - i] longLongValue];
@@ -480,17 +481,17 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, i
     total_elems = elems_this_dim * this_stride;
   }
 
-  if (*block_size == 0) {
+  if (block_size == 0) {
     // contiguous
-    *block_size = data_elems;
-    *stride = array_total_elements;
+    block_size = data_elems;
+    stride = array_total_elements;
   }
 
-  *num_blocks = data_elems / *block_size;
+  num_blocks = data_elems / block_size;
 
   ORT_ENFORCE(array_total_elements == total_elems, "Logic error calculating copy info");
-  ORT_ENFORCE(*stride >= *block_size, "Logic error calculating copy info");
-  ORT_ENFORCE(*stride * *num_blocks == total_elems, "Logic error calculating copy info");
+  ORT_ENFORCE(stride >= block_size, "Logic error calculating copy info");
+  ORT_ENFORCE(stride * num_blocks == total_elems, "Logic error calculating copy info");
 
   return Status::OK();
 }
