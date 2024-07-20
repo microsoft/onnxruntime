@@ -8,11 +8,13 @@ target = ct.target.iOS15
 # to prove CoreML mode is DCR
 x_shape = (1, 8, 2, 3)
 
+
 @mb.program(input_specs=[mb.TensorSpec(shape=x_shape)], opset_version=target)
 def prog(x):
     block_size = mb.const(name="block_size", val=2)
     z = mb.depth_to_space(x=x, block_size=block_size)
     return z
+
 
 print(prog)
 
