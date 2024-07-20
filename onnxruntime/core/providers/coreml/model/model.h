@@ -19,6 +19,7 @@
 #else
 typedef struct objc_object MLMultiArray;
 #endif
+#endif
 
 namespace onnxruntime {
 namespace coreml {
@@ -39,6 +40,7 @@ using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& n
                                                             int32_t requested_onnx_tensor_element_type,
                                                             gsl::span<const int64_t> static_shape)>;
 
+#if defined(__APPLE__)
 // helper function that we unit test
 Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t* num_blocks, int64_t* block_size, int64_t* stride);
 #endif
