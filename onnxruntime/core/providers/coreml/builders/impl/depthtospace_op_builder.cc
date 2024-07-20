@@ -25,7 +25,7 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
 
 Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                     const Node& node,
-                                                    const logging::Logger& logger) const {
+                                                    [[maybe_unused]] const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& output_defs = node.OutputDefs();
   const auto& input_name = input_defs[0]->Name();
