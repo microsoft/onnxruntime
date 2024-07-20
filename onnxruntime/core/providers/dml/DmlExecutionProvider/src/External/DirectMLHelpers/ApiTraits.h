@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 175;
+    static constexpr auto ValueCount = 178;
     static constexpr size_t ActivationFunctionCount = 26;
 };
 
@@ -2922,6 +2922,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_MULTIHEAD_ATTENTION1: return "DML_OPERATOR_MULTIHEAD_ATTENTION1";
     case DML_OPERATOR_QUANTIZE: return "DML_OPERATOR_QUANTIZE";
     case DML_OPERATOR_DEQUANTIZE: return "DML_OPERATOR_DEQUANTIZE";
+    case DML_OPERATOR_ROI_ALIGN_GRAD: return "DML_OPERATOR_ROI_ALIGN_GRAD";
+    case DML_OPERATOR_FOLD: return "DML_OPERATOR_FOLD";
+    case DML_OPERATOR_UNFOLD: return "DML_OPERATOR_UNFOLD";
     default:
         assert(false);
         return "<unknown>";
