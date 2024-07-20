@@ -58,6 +58,48 @@ jobs:
           --use_xnnpack \
           --use_binskim_compliant_compile_flags
 
+  Vcpkg:
+    runs-on: macos-13
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.python_version }}
+    - uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: "1de2026f28ead93ff1773e6e680387643e914ea1" # 2024.07.12
+        runVcpkgInstall: false
+
+    - name: "Run build.py(x64-osx)"
+      run: |
+        python ./tools/ci_build/build.py \
+          --build_dir "build/x64-osx" \
+          --skip_submodule_sync \
+          --compile_no_warning_as_error \
+          --skip_tests \
+          --parallel \
+          --use_xcode --osx_arch x86_64 \
+          --use_vcpkg \
+          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-osx" \
+          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      shell: bash
+
+    - name: "Run build.py(arm64-osx)"
+      run: |
+        python ./tools/ci_build/build.py \
+          --build_dir "build/arm64-osx" \
+          --skip_submodule_sync \
+          --compile_no_warning_as_error \
+          --skip_tests \
+          --parallel \
+          --use_xcode --osx_arch arm64 \
+          --use_vcpkg \
+          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-osx" \
+          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      shell: bash
+
   Objective-C-StaticAnalysis:
     runs-on: macos-14
 
