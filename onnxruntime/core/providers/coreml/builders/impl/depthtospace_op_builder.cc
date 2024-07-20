@@ -76,7 +76,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationInput(*reshape1, "x", input_name);
       AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape", shape1));
       const auto& reshape1_output = model_builder.GetUniqueName(node, "reshape1");
-      AddOperationOutput(*reshape1, reshape1_output, elem_type, shape1);
+      AddIntermediateOperationOutput(*reshape1, reshape1_output, elem_type, shape1);
 
       // transpose to [0, 3, 1, 4, 2]
       auto transpose = model_builder.CreateOperation(node, "transpose");
@@ -85,7 +85,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationInput(*transpose, "x", reshape1_output);
       AddOperationInput(*transpose, "perm", model_builder.AddConstant(transpose->type(), "perm", perm));
       const auto& transpose_output = model_builder.GetUniqueName(node, "transpose");
-      AddOperationOutput(*transpose, transpose_output, elem_type, shape2);
+      AddIntermediateOperationOutput(*transpose, transpose_output, elem_type, shape2);
 
       // reshape to [b, c // (blocksize ** 2), h * blocksize, w * blocksize]
       auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
