@@ -1,5 +1,5 @@
-import numpy as np
 import coremltools as ct
+import numpy as np
 from coremltools.converters.mil import Builder as mb
 
 target = ct.target.iOS15
@@ -8,12 +8,13 @@ target = ct.target.iOS15
 # is DCR
 x_shape = (1, 8, 2, 3)
 
-@mb.program(input_specs=[mb.TensorSpec(shape=x_shape)],
-            opset_version=target)
+
+@mb.program(input_specs=[mb.TensorSpec(shape=x_shape)], opset_version=target)
 def prog(x):
     block_size = mb.const(name="block_size", val=2)
     z = mb.depth_to_space(x=x, block_size=block_size)
     return z
+
 
 print(prog)
 
@@ -26,8 +27,8 @@ m = ct.convert(prog, minimum_deployment_target=target, compute_precision=ct.prec
 m.save("DepthToSpace.mlpackage")
 
 # also check for differences between CPU_ONLY and ALL
-m_cpu = ct.models.MLModel('DepthToSpace.mlpackage', compute_units=ct.ComputeUnit.CPU_ONLY)
-m_all = ct.models.MLModel('DepthToSpace.mlpackage', compute_units=ct.ComputeUnit.ALL)
+m_cpu = ct.models.MLModel("DepthToSpace.mlpackage", compute_units=ct.ComputeUnit.CPU_ONLY)
+m_all = ct.models.MLModel("DepthToSpace.mlpackage", compute_units=ct.ComputeUnit.ALL)
 
 x = np.array(
     [
@@ -45,6 +46,6 @@ x = np.array(
 ).astype(np.float32)
 
 print("CPU_ONLY")
-print(m_cpu.predict({'x': x}))
+print(m_cpu.predict({"x": x}))
 print("ALL")
-print(m_all.predict({'x': x}))
+print(m_all.predict({"x": x}))
