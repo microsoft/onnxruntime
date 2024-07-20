@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env as envImpl} from './env-impl.js';
+import type {OrtWasmModule} from 'onnxruntime-web';
 
 export declare namespace Env {
   export type WasmPathPrefix = string;
@@ -80,6 +81,15 @@ export declare namespace Env {
      * @defaultValue `false`
      */
     proxy?: boolean;
+
+    /**
+     * Set a custom function to import the WebAssembly module from user-land code (Inversion of Control, IoC).
+     *
+     * @defaultValue undefined
+     */
+    importWasmModule?: (mjsPathOverride: string, wasmPrefixOverride: string, numThreads: boolean) => Promise<[
+      string | undefined, EmscriptenModuleFactory<OrtWasmModule>
+    ]>;
   }
 
   export interface WebGLFlags {
