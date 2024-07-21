@@ -102,12 +102,14 @@ static Status CreateReplacementNode(Graph& graph,
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
+  Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
                                             OpType(runtime_state),
                                             Domain(runtime_state),
                                             ExtraAttributes(runtime_state),
                                             ValueMoves(runtime_state),
-                                            /* only_update_dest_definitions */ false, nullptr));
+                                            /* only_update_dest_definitions */ false, &replacement));
+  ORT_RETURN_IF_ERROR(ProcessNewNode(graph, selected_nodes, *replacement));
   return node_remover_.Run(graph, selected_nodes);
 }
 

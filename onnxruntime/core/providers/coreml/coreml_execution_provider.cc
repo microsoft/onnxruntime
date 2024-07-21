@@ -27,6 +27,7 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
       coreml_flags_(coreml_flags),
       coreml_version_(coreml::util::CoreMLVersion()) {
+  LOGS_DEFAULT(VERBOSE) << "CoreML version: " << coreml_version_;
   if (coreml_version_ < MINIMUM_COREML_VERSION) {
     LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
   }

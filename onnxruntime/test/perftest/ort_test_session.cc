@@ -5,6 +5,7 @@
 #include "ort_test_session.h"
 #include <algorithm>
 #include <limits>
+#include <fstream>
 #include <set>
 #include <list>
 #include <type_traits>
@@ -816,8 +817,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   }
 
-  session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
-
+  if (!performance_test_config.model_info.load_via_path) {
+    session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+  } else {
+    std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
+                       std::ios::binary | std::ios::in | std::ios::ate);
+    if (file.is_open()) {
+      const std::streamsize fsize = file.tellg();
+      file.seekg(0, std::ios_base::beg);
+      std::vector<char> model_bytes(narrow<size_t>(fsize));
+      file.read(model_bytes.data(), fsize);
+      session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
+    } else {
+      ORT_THROW("Model file could not be opened.\n");
+    }
+  }
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
