@@ -11,6 +11,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Gemm|Input B must be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:GridSample|4D input.<br/>'mode' of 'linear' or 'zeros'.<br/>(mode==linear && padding_mode==reflection && align_corners==0) is not supported.|
 |ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Mul||
