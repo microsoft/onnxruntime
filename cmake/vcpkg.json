@@ -1,6 +1,6 @@
 {
   "name": "onnxruntime",
-  "version-date": "2024-07-14",
+  "version-date": "2024-07-21",
   "description": "ONNX Runtime: cross-platform, high performance ML inferencing and training accelerator",
   "homepage": "https://onnxruntime.ai/",
   "license": "MIT",
@@ -55,6 +55,7 @@
     },
     "re2",
     "safeint",
+    "utf8-range",
     {
       "name": "vcpkg-cmake",
       "host": true
@@ -63,7 +64,11 @@
       "name": "vcpkg-cmake-config",
       "host": true
     },
-    "wil"
+    "wil",
+    {
+      "name": "zlib",
+      "platform": "windows"
+    }
   ],
   "features": {
     "tests": {
