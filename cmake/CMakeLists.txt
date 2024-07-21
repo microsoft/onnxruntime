@@ -597,9 +597,10 @@ get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
-if(onnxruntime_USE_VCPKG)
+if(FALSE) # onnxruntime_USE_VCPKG
   include(external/onnxruntime_vcpkg_deps.cmake)
 else()
+  list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
   include(external/onnxruntime_external_deps.cmake)
 endif()
 
