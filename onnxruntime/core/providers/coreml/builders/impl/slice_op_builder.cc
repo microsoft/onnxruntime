@@ -148,7 +148,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // We convert any int64 model input to int32 when running the CoreML model for the partition.
     // Any other integer data created at runtime is the output from CoreML operations, and should int32 not int64.
     // Based on that, we assume that the actual input when running will be int32, so we override the output data
-    // type to reflect this. 
+    // type to reflect this.
     // If we were to leave it as TensorProto_DataType_INT64 the CoreML model would be invalid.
     std::optional<int32_t> output_datatype;
 
