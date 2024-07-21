@@ -90,7 +90,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   run_test(false);
 
-  // NNAPI EP requires the starts/ends/axes/steps be initializers
+  // EPs like NNAPI and CoreML require the starts/ends/axes/steps be initializers
   run_test(true);
 }
 
