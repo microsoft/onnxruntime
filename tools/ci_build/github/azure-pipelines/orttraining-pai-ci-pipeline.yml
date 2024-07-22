@@ -276,7 +276,7 @@ jobs:
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test \
             /bin/bash -c "
               set -ex; \
-              pip install -r /onnxruntime_src/tools/ci_build/requirements-transformers-test.txt; \
+              pip install -r /onnxruntime_src/tools/ci_build/requirements/transformers-test/requirements.txt; \
               pytest /onnxruntime_src/onnxruntime/test/python/transformers/test_flash_attn_rocm.py -v -n 4 --reruns 1"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run tranformers tests'
