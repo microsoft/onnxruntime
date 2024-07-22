@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const getRequestData = (url, dir) => {
-  const pathname = new URL(url, 'http://localhost').pathname;
+  const pathname = new URL('http://localhost').pathname;
 
   let filepath;
   let mimeType;

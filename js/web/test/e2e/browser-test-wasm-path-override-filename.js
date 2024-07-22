@@ -13,13 +13,13 @@ it('Browser E2E testing - WebAssembly backend (path override filename)', async f
   ort.env.wasm.wasmPaths = {};
 
   if (typeof __ort_arg_files === 'string' && __ort_arg_files.includes('wasm')) {
-    const overrideWasmUrl = new URL('./test-wasm-path-override/renamed.wasm', base).href;
+    const overrideWasmUrl = new URL(base).href;
     console.log(`ort.env.wasm.wasmPaths['wasm'] = ${JSON.stringify(overrideWasmUrl)};`);
     ort.env.wasm.wasmPaths.wasm = overrideWasmUrl;
   }
 
   if (typeof __ort_arg_files === 'string' && __ort_arg_files.includes('mjs')) {
-    const overrideMjsUrl = new URL('./test-wasm-path-override/renamed.mjs', base).href;
+    const overrideMjsUrl = new URL(base).href;
     console.log(`ort.env.wasm.wasmPaths['mjs'] = ${JSON.stringify(overrideMjsUrl)};`);
     ort.env.wasm.wasmPaths.mjs = overrideMjsUrl;
   }

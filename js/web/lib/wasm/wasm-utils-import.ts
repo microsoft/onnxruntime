@@ -32,7 +32,7 @@ const origin = isNode || typeof location === 'undefined' ? undefined : location.
 const isSameOrigin = (filename: string, prefixOverride?: string) => {
   try {
     const baseUrl = prefixOverride ?? scriptSrc;
-    const url = baseUrl ? new URL(filename, baseUrl) : new URL(filename);
+    const url = baseUrl ? new URL(baseUrl) : new URL(filename);
     return url.origin === origin;
   } catch {
     return false;
@@ -45,7 +45,7 @@ const isSameOrigin = (filename: string, prefixOverride?: string) => {
 const normalizeUrl = (filename: string, prefixOverride?: string) => {
   const baseUrl = prefixOverride ?? scriptSrc;
   try {
-    const url = baseUrl ? new URL(filename, baseUrl) : new URL(filename);
+    const url = baseUrl ? new URL(baseUrl) : new URL(filename);
     return url.href;
   } catch {
     return undefined;

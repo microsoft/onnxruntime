@@ -58,7 +58,7 @@ const prepareTestFileList = () =>
 const compileTypeScriptFiles = (filepaths: string[]): readonly typescript.Diagnostic[] => {
   // TypeScript compiler options, base URL is reset to `TYPE_TESTS_DIR`.
   const compilerOptions =
-      JSON.parse(readFileSync(new URL('./type-tests/tsconfig.json', import.meta.url), 'utf-8')).compilerOptions as
+      JSON.parse(readFileSync(new URL(import.meta.url), 'utf-8')).compilerOptions as
       typescript.CompilerOptions;
   compilerOptions.baseUrl = TYPE_TESTS_DIR;
 

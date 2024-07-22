@@ -11,7 +11,7 @@ it('Browser E2E testing - WebAssembly backend (path override prefix)', async fun
   const base = `http://localhost:${__ort_arg_port}/`;
 
   // override .wasm file path prefix
-  const prefix = new URL('./test-wasm-path-override/', base).href;
+  const prefix = new URL(base).href;
   console.log(`ort.env.wasm.wasmPaths = ${JSON.stringify(prefix)};`);
   ort.env.wasm.wasmPaths = prefix;
 
