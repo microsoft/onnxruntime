@@ -139,8 +139,9 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 
   bool share_prepacked_weights = (prepacked_weights != nullptr);
 
+  const bool is_depthwise_conv = false; // (group_input_channels == 1 && group_output_channels == 1);
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
-  if (!(group_input_channels == 1 && group_output_channels == 1)) {
+  if (!is_depthwise_conv) {
     packed_W_size_ = MlasHalfGemmPackBSize(group_output_channels, kernel_dim, false);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
@@ -319,7 +320,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   int64_t group_output_channels = M / group_count;
 
   // Test for depthwise convolution.
-  const bool is_depthwise_conv = (group_input_channels == 1 && group_output_channels == 1);
+  const bool is_depthwise_conv = false;  //(group_input_channels == 1 && group_output_channels == 1);
   if (is_depthwise_conv) {
     // Update the input and output channels to the number of groups in order to
     // reuse as much of the below standard convolution path.
