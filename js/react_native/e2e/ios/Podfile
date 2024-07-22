@@ -6,7 +6,11 @@ platform :ios, '13.0'
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
-  use_react_native!(:path => config["reactNativePath"])
+  if config["reactNativePath"] != nil
+    use_react_native!(:path => config["reactNativePath"])
+  else
+    use_react_native!(:path => '../node_modules/react-native/')
+  end
 
   use_frameworks!
 
