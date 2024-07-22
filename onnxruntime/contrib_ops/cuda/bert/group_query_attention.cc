@@ -52,20 +52,13 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-#if USE_FLASH_ATTENTION
-  disable_flash_attention_ = sizeof(T) != 2 ||
-                             ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-#else
-  disable_flash_attention_ = true;
-#endif
+  kernel_options_ = this->GetAttentionKernelOptions();
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
+  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+
   // Memory efficient attention only supports float and float16, not bfloat16.
-  disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value ||
-                                        ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
+  disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value || !kernel_options_->UseEfficientAttention();
+
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
   }
@@ -161,7 +154,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&
-      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+      (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.head_size);
   if (!use_flash_attention && !use_memory_efficient_attention && local_window_size_ != -1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -200,6 +193,17 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
+
+  if (kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+
+    debug_info.Print("GroupQueryAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
 
   // seqlens_k buffer
   size_t seqlens_k_bytes = 0;

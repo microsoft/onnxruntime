@@ -4,13 +4,14 @@
 #pragma once
 
 #include "contrib_ops/cuda/bert/packed_attention.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 template <typename T>
-class PackedMultiHeadAttention final : public TrtFusedAttention<T>, public CudaKernel {
+class PackedMultiHeadAttention final : public TrtFusedAttention<T> {
  public:
   PackedMultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -32,7 +33,6 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T>, public CudaK
 
   bool disable_memory_efficient_attention_;
   bool disable_flash_attention_;
-  int min_seq_len_for_flash_attention_packed_qkv_;
 };
 
 }  // namespace cuda

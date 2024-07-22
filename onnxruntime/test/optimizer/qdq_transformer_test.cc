@@ -2763,6 +2763,57 @@ TEST(QDQTransformerTests, Clip) {
   }
 }
 
+// Test that the ReluQuantFusion transformer only runs for optimization level >= 2.
+TEST(QDQTransformerTests, ReluQuantFusion_Level2Only) {
+  auto test_case = [&](TransformerLevel opt_level, int8_t zp) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<int8_t>({1, 2, 2, 2},
+                                                  {-4, -3, -2, 0, 1, 2, 3, 4});
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(input_arg, 1.0f, zp, dq_output);
+
+      // add Relu
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {dq_output}, {relu_output});
+
+      // add Q + DQ
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<int8_t>(relu_output, 1.0f, zp, q_output);
+      builder.AddDequantizeLinearNode<int8_t>(q_output, 1.0f, zp, output_arg);
+    };
+
+    auto check_relu_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      // Only fuse relu into Q if level >= 2 and zero_point == -128 for int8.
+      // Level1 graph:   input -> DQ -> Relu -> Q -> DQ -> output
+      // Level2+ graph: input -> DQ -> output (QuantReluFusion + QDQFinalCleanupTransformer transformers)
+      const bool fuse_relu = (zp == -128) &&
+                             (opt_level == TransformerLevel::Level2 || opt_level == TransformerLevel::Level3);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], fuse_relu ? 0 : 1);
+      EXPECT_EQ(op_to_count["Relu"], fuse_relu ? 0 : 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], fuse_relu ? 1 : 2);
+    };
+
+    constexpr float epsilon = std::numeric_limits<float>::epsilon();
+
+    TransformerTester(build_test_case, check_relu_graph,
+                      TransformerLevel::Default,
+                      opt_level,
+                      18,
+                      epsilon,
+                      epsilon);
+  };
+
+  test_case(TransformerLevel::Level1, -128);  // Will not fuse Relu into QuantizeLinear due to level1 opt.
+  test_case(TransformerLevel::Level2, -128);  // Will fuse Relu into QuantizeLinear.
+  test_case(TransformerLevel::Level3, -128);  // Will fuse Relu into QuantizeLinear.
+  test_case(TransformerLevel::Level3, 0);     // Will not fuse Relu into QuantizeLinear due to zero-point != -128
+}
+
 TEST(QDQTransformerTests, Concat) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        int64_t axis,
