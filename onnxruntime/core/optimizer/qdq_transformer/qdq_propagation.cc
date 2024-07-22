@@ -129,10 +129,10 @@ void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity, 
 //                          +--> DQ -> dst_node_1
 //                          |    ...
 //                          +--> DQ -> dst_node_n
-// assumptions:
-// 1. All insertion edges have the same source node and the same source node output index.
-// 2. Insertion_edges are valid: node indices refer to valid nodes, and arg names refer to valid NodeArgs in the graph.
-// 3. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
+// Checks that all insertion edges share the same NodeArg. That is, the edges have the same source node and the
+// same source node output index. This function returns an error status if edges are invalid.
+//
+// Assumes that scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers.
 Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion_edges,
                       NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
                       const std::string& qdq_domain, const NodeAttributes& q_attrs, const NodeAttributes& dq_attrs,
@@ -360,23 +360,23 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       return false;
     };
 
-    // Propagate DQ forward in a BFS traversal of "edge groups". An "edge group" consists of one or more edges
+    // Propagate DQ forward in a BFS traversal of NodeArg edges. A NodeArg "edge group" consists of one or more edges
     // that all begin at the same source node's output slot and end at a graph output or a destination node.
-    // Ex: The subgraph below shows an edge group (containing 3 edges) that begins at a
+    // Ex: The subgraph below shows a NodeArg edge group (containing 3 edges) that begins at a
     // Transpose, ends at two destination nodes, and produces a graph output.
     //    DQ -> Transpose --+--> Sigmoid -> ...
     //                      |
     //                      +--> Slice -> ...
     //                      |
     //                      +--> graph_output
-    std::queue<InlinedVector<ExtendedGraphEdge>> edge_groups;
-    edge_groups.push(GetNextPropagationEdges(graph, edges_after_dq[0]));
+    std::queue<InlinedVector<ExtendedGraphEdge>> node_arg_edges;
+    node_arg_edges.push(GetNextPropagationEdges(graph, edges_after_dq[0]));
 
-    while (!edge_groups.empty()) {
-      const InlinedVector<ExtendedGraphEdge> curr_edge_group = std::move(edge_groups.front());
-      edge_groups.pop();
+    while (!node_arg_edges.empty()) {
+      const InlinedVector<ExtendedGraphEdge> curr_edge_group = std::move(node_arg_edges.front());
+      node_arg_edges.pop();
 
-      // Continue loop if edge group is empty. Also, to keep things simple, we do not yet handle edge groups in which
+      // Skip if edge group is empty. Also, to keep things simple, we do not yet handle edge groups in which
       // one of the destination nodes is already a QuantizeLinear node. Ex:
       //    DQ -> Transpose --+--> QuantizeLinear -> ...
       //                      |
@@ -390,7 +390,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       modified = true;
 
       for (const auto& edge : curr_edge_group) {
-        edge_groups.push(GetNextPropagationEdges(graph, edge));
+        node_arg_edges.push(GetNextPropagationEdges(graph, edge));
       }
     }
   }
