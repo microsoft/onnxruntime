@@ -193,8 +193,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
-                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                             enable_trt_flash_attention_, false);
+                          FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                            enable_trt_flash_attention_, false);
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
@@ -206,8 +206,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
-    const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-    if (fused_fp16_runner_->isValid(S)) {
+    const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
+    if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
       fused_runner = fused_fp16_runner_.get();
     }
   }
