@@ -2751,7 +2751,9 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
   std::function<void()> run_fn = [=]() {
 #pragma GCC diagnostic pop
 #else
-  std::function<void()> run_fn = [=]() {
+  #ifdef __cplusplus >= 202002L
+    std::function<void()> run_fn = [=, this]() {
+  #endif
 #endif
     Status status = Status::OK();
     ORT_TRY {
