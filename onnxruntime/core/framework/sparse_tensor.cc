@@ -551,7 +551,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   }
 
   if (Values().Shape().Size() > 0) {
-    // This instance may either have a contigious buffer which we can copy in one shot
+    // This instance may either have a contiguous buffer which we can copy in one shot
     // or it can point to users buffers, in which case we have to copy each buffer individually
     // strings can not be memcpyed albeit always on CPU.
     if (p_data_ != nullptr) {
@@ -569,7 +569,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
         ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst));
       }
     } else {
-      // non-contiguos buffer
+      // non-contiguous buffer
       if (is_string) {
         CopyStrings(Values(), result_values);
       } else {

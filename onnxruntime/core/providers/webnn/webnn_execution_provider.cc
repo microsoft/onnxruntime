@@ -329,7 +329,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     node_compute_funcs.push_back(compute_info);
   }
 
-  // Explictly release the WebNN builder to free memory.
+  // Explicitly release the WebNN builder to free memory.
   wnn_builder_ = emscripten::val::undefined();
 
   return Status::OK();

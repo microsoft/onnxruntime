@@ -269,7 +269,7 @@ def process_dropout(model):
         del model.graph.node[d]
 
 
-# Also need to set following line differently for differnt verison of bert
+# Also need to set following line differently for different version of bert
 # expand_out.name = '412'
 def add_expand_shape(model):
     expand_out = model.graph.value_info.add()

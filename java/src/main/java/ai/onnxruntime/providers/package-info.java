@@ -3,5 +3,5 @@
  * Licensed under the MIT License.
  */
 
-/** Classes for controlling the behaviour of ONNX Runtime Execution Providers. */
+/** Classes for controlling the behavior of ONNX Runtime Execution Providers. */
 package ai.onnxruntime.providers;

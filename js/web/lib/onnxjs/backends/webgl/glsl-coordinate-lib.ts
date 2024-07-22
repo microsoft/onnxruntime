@@ -1234,7 +1234,7 @@ export class CoordsGlslLib extends GlslLib {
   }
 
   /**
-   * This is the main function to map from the given texture coordiantes (s,t)
+   * This is the main function to map from the given texture coordinates (s,t)
    * to logical indices for the output
    * There will only be one single variation of this
    * Also see coordsToOffset and offsetToIndices for input-specific versions
