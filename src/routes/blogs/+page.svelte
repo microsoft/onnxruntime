@@ -17,6 +17,7 @@
 	import WebTrainingImage from '../../images/blogs/webtraining_blog_thumbnail.png';
 	import Phi3OnDeviceImage from '../../images/blogs/phi-3-on-device_blog_thumbnail.png';
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
+	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -45,6 +46,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Accelerating LightGlue Inference with ONNX Runtime and TensorRT',
+			date: 'July 17th, 2024',
+			blurb:
+				'Outperform torch.compile significantly using ONNX Runtime with TensorRT for LightGlue inference.',
+			link: 'https://fabio-sim.github.io/blog/accelerating-lightglue-inference-onnx-runtime-tensorrt/',
+			image: LightGlueImage,
+			imgalt:
+				'Speedup for ONNX Runtime with TensorRT and CUDA vs. torch.compile for difference batch sizes and sequence lengths.'
+		},
+		{
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
 			blurb:
@@ -64,6 +75,9 @@
 			imgalt:
 				'Image of a skateboarder with a sky background, with half of the background being alternating grey and white squares indicating it has been removed.'
 		},
+		
+	];
+	let blogs = [
 		{
 			title: 'Phi-3 Small and Medium Models are now Optimized with ONNX Runtime and DirectML',
 			date: 'May 21th, 2024',
@@ -74,10 +88,6 @@
 			imgalt:
 				'Chart comparing model size (in GB) of ONNX Phi-3-medium between PyTorch and ONNX Runtime'
 		},
-		
-		
-	];
-	let blogs = [
 		{
 			title: 'Enjoy the Power of Phi-3 with ONNX Runtime on your device',
 			date: 'May 20th, 2024',
