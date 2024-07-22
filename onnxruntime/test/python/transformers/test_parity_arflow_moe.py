@@ -428,3 +428,201 @@ class TestArflowMoE(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+#----------------------------------------------------------------------------------------------------------------------
+# class MoEBlockForOnnxExport(torch.autograd.Function):
+#     @staticmethod
+#     def forward(
+#         ctx,
+#         hidden_states,
+#         router_logits,
+#         batch_size,
+#         sequence_length,
+#         hidden_dim,
+#         top_k,
+#         num_experts,
+#         hidden_act,
+#         ffn_dim,
+#         start_expert_id,
+#         expert_weights_1,
+#         expert_weights_2,
+#         expert_weights_3,
+#     ):
+#         if get_tensor_model_parallel_world_size() > 1:
+#             final_hidden_states = torch.zeros(
+#                 (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+#             )
+#             return final_hidden_states
+#         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+#         routing_weights, selected_experts = torch.topk(
+#             routing_weights, top_k, dim=-1)
+
+#         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+#         # we cast back to the input dtype
+#         routing_weights = routing_weights.to(hidden_states.dtype)
+
+#         final_hidden_states = torch.zeros(
+#             (batch_size * sequence_length, hidden_dim), dtype=hidden_states.dtype, device=hidden_states.device
+#         )
+
+#         # One hot encode the selected experts to create an expert mask
+#         # this will be used to easily index which expert is going to be sollicitated
+#         expert_mask = torch.nn.functional.one_hot(
+#             selected_experts, num_classes=num_experts).permute(2, 1, 0)
+
+#         # Loop over all available experts in the model and perform the computation on each expert
+#         for expert_idx in range(num_experts):
+
+#             # expert_layer = self.experts[expert_idx]
+#             expert_weight_1 = expert_weights_1[expert_idx]
+#             expert_weight_2 = expert_weights_2[expert_idx]
+#             expert_weight_3 = expert_weights_3[expert_idx]
+#             idx, top_x = torch.where(expert_mask[expert_idx])
+
+#             if top_x.shape[0] == 0:
+#                 continue
+
+#             # in torch it is faster to index using lists than torch tensors
+#             top_x_list = top_x.tolist()
+#             idx_list = idx.tolist()
+
+#             # Index the correct hidden states and compute the expert hidden state for
+#             # the current expert. We need to make sure to multiply the output hidden
+#             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+#             current_state = hidden_states[None,
+#                                           top_x_list].reshape(-1, hidden_dim)
+#             # current_hidden_states = expert_layer(current_state) * routing_weights[top_x_list, idx_list, None]
+#             expert_layer_out = torch.nn.functional.linear(
+#                 current_state, expert_weight_1)
+#             expert_layer_out = ACT2FN[hidden_act](expert_layer_out)
+#             expert_layer_out = expert_layer_out * \
+#                 torch.nn.functional.linear(current_state, expert_weight_3)
+#             expert_layer_out = torch.nn.functional.linear(
+#                 expert_layer_out, expert_weight_2)
+
+#             current_hidden_states = expert_layer_out * \
+#                 routing_weights[top_x_list, idx_list, None]
+
+#             # However `index_add_` only support torch tensors for indexing so we'll use
+#             # the `top_x` tensor here.
+#             final_hidden_states.index_add_(
+#                 0, top_x, current_hidden_states.to(hidden_states.dtype))
+#         final_hidden_states = final_hidden_states.reshape(
+#             batch_size, sequence_length, hidden_dim)
+#         return final_hidden_states
+
+#     @staticmethod
+#     def symbolic(g: torch.Graph, hidden_states, router_logits, batch_size, sequence_length, hidden_dim, top_k, num_experts, hidden_act, ffn_dim,
+#                  start_expert_id,
+#                  expert_weights_1, expert_weights_2, expert_weights_3):
+#         moe_experts_bias1 = torch.zeros(
+#             num_experts, ffn_dim, dtype=hidden_states.type().dtype())
+#         moe_experts_bias2 = torch.zeros(
+#             get_tensor_model_parallel_world_size()*num_experts, hidden_dim, dtype=hidden_states.type().dtype())
+#         moe_experts_bias3 = torch.zeros(
+#             num_experts, ffn_dim, dtype=hidden_states.type().dtype())
+
+#         bias1 = g.op("Constant", value_t=moe_experts_bias1)
+#         bias2 = g.op("Constant", value_t=moe_experts_bias2)
+#         bias3 = g.op("Constant", value_t=moe_experts_bias3)
+#         None_value = g.op("Constant", value_t=torch.tensor(
+#             [], dtype=torch.float16))
+
+#         if get_tensor_model_parallel_world_size() > 1:
+#             final_hidden_states = g.op("com.microsoft::ShardedMoE", hidden_states, router_logits, expert_weights_1, bias1, expert_weights_2,
+#                                        bias2, expert_weights_3, activation_type_s="silu", k_i=top_k, normalize_routing_weights_i=1, local_experts_start_index_i=start_expert_id)
+#         else:
+#             final_hidden_states = g.op("com.microsoft::MoE", hidden_states, router_logits, expert_weights_1, None_value, bias1, expert_weights_2,
+#                                        None_value, bias2, expert_weights_3, None_value, bias3, activation_type_s="silu", k_i=top_k, normalize_routing_weights_i=1)
+#         final_hidden_states.setType(hidden_states.type())
+#         return final_hidden_states
+
+
+# class MixtralMoE(nn.Module):
+#     def __init__(
+#         self,
+#         config: MixtralConfig,
+#         linear_method: Optional[LinearMethodBase] = None,
+#     ):
+#         super().__init__()
+#         self.config = config
+#         self.rank = get_tensor_model_parallel_rank()
+#         self.tp_size = get_tensor_model_parallel_world_size()
+#         self.num_total_experts = config.num_local_experts
+#         self.top_k = config.num_experts_per_tok
+#         self.hidden_act = config.hidden_act
+#         if self.tp_size > self.num_total_experts:
+#             raise ValueError(
+#                 f"Tensor parallel size {self.tp_size} is greater than "
+#                 f"the number of experts {self.num_total_experts}.")
+#         # Split experts equally between ranks
+#         self.expert_indicies = np.array_split(range(
+#             self.num_total_experts), self.tp_size)[self.rank].tolist()
+#         if not self.expert_indicies:
+#             raise ValueError(
+#                 f"Rank {self.rank} has no experts assigned to it.")
+
+#         self.experts = nn.ModuleList([
+#             MixtralMLP(self.num_total_experts,
+#                        config.hidden_size,
+#                        config.intermediate_size,
+#                        linear_method=linear_method)
+#             if idx in self.expert_indicies else None
+#             for idx in range(self.num_total_experts)
+#         ])
+#         self.gate = ReplicatedLinear(config.hidden_size,
+#                                      self.num_total_experts,
+#                                      bias=False,
+#                                      linear_method=None)
+
+#     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+#         batch_size, sequence_length, hidden_dim = hidden_states.shape
+#         hidden_states = hidden_states.view(-1, hidden_dim)
+#         # router_logits: (batch * sequence_length, n_experts)
+#         router_logits, _ = self.gate(hidden_states)
+
+#         if torch.onnx.is_in_onnx_export():
+#             final_hidden_states = MoEBlockForOnnxExport.apply(
+#                 hidden_states,
+#                 router_logits,
+#                 batch_size,
+#                 sequence_length,
+#                 hidden_dim.item(),
+#                 self.top_k,
+#                 len(self.expert_indicies),
+#                 self.hidden_act,
+#                 int(self.experts[self.expert_indicies[0]
+#                                  ].w1.weight.shape[0].item()),
+#                 self.expert_indicies[0],
+#                 torch.stack(
+#                     [expert.w1.weight for expert in self.experts if expert is not None], dim=0),
+#                 torch.stack(
+#                     [expert.w2.weight for expert in self.experts if expert is not None], dim=0),
+#                 torch.stack(
+#                     [expert.w3.weight for expert in self.experts if expert is not None], dim=0),
+#             )
+#             return final_hidden_states.view(batch_size, sequence_length, hidden_dim)
+
+#         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+#         routing_weights, selected_experts = torch.topk(routing_weights,
+#                                                        self.top_k,
+#                                                        dim=-1)
+#         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+
+#         final_hidden_states = None
+#         for expert_idx in self.expert_indicies:
+#             expert_layer = self.experts[expert_idx]
+#             expert_mask = (selected_experts == expert_idx)
+#             expert_weights = (routing_weights * expert_mask).sum(dim=-1,
+#                                                                  keepdim=True)
+
+#             current_hidden_states = expert_layer(hidden_states).mul_(
+#                 expert_weights)
+#             if final_hidden_states is None:
+#                 final_hidden_states = current_hidden_states
+#             else:
+#                 final_hidden_states.add_(current_hidden_states)
+
+#         return tensor_model_parallel_all_reduce(final_hidden_states).view(
+#             batch_size, sequence_length, hidden_dim)
+#----------------------------------------------------------------------------------------------------------------------
