@@ -28,7 +28,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const logging::Logger& logger) const {
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
-    using namespace CoreML::Specification::MILSpec;
+    using namespace CoreML::Specification::MILSpec;  // NOLINT
 
     NodeAttrHelper helper(node);
     const auto axis = helper.GetInt64("axis");  // required
