@@ -60,9 +60,9 @@ using OpsetToIgnorableIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
  * Most recent revisited for ONNX v1.15.0 release - https://github.com/onnx/onnx/blob/b86cc54efce19530fb953e4b21f57e6b3888534c/docs/Operators.md
  *
  * We defined supported list explicitly instead of using a excluding list for the following reasons:
- * 1. Some ops generate indeterministic results (for example using random number generator). We need evaluate whether
+ * 1. Some ops generate non-deterministic results (for example using random number generator). We need evaluate whether
  *   this is a problem for recompute before adding the support, instead of fixing this after we find and try to
- *   fix convergence issues (which will be very hard if we have multiple indeterministic operators by default supported.)
+ *   fix convergence issues (which will be very hard if we have multiple non-deterministic operators by default supported.)
  * 2. Some ops schema will be changed in new opsets, we need also check manually whether it is applicable to recompute
  *   or not.
  * 3. Some ops are not supported in older opsets, we need to check whether it is applicable to recompute or not.

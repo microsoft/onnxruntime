@@ -261,9 +261,6 @@ def parse_arguments():
         "--wheel_name_suffix",
         help="Suffix to append to created wheel names. This value is currently only used for nightly builds.",
     )
-    parser.add_argument(
-        "--numpy_version", help="Installs a specific version of numpy before building the python binding."
-    )
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
@@ -613,6 +610,7 @@ def parse_arguments():
             "MinGW Makefiles",
             "Ninja",
             "NMake Makefiles",
+            "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
             "Xcode",
@@ -865,16 +863,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def install_python_deps(numpy_version=""):
-    dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.10")
-    dep_packages.append("packaging")
-    dep_packages.append("cerberus")
-    dep_packages.append("psutil")
-    run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
 def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
@@ -2145,7 +2133,14 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
                         run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
+                            [
+                                sys.executable,
+                                "-m",
+                                "pip",
+                                "install",
+                                "-r",
+                                "requirements/transformers-test/requirements.txt",
+                            ],
                             cwd=SCRIPT_DIR,
                         )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
@@ -2211,6 +2206,7 @@ def build_python_wheel(
     use_cuda,
     cuda_version,
     use_rocm,
+    use_migraphx,
     rocm_version,
     use_dnnl,
     use_tensorrt,
@@ -2262,6 +2258,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+        elif use_migraphx:
+            args.append("--use_migraphx")
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -2587,9 +2585,6 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.use_migraphx:
-        args.use_rocm = True
-
     if args.build_wheel or args.gen_doc or args.use_tvm or args.enable_training:
         args.enable_pybind = True
 
@@ -2817,7 +2812,10 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps(args.numpy_version)
+            run_subprocess(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
+                cwd=SCRIPT_DIR,
+            )
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
@@ -2885,7 +2883,8 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
-        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and the target OS is Windows
+        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and
+        #  the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
@@ -2896,6 +2895,7 @@ def main():
                 args.use_cuda,
                 args.cuda_version,
                 args.use_rocm,
+                args.use_migraphx,
                 args.rocm_version,
                 args.use_dnnl,
                 args.use_tensorrt,

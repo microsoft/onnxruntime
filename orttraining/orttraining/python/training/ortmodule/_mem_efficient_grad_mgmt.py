@@ -130,7 +130,7 @@ def _create_param_retrieval_function(
 
     Args:
         trainable_named_params: The trainable named parameters.
-        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-alloced just once
+        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-allocated just once
             before model execution, later it will be reused by each iteration. This could save the unnecessary
             overhead allocating for each iteration run.
 

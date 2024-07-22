@@ -4972,8 +4972,8 @@ TEST_F(GraphTransformationTests, CseWithConstantOfShape) {
     TensorProto value_tensor;
     value_tensor.add_dims(1);
     float value = 2.333f;
-    value_tensor.set_raw_data(reinterpret_cast<const char*>(&value), sizeof(float));
     value_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    utils::SetRawDataInTensorProto(value_tensor, reinterpret_cast<const char*>(&value), sizeof(float));
     builder.AddNode("ConstantOfShape", {shape_out_1}, {constant_of_shape_out_1}).AddAttribute("value", value_tensor);
     builder.AddNode("ConstantOfShape", {shape_out_2}, {constant_of_shape_out_2}).AddAttribute("value", value_tensor);
     builder.AddNode("Mul", {input_arg, constant_of_shape_out_1}, {mul_out_1});
@@ -6215,9 +6215,10 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
           std::make_unique<PropagateCastOps>(strategy, level, test_case.allow_ops),
           TransformerLevel::Level1));
       ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-      Path p = Path::Parse(test_case.model_uri);
-      ASSERT_FALSE(p.GetComponents().empty());
-      PathString transformed_model_uri = temp_dir.Path() + GetPathSep<PathChar>() + ORT_TSTR("transformed_") + p.GetComponents().back();
+      std::filesystem::path p = test_case.model_uri;
+      PathString model_filename = ORT_TSTR("transformed_");
+      model_filename += p.filename();
+      std::filesystem::path transformed_model_uri = std::filesystem::path(temp_dir.Path()) / model_filename;
       ASSERT_STATUS_OK(Model::Save(*p_model, transformed_model_uri));
       // Load the transformed model to validate
       ASSERT_STATUS_OK(Model::Load(transformed_model_uri, p_model, nullptr, *logger_));
