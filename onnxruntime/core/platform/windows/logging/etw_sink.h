@@ -97,6 +97,7 @@ class EtwRegistrationManager {
   mutable OrtMutex provider_change_mutex_;
   OrtMutex init_mutex_;
   bool initialized_ = false;
+  bool initializing_ = false;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
