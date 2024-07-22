@@ -227,7 +227,6 @@ stages:
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
 
       - script: |
-#          python3 -m pip install gcovr && \
           python3 tools/ci_build/coverage.py \
             --build_dir build_nnapi \
             --android_sdk_path $ANDROID_HOME
