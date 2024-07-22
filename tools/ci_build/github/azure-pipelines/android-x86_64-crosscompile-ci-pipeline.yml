@@ -108,7 +108,8 @@ stages:
 
 - stage: BUILD_AND_TEST_NNAPI_EP
   dependsOn: []
-  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+#  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: never()
   variables:
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
@@ -179,14 +180,14 @@ stages:
   # because coverage report is hard to support in cross machines.
   displayName: NNAPI MASTER BUILD&TEST
   dependsOn: []
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+#  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: always()
   jobs:
   - job: NNAPI_EP_MASTER
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     timeoutInMinutes: 180
     workspace:
       clean: all
-    condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
       - task: UsePythonVersion@0
         displayName: Use Python $(pythonVersion)
@@ -238,15 +239,6 @@ stages:
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
-
-      - task: AzureCLI@2
-        displayName: 'Post Android Code Coverage To DashBoard'
-        inputs:
-          azureSubscription: AIInfraBuild
-          scriptType: bash
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-          arguments: '"$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
-          workingDirectory: '$(Build.BinariesDirectory)'
 
       - template: templates/use-android-emulator.yml
         parameters:
