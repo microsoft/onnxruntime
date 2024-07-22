@@ -37,7 +37,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "concat");
     std::vector<std::string_view> input_names;
     for (const auto* input : node.InputDefs()) {
-      LOGS(logger, VERBOSE) << "input name " << input->Name();
       input_names.emplace_back(input->Name());
     }
     AddOperationInputs(*op, "values", input_names);
