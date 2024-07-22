@@ -6,6 +6,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Add||
 |ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Clip||
+|ai:onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
 |ai.onnx:Div||
 |ai.onnx:Gemm|Input B must be constant.|
@@ -20,4 +21,3 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
 |ai:onnx:Tanh||
-|ai:onnx:Concat||
