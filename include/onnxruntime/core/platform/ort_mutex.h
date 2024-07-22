@@ -108,12 +108,12 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
 namespace onnxruntime {
 
 class OrtMutex {
-#ifdef __clang__ && __cplusplus >= 202002L
+#if def(__clang__) && __cplusplus >= 202002L
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-pragma"
 #endif
   nsync::nsync_mu data_ = NSYNC_MU_INIT;
-#ifdef __clang__ && __cplusplus >= 202002L
+#if def(__clang__) && __cplusplus >= 202002L
 #pragma clang diagnostic pop
 #endif
 
