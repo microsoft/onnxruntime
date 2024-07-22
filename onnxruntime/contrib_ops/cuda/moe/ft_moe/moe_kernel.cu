@@ -709,22 +709,22 @@ struct ELU {
   }
 };
 
-template <typename T> __global__ void inplaceEluKernel(T* input, int interm_features) {
+template <typename T> __global__ void inplaceEluKernel(T* input, int interm_features, int k) {
     int const tid = threadIdx.x;
     int const token = blockIdx.x;
 
-    input = input + token * interm_features;
-    for (int i = tid; i < interm_features; i += blockDim.x) {
+    input = input + k * token * interm_features;
+    for (int i = tid; i < k * interm_features; i += blockDim.x) {
         input[i] = ELU<T>()(input[i]);
     }
 }
 
 template <typename T>
-void inplaceElu(T *in_out, int interm_features, int num_tokens, cudaStream_t stream) {
+void inplaceElu(T *in_out, int interm_features, int num_tokens, int k, cudaStream_t stream) {
     // Can use vectorized load to improve performance
     int const blocks = num_tokens;
     int const threads = std::min(interm_features, 1024);
-    inplaceEluKernel<T><<<blocks, threads, 0, stream>>>(in_out, interm_features);
+    inplaceEluKernel<T><<<blocks, threads, 0, stream>>>(in_out, interm_features, k);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -810,12 +810,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
 
 template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
-    const T *input_activations, const T *gating_output, 
-    const WeightType *fc1_expert_weights, const T *fc1_expert_biases, 
+    const T *input_activations, const T *gating_output,
+    const WeightType *fc1_expert_weights, const T *fc1_expert_biases,
     const WeightType *fc2_expert_weights, const T *fc2_expert_biases,
     const WeightType *fc3_expert_weights, const T *fc3_expert_biases,
     const WeightType *fc4_expert_weights,
-    int num_rows, const int in_features, const int interm_features, const int out_features, int num_experts, 
+    int num_rows, const int in_features, const int interm_features, const int out_features, int num_experts,
     int local_num_experts, int local_experts_start_index, int k, char *workspace_ptr, T *fc2_result, int active_rows,
     T *expert_scales, int *expanded_source_row_to_expanded_dest_row, int *expert_for_source_row, cudaStream_t stream) {
 
@@ -850,7 +850,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
         fc1_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, in_features, local_num_experts, no_activation_type, stream);
 
-    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
+    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, k, stream);
 
     if (!has_fc3_) {
         ORT_THROW("Need FC3 as pingpong buffer for ARFlow");
@@ -862,7 +862,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
         fc3_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, interm_features, local_num_experts, no_activation_type, stream);
 
-    inplaceElu(fc3_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
+    inplaceElu(fc3_result_ + total_past_rows_ * interm_features, interm_features, active_rows, k, stream);
 
     // fc3
     moe_gemm_runner_.moe_gemm_bias_act(
@@ -870,7 +870,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc_arflow(
         fc1_result_ + total_past_rows_ * interm_features, total_rows_before_expert_ + local_experts_start_index,
         expanded_active_expert_rows, interm_features, interm_features, local_num_experts, no_activation_type, stream);
 
-    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, stream);
+    inplaceElu(fc1_result_ + total_past_rows_ * interm_features, interm_features, active_rows, k, stream);
 
     // fc4
     moe_gemm_runner_.moe_gemm(

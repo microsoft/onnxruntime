@@ -117,7 +117,7 @@ def create_moe_onnx_graph(
             ORT_DTYPE,
             fc4_shape,
             fc4_experts_weights.to(torch_type).flatten().tolist(),
-        )
+        ),
         helper.make_tensor(
             "fc1_experts_bias",
             ORT_DTYPE,
@@ -304,13 +304,13 @@ class ArflowSparseMoeBlock(nn.Module):
             self.interm_features,
             self.out_features,
             self.moe_experts_weight1,
-            self.moe_experts_weight2,
-            self.moe_experts_weight3,
-            self.moe_experts_weight4,
             self.moe_experts_bias1,
+            self.moe_experts_weight2,
             self.moe_experts_bias2,
+            self.moe_experts_weight3,
             self.moe_experts_bias3,
-            self.moe_experts_bias4,          
+            self.moe_experts_weight4,
+            self.moe_experts_bias4,
             self.top_k,
         )
 
@@ -345,7 +345,7 @@ class ArflowSparseMoeBlock(nn.Module):
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
-            (batch_size * sequence_length, in_features), dtype=hidden_states.dtype, device=hidden_states.device
+            (batch_size * sequence_length, self.out_features), dtype=hidden_states.dtype, device=hidden_states.device
         )
 
         # One hot encode the selected experts to create an expert mask
@@ -369,7 +369,7 @@ class ArflowSparseMoeBlock(nn.Module):
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
-        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, in_features)
+        final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, self.out_features)
         return final_hidden_states  # , router_logits
 
     def ort_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -402,6 +402,8 @@ class ArflowSparseMoeBlock(nn.Module):
         torch_output = self.forward(hidden_state)
         ort_output = self.ort_forward(hidden_state)
         if ort_output is not None:
+            # print("torch_output", torch_output)
+            # print("ort_output", ort_output)
             assert torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04)
             print(
                 "batch_size:",
@@ -416,10 +418,10 @@ class ArflowSparseMoeBlock(nn.Module):
 
 class TestArflowMoE(unittest.TestCase):
     def test_Arflow_moe_parity(self):
-        for batch_size in [1, 16]:
-            for sequence_length in [128, 1024]:
+        for batch_size in [1, 4]:
+            for sequence_length in [1, 128, 1024]:
                 # use a small sizes to speed up the test
-                config = ArflowConfig(in_features=256, interm_features=128, out_features=64)
+                config = ArflowConfig(in_features=2048, interm_features=1024, out_features=96)
                 Arflow_moe = ArflowSparseMoeBlock(config, batch_size, sequence_length)
                 Arflow_moe.parity_check()
 
