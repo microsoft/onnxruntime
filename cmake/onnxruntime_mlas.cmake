@@ -39,6 +39,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sqnbitgemm.h
   ${MLAS_SRC_DIR}/sqnbitgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
+  ${MLAS_SRC_DIR}/flashattn.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -426,12 +427,24 @@ else()
           )
           if(COMPILES_P10)
             check_cxx_source_compiles("
+              #ifdef _AIX
+              #define POWER_10       0x40000
+              #define POWER_10_ANDUP (POWER_10)
+              #include <sys/systemcfg.h>
+              #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+              int main() {
+                bool HasP10 = (__power_10_andup() && __power_mma_version() == MMA_V31);
+                return 0;
+              }
+              #else
               #include <sys/auxv.h>
               int main() {
                 unsigned long hwcap2 = getauxval(AT_HWCAP2);
                 bool HasP10 = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
                 return 0;
-              }"
+              }
+              }
+              #endif"
               HAS_P10_RUNTIME
             )
             if (HAS_P10_RUNTIME)

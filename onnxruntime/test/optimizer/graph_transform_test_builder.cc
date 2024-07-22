@@ -61,7 +61,7 @@ NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.set_data_type(elem_type);
-  tensor_proto.set_raw_data(raw_data.data(), raw_data.size());
+  utils::SetRawDataInTensorProto(tensor_proto, raw_data.data(), raw_data.size());
 
   for (auto& dim : shape) {
     tensor_proto.add_dims(dim);

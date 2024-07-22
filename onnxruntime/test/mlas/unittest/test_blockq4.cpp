@@ -127,13 +127,22 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
                                     columnwise, rows, columns, columns, threadpool_ptr);
 
     if (columnwise) {
-      MlasQDQQuantizeBlockwise<float, 4>(
+      bool signed_quant = MlasQDQQuantizeBlockwise<float, 4>(
           transposed, qdq_scales, qdq_zp, qdq_weights,
           true, rows, columns, block_size, threadpool_ptr);
 
-      MlasQDQTransposeBlockwiseQuantized<float, 4>(
-          qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
-          true, rows, columns, block_size, threadpool_ptr);
+      ASSERT_EQ(symmetric, signed_quant) << "symmetric quantization should be signed";
+
+      if (symmetric) {
+        MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
+            qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+            true, rows, columns, block_size, threadpool_ptr);
+
+      } else {
+        MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
+            qdq_weights, qdq_scales, qdq_zp, qdq_weights_T, qdq_scales_T, qdq_zp_T,
+            true, rows, columns, block_size, threadpool_ptr);
+      }
     }
 
     for (int c = 0; c < columns; c++) {

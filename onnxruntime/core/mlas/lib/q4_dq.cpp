@@ -314,14 +314,18 @@ struct Shape2D {
 };
 
 
-template <int qbits>
+template <int qbits, bool signed_quant>
 struct BitsTraits {
     static_assert(qbits <= 8, "Only BitsTraits are for small number of bits!");
 
     static constexpr int kBits = qbits;
-    static constexpr int kMax = (1 << qbits) - 1;
-    static constexpr int kMid = 1 << (qbits - 1);
+    static constexpr int kMax = signed_quant ? (1 << (qbits -1)) - 1 : (1 << qbits) - 1;
+    static constexpr int kMid = signed_quant ? 0 : (1 << (qbits - 1));
+    static constexpr int kMin = signed_quant ? -(1 << (qbits - 1)) : 0;
     static constexpr float kMaxFp = static_cast<float>(kMax);
+    static constexpr float kMinFp = static_cast<float>(kMin);
+    static constexpr float fullRange = kMaxFp - kMinFp;
+    static constexpr float halfRange = static_cast<float>(kMid - kMin);
 
     // number of qbit elements to pack into whole bytes
     static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2 : (qbits == 2) ? 4 : 0;
@@ -331,53 +335,54 @@ struct BitsTraits {
 
 /**
  * @brief Rectify min/max from a set of weights, and convert to scale and zero point
- *        for quantization
- * @tparam ScaleT   type of scale, usually floating point of various bits
- * @tparam qbits  number of int bits used for zero point value
+ *        for quantization.
+ * @tparam ScaleT        type of scale, usually floating point of various bits
+ * @tparam qbits         number of int bits used for zero point value
+ * @tparam signed_quant  output quantized type is signed
  * @param[in]   min
  * @param[in]   max
  * @param[out]  scale
  * @param[out]  zp
  */
-template <typename ScaleT, int qbits>
+template <typename ScaleT, int qbits, bool signed_quant>
 MLAS_FORCEINLINE
 void
 range2scalezp(float min, float max, ScaleT& scale, uint8_t& zp)
 {
-    constexpr int zp_max = BitsTraits<qbits>::kMax;
-    constexpr float zp_max_fp = BitsTraits<qbits>::kMaxFp;
-
     min = std::min(min, 0.0f);
     max = std::max(max, 0.0f);
 
-    float scale_f = (max - min) / zp_max;
+    float scale_f = (max - min) / BitsTraits<qbits, signed_quant>::fullRange;
 
     float zero_point_fp = min;
     if (scale_f != 0.0f) {
-        zero_point_fp = 0.f - min / scale_f;
+        zero_point_fp = BitsTraits<qbits, signed_quant>::kMinFp - min / scale_f;
     }
 
-    if (zero_point_fp < 0.0f) {
-        zp = 0;
-    } else if (zero_point_fp > zp_max_fp) {
-        zp = zp_max;
+    if (zero_point_fp < BitsTraits<qbits, signed_quant>::kMinFp) {
+        zp = static_cast<uint8_t>(BitsTraits<qbits, signed_quant>::kMin);
+    } else if (zero_point_fp > BitsTraits<qbits, signed_quant>::kMaxFp) {
+        zp = static_cast<uint8_t>(BitsTraits<qbits, signed_quant>::kMax);
     } else {
         zp = (uint8_t)roundf(zero_point_fp);
     }
     scale = ScaleT(scale_f);
 }
 
-template <typename ScaleT, int qbits>
+/**
+ * @brief Rectify min/max from a set of symmetric weights, and convert
+ *        to scale for quantization.
+ */
+template <typename ScaleT, int qbits, bool signed_quant>
 MLAS_FORCEINLINE
 void
 range2scale(float min, float max, ScaleT& scale)
 {
-    constexpr int mid_v = BitsTraits<qbits>::kMid;
-    constexpr float mid_fp = static_cast<float>(-mid_v);
-
     max = fabsf(max) > fabsf(min) ? max : min;
-
-    scale = ScaleT(max / mid_fp);
+    // !!Note: in the quantized space, abs of min -8 > abs of max 7.
+    // Therefore map the larger half FP space to [-8, 0].
+    // Minus sign achieves this purpose.
+    scale = ScaleT(-max / BitsTraits<qbits, signed_quant>::halfRange);
 };
 
 
@@ -400,7 +405,7 @@ struct BlockwiseQuantizer {
     static_assert(qbits == 4, "Only 4b block quantization is supported!");
 
     using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
-    using ThreadBlk = Shape2D<QuantBlk::kRow * BitsTraits<qbits>::kPackSize, QuantBlk::kColumn>;
+    using ThreadBlk = Shape2D<QuantBlk::kRow * BitsTraits<qbits, false>::kPackSize, QuantBlk::kColumn>;
 
     static
     MLAS_FORCEINLINE
@@ -474,8 +479,8 @@ struct BlockwiseQuantizer {
         MlasTryBatchParallel(
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
-                uint8_t zp_bytes[BitsTraits<qbits>::kPackSize];
-                std::fill_n(zp_bytes, BitsTraits<qbits>::kPackSize, (uint8_t)8);
+                uint8_t zp_bytes[BitsTraits<qbits, false>::kPackSize];
+                std::fill_n(zp_bytes, BitsTraits<qbits, false>::kPackSize, (uint8_t)8);
 
                 const int32_t r_blk_idx = static_cast<int32_t>(block_idx / thrd_col_blks);
                 const int32_t c_blk_idx = static_cast<int32_t>(block_idx % thrd_col_blks);
@@ -490,7 +495,7 @@ struct BlockwiseQuantizer {
                 const int meta_col = c / QuantBlk::kColumn;
 
                 // compute scale and zero point
-                for (int kpack = 0; kpack < BitsTraits<qbits>::kPackSize; kpack++) {
+                for (int kpack = 0; kpack < BitsTraits<qbits, false>::kPackSize; kpack++) {
 
                     // scan a single block to extract range [min, max]
                     float min = std::numeric_limits<float>::max();
@@ -509,9 +514,9 @@ struct BlockwiseQuantizer {
                     if (row_start < row_end) {
                         const int32_t meta_idx = meta_col * row_blks + meta_row + kpack;
                         if (zero_points == nullptr) {
-                            range2scale<ElementT, qbits>(min, max, scales[meta_idx]);
+                            range2scale<ElementT, qbits, false>(min, max, scales[meta_idx]);
                         } else {
-                            range2scalezp<ElementT, qbits>(min, max, scales[meta_idx], zp_bytes[kpack]);
+                            range2scalezp<ElementT, qbits, false>(min, max, scales[meta_idx], zp_bytes[kpack]);
                         }
                     }
                 }
@@ -533,7 +538,7 @@ struct BlockwiseQuantizer {
 
                         const float v0 = static_cast<float>(src[i * leadingDimension + j]);
                         const uint8_t vi0 = (uint8_t)std::clamp(roundf(v0 * reciprocal_scale + zp),
-                                                                0.0f, BitsTraits<qbits>::kMaxFp);
+                                                                0.0f, BitsTraits<qbits, false>::kMaxFp);
 
                         uint8_t vi1 = (uint8_t)zp;
                         if (i + 1 < r_end) {
@@ -545,7 +550,7 @@ struct BlockwiseQuantizer {
                             }
                             const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
                             vi1 = (uint8_t)std::clamp(roundf(v1 * reciprocal_scale1 + zp1), 0.0f,
-                                                      BitsTraits<qbits>::kMaxFp);
+                                                      BitsTraits<qbits, false>::kMaxFp);
                         }
 
                         // !! 4b specific code
@@ -644,14 +649,19 @@ struct BlockwiseQuantizer {
  *        in memory are packed together, which means the packing is along the row. Quantized data
  *        are stored in row major, so the output tensor reserves same shape, in terms of qbits type,
  *        as the input tensor.
- * @tparam Tin    source data type, e.g. fp32/fp16
- * @tparam qbits  number of bits in each quantized element
+ *        If has zero points, quantized type is unsigned. Otherwise, quantized type is signed and the
+ *        zero point is 0.
+ *        The transposed outputs are used by MatMulNBits, so quant type becomes uint4 with default
+ *        zp at 8.
+ * @tparam Tin           source data type, e.g. fp32/fp16
+ * @tparam qbits         number of bits in each quantized element
+ * @tparam signed_quant  quantized type is signed
  */
-template <typename Tin, int qbits>
+template <typename Tin, int qbits, bool signed_quant>
 struct BlockwiseQDQQuantizer;
 
-template <typename Tin>
-struct BlockwiseQDQQuantizer<Tin, 4> {
+template <typename Tin, bool signed_quant>
+struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
     static MLAS_FORCEINLINE uint8_t GetElem(uint8_t val, int32_t idx)
     {
         return (val >> (idx << 2)) & 0xF;
@@ -663,9 +673,14 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
         return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
     }
 
+    template <bool add8>
     static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1)
     {
-        return (v0 & 0xF) | ((v1 & 0xF) << 4);
+        if constexpr (add8) {
+            return ((v0 & 0xF) ^ 8) | (((v1 & 0xF) ^ 8) << 4);
+        } else {
+            return (v0 & 0xF) | ((v1 & 0xF) << 4);
+        }
     }
 
     // If src is row major, then dst is column major. Transpose:
@@ -680,10 +695,16 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
     //  -->
     //  | dst0: low 4 bit | dst0: high 4 bit |
     //  | dst1: low 4 bit | dst1: high 4 bit |
+    template <bool add8>
     static MLAS_FORCEINLINE void Transpose(uint8_t src0, uint8_t src1, uint8_t& dst0, uint8_t& dst1)
     {
-        dst0 = (src0 & 0xF) | ((src1 & 0xF) << 4);
-        dst1 = ((src0 & 0xF0) >> 4) | (src1 & 0xF0);
+        if constexpr (add8) {
+            dst0 = ((src0 & 0xF) ^ 8) | (((src1 & 0xF) ^ 8) << 4);
+            dst1 = (((src0 & 0xF0) ^ 0x80) >> 4) | ((src1 & 0xF0) ^ 0x80);
+        } else {
+            dst0 = (src0 & 0xF) | ((src1 & 0xF) << 4);
+            dst1 = ((src0 & 0xF0) >> 4) | (src1 & 0xF0);
+        }
     }
 
     static MLAS_FORCEINLINE uint8_t QuantizeV(Tin src, float reciprocal_scale, uint8_t zero_point)
@@ -693,52 +714,10 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
                 static_cast<int32_t>(
                     std::roundf(static_cast<float>(src) * reciprocal_scale)
                 ) + static_cast<int32_t>(zero_point),
-                0,
-                BitsTraits<4>::kMax
+                BitsTraits<4, signed_quant>::kMin,
+                BitsTraits<4, signed_quant>::kMax
             )
         );
-    }
-
-    /**
-     * @brief Quantize a matrix shape [rows, columns] row-wise. Scales and zero points are calculated.
-     *        Quantized data are packed row-wise based on qbits. Quantized data are stored in row
-     *        major, so the output tensor reserves the shape, in terms output type.
-     *        Thread block is [1, quant_block_size * 2].
-     * @param src               the source matrix, row major: [rows * columns]
-     * @param scales            the scales of quantized blocks, row major layout with shape:
-     *                          [rows * ceil(columns / quant_block_size)]
-     * @param zero_points       the zero points of quantized blocks, packed. Same shape as scales
-     *                          in terms of output type. In terms of uint8_t, the shape is:
-     *                          [ceil(rows * ceil(columns / quant_block_size) * qbits / 8)]
-     * @param dst               the quantized weights, row major: [rows * columns] in terms of
-     *                          output type. In terms of uint8_t, the shape is: [ceil(rows * columns * qbits / 8]
-     * @param rows              number of rows in the source matrix
-     * @param columns           number of columns in the source matrix, must satisfy
-     *                          ceil(columns / quant_block_size) % 2 == 0, so in each thread block,
-     *                          zero points are packed into one byte.
-     * @param quant_block_size  number of elements quantized together.
-     * @param thread_pool       thread pool for parallel processing
-     */
-    static void QuantizeRowWise(
-        const Tin* src,
-        Tin* scales,
-        uint8_t* zero_points,
-        uint8_t* dst,
-        int32_t rows,
-        int32_t columns,
-        int32_t quant_block_size,
-        MLAS_THREADPOOL* thread_pool
-    )
-    {
-        MLAS_UNREFERENCED_PARAMETER(src);
-        MLAS_UNREFERENCED_PARAMETER(scales);
-        MLAS_UNREFERENCED_PARAMETER(zero_points);
-        MLAS_UNREFERENCED_PARAMETER(dst);
-        MLAS_UNREFERENCED_PARAMETER(rows);
-        MLAS_UNREFERENCED_PARAMETER(columns);
-        MLAS_UNREFERENCED_PARAMETER(quant_block_size);
-        MLAS_UNREFERENCED_PARAMETER(thread_pool);
-        ORT_THROW("BlockwiseQDQQuantizer::BlockwiseQDQQuantizer is not implemented");
     }
 
     /**
@@ -769,6 +748,7 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
         MLAS_THREADPOOL* thread_pool
     )
     {
+        ORT_ENFORCE(zero_points || signed_quant, "Unsigned quant with no zero points is not supported.");
         // Must avoid multiple thread write to a single byte, which means the starting index
         // of a thread block must be even. To achieve that, we need to customize the thread
         // block size based on the parity of columns.
@@ -815,6 +795,10 @@ struct BlockwiseQDQQuantizer<Tin, 4> {
         MLAS_THREADPOOL* thread_pool
     )
     {
+        ORT_ENFORCE(
+            src_zero_points || signed_quant || dst_zero_points,
+            "Unsigned quant types without zero points must allocate zero points with value 0."
+        );
         // Must avoid multiple thread write to a single byte, which means the starting index
         // of a thread block must be even. To achieve that, we need to customize the thread
         // block size based on the parity of columns.
@@ -896,15 +880,15 @@ private:
 
                 // calculate scale and zero point, and store
                 for (int32_t i = 0; i < col_size; i += 2) {
-                    v0_tt = v1_tt = BitsTraits<4>::kMid;
+                    v0_tt = v1_tt = BitsTraits<4, signed_quant>::kMid;
 
                     if (zero_points) {
-                        range2scalezp<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
-                        range2scalezp<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
-                        zero_points[(scale_idx + i) >> 1] = Pack(v0_tt, v1_tt);
+                        range2scalezp<Tin, 4, signed_quant>(vmin_t[i], vmax_t[i], scale0_tt, v0_tt);
+                        range2scalezp<Tin, 4, signed_quant>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt, v1_tt);
+                        zero_points[(scale_idx + i) >> 1] = Pack<false>(v0_tt, v1_tt);
                     } else {
-                        range2scale<Tin, 4>(vmin_t[i], vmax_t[i], scale0_tt);
-                        range2scale<Tin, 4>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
+                        range2scale<Tin, 4, signed_quant>(vmin_t[i], vmax_t[i], scale0_tt);
+                        range2scale<Tin, 4, signed_quant>(vmin_t[i + 1], vmax_t[i + 1], scale1_tt);
                     }
 
                     scales[scale_idx + i] = scale0_tt;
@@ -925,7 +909,7 @@ private:
                     for (int32_t i = 0; i < col_size; i += 2) {
                         v0_tt = QuantizeV(src[input_idx_t + i], reciprocal_scale_t[i], zp_t[i]);
                         v1_tt = QuantizeV(src[input_idx_t + i + 1], reciprocal_scale_t[i + 1], zp_t[i + 1]);
-                        dst[(input_idx_t + i) >> 1] = Pack(v0_tt, v1_tt);
+                        dst[(input_idx_t + i) >> 1] = Pack<false>(v0_tt, v1_tt);
                     }
                 }
             }
@@ -993,14 +977,14 @@ private:
                         int32_t col_idx = 0;
                         // leading unailgned zero points
                         if (scale_buffer_idx & 1) {
-                            v0_tt = BitsTraits<4>::kMid;
+                            v0_tt = BitsTraits<4, signed_quant>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, 4>(vmin_t[0], vmax_t[0], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4, signed_quant>(vmin_t[0], vmax_t[0], scale0_tt, v0_tt);
                                 zero_points[scale_buffer_idx >> 1] = SetElem(
                                     v0_tt, 1, zero_points[scale_buffer_idx >> 1]
                                 );
                             } else {
-                                range2scale<Tin, 4>(vmin_t[0], vmax_t[0], scale0_tt);
+                                range2scale<Tin, 4, signed_quant>(vmin_t[0], vmax_t[0], scale0_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -1014,14 +998,16 @@ private:
                         }
                         // aligned zero points
                         for (; scale_buffer_idx < scale_buffer_idx_end - 1; col_idx += 2, scale_buffer_idx += 2) {
-                            v0_tt = v1_tt = BitsTraits<4>::kMid;
+                            v0_tt = v1_tt = BitsTraits<4, signed_quant>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, 4>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt, v0_tt);
-                                range2scalezp<Tin, 4>(vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt, v1_tt);
-                                zero_points[scale_buffer_idx >> 1] = Pack(v0_tt, v1_tt);
+                                range2scalezp<Tin, 4, signed_quant>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4, signed_quant>(
+                                    vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt, v1_tt
+                                );
+                                zero_points[scale_buffer_idx >> 1] = Pack<false>(v0_tt, v1_tt);
                             } else {
-                                range2scale<Tin, 4>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt);
-                                range2scale<Tin, 4>(vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt);
+                                range2scale<Tin, 4, signed_quant>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt);
+                                range2scale<Tin, 4, signed_quant>(vmin_t[col_idx + 1], vmax_t[col_idx + 1], scale1_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -1037,14 +1023,14 @@ private:
                         }
                         // tailing unaligned elements
                         if (scale_buffer_idx < scale_buffer_idx_end) {
-                            v0_tt = BitsTraits<4>::kMid;
+                            v0_tt = BitsTraits<4, signed_quant>::kMid;
                             if (zero_points) {
-                                range2scalezp<Tin, 4>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt, v0_tt);
+                                range2scalezp<Tin, 4, signed_quant>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt, v0_tt);
                                 zero_points[scale_buffer_idx >> 1] = SetElem(
                                     v0_tt, 0, zero_points[scale_buffer_idx >> 1]
                                 );
                             } else {
-                                range2scale<Tin, 4>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt);
+                                range2scale<Tin, 4, signed_quant>(vmin_t[col_idx], vmax_t[col_idx], scale0_tt);
                             }
 
                             scales[scale_buffer_idx] = scale0_tt;
@@ -1078,7 +1064,7 @@ private:
                                     src[input_idx_t_start + 1], reciprocal_scale_t[col_idx + 1], zp_t[col_idx + 1]
                                 );
 
-                                dst[input_idx_t_start >> 1] = Pack(v0_tt, v1_tt);
+                                dst[input_idx_t_start >> 1] = Pack<false>(v0_tt, v1_tt);
                             }
                             // tailing unaligned output
                             if (input_idx_t_start < input_idx_t_end) {
@@ -1144,7 +1130,7 @@ private:
                     src0_t = src_weights[src_idx];
                     src1_t = src_weights[src_idx + packed_col_size];
                     src_idx += packed_col_size + packed_col_size;
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                    Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                     dst_weights[dst_idx] = dst0_t;
                     dst_weights[dst_idx + dstT_num_row] = dst1_t;
                 }
@@ -1152,7 +1138,7 @@ private:
                 if (src_idx < src_end_idx) {
                     src0_t = src_weights[src_idx];
                     src1_t = 0;
-                    Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                    Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                     dst_weights[dst_idx] = dst0_t;
                     dst_weights[dst_idx + dstT_num_row] = dst1_t;
                 }
@@ -1190,7 +1176,7 @@ private:
                     for (; src_idx < src_end_idx - packed_col_size; ++dst_idx) {
                         src0_t = src_zero_points[src_idx];
                         src1_t = src_zero_points[src_idx + packed_col_size];
-                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                         dst_zero_points[dst_idx] = dst0_t;
                         dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
                         src_idx += packed_col_size + packed_col_size;
@@ -1199,7 +1185,7 @@ private:
                     if (src_idx < src_end_idx) {
                         src0_t = src_zero_points[src_idx];
                         src1_t = 0;
-                        Transpose(src0_t, src1_t, dst0_t, dst1_t);
+                        Transpose<signed_quant>(src0_t, src1_t, dst0_t, dst1_t);
                         dst_zero_points[dst_idx] = dst0_t;
                         dst_zero_points[dst_idx + dst_zp_row_num] = dst1_t;
                     }
@@ -1247,13 +1233,13 @@ private:
                 for (; src_idx < src_end_idx - columns; ++dst_idx) {
                     src0_t = GetElem(src_weights[src_idx >> 1], src_idx & 1);
                     src1_t = GetElem(src_weights[(src_idx + columns) >> 1], (src_idx + columns) & 1);
-                    dst_weights[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
+                    dst_weights[dst_idx] = Pack<signed_quant>(src0_t, src1_t);
                     src_idx += columns + columns;
                 }
 
                 if (src_idx < src_end_idx) {
                     src0_t = GetElem(src_weights[src_idx >> 1], src_idx & 1);
-                    dst_weights[dst_idx] = src0_t & 0xf;
+                    dst_weights[dst_idx] = Pack<signed_quant>(src0_t, 0);
                 }
             }
         );
@@ -1288,13 +1274,13 @@ private:
                     for (; src_idx < src_end_idx - columns; ++dst_idx) {
                         src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
                         src1_t = GetElem(src_zero_points[(src_idx + columns) >> 1], (src_idx + columns) & 1);
-                        dst_zero_points[dst_idx] = (src0_t & 0xf) | ((src1_t & 0xf) << 4);
+                        dst_zero_points[dst_idx] = Pack<signed_quant>(src0_t, src1_t);
                         src_idx += columns + columns;
                     }
 
                     if (src_idx < src_end_idx) {
                         src0_t = GetElem(src_zero_points[src_idx >> 1], src_idx & 1);
-                        dst_zero_points[dst_idx] = src0_t & 0xf;
+                        dst_zero_points[dst_idx] = Pack<signed_quant>(src0_t, 0);
                     }
                 }
             );
@@ -1745,7 +1731,7 @@ MlasDequantizeBlockwise<float, 4>(
 );
 
 template <typename Tin, int qbits>
-void
+bool
 MlasQDQQuantizeBlockwise(
     const Tin* src,
     Tin* scales,
@@ -1759,17 +1745,23 @@ MlasQDQQuantizeBlockwise(
 )
 {
     if (columnwise) {
-        BlockwiseQDQQuantizer<Tin, qbits>::QuantizeColumnWise(
-            src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
-        );
+        if (zero_points) {
+            BlockwiseQDQQuantizer<Tin, qbits, false>::QuantizeColumnWise(
+                src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
+            );
+            return false;
+        } else {
+            BlockwiseQDQQuantizer<Tin, qbits, true>::QuantizeColumnWise(
+                src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
+            );
+            return true;
+        }
     } else {
-        BlockwiseQDQQuantizer<Tin, qbits>::QuantizeRowWise(
-            src, scales, zero_points, dst, rows, columns, quant_block_size, thread_pool
-        );
+        ORT_THROW("Row-wise MlasQDQQuantizeBlockwise is not implemented");
     }
 }
 
-template void
+template bool
 MlasQDQQuantizeBlockwise<float, 4>(
     const float* src,
     float* scales,
@@ -1782,7 +1774,7 @@ MlasQDQQuantizeBlockwise<float, 4>(
     MLAS_THREADPOOL* thread_pool
 );
 
-template void
+template bool
 MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     const MLAS_FP16* src,
     MLAS_FP16* scales,
@@ -1795,7 +1787,7 @@ MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     MLAS_THREADPOOL* thread_pool
 );
 
-template <typename Tin, int qbits>
+template <typename Tin, int qbits, bool signed_quant>
 void
 MlasQDQTransposeBlockwiseQuantized(
     const uint8_t* src_weights,
@@ -1812,7 +1804,7 @@ MlasQDQTransposeBlockwiseQuantized(
 )
 {
     if (columnwise) {
-        BlockwiseQDQQuantizer<Tin, qbits>::TransposeColumnWiseQuantized(
+        BlockwiseQDQQuantizer<Tin, qbits, signed_quant>::TransposeColumnWiseQuantized(
             src_weights, src_scales, src_zero_points, dst_weights, dst_scales, dst_zero_points,
             rows, columns, quant_block_size, thread_pool
         );
@@ -1822,7 +1814,7 @@ MlasQDQTransposeBlockwiseQuantized(
 }
 
 template void
-MlasQDQTransposeBlockwiseQuantized<float, 4>(
+MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
     const uint8_t* src_weights,
     const float* src_scales,
     const uint8_t* src_zero_points,
@@ -1837,7 +1829,37 @@ MlasQDQTransposeBlockwiseQuantized<float, 4>(
 );
 
 template void
-MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4>(
+MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4, true>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4, false>(
     const uint8_t* src_weights,
     const MLAS_FP16* src_scales,
     const uint8_t* src_zero_points,

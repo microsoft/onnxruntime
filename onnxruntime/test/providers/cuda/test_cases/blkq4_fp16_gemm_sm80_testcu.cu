@@ -11,6 +11,9 @@
  *   well with gtest headers.
  */
 
+// This test has build error with cuda 12.5
+#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
+
 #include "blkq4_fp16_gemm_sm80.h"
 
 #include <random>
@@ -532,3 +535,5 @@ template void run_blkq4_small_gemm<128, false, false>(int m, int n, int k);
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif
