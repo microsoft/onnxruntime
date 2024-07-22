@@ -73,7 +73,7 @@ def create_moe_onnx_graph(
             "MoE_0",
             k=topk,
             normalize_routing_weights=1,
-            activation_type="silu",
+            #activation_type="silu",
             domain="com.microsoft",
         ),
     ]
