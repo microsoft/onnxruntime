@@ -264,7 +264,7 @@ class UnusedBeginParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super().__init__()
 
-        # fc1 is an unused initializer (which is in the begining of initializer list)
+        # fc1 is an unused initializer (which is in the beginning of initializer list)
         # which will be dropped after export
         self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()

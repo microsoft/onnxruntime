@@ -2827,7 +2827,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
     }
   }
 
-  // returns a list of initializers that can be overriden.
+  // returns a list of initializers that can be overridden.
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
 }
 

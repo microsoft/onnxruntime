@@ -13,7 +13,7 @@ class Direct8BitOp(QuantOperatorBase):
         node = self.node
 
         if not self.quantizer.force_quantize_no_input_check:
-            # Keep backward compatiblity
+            # Keep backward compatibility
             # Quantize when input[0] is quantized already. Otherwise keep it.
             quantized_input_value = self.quantizer.find_quantized_value(node.input[0])
             if quantized_input_value is None:
