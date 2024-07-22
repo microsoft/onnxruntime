@@ -3085,6 +3085,57 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
 #endif
 }
 
+// Test backwards propagation of a QuantizeLinear node that uses the "output_dtype" attribute
+// to set the quantization type (i.e., does not have an explicit zero-point input). This tests
+// the copying of attributes for QDQ propagation.
+TEST(QDQTransformerTests, QDQPropagation_QBackward_NoZP_OutputDtypeAttribute) {
+  auto test_case = [&](ONNX_NAMESPACE::TensorProto_DataType q_output_type) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 2, 2}, {-2.0f, 0.0f, 1.0f, 2.0f});
+      auto* output_arg = builder.MakeOutput();
+
+      // add Add
+      auto* const_1_input = builder.MakeScalarInitializer<float>(1.0f);
+      auto* add_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {input_arg, const_1_input}, {add_output});
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      builder.AddNode("Transpose", {add_output}, {transpose_output});
+
+      // add Q with a "output_dtype" attribute. Omit the zero-point input (defaults to 0).
+      constexpr float qdq_scale = 1.0f;
+      Node& q_node = builder.AddQuantizeLinearNode(transpose_output, qdq_scale, output_arg);
+      q_node.AddAttribute("output_dtype", static_cast<int64_t>(q_output_type));
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      std::vector<std::string> expected_op_types_in_order = {
+          "Add",
+          qdq_keys.quantize_linear,
+          qdq_keys.dequantize_linear,
+          "Transpose",
+          qdq_keys.quantize_linear,
+      };
+
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      21);  // Opset >= 21 supports the "output_dtype" attribute
+  };
+
+  test_case(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  test_case(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+  test_case(ONNX_NAMESPACE::TensorProto_DataType_UINT16);
+  test_case(ONNX_NAMESPACE::TensorProto_DataType_INT16);
+}
+
 TEST(QDQTransformerTests, QDQPropagation_DQForward) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        size_t maxpool_dim,

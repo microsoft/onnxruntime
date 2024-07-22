@@ -3,6 +3,7 @@
 
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 
+#include <cassert>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -20,18 +21,50 @@ namespace onnxruntime {
 namespace {
 bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14, 19}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14, 19, 21}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13, 21}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13, 21}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13, 21}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11, 13});
+}
+
+// Makes matching attributes for new QuantizeLinear nodes from an existing DequantizeLinear node.
+NodeAttributes MakeQAttrsFromDQ(const Node& dq_node) {
+  assert(dq_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchDQNode().
+  // In opset <= 21, all DQ attributes (i.e., axis and block_size) are also Q attributes.
+  // So, set a copy of the DQ attributes.
+  return dq_node.GetAttributes();
+}
+
+// Makes matching attributes for new DequantizeLinear nodes from an existing QuantizeLinear node.
+NodeAttributes MakeDQAttrsFromQ(const Node& q_node) {
+  assert(q_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchQNode().
+  const NodeAttributes& q_attrs = q_node.GetAttributes();
+  if (q_attrs.empty()) {
+    return {};
+  }
+
+  // In opset <= 21, only the "axis" and "block_size" attributes for Q are also DQ attributes.
+  NodeAttributes dq_attrs;
+
+  auto axis_attr_it = q_attrs.find("axis");
+  if (axis_attr_it != q_attrs.end()) {
+    dq_attrs.insert({axis_attr_it->first, axis_attr_it->second});
+  }
+
+  auto block_size_attr_it = q_attrs.find("block_size");
+  if (block_size_attr_it != q_attrs.end()) {
+    dq_attrs.insert({block_size_attr_it->first, block_size_attr_it->second});
+  }
+
+  return dq_attrs;
 }
 
 // Validates edges into which to insert Q -> DQ ops.
 // - Must have at least one edge.
 // - All edges with a source node must originate from the same source node's output.
 // - All edges must be attached to either a source node or a destination node.
-Status ValidateQDQInsertionEdges(Graph& graph, const InlinedVector<ExtendedGraphEdge>& insertion_edges) {
+Status ValidateQDQInsertionEdges(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion_edges) {
   ORT_RETURN_IF(insertion_edges.empty(), "Expected at least one edge into which to insert QDQ pair.");
 
   const auto& src_info = insertion_edges[0].GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
@@ -55,9 +88,10 @@ Status ValidateQDQInsertionEdges(Graph& graph, const InlinedVector<ExtendedGraph
 
 // Logs information about the edges into which Q/DQ nodes will be inserted in InsertQDQPairs().
 // Assumes the edges have already been validated.
-void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity,
-                     const Graph& graph, const InlinedVector<ExtendedGraphEdge>& edges) {
-  if (!logger.OutputIsEnabled(severity, logging::DataType::SYSTEM)) {
+void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity, const CodeLocation& code_location,
+                     const Graph& graph, gsl::span<const ExtendedGraphEdge> edges) {
+  auto logging_data_type = logging::DataType::SYSTEM;
+  if (!logger.OutputIsEnabled(severity, logging_data_type)) {
     return;
   }
 
@@ -76,11 +110,12 @@ void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity,
                << (i == num_edges - 1 ? "" : ",");
   }
 
-  LOGS(logger, severity) << "Inserting Q/DQ pair between "
-                        << (src_node ? MakeString("src node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
-                                     : "input")
-                        << " and " << dst_labels.str()
-                        << " at NodeArg \"" << node_arg_name << "\".";
+  logging::Capture(logger, severity, logging::Category::onnxruntime, logging_data_type, code_location).Stream()
+      << "Inserted Q/DQ pair between "
+      << (src_node ? MakeString("src node (\"", src_node->Name(), "\", index: ", src_node->Index(), ")")
+                   : "input")
+      << " and " << dst_labels.str()
+      << " at NodeArg \"" << node_arg_name << "\".";
 }
 
 // convert this: src_node --+--> dst_node_0
@@ -98,9 +133,10 @@ void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity,
 // 1. All insertion edges have the same source node and the same source node output index.
 // 2. Insertion_edges are valid: node indices refer to valid nodes, and arg names refer to valid NodeArgs in the graph.
 // 3. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
-Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& insertion_edges,
+Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion_edges,
                       NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
-                      const std::string& qdq_domain, const logging::Logger& logger) {
+                      const std::string& qdq_domain, const NodeAttributes& q_attrs, const NodeAttributes& dq_attrs,
+                      const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(ValidateQDQInsertionEdges(graph, insertion_edges));
 
   const ExtendedGraphEdge& first_edge = insertion_edges[0];  // ValidateQDQInsertionEdges() guarantees at least one edge
@@ -109,7 +145,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
   const auto& base_name = first_edge.arg_name;
   auto& base_node_arg = *graph.GetNodeArg(base_name);
 
-  LogQDQInsertion(logger, logging::Severity::kVERBOSE, graph, insertion_edges);
+  LogQDQInsertion(logger, logging::Severity::kVERBOSE, ORT_WHERE, graph, insertion_edges);
 
   auto make_q_or_dq_inputs = [](NodeArg& data, NodeArg& scale, NodeArg* zero_point) {
     return zero_point ? InlinedVector<NodeArg*>{&data, &scale, zero_point}
@@ -133,7 +169,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
                                                    zp_initializer_nodearg_ptr),
                                // outputs
                                {&q_to_dq_nodearg},
-                               nullptr,  // attributes
+                               &q_attrs,  // attributes
                                qdq_domain);
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(q_node), "Failed to set op schema for added Q node.");
@@ -173,7 +209,7 @@ Status InsertQDQPairs(Graph& graph, const InlinedVector<ExtendedGraphEdge>& inse
                                                       zp_initializer_nodearg_ptr),
                                   // outputs
                                   {&post_dq_nodearg},
-                                  nullptr,  // attributes
+                                  &dq_attrs,  // attributes
                                   qdq_domain);
 
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
@@ -324,10 +360,10 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       return false;
     };
 
-    // Propagate DQ forward in a BFS traversal of "edge groups". A single edge group consists of one or more edges
-    // that all begin at a unique source node and end at one or more destination nodes. Ex: The subgraph below shows
-    // an edge group (containing 3 edges) that begins at a Transpose, ends at two destination nodes, and produces a
-    // graph output.
+    // Propagate DQ forward in a BFS traversal of "edge groups". An "edge group" consists of one or more edges
+    // that all begin at the same source node's output slot and end at a graph output or a destination node.
+    // Ex: The subgraph below shows an edge group (containing 3 edges) that begins at a
+    // Transpose, ends at two destination nodes, and produces a graph output.
     //    DQ -> Transpose --+--> Sigmoid -> ...
     //                      |
     //                      +--> Slice -> ...
@@ -340,11 +376,17 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       const InlinedVector<ExtendedGraphEdge> curr_edge_group = std::move(edge_groups.front());
       edge_groups.pop();
 
+      // Continue loop if edge group is empty. Also, to keep things simple, we do not yet handle edge groups in which
+      // one of the destination nodes is already a QuantizeLinear node. Ex:
+      //    DQ -> Transpose --+--> QuantizeLinear -> ...
+      //                      |
+      //                      +--> Slice -> ...
       if (curr_edge_group.empty() || any_edge_ends_in_q(graph, curr_edge_group)) {
         continue;
       }
 
-      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, curr_edge_group, dq_scale, dq_zero_point, dq_node.Domain(), logger));
+      ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, curr_edge_group, dq_scale, dq_zero_point, dq_node.Domain(),
+                                         MakeQAttrsFromDQ(dq_node), dq_node.GetAttributes(), logger));
       modified = true;
 
       for (const auto& edge : curr_edge_group) {
@@ -398,7 +440,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       }
 
       ORT_RETURN_IF_ERROR(InsertQDQPairs(graph, InlinedVector<ExtendedGraphEdge>{*curr_edge}, q_scale, q_zero_point,
-                                         q_node.Domain(), logger));
+                                         q_node.Domain(), q_node.GetAttributes(), MakeDQAttrsFromQ(q_node), logger));
       modified = true;
     }
   }
