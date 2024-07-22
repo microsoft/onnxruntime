@@ -998,8 +998,9 @@ public final class OrtTrainingSession implements AutoCloseable {
    * Exports the evaluation model as a model suitable for inference, setting the desired nodes as
    * output nodes.
    *
-   * <p>Note that this method reloads the evaluation model from the path provided to the training
-   * session, and this path must still be valid.
+   * <p>Note that this method modifies the eval session in-place; thus, after this method is called, the
+   * OrtTrainingSession can no longer be trained with. To continue training from this point, save the checkpoint
+   * and then load it into a new OrtTrainingSession.
    *
    * @param outputPath The path to write out the inference model.
    * @param outputNames The names of the output nodes.

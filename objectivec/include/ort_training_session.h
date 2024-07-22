@@ -229,10 +229,11 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * If the training session was provided with an eval model, the training session can generate an inference model if it
  * knows the inference graph outputs. The input inference graph outputs are used to prune the eval model so that the
- * inference model's outputs align with the provided outputs. The exported model is saved at the path provided and
- * can be used for inferencing with `ORTSession`.
+ * inference model's outputs align with the provided outputs.
  *
- * @note The method reloads the eval model from the path provided to the initializer and expects this path to be valid.
+ * @note This method modifies the eval model graph in-place, so after this method is called, the ORTTrainingSession
+ * can no longer be used for training. To resume training from this point, save the checkpoint state and create a new
+ * ORTTrainingSession with the saved checkpoint state.
  *
  * @param inferenceModelPath The path to the serialized the inference model.
  * @param graphOutputNames The names of the outputs that are needed in the inference model.

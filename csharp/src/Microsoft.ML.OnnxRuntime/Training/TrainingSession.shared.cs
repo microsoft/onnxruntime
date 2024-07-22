@@ -568,8 +568,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// an inference model if it knows the inference graph outputs. The input inference graph outputs
         /// are used to prune the eval model so that the inference model's outputs align with the provided outputs.
         /// The exported model is saved at the path provided and can be used for inferencing with InferenceSession.
-        /// Note that the function re-loads the eval model from the path provided to TrainingSession
-        /// and expects that this path still be valid.
+        ///
+        /// This function modifies the eval graph in-place, so after this method is called, the TrainingSession can
+        /// no longer be used for training. In order to continue training from this point, save the checkpoint state
+        /// and create a new TrainingSession with the saved checkpoint state.
         /// </summary>
         /// <param name="inferenceModelPath">Path where the inference model should be serialized to.</param>
         /// <param name="graphOutputNames">Names of the outputs that are needed in the inference model.</param>

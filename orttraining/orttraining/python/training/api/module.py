@@ -194,8 +194,11 @@ class Module:
         Once training is complete, this function can be used to drop the training specific nodes in the onnx model.
         In particular, this function does the following:
 
-        - Parse over the training graph and identify nodes that generate the given output names.
+        - Parse over the eval graph and identify nodes that generate the given output names.
         - Drop all subsequent nodes in the graph since they are not relevant to the inference graph.
+
+        Once this method is called, training is considered complete and the module can no longer be used for training.
+        To resume training from this point, save the checkpoint and create a new module from the checkpoint.
 
         Args:
             inference_model_uri: The path to the inference model.
