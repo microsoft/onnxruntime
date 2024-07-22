@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
 
@@ -24,7 +24,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 174;
+    static constexpr auto ValueCount = 178;
     static constexpr size_t ActivationFunctionCount = 26;
 };
 
@@ -62,7 +62,7 @@ struct EnumTraits<DML_CONVOLUTION_DIRECTION>
 template <>
 struct EnumTraits<DML_PADDING_MODE>
 {
-    static constexpr auto ValueCount = 4;
+    static constexpr auto ValueCount = 5;
 };
 
 template <>
@@ -86,7 +86,7 @@ struct EnumTraits<DML_FEATURE>
 template <>
 struct EnumTraits<DML_FEATURE_LEVEL>
 {
-    static constexpr auto ValueCount = 14;
+    static constexpr auto ValueCount = 15;
 };
 
 template <>
@@ -1024,6 +1024,12 @@ struct OperatorDescTraits<DML_RESAMPLE2_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_RESAMPLE3_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE3;
+};
+
+template <>
 struct OperatorDescTraits<DML_RESAMPLE_GRAD1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE_GRAD1;
@@ -1051,6 +1057,18 @@ template <>
 struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT;
+};
+
+template <>
+struct OperatorDescTraits<DML_FOLD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_FOLD;
+};
+
+template <>
+struct OperatorDescTraits<DML_UNFOLD_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_UNFOLD;
 };
 
 template <>
@@ -2074,6 +2092,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE2>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE3>
+{
+    using DescType = DML_RESAMPLE3_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE_GRAD1>
 {
     using DescType = DML_RESAMPLE_GRAD1_OPERATOR_DESC;
@@ -2101,6 +2125,18 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT>
 {
     using DescType = DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_FOLD>
+{
+    using DescType = DML_FOLD_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_UNFOLD>
+{
+    using DescType = DML_UNFOLD_OPERATOR_DESC;
 };
 
 template <>
@@ -2575,6 +2611,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_BATCH_NORMALIZATION_TRAINING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_RESAMPLE2:
         return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE2_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_RESAMPLE3:
+        return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE3_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_RESAMPLE_GRAD1:
         return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE_GRAD1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_DIAGONAL_MATRIX1:
@@ -2585,6 +2623,10 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
         return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_FOLD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_FOLD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_UNFOLD:
+        return std::invoke(std::forward<Visitor>(visitor), DML_UNFOLD_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
         return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MULTIHEAD_ATTENTION1:
@@ -2649,7 +2691,6 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         THROW_HR(E_INVALIDARG);
     }
 }
-
 
 namespace StringifyHelpers
 {
@@ -2871,6 +2912,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ACTIVATION_SWISH: return "DML_OPERATOR_ACTIVATION_SWISH";
     case DML_OPERATOR_ACTIVATION_HARD_SWISH: return "DML_OPERATOR_ACTIVATION_HARD_SWISH";
     case DML_OPERATOR_RESAMPLE2: return "DML_OPERATOR_RESAMPLE2";
+    case DML_OPERATOR_RESAMPLE3: return "DML_OPERATOR_RESAMPLE3";
     case DML_OPERATOR_RESAMPLE_GRAD1: return "DML_OPERATOR_RESAMPLE_GRAD1";
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return "DML_OPERATOR_MULTIHEAD_ATTENTION";
@@ -2880,6 +2922,9 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_MULTIHEAD_ATTENTION1: return "DML_OPERATOR_MULTIHEAD_ATTENTION1";
     case DML_OPERATOR_QUANTIZE: return "DML_OPERATOR_QUANTIZE";
     case DML_OPERATOR_DEQUANTIZE: return "DML_OPERATOR_DEQUANTIZE";
+    case DML_OPERATOR_ROI_ALIGN_GRAD: return "DML_OPERATOR_ROI_ALIGN_GRAD";
+    case DML_OPERATOR_FOLD: return "DML_OPERATOR_FOLD";
+    case DML_OPERATOR_UNFOLD: return "DML_OPERATOR_UNFOLD";
     default:
         assert(false);
         return "<unknown>";
@@ -2971,6 +3016,7 @@ inline gsl::czstring ToString(DML_PADDING_MODE value)
     case DML_PADDING_MODE_EDGE: return "DML_PADDING_MODE_EDGE";
     case DML_PADDING_MODE_REFLECTION: return "DML_PADDING_MODE_REFLECTION";
     case DML_PADDING_MODE_SYMMETRIC: return "DML_PADDING_MODE_SYMMETRIC";
+    case DML_PADDING_MODE_WRAP: return "DML_PADDING_MODE_WRAP";
     default:
         assert(false);
         return "<unknown>";
@@ -3036,6 +3082,7 @@ inline gsl::czstring ToString(DML_FEATURE_LEVEL value)
     case DML_FEATURE_LEVEL_6_1: return "DML_FEATURE_LEVEL_6_1";
     case DML_FEATURE_LEVEL_6_2: return "DML_FEATURE_LEVEL_6_2";
     case DML_FEATURE_LEVEL_6_3: return "DML_FEATURE_LEVEL_6_3";
+    case DML_FEATURE_LEVEL_6_4: return "DML_FEATURE_LEVEL_6_4";
     default:
         assert(false);
         return "<unknown>";
