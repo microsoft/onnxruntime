@@ -118,19 +118,20 @@ void LogQDQInsertion(const logging::Logger& logger, logging::Severity severity, 
       << " at NodeArg \"" << node_arg_name << "\".";
 }
 
-// convert this: src_node --+--> dst_node_0
-//                          |
-//                          +--> dst_node_1
-//                          |    ...
-//                          +--> dst_node_n
+// convert this: src_node (or graph input) --+--> dst_node_0 (or graph output)
+//                                           |
+//                                           +--> dst_node_1
+//                                           |    ...
+//                                           +--> dst_node_n
 //
-// to this: src_node -> Q --+--> DQ -> dst_node_0
-//                          |
-//                          +--> DQ -> dst_node_1
-//                          |    ...
-//                          +--> DQ -> dst_node_n
-// Checks that all insertion edges share the same NodeArg. That is, the edges have the same source node and the
-// same source node output index. This function returns an error status if edges are invalid.
+// to this: src_node (or graph input) -> Q --+--> DQ -> dst_node_0 (or graph output)
+//                                           |
+//                                           +--> DQ -> dst_node_1
+//                                           |    ...
+//                                           +--> DQ -> dst_node_n
+// Checks that all insertion edges share the same NodeArg. That is, the edges originate from the same source node
+// output. If there is no src_node, then all edges should come from the same graph input.
+// This function returns an error status if edges are invalid.
 //
 // Assumes that scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers.
 Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion_edges,
