@@ -37,7 +37,7 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
     case 'ml-buffer': {
       const dataType = tensor[0];
       if (!isMLBufferSupportedType(dataType)) {
-        throw new Error(`not supported data type: ${dataType} for deserializing GPU tensor`);
+        throw new Error(`not supported data type: ${dataType} for deserializing MLBuffer tensor`);
       }
       const {mlBuffer, download, dispose} = tensor[2];
       return Tensor.fromMLBuffer(mlBuffer, {dataType, dims: tensor[1], download, dispose});

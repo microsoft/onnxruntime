@@ -99,10 +99,6 @@ export class WebNNBackend {
     this.bufferManager.releaseBufferId(bufferId);
   }
 
-  public getBuffer(bufferId: BufferId): MLBuffer {
-    return this.bufferManager.getBuffer(bufferId);
-  }
-
   public ensureBuffer(bufferId: BufferId, onnxDataType: number|MLOperandDataType, dimensions: number[]): MLBuffer {
     let dataType: MLOperandDataType;
     if (typeof onnxDataType === 'number') {
@@ -129,7 +125,7 @@ export class WebNNBackend {
     return this.bufferManager.download(bufferId);
   }
 
-  public createMLBufferDownloader(bufferId: BufferId, type: Tensor.GpuBufferDataTypes): () => Promise<Tensor.DataType> {
+  public createMLBufferDownloader(bufferId: BufferId, type: Tensor.MLBufferDataTypes): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await this.bufferManager.download(bufferId);
       return createView(data, type);

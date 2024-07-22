@@ -201,11 +201,11 @@ Module['jsepInit'] = (name, params) => {
   } else if(name === 'webnn') {
     // Functions called from EM_ASM need to be assigned in a way that can be minified.
     [Module.jsepBackend,
-      Module.jsepReserveBufferId,
-      Module.jsepReleaseBufferId,
-      Module.jsepEnsureBuffer,
-      Module.jsepUploadBuffer,
-      Module.jsepDownloadBuffer,
+     Module.jsepReserveBufferId,
+     Module.jsepReleaseBufferId,
+     Module.jsepEnsureBuffer,
+     Module.jsepUploadBuffer,
+     Module.jsepDownloadBuffer,
     ] = params;
 
 
@@ -225,12 +225,10 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
+    Module['jsepReleaseBufferId'] = Module.jsepReleaseBufferId;
     Module['jsepGetMLContext'] = sessionId => {
       return backend['getMLContext'](sessionId);
     };
-    Module['jsepGetMLBuffer'] = (bufferId) => {
-      return backend['getBuffer'](bufferId);
-    }
     Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
       return backend['createMLBufferDownloader'](bufferId, type);
     }

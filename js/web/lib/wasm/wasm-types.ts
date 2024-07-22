@@ -160,14 +160,6 @@ export declare namespace JSEP {
      * @param bufferId - specify the MLBuffer ID.
      * @returns the MLBuffer.
      */
-    jsepGetMLBuffer: (bufferId: number) => MLBuffer;
-    /**
-     * [exported from pre-jsep.js] Ensure MLBuffer has been created with the correct type and dimensions.
-     * @param bufferId - specify the MLBuffer ID.
-     * @param dataType - specify the data type.
-     * @param dimensions - specify the dimensions.
-     * @returns the MLBuffer.
-     */
     jsepEnsureBuffer: (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) => MLBuffer;
     /**
      * [exported from pre-jsep.js] Upload data to MLBuffer.

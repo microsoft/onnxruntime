@@ -204,6 +204,7 @@ export class ModelTestContext {
       readonly perfData: ModelTestContext.ModelTestPerfData,
       readonly ioBinding: Test.IOBindingMode,
       private readonly profile: boolean,
+      public readonly mlContext?: MLContext,
   ) {}
 
   /**
@@ -254,7 +255,25 @@ export class ModelTestContext {
 
       const initStart = now();
       const executionProviderConfig =
-          modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
+          modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || {name: 'webnn'}) : modelTest.backend!;
+      let mlContext: MLContext|undefined;
+      if (modelTest.ioBinding.includes('ml-tensor') || modelTest.ioBinding.includes('ml-location')) {
+
+        const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
+        const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;
+        const numThreads = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.numThreads;
+        const powerPreference = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.powerPreference;
+
+        mlContext = await navigator.ml.createContext({
+          deviceType,
+          numThreads,
+          powerPreference,
+        });
+        (executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption).context = mlContext;
+        if (!deviceType) {
+          (executionProviderConfig as ort.InferenceSession.WebNNContextOptions).deviceType = deviceType;
+        }
+      }
       const session = await initializeSession(
           modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
           testOptions?.sessionOptions || {}, this.cache);
@@ -271,6 +290,7 @@ export class ModelTestContext {
           {init: initEnd - initStart, firstRun: -1, runs: [], count: 0},
           modelTest.ioBinding,
           profile,
+          mlContext,
       );
     } finally {
       this.initializing = false;
@@ -565,46 +585,34 @@ function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]
   });
 }
 
-const getContext = (() => {
-  let context: MLContext|undefined;
 
-  return async(): Promise<MLContext> => {
-    if (!context) {
-      context = await navigator.ml.createContext();
-    }
-    return context;
-  };
-})();
-
-async function createMlTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]) {
+async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Type, dims: readonly number[]) {
   if (!isMLBufferSupportedType(type)) {
-    throw new Error(`createMlTensorForOutput can not work with ${type} tensor`);
+    throw new Error(`createMLTensorForOutput can not work with ${type} tensor`);
   }
 
   const dataType = type === 'bool' ? 'uint8' : type;
 
-  const context = await getContext();
-  const mlBuffer = context.createBuffer({dataType, dimensions: dims as number[]});
+  const mlBuffer = mlContext.createBuffer({dataType, dimensions: dims as number[]});
 
   return ort.Tensor.fromMLBuffer(mlBuffer, {
     dataType: type,
     dims,
     dispose: () => mlBuffer.destroy(),
     download: async () => {
-      const arrayBuffer = await context.readBuffer(mlBuffer);
-      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.GpuBufferDataTypes];
+      const arrayBuffer = await mlContext.readBuffer(mlBuffer);
+      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.MLBufferDataTypes];
     }
   });
 }
 
-async function createMlTensorForInput(cpuTensor: ort.Tensor): Promise<ort.Tensor> {
+async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tensor): Promise<ort.Tensor> {
   if (!isMLBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
-    throw new Error(`createMlTensorForInput can not work with ${cpuTensor.type} tensor`);
+    throw new Error(`createMLTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
-  const context = await getContext();
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
-  const mlBuffer = context.createBuffer({dataType, dimensions: cpuTensor.dims as number[]});
-  context.writeBuffer(mlBuffer, cpuTensor.data);
+  const mlBuffer = mlContext.createBuffer({dataType, dimensions: cpuTensor.dims as number[]});
+  mlContext.writeBuffer(mlBuffer, cpuTensor.data);
   return ort.Tensor.fromMLBuffer(
       mlBuffer, {dataType: cpuTensor.type, dims: cpuTensor.dims, dispose: () => mlBuffer.destroy()});
 }
@@ -613,6 +621,7 @@ export async function sessionRun(options: {
   session: ort.InferenceSession; feeds: Record<string, ort.Tensor>;
   outputsMetaInfo: Record<string, Pick<ort.Tensor, 'dims'|'type'>>;
   ioBinding: Test.IOBindingMode;
+  mlContext?: MLContext;
 }): Promise<[number, number, ort.InferenceSession.OnnxValueMapType]> {
   const session = options.session;
   const feeds = options.feeds;
@@ -633,7 +642,7 @@ export async function sessionRun(options: {
         if (Object.hasOwnProperty.call(feeds, name)) {
           if (feeds[name].size > 0) {
             if (options.ioBinding === 'ml-location' || options.ioBinding === 'ml-tensor') {
-              feeds[name] = await createMlTensorForInput(feeds[name]);
+              feeds[name] = await createMLTensorForInput(options.mlContext!, feeds[name]);
             } else {
               feeds[name] = createGpuTensorForInput(feeds[name]);
             }
@@ -650,7 +659,7 @@ export async function sessionRun(options: {
             fetches[name] = new ort.Tensor(type, [], dims);
           } else {
             if (options.ioBinding === 'ml-tensor') {
-              fetches[name] = await createMlTensorForOutput(type, dims);
+              fetches[name] = await createMLTensorForOutput(options.mlContext!, type, dims);
             } else {
               fetches[name] = createGpuTensorForOutput(type, dims);
             }
@@ -701,8 +710,8 @@ export async function runModelTestSet(
     const outputsMetaInfo: Record<string, ort.Tensor> = {};
     testCase.inputs!.forEach((tensor) => feeds[tensor.name] = tensor);
     testCase.outputs!.forEach((tensor) => outputsMetaInfo[tensor.name] = tensor);
-    const [start, end, outputs] =
-        await sessionRun({session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding});
+    const [start, end, outputs] = await sessionRun(
+        {session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding, mlContext: context.mlContext});
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
     } else {

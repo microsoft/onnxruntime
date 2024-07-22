@@ -23,10 +23,6 @@ export interface BufferManager {
    */
   releaseBufferId(bufferId: BufferId): void;
   /**
-   * Get MLBuffer by BufferId.
-   */
-  getBuffer(bufferId: BufferId): MLBuffer;
-  /**
    * Ensure a MLBuffer is created for the BufferId.
    */
   ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): MLBuffer;
@@ -153,16 +149,6 @@ class BufferManagerImpl implements BufferManager {
         break;
       }
     }
-  }
-
-  public getBuffer(bufferId: BufferId): MLBuffer {
-    if (!this.buffersById.has(bufferId)) {
-      throw new Error('BufferID not found.');
-    }
-    if (!this.buffersById.get(bufferId)!.buffer) {
-      throw new Error('Buffer has not been created.');
-    }
-    return this.buffersById.get(bufferId)!.buffer!;
   }
 
   public ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): MLBuffer {

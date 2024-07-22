@@ -359,7 +359,7 @@ async function main() {
     }
 
     let ioBinding: Test.IOBindingMode;
-    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+    if (!['webgpu', 'webnn'].includes(backend) && args.ioBindingMode !== 'none') {
       npmlog.warn(
           'TestRunnerCli.Init.Model', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
       ioBinding = 'none';

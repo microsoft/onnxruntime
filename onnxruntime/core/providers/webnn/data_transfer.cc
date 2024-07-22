@@ -16,17 +16,17 @@ bool DataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_dev
 }
 
 common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
+    // We don't need to transfer the buffer to an MLBuffer, so we don't need to copy the buffer.
+    return Status::OK();
+  }
+
   size_t bytes = src.SizeInBytes();
   if (bytes > 0) {
     const void* src_data = src.DataRaw();
     void* dst_data = dst.MutableDataRaw();
 
     const auto& dst_device = dst.Location().device;
-
-    if (!emscripten::val::module_property("shouldTransferToMLBuffer").as<bool>()) {
-      // We don't need to transfer the buffer to an MLBuffer, so we don't need to copy the buffer.
-      return Status::OK();
-    }
 
     if (dst_device.Type() == OrtDevice::GPU) {
       EM_ASM({
