@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include "core/session/inference_session.h"
 #include "orttraining/training_api/utils.h"
 
