@@ -2748,7 +2748,14 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
 #if __cplusplus >= 202002L
   std::function<void()> run_fn = [=, this]() {
 #else
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated"
+#endif
   std::function<void()> run_fn = [=]() {
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 #endif
     Status status = Status::OK();
     ORT_TRY {
