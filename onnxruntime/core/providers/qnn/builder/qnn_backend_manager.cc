@@ -406,9 +406,9 @@ Status QnnBackendManager::CreateDevice() {
 
   LOGS_DEFAULT(INFO) << "Create device.";
   if (nullptr != qnn_interface_.deviceCreate) {
-    auto result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
-    if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
+    Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
+    if (QNN_SUCCESS != result)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result);
     }
   }
   device_created_ = true;
@@ -1291,6 +1291,14 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
     default:
       return "UNKNOWN_ERROR";
   }
+}
+
+const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+  const char* error_msg = nullptr;
+  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(result, &error_msg)) {
+    return error_msg;
+  }
+  return "Unknown";
 }
 
 const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
