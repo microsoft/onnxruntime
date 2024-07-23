@@ -10,36 +10,15 @@ Test MultiHeadAttention operator for CUDA and CPU.
 import concurrent.futures
 import itertools
 import unittest
-from enum import IntEnum
 from typing import Dict, List, Optional
 
 import numpy
 import torch
-from benchmark_mha import (
-    InputFormats,
-    MultiHeadAttentionConfig,
-    OrtMultiHeadAttention,
-    create_multi_head_attention_onnx_model,
-)
+from benchmark_mha import InputFormats, MultiHeadAttentionConfig, OrtMultiHeadAttention, SdpaKernel, create_ort_session
 from einops import rearrange
 from parameterized import parameterized
 
 import onnxruntime
-from onnxruntime import InferenceSession
-
-
-class SdpaKernel(IntEnum):
-    """Bit flags for sdpa_kernel CUDA provider option"""
-
-    DEFAULT = 0
-    FLASH_ATTENTION = 1
-    EFFICIENT_ATTENTION = 2
-    TRT_FUSED_ATTENTION = 4
-    CUDNN_FLASH_ATTENTION = 8
-    MATH = 16
-    TRT_FLASH_ATTENTION = 32
-    TRT_CROSS_ATTENTION = 64
-    TRT_CAUSAL_ATTENTION = 128
 
 
 def attention_reference(
@@ -466,7 +445,7 @@ def parity_check_mha_multi_threading(
     test_inputs: List[Dict],
     rtol: float = 1e-3,
     atol: float = 1e-3,
-    sdpa_kernel: int = SdpaKernel.DEFAULT,
+    attention_kernel: int = SdpaKernel.DEFAULT,
     max_threads: int = 5,
     verbose: bool = False,
 ):
@@ -476,21 +455,14 @@ def parity_check_mha_multi_threading(
     if config.causal and config.provider == "CUDAExecutionProvider":
         return None
     # Some kernel does not support certain input format.
-    if sdpa_kernel not in [
+    if attention_kernel not in [
         SdpaKernel.DEFAULT,
         SdpaKernel.FLASH_ATTENTION,
         SdpaKernel.EFFICIENT_ATTENTION,
     ] and config.input_format in [InputFormats.Q_KV_BSNH_BSN2H]:
         return None
-    if verbose:
-        print(f"create a shared session with {vars(config)}")
-    onnx_model_str = create_multi_head_attention_onnx_model(config, use_symbolic_shape=True)
-    if config.provider == "CUDAExecutionProvider":
-        provider_options = {"arena_extend_strategy": "kSameAsRequested", "sdpa_kernel": int(sdpa_kernel)}
-        providers = [(config.provider, provider_options), "CPUExecutionProvider"]
-    else:
-        providers = ["CPUExecutionProvider"]
-    ort_session = InferenceSession(onnx_model_str, providers=providers)
+
+    ort_session = create_ort_session(config, attention_kernel=attention_kernel, use_symbolic_shape=True)
 
     def convert_to_ort_inputs(feed_dict):
         ort_inputs = {}
@@ -613,7 +585,7 @@ class TestMultiHeadAttention(unittest.TestCase):
     def test_mha_cpu(self, config):
         parity_check_mha(config)
 
-    def run_mha_cuda_multi_threading(self, spda_kernel):
+    def run_mha_cuda_multi_threading(self, attention_kernel):
         for configs in multi_thread_test_cases("CUDAExecutionProvider", comprehensive_mode):
             test_inputs = []
             for config in configs:
@@ -626,8 +598,10 @@ class TestMultiHeadAttention(unittest.TestCase):
                 config.input_format = old_format
                 test_inputs.append({"config": config, "ort_inputs": ort_inputs, "ref_inputs": ref_inputs})
 
-            exception = parity_check_mha_multi_threading(test_inputs, sdpa_kernel=spda_kernel, max_threads=len(configs))
-            assert exception is None, f"{spda_kernel=}, {vars(configs[0])}, {exception}"
+            exception = parity_check_mha_multi_threading(
+                test_inputs, attention_kernel=attention_kernel, max_threads=len(configs)
+            )
+            assert exception is None, f"{attention_kernel=}, {vars(configs[0])}, {exception}"
 
     def test_mha_cuda_multi_threading(self):
         self.run_mha_cuda_multi_threading(SdpaKernel.DEFAULT)
