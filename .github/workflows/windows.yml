@@ -52,30 +52,80 @@ jobs:
           python-version: '3.11.x'
           architecture: 'x64'
 
+      - name: "Run vcpkg(x64-windows)"
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
+          doNotUpdateVcpkg: true
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "x64-windows"
+          # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
+
+      - name: "Run compile_schema.py"
+        run: |
+          # Runner's host triplet should be x64-windows or arm64-windows
+          $FLATC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-windows/tools/flatbuffers"
+          $env:PATH="$FLATC_DIR;$env:PATH"
+          flatc --version
+          $FLATC_PATH = Join-Path "$FLATC_DIR" "flatc.exe"
+          python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$FLATC_PATH"
+        shell: pwsh
+
+      - name: "Detect protoc"
+        id: protoc-detect
+        run: |
+          $PROTOC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-windows/tools/protobuf"
+          $env:PATH="$PROTOC_DIR;$env:PATH"
+          protoc --version
+          $PROTOC_PATH = Join-Path "$PROTOC_DIR" "protoc.exe"
+          "protoc_path=$PROTOC_PATH" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
       - name: "Run build.py(x64-windows)"
         run: |
           python tools\ci_build\build.py `
-            --build_dir "build/x64-windows" `
+            --build_dir "cmake_build/x64-windows" `
             --skip_submodule_sync `
-            --compile_no_warning_as_error `
             --skip_tests `
+            --compile_no_warning_as_error `
             --parallel `
+            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" `
             --use_vcpkg `
-            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-windows" `
+            --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         shell: pwsh
+
+      - name: "Run vcpkg(arm64-windows)"
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
+          doNotUpdateVcpkg: true
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "arm64-windows"
+          # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
 
       - name: "Run build.py(arm64-windows)"
         run: |
           python tools\ci_build\build.py `
-            --build_dir "build/arm64-windows" --arm64 `
+            --build_dir "cmake_build/arm64-windows" --arm64 `
             --skip_submodule_sync `
-            --compile_no_warning_as_error `
             --skip_tests `
+            --compile_no_warning_as_error `
             --parallel `
+            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" `
             --use_vcpkg `
-            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-windows" `
+            --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         shell: pwsh
