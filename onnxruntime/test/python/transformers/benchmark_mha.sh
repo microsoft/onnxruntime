@@ -1,4 +1,11 @@
-echo "Benchmark performance on GPU:"
+#!/bin/sh
+
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
+echo "Benchmark Scaled Dot Product Attention (SDPA) performance on GPU:"
 
 export CUDA_VISIBLE_DEVICES=0
 python benchmark_mha.py --use_gpu
