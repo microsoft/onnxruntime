@@ -526,9 +526,9 @@ Status QnnBackendManager::CreateContext() {
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
-                                             device_handle_,
-                                             context_configs,
-                                             &context);
+                                                          device_handle_,
+                                                          context_configs,
+                                                          &context);
   contexts_.push_back(context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
