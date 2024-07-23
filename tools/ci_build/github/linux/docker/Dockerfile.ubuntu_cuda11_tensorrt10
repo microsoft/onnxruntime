@@ -10,7 +10,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04 AS base
 # The local directory into which to build and install CMAKE
 ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.30.1-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update &&\
@@ -28,18 +28,34 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=68.2.2
+RUN pip install psutil setuptools>=68.2.2
 
 # Install TensorRT
-RUN v="8.5.1-1+cuda11.8" &&\
+RUN version="10.2.0.19-1+cuda11.8" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
-        libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
-        python3-libnvinfer=${v} libnvinfer-samples=${v}
+    apt-get install -y \
+    libnvinfer-dev=${version} \
+    libnvinfer-dispatch-dev=${version} \
+    libnvinfer-dispatch10=${version} \
+    libnvinfer-headers-dev=${version} \
+    libnvinfer-headers-plugin-dev=${version} \
+    libnvinfer-lean-dev=${version} \
+    libnvinfer-lean10=${version} \
+    libnvinfer-plugin-dev=${version} \
+    libnvinfer-plugin10=${version} \
+    libnvinfer-vc-plugin-dev=${version} \
+    libnvinfer-vc-plugin10=${version} \
+    libnvinfer10=${version} \
+    libnvonnxparsers-dev=${version} \
+    libnvonnxparsers10=${version} \
+    tensorrt-dev=${version} \
+    libnvinfer-bin=${version}
 
-# Compile trtexec
-RUN cd /usr/src/tensorrt/samples/trtexec && make
+# Compile trtexec if not installed
+RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ]; then \
+    cd /usr/src/tensorrt/samples/trtexec && make; \
+    fi
 
 # Install Valgrind
 RUN apt-get install -y valgrind
@@ -66,7 +82,7 @@ ARG ONNXRUNTIME_BRANCH=main
 ARG ONNXRUNTIME_COMMIT_ID
 
 # The supported CUDA architecture
-ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+ARG CMAKE_CUDA_ARCHITECTURES=75
 
 WORKDIR ${ONNXRUNTIME_LOCAL_CODE_DIR}
 
@@ -82,8 +98,9 @@ RUN if [ -z "$ONNXRUNTIME_COMMIT_ID" ] ; then echo "Building branch ${ONNXRUNTIM
     git reset --hard ${ONNXRUNTIME_COMMIT_ID} && git submodule update --recursive ; fi
 
 # Build ORT
-ENV CUDA_MODULE_LOADING "LAZY"
-RUN /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
+ENV CUDA_MODULE_LOADING "LAZY" 
+ARG PARSER_CONFIG=""
+RUN /bin/sh build.sh ${PARSER_CONFIG} --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
 
 # Switch to root to continue following steps of CI
 USER root

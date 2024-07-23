@@ -86,7 +86,7 @@ void VitisAIExecutionProvider::PrepareEPContextEnablement(
     model_path_str_ = ToPathString(GetTopLevelModelPath(graph_viewer).string());
   }
   std::string backend_cache_dir, backend_cache_key;
-  get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
+  get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode | kDDCode | kVCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
   info_["cacheDir"] = backend_cache_dir;
   info_["cacheKey"] = backend_cache_key;
   // Create a new model, reusing the graph name, the op-domain-to-opset-version map,

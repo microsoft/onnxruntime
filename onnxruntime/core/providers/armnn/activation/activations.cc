@@ -56,7 +56,7 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
     armnn::TensorInfo outputTensorInfo(outputShape, armnn::DataType::Float32);
     activation->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Relu::run->GetDeviceSpec());
 
     if (optNet == nullptr) {

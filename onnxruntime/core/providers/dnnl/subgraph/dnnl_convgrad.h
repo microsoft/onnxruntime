@@ -39,9 +39,9 @@ class DnnlConvGrad {
   std::vector<int64_t> GetKernelShape(DnnlNode& node);
   /* Get the 'pads' attribute */
   dnnl::memory::dims GetPads(DnnlNode& node, ConvShape shape);
-  /* Get the padding left values from the infered pads */
+  /* Get the padding left values from the inferred pads */
   dnnl::memory::dims GetPaddingLeft(const std::vector<int64_t>& onnx_padding, ConvShape shape);
-  /* Get the padding right values from the infered pads */
+  /* Get the padding right values from the inferred pads */
   dnnl::memory::dims GetPaddingRight(const std::vector<int64_t>& onnx_padding, ConvShape shape);
   /*
    * Get the 'dilations' attribute.

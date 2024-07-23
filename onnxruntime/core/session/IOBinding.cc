@@ -29,7 +29,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     // It may copy the data instead of copying the pointer.
     // When OrtValue is empty, the pointer is copied. When it is not
     // (if feeds_[index] is not for example),
-    // CopyOneInputAcrossDevices has a different behaviour.
+    // CopyOneInputAcrossDevices has a different behavior.
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
     add_or_replace(new_mlvalue);
   } else {

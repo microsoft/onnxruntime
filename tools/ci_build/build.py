@@ -261,9 +261,6 @@ def parse_arguments():
         "--wheel_name_suffix",
         help="Suffix to append to created wheel names. This value is currently only used for nightly builds.",
     )
-    parser.add_argument(
-        "--numpy_version", help="Installs a specific version of numpy before building the python binding."
-    )
     parser.add_argument("--skip-keras-test", action="store_true", help="Skip tests with Keras if keras is installed")
 
     # C-Sharp bindings
@@ -721,7 +718,7 @@ def parse_arguments():
 
     # Code coverage
     parser.add_argument(
-        "--code_coverage", action="store_true", help="Generate code coverage when targetting Android (only)."
+        "--code_coverage", action="store_true", help="Generate code coverage when targeting Android (only)."
     )
 
     # lazy tensor support.
@@ -866,16 +863,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def install_python_deps(numpy_version=""):
-    dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.10")
-    dep_packages.append("packaging")
-    dep_packages.append("cerberus")
-    dep_packages.append("psutil")
-    run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
 def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
@@ -2146,7 +2133,14 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
                         run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
+                            [
+                                sys.executable,
+                                "-m",
+                                "pip",
+                                "install",
+                                "-r",
+                                "requirements/transformers-test/requirements.txt",
+                            ],
                             cwd=SCRIPT_DIR,
                         )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
@@ -2755,7 +2749,7 @@ def main():
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
-                # builds (Override any user-defined behaviour for test if any)
+                # builds (Override any user-defined behavior for test if any)
                 if args.test:
                     log.warning(
                         "Cannot test on host build machine for cross-compiled "
@@ -2818,7 +2812,10 @@ def main():
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
         if args.enable_pybind and is_windows():
-            install_python_deps(args.numpy_version)
+            run_subprocess(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements/pybind/requirements.txt"],
+                cwd=SCRIPT_DIR,
+            )
 
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""

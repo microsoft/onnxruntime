@@ -170,7 +170,7 @@ std::string GetTestDataPath() {
     testDataPath.replace(environmentVariableFetchSuceeded, testDataPathFolderName.length(), testDataPathFolderName);
   } else {
     throw std::exception(
-      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n",
+      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accommodate the maximum path size of %d\n",
       MAX_PATH
     );
   }
