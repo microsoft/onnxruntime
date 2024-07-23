@@ -26,6 +26,8 @@ import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, getElementAt, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
+import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from '../fuse-utils';
+import {typeSnippet} from './activation_util';
 
 const arrayProduct = (arr: number[]) => {
   let product = 1;
@@ -235,6 +237,7 @@ export const createConv3DNaiveProgramInfo =
         {type: DataType.uint32, data: pads}, {type: DataType.uint32, data: attributes.strides},
         {type: DataType.uint32, data: attributes.dilations}
       ];
+      appendActivationUniformsData(attributes, programUniforms);
       programUniforms.push(...createTensorShapeVariables(inputs[0].dims, inputs[1].dims));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       const hasBias = inputs.length === 3;
@@ -251,6 +254,7 @@ export const createConv3DNaiveProgramInfo =
           {name: 'strides', type: 'u32', length: attributes.strides.length},
           {name: 'dilations', type: 'u32', length: attributes.dilations.length}
         ];
+        appendActivationUniforms(attributes, uniforms);
         // TODO: support component 2, 3.
         const components = isVec4 ? 4 : 1;
         const t = tensorTypeToWsglStorageType(inputs[0].dataType);
@@ -270,6 +274,8 @@ export const createConv3DNaiveProgramInfo =
               isVec4 ? '/ 4' : ''}];
         }`;
         }
+        const resType = typeSnippet(innerElementSize, t);
+        const applyActivation = getActivationSnippet(attributes, resType, t);
 
         return `
             ${declareFunctions}
@@ -308,7 +314,7 @@ export const createConv3DNaiveProgramInfo =
               let inputDepthNearestVec4 = (xShapeU / 4) * 4;
               let inputDepthVec4Remainder = xShapeU % 4;
 
-              var dotProd = 0.0;
+              var value = 0.0;
               for (var wF = 0u; wF < uniforms.filter_dims[0]; wF++) {
                 let xF = xFCorner + wF * uniforms.dilations[0];
                 if (xF < 0 || xF >= xShapeY) {
@@ -346,13 +352,13 @@ export const createConv3DNaiveProgramInfo =
                               getW(d2, d1 + 1, wF, wR, wC),
                               getW(d2, d1 + 2, wF, wR, wC),
                               getW(d2, d1 + 3, wF, wR, wC));
-                      dotProd += dot(xValues, wValues);
+                      value += dot(xValues, wValues);
                     }
                     if (inputDepthVec4Remainder == 1) {
                         ${
-            isChannelsLast ? `dotProd += getX(batch, xF, xR, xC, inputDepthNearestVec4)
+            isChannelsLast ? `value += getX(batch, xF, xR, xC, inputDepthNearestVec4)
                           * getW(d2, inputDepthNearestVec4, wF, wR, wC);` :
-                             `dotProd += getX(batch, inputDepthNearestVec4, xF, xR, xC)
+                             `value += getX(batch, inputDepthNearestVec4, xF, xR, xC)
                           * getW(d2, inputDepthNearestVec4, wF, wR, wC);`}
                     } else if (inputDepthVec4Remainder == 2) {
                       ${
@@ -367,7 +373,7 @@ export const createConv3DNaiveProgramInfo =
                     let wValues = vec2<f32>(
                       getW(d2, inputDepthNearestVec4, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 1, wF, wR, wC));
-                      dotProd += dot(xValues, wValues);
+                      value += dot(xValues, wValues);
                     } else if (inputDepthVec4Remainder == 3) {
                       ${
             isChannelsLast ? `let xValues = vec3<f32>(
@@ -384,13 +390,14 @@ export const createConv3DNaiveProgramInfo =
                       getW(d2, inputDepthNearestVec4, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 1, wF, wR, wC),
                       getW(d2, inputDepthNearestVec4 + 2, wF, wR, wC));
-                      dotProd += dot(xValues, wValues);
+                      value += dot(xValues, wValues);
                     }
                   }
                 }
               }
-              ${hasBias ? 'dotProd = dotProd + getBiasByOutputCoords(coords)' : ''};
-              result[global_idx] = f32(dotProd);
+              ${hasBias ? 'value = value + getBiasByOutputCoords(coords)' : ''};
+              ${applyActivation}
+              result[global_idx] = f32(value);
           }`;
       };
       return {

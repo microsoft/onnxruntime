@@ -1358,6 +1358,7 @@
       "fast-gelu.jsonc",
       "floor.jsonc",
       "fused-conv.jsonc",
+      "fused-conv3dncdhw.jsonc",
       "gather-elements.jsonc",
       "gemm.jsonc",
       "global-average-pool.jsonc",
