@@ -89,6 +89,7 @@
     <Reference Include="System" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
+    <Reference Include="Xamarin.iOS" />
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
@@ -203,4 +204,5 @@
       <Name>Microsoft.ML.OnnxRuntime.Tests.Devices</Name>
     </ProjectReference>
   </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />
 </Project>
