@@ -279,7 +279,7 @@ Status QnnBackendManager::InitializeQnnLog() {
     }
   }
 
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend");
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -320,7 +320,7 @@ Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
     }
   }
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend");
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -566,7 +566,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   // Generate all graphs in one single context
   Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(contexts_[0], &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
-    LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
+    LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error: " << QnnErrorHandleToString(rt);
     return nullptr;
   }
 
@@ -581,7 +581,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
                                        required_buffer_size,
                                        &written_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
-    LOGS(*logger_, ERROR) << "Failed to get context binary.";
+    LOGS(*logger_, ERROR) << "Failed to get context binary. Error: " << QnnErrorHandleToString(rt);
     return nullptr;
   }
 
