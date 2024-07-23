@@ -356,7 +356,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1b0b5eac540b7f8fd19b18f1e6b8427c95503348",
+          "commitHash": "98ca4e1941fe3263f128f74f10063a3ea35c7019",
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
