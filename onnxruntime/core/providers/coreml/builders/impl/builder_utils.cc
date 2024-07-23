@@ -315,10 +315,11 @@ void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std:
 
 void AddOperationInputs(MILSpec::Operation& op, std::string_view input_name,
                         const std::vector<std::string_view>& value_names) {
-  MILSpec::Argument& arg = (*op.mutable_inputs())[input_name];
+  MILSpec::Argument arg;
   for (const auto& value : value_names) {
     arg.mutable_arguments()->Add()->set_name(std::string(value));
   }
+  (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
 void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output) {
