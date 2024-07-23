@@ -24,18 +24,14 @@ python benchmark_mha.py --torch
 set MKL_DYNAMIC=
 set OMP_NUM_THREADS=
 
+set ORT_DISABLE_FLASH_ATTENTION=0
 python benchmark_mha.py --intra_op_num_threads 1
 python benchmark_mha.py --intra_op_num_threads 2
 python benchmark_mha.py --intra_op_num_threads 4
 python benchmark_mha.py --intra_op_num_threads 8
 
-
 echo "Benchmark performance on CPU with default threads settings:"
 python benchmark_mha.py
-
-set ORT_DISABLE_FLASH_ATTENTION=1
-python benchmark_mha.py
-set ORT_DISABLE_FLASH_ATTENTION=
 
 python benchmark_mha.py --torch
 
@@ -43,5 +39,9 @@ python benchmark_mha.py --causal
 python benchmark_mha.py --torch --causal
 
 python benchmark_mha.py --causal --has_past
+
+set ORT_DISABLE_FLASH_ATTENTION=1
+python benchmark_mha.py
+set ORT_DISABLE_FLASH_ATTENTION=
 
 type benchmark_mha_cpu_*.csv > mha_cpu_benchmark_results.csv
