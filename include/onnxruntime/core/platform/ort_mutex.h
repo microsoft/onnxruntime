@@ -132,8 +132,14 @@ class OrtMutex {
 };
 
 class OrtCondVar {
+#if defined(__clang__) && __cplusplus >= 202002L
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-pragma"
+#endif
   nsync::nsync_cv native_cv_object = NSYNC_CV_INIT;
-
+#if defined(__clang__) && __cplusplus >= 202002L
+#pragma clang diagnostic pop
+#endif
  public:
   constexpr OrtCondVar() noexcept = default;
 
