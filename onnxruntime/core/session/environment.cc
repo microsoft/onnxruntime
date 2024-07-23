@@ -348,4 +348,8 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
   return Status{ONNXRUNTIME, common::INVALID_ARGUMENT, provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
+void Environment::InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory) {
+  custom_ep_factories_.insert({std::string(ep_name), ep_factory});
+}
+
 }  // namespace onnxruntime

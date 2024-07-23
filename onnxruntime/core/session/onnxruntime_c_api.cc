@@ -2354,6 +2354,20 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterOrtExecutionProviderLibrary, _In_ const char* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
+  API_IMPL_BEGIN
+  void* handle = nullptr;
+  ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(ToPathString(lib_path), false, &handle));
+  if (handle) {
+    OrtExecutionProviderFactory* (*symbol)();
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle, "RegisterCustomEp", (void**)&symbol));
+    env->InsertCustomEp(ep_name, symbol());
+    return nullptr;
+  }
+  return CreateStatus(ORT_RUNTIME_EXCEPTION, "cannot load the shared library for out-tree EP");
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2731,6 +2745,8 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::KernelInfoGetAllocator,
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::RegisterOrtExecutionProviderLibrary,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

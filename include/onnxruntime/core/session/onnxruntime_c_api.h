@@ -304,6 +304,8 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(ExecutionProvider);
+ORT_RUNTIME_CLASS(ExecutionProviderFactory);
 ORT_RUNTIME_CLASS(Graph);
 
 #ifdef _WIN32
@@ -681,6 +683,15 @@ struct OrtApiBase {
    */
   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
+
+typedef struct OrtExecutionProvider {
+  //void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraph* graph, _Out_ int* cnt, _Outptr_ OrtComputeCapability** compute_capability);
+  //void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraph* graph, const OrtNode* node, int size, _Out_ int* cnt, _Outptr_ OrtNodeComputeInfo** node_compute_info);
+} OrtExecutionProvider;
+
+typedef struct OrtExecutionProviderFactory {
+  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_);
+} OrtExecutionProviderFactory;
 
 typedef struct OrtApiBase OrtApiBase;
 
@@ -4666,6 +4677,8 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
+
+  ORT_API2_STATUS(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 };
 
 /*
