@@ -8,7 +8,7 @@
 
 #define MTI_ASSERT(condition)                                           \
   if (!(condition)) {                                                   \
-    std::string error_msg = "Not satsified: " #condition                \
+    std::string error_msg = "Not satisfied: " #condition                \
                             ": line " +                                 \
                             std::to_string(__LINE__) +                  \
                             " in file " + std::string(__FILE__) + "\n"; \

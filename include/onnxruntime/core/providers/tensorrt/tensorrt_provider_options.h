@@ -16,6 +16,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int device_id{0};                                      // cuda device id.
   int has_user_compute_stream{0};                        // indicator of user specified CUDA compute stream.
   void* user_compute_stream{nullptr};                    // user specified CUDA compute stream.
+                                                         // can be updated using: UpdateTensorRTProviderOptionsWithValue
   int trt_max_partition_iterations{1000};                // maximum iterations for TensorRT parser to get capability
   int trt_min_subgraph_size{1};                          // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size{1 << 30};                // maximum workspace size for TensorRT.
@@ -78,6 +79,12 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
                                                     // the ONNX model containing the weights (applicable only when
                                                     // the "trt_weight_stripped_engine_enable" option is enabled)
+  const void* trt_onnx_bytestream{nullptr};         // The byte stream of th original ONNX model containing the weights
+                                                    // (applicable only when the "trt_weight_stripped_engine_enable"
+                                                    // option is enabled)
+                                                    // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  size_t trt_onnx_bytestream_size{0};               // size of the byte stream provided as "trt_onnx_bytestream"
+                                                    // can be updated using: UpdateTensorRTProviderOptionsWithValue
 
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
   int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true

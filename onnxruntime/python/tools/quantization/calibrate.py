@@ -812,7 +812,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -834,7 +834,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[: len(old_hist)] += old_hist
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):

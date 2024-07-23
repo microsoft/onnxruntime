@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace cuda {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
-// which are already convered by op set 11 cpu versoin, so simply add declaration.
+// which are already convered by op set 11 cpu version, so simply add declaration.
 #define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                             \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \
@@ -269,7 +269,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
       // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
       // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
-      // [N,C,D] to [N,C,1,D], expecially on A100, and especially for ConvGrad.
+      // [N,C,D] to [N,C,1,D], especially on A100, and especially for ConvGrad.
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.

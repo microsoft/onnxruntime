@@ -1129,7 +1129,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //
   // Ensure that the ThreadPoolParallelSection has sufficient workers to
   // execute a loop with degree of parallelism n.  We track the number
-  // of workers already avaiable to the parallel section, prior to
+  // of workers already available to the parallel section, prior to
   // submitting tasks to the work queues to make up the total.
   //
   // Each worker will call in to worker_fn(idx) with a per-worker thread

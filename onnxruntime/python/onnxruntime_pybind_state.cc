@@ -152,7 +152,7 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
   } else {
     // acquire GIL to safely:
     // 1) invoke python callback
-    // 2) create, manipulate, and destory python objects
+    // 2) create, manipulate, and destroy python objects
     py::gil_scoped_acquire acquire;
     invoke_callback();
   }
@@ -946,7 +946,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                                                                             provider_options_map);
 
         // This variable is never initialized because the APIs by which it should be initialized are deprecated,
-        // however they still exist are are in-use. Neverthless, it is used to return CUDAAllocator,
+        // however they still exist are are in-use. Nevertheless, it is used to return CUDAAllocator,
         // hence we must try to initialize it here if we can since FromProviderOptions might contain
         // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
@@ -973,14 +973,17 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
                                                                           provider_options_map);
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-      // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
-      // since FromProviderOptions might contain external ROCM allocator.
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated,
+      // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
+      // try to initialize it here if we can since FromProviderOptions might contain external ROCM allocator.
       external_allocator_info = info.external_allocator_info;
       return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
     } else {
       if (!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
-        ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+        ORT_THROW(
+            "ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version "
+            "of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, "
+            "and that your GPU is supported.");
       }
     }
 #endif
@@ -1389,7 +1392,8 @@ void addGlobalMethods(py::module& m) {
         LogDeprecationWarning("set_openvino_device", "OpenVINO execution provider option \"device_type\"");
         openvino_device_type = device_type;
       },
-      "Set the prefered OpenVINO device type to be used. If left unset, the device type selected during build time will be used.");
+      "Set the preferred OpenVINO device type to be used. If left unset, "
+      "the device type selected during build time will be used.");
   // TODO remove deprecated global config
   m.def(
       "get_openvino_device", []() -> std::string {

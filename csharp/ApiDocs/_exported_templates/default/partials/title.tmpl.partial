@@ -39,7 +39,7 @@ Event {{name.0.value}}
 Operator {{name.0.value}}
 {{/inOperator}}
 {{#inEii}}
-Explict Interface Implementation {{name.0.value}}
+Explicit Interface Implementation {{name.0.value}}
 {{/inEii}}
 {{#inVariable}}
 Variable {{name.0.value}}

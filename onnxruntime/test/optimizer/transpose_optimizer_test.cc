@@ -4883,7 +4883,7 @@ static void CheckSharedInitializerHandling(bool broadcast) {
 
 // test we re-use a modified shared initializer wherever possible. model has one initializer that is used by 3 DQ nodes
 // and one initializer that is used by 2 Add nodes. both cases should be handled with the initializer being
-// modified in-place for the first usage, and the Transpose added to the second usage being cancelled out when the
+// modified in-place for the first usage, and the Transpose added to the second usage being canceled out when the
 // original Transpose at the start of the model is pushed down.
 TEST(TransposeOptimizerTests, SharedInitializerHandling) {
   CheckSharedInitializerHandling(/*broadcast*/ false);
@@ -4899,7 +4899,7 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
 }
 
 // Unit test where EstimateTransposeValueCost must look past a DQ -> Squeeze to see the Transponse of a shared
-// initializer for the overall cost of pushing the Transpose throught the second Where to be negative.
+// initializer for the overall cost of pushing the Transpose through the second Where to be negative.
 TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
   auto model_uri = ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast2.onnx");
 

@@ -34,6 +34,8 @@ struct TensorrtExecutionProviderInfo {
   std::string engine_cache_path{""};
   bool weight_stripped_engine_enable{false};
   std::string onnx_model_folder_path{""};
+  const void* onnx_bytestream{nullptr};
+  size_t onnx_bytestream_size{0};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
