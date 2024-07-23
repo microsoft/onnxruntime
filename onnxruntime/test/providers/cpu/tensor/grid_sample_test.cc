@@ -13,7 +13,7 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(int opset
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
-  
+
 #ifdef USE_CUDA
   if (opset_version < 20) {
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
