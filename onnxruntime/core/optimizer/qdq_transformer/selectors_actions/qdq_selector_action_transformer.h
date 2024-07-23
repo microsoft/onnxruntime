@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <string>
+#include <memory>
+#include <unordered_map>
+
+
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"

@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
 #include "core/common/flatbuffers.h"

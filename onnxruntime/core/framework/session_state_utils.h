@@ -3,6 +3,9 @@
 
 #pragma once
 #include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"

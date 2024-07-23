@@ -3,6 +3,8 @@
 
 #include <functional>
 #include <limits>
+#include <memory>
+#include <unordered_map>
 #include <utility>
 
 #include <core/common/status.h>
