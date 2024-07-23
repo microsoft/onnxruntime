@@ -137,7 +137,14 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 EtwRegistrationManager::~EtwRegistrationManager() {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.clear();
-  ::TraceLoggingUnregister(etw_provider_handle);
+  if (initialized_ || initializing_) {
+    std::lock_guard<OrtMutex> init_lock(init_mutex_);
+      assert(!initializing_);
+      if (initialized_) {
+        ::TraceLoggingUnregister(etw_provider_handle);
+        initialized_ = false;
+      }
+  }
 }
 
 EtwRegistrationManager::EtwRegistrationManager() {
@@ -166,6 +173,11 @@ void EtwRegistrationManager::LazyInitialize() try {
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                              ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                              PVOID CallbackContext) {
+  if (!initialized_) {
+    // Drop messages until manager is fully initialized.
+    return;
+  }
+
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
     (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
