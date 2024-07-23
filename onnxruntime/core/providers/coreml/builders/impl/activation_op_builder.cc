@@ -103,8 +103,6 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       NodeAttrHelper helper(node);
       const auto alpha = helper.Get("alpha", 0.01f);
       AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
-      //AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha));
-
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
