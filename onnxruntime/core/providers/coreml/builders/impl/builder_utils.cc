@@ -313,11 +313,11 @@ void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std:
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, const std::string& name,
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, const std::string& output_name,
                                     int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
-  output_arg.set_name(name);
+  output_arg.set_name(output_name);
 
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
