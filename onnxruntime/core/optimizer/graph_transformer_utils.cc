@@ -189,7 +189,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    concurrency::ThreadPool* intra_op_thread_pool) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -419,7 +419,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    concurrency::ThreadPool* intra_op_thread_pool) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
