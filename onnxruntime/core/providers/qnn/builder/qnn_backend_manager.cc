@@ -1073,8 +1073,8 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
     bool tracelogging_provider_ep_enabled) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
-  auto result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile sub events.");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile sub events. Error: ", QnnErrorHandleToString(result));
 
   if (num_sub_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_sub_events: " << profile_sub_events << " num_sub_events: " << num_sub_events;
@@ -1113,7 +1113,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
     std::ofstream& outfile,
     bool tracelogging_provider_ep_enabled) {
   QnnProfile_EventData_t event_data;
-  auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
@@ -1295,7 +1295,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
 
 const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
   const char* error_msg = nullptr;
-  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(result, &error_msg)) {
+  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(error, &error_msg)) {
     return error_msg;
   }
   return "Unknown";
