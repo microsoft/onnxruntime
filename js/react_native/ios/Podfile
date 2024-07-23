@@ -9,7 +9,7 @@ def shared
 if config["reactNativePath"] != nil
   use_react_native!(:path => config["reactNativePath"])
 else
-  use_react_native!(:path => '../node_modules/react-native/')
+  use_react_native!(:path => '../node_modules/react-native')
 end
 
   # Comment the next line if you don't want to use dynamic frameworks
