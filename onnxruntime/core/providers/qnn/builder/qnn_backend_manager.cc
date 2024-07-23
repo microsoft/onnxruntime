@@ -331,7 +331,7 @@ Status QnnBackendManager::InitializeBackend() {
   }
 
   Qnn_ErrorHandle_t result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error:", QnnErrorHandleToString(result));
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error: ", QnnErrorHandleToString(result));
 
   backend_initialized_ = true;
   return Status::OK();
@@ -407,7 +407,7 @@ Status QnnBackendManager::CreateDevice() {
   LOGS_DEFAULT(INFO) << "Create device.";
   if (nullptr != qnn_interface_.deviceCreate) {
     Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
-    if (QNN_SUCCESS != result)
+    if (QNN_SUCCESS != result) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result));
     }
   }
@@ -1014,8 +1014,8 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
-  auto result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile events.");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile events. Error: ", QnnErrorHandleToString(result));
 
   if (num_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_events: " << profile_events << " num_events: " << num_events;
