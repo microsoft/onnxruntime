@@ -353,16 +353,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
-  return g_host->CreateROCMPinnedAllocator(name);
-}
-
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
 #endif
 
@@ -503,7 +499,7 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
-Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
                              /*out*/ std::vector<uint8_t>& unpacked_tensor) {
   return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
 }

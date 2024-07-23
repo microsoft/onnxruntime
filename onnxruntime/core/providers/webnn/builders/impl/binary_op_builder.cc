@@ -63,12 +63,21 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
-  // XNNPACK prelu operator expects slope to be a static value.
-  // https://github.com/google/XNNPACK/issues/4692
-  // TODO: Remove this check after it is solved.
-  if (op_type == "PRelu" && !Contains(initializers, input_defs[1]->Name()) && device_type == WebnnDeviceType::CPU) {
-    LOGS(logger, VERBOSE) << "The second input (slope) for PRelu must be a constant initializer for WebNN CPU backend.";
+  std::vector<int64_t> input0_shape;
+  std::vector<int64_t> input1_shape;
+  if (!GetShape(*input_defs[0], input0_shape, logger) ||
+      !GetShape(*input_defs[1], input1_shape, logger)) {
     return false;
+  }
+
+  // 'prelu' op in WebNN CPU backend restricts the last dimension of input and slope to be same.
+  // TODO: Remove this workaround once the associated issue is resolved in Chromium:
+  // https://issues.chromium.org/issues/335517470.
+  if (op_type == "PRelu" && device_type == WebnnDeviceType::CPU) {
+    if (input0_shape.back() != input1_shape.back()) {
+      LOGS(logger, VERBOSE) << "The last dimension of input and slope for PRelu must be same for WebNN CPU backend.";
+      return false;
+    }
   }
 
   return true;

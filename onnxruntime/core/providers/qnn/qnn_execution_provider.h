@@ -15,6 +15,9 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#endif
 
 namespace onnxruntime {
 
@@ -86,6 +89,9 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = false;
+#ifdef _WIN32
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+#endif
 
   class PerThreadContext final {
    public:

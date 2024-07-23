@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <numeric>
+#include <utility>
+#include <vector>
 
 #include "qnn_model_wrapper.h"
 #include "core/common/safeint.h"
@@ -313,7 +315,8 @@ bool QnnModelWrapper::GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t
 }
 
 Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
-                                         std::vector<int32_t>& zero_points) const {
+                                         /*out*/ std::vector<int32_t>& zero_points,
+                                         /*out*/ int32_t& onnx_data_type) const {
   const auto& graph_initializers = GetInitializerTensors();
   auto iter = graph_initializers.find(initializer_name);
   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for zero-point(s): ",
@@ -323,13 +326,14 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
   ORT_RETURN_IF_NOT(zp_tensor_proto->has_data_type(), "Expected zero-point initializer ", initializer_name.c_str(),
                     " to have a proto data type.");
 
-  const int32_t onnx_data_type = zp_tensor_proto->data_type();
+  onnx_data_type = zp_tensor_proto->data_type();
   std::vector<uint8_t> initializer_bytes;
 
   ORT_RETURN_IF_ERROR(UnpackInitializerData(*zp_tensor_proto, initializer_bytes));
 
   switch (onnx_data_type) {
     // QNN use -offset for some reason
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:  // INT4 zero-points are unpacked as 8-bit values for QNN
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(initializer_bytes));
       std::transform(int8_span.begin(), int8_span.end(), std::back_inserter(zero_points),
@@ -338,6 +342,7 @@ Status QnnModelWrapper::UnpackZeroPoints(const std::string& initializer_name,
                      });
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:  // UINT4 zero-points are unpacked as 8-bit values for QNN
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       auto uint8_span = ReinterpretAsSpan<const uint8_t>(gsl::make_span(initializer_bytes));
       std::transform(uint8_span.begin(), uint8_span.end(), std::back_inserter(zero_points),
@@ -412,9 +417,10 @@ Status QnnModelWrapper::UnpackScales(const std::string& initializer_name, std::v
 
 // Checks if a tensor in the ONNX graph is per-channel quantized.
 Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& io_def,
-                                              /*out*/ bool& is_per_axis) const {
+                                              /*out*/ bool& is_per_channel,
+                                              /*out*/ int64_t& axis) const {
   if (!io_def.quant_param) {
-    is_per_axis = false;
+    is_per_channel = false;
     return Status::OK();
   }
 
@@ -432,7 +438,12 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   const bool is_scalar_or_1_elem_vector = scale_shape.NumDimensions() == 0 ||
                                           (scale_shape.NumDimensions() == 1 && scale_shape.Size() == 1);
 
-  is_per_axis = !is_scalar_or_1_elem_vector;
+  is_per_channel = !is_scalar_or_1_elem_vector;
+
+  if (is_per_channel) {
+    axis = io_def.quant_param->axis.value_or(1);  // 1 is default axis for Q/DQ ops.
+  }
+
   return Status::OK();
 }
 
@@ -578,10 +589,36 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                               std::vector<uint8_t>& unpacked_tensor) const {
   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-    return onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(), unpacked_tensor);
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(),
+                                                                  unpacked_tensor));
+  } else {
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor));
   }
 
-  return onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor);
+  int32_t onnx_data_type = initializer.data_type();
+
+  // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
+  if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
+    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
+    const size_t num_elems = shape.Size();
+    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
+    unpacked_tensor = std::vector<uint8_t>(num_elems);
+
+    auto dst = gsl::make_span(reinterpret_cast<int8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+    auto src = gsl::make_span(reinterpret_cast<const Int4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
+    ORT_RETURN_IF_NOT(Int4x2::Unpack(dst, src), "Failed to unpack Tensor<Int4x2> for QNN");
+  } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
+    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
+    const size_t num_elems = shape.Size();
+    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
+    unpacked_tensor = std::vector<uint8_t>(num_elems);
+
+    auto dst = gsl::make_span(reinterpret_cast<uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
+    auto src = gsl::make_span(reinterpret_cast<const UInt4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
+    ORT_RETURN_IF_NOT(UInt4x2::Unpack(dst, src), "Failed to unpack Tensor<UInt4x2> for QNN");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace qnn

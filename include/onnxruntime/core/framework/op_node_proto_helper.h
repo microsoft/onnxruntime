@@ -7,7 +7,7 @@
 #include "core/common/status.h"
 #include "core/framework/tensor_shape.h"
 #include "core/graph/graph_viewer.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #endif
 
 class IMLOpKernel;

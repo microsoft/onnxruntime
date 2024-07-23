@@ -446,6 +446,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("use_tf32", ["1", "0"])
 
+                test_get_and_set_option_with_values("sdpa_kernel", ["0", "1", "2"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"

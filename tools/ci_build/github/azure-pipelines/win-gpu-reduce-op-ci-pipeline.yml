@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-Win2022-GPU-T4'
+  pool: 'onnxruntime-Win2022-GPU-A10'
   strategy:
     maxParallel: 2
     matrix:
@@ -22,7 +22,7 @@ jobs:
       DownloadCUDA: true
       BuildArch: 'x64'
       BuildConfig: $(BuildConfig)
-      MachinePool: 'onnxruntime-Win2022-GPU-T4'
+      MachinePool: 'onnxruntime-Win2022-GPU-A10'
       WithCache: true
       Today: $(Today)
 

@@ -12,8 +12,7 @@ gsl::span<const char> tensor_proto_as_raw(const ONNX_NAMESPACE::TensorProto& ten
   auto& mut_tensor = const_cast<ONNX_NAMESPACE::TensorProto&>(tensor);
   if (!tensor.has_raw_data()) {
     std::vector<uint8_t> unpacked_tensor;
-    auto path = onnxruntime::Path::Create();
-    auto s = onnxruntime::utils::UnpackInitializerData(tensor, *path, unpacked_tensor);
+    auto s = onnxruntime::utils::UnpackInitializerData(tensor, std::filesystem::path(), unpacked_tensor);
     mut_tensor.mutable_raw_data()->resize(unpacked_tensor.size());
     mut_tensor.clear_float_data();
     mut_tensor.clear_int32_data();
@@ -68,7 +67,7 @@ ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
                                                   const std::vector<int64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT64,
                           reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_u8(const std::string& name, const std::vector<int64_t>& shape,
@@ -88,7 +87,7 @@ ONNX_NAMESPACE::TensorProto* tensor_proto_new_u32(const std::string& name, const
 }
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_u64(const std::string& name, const std::vector<int64_t>& shape,
                                                   const std::vector<uint64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT64,
                           reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 

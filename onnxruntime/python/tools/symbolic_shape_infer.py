@@ -206,10 +206,9 @@ class SymbolicShapeInference:
             "GemmFloat8": self._infer_GemmFloat8,
             "GroupNorm": self._infer_GroupNorm,
             "GroupQueryAttention": self._infer_GroupQueryAttention,
-            "SparseAttention": self._infer_SparseAttention,
-            "SkipGroupNorm": self._infer_SkipGroupNorm,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
+            "MatMulNBits": self._infer_MatMulNBits,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "NhwcConv": self._infer_NhwcConv,
             "PackedAttention": self._infer_PackedAttention,
@@ -223,8 +222,10 @@ class SymbolicShapeInference:
             "RestorePadding": self._infer_RestorePadding,
             "RotaryEmbedding": self._infer_RotaryEmbedding,
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
+            "SkipGroupNorm": self._infer_SkipGroupNorm,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
+            "SparseAttention": self._infer_SparseAttention,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -1255,6 +1256,25 @@ class SymbolicShapeInference:
 
     def _infer_MatMulInteger(self, node):  # noqa: N802
         self._compute_matmul_shape(node, onnx.TensorProto.INT32)
+
+    def _infer_MatMulNBits(self, node):  # noqa: N802
+        lhs_shape = self._get_shape(node, 0)
+        rhs_shape = [get_attribute(node, "K"), get_attribute(node, "N")]
+        lhs_rank = len(lhs_shape)
+        assert lhs_rank > 0
+        if lhs_rank == 1:
+            new_shape = rhs_shape[1:]
+        else:
+            new_shape = lhs_shape[:-1] + rhs_shape[1:]
+        # merge reduce dim
+        self._check_merged_dims(
+            [lhs_shape[-1], rhs_shape[0]],
+            allow_broadcast=False,
+        )
+        # infer output_dtype from input type when not specified
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
     def _infer_NonMaxSuppression(self, node):  # noqa: N802
         selected = str(self._new_symbolic_dim_from_output(node))

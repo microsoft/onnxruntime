@@ -30,7 +30,8 @@ OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer,
 const IOpBuilder* GetOpBuilder(const Node& node);
 
 bool IsInputSupported(const Node& node, const NodeArg& node_arg, const OpBuilderInputParams& input_params,
-                      const logging::Logger& logger);
+                      const logging::Logger& logger,
+                      bool allow_empty_input = false);
 
 bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params, const logging::Logger& logger);
 

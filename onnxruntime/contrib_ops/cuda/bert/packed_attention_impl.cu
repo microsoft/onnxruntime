@@ -13,7 +13,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -459,10 +459,9 @@ Status FusedScaledDotProductAttention(
                          parameters.token_count, stream);
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(data.workspace, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len,
+                         data.workspace, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 

@@ -74,6 +74,7 @@ struct OpenVINOExecutionProviderInfo {
   bool disable_dynamic_shapes_{false};
   bool export_ep_ctx_blob_{false};
   bool enable_qdq_optimizer_{false};
+  bool disable_cpu_fallback_{false};
 
   OpenVINOExecutionProviderInfo() = delete;
 
@@ -81,7 +82,7 @@ struct OpenVINOExecutionProviderInfo {
                                          size_t num_of_threads, std::string cache_dir, std::string model_priority,
                                          int num_streams, void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob,
-                                         bool enable_qdq_optimizer)
+                                         bool enable_qdq_optimizer, bool disable_cpu_fallback)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
@@ -92,7 +93,8 @@ struct OpenVINOExecutionProviderInfo {
         enable_opencl_throttling_(enable_opencl_throttling),
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob),
-        enable_qdq_optimizer_(enable_qdq_optimizer) {
+        enable_qdq_optimizer_(enable_qdq_optimizer),
+        disable_cpu_fallback_(disable_cpu_fallback) {
     std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
                                                        "GPU.0", "GPU.1", "NPU"};
     if (dev_type == "") {
