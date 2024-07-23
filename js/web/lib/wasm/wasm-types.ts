@@ -139,12 +139,6 @@ export declare namespace JSEP {
      */
     jsepRegisterMLContext: (sessionId: number, context: MLContext) => void;
     /**
-     * [exported from pre-jsep.js] Get MLContext for a session.
-     * @param sessionId - specify the session ID.
-     * @returns the MLContext.
-     */
-    jsepGetMLContext: (sessionId: number) => MLContext;
-    /**
      * [exported from pre-jsep.js] Reserve a MLBuffer ID attached to the current session.
      * @returns the MLBuffer ID.
      */

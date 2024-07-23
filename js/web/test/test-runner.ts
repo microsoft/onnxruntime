@@ -257,7 +257,7 @@ export class ModelTestContext {
       const executionProviderConfig =
           modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || {name: 'webnn'}) : modelTest.backend!;
       let mlContext: MLContext|undefined;
-      if (modelTest.ioBinding.includes('ml-tensor') || modelTest.ioBinding.includes('ml-location')) {
+      if(['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
 
         const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
         const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;

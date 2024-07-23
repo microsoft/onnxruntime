@@ -226,9 +226,6 @@ Module['jsepInit'] = (name, params) => {
       backend['onReleaseSession'](sessionId);
     };
     Module['jsepReleaseBufferId'] = Module.jsepReleaseBufferId;
-    Module['jsepGetMLContext'] = sessionId => {
-      return backend['getMLContext'](sessionId);
-    };
     Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
       return backend['createMLBufferDownloader'](bufferId, type);
     }
