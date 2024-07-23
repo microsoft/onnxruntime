@@ -1,5 +1,5 @@
 diff --git a/include/cpuinfo.h b/include/cpuinfo.h
-index 03f2776..a4dad8c 100644
+index 03f2776..eaf6497 100644
 --- a/include/cpuinfo.h
 +++ b/include/cpuinfo.h
 @@ -18,7 +18,7 @@
@@ -7,7 +7,7 @@ index 03f2776..a4dad8c 100644
  #endif
  
 -#if defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
-+#if defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || (defined(_M_AMD64) && !defined(_M_ARM64EC))
++#if defined(__x86_64__) || defined(__x86_64) || (defined(_M_X64) && !defined(_M_ARM64EC)) || (defined(_M_AMD64) && !defined(_M_ARM64EC))
  #define CPUINFO_ARCH_X86_64 1
  #endif
  
