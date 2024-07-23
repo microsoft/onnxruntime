@@ -17,6 +17,54 @@ Abstract:
 
 #include "mlasi.h"
 
+#define MLAS_FLOAT32X4(name) \
+    float name##0; \
+    float name##1; \
+    float name##2; \
+    float name##3;
+
+#define MLAS_SET_ZERO_FLOAT32X4(name) \
+    name##0 = 0.0f; \
+    name##1 = 0.0f; \
+    name##2 = 0.0f; \
+    name##3 = 0.0f;
+
+#define MLAS_SET_VECTOR_FLOAT32X4(name, name_b) \
+    name##0 = name_b##0; \
+    name##1 = name_b##1; \
+    name##2 = name_b##2; \
+    name##3 = name_b##3;
+
+#define MLAS_SET_VALUE_FLOAT32X4(name, address, index) \
+    name##0 = address[index]; \
+    name##1 = address[index+1]; \
+    name##2 = address[index+2]; \
+    name##3 = address[index+3];
+
+#define MLAS_ADD_MUL_FLOAT32x4(a, b, c)\
+    a##0 = a##0 + b##0 * c; \
+    a##1 = a##1 + b##1 * c; \
+    a##2 = a##2 + b##2 * c; \
+    a##3 = a##3 + b##3 * c;
+
+#define MLAS_ADD_FLOAT32x4(a, c, index)\
+    a##0 = a##0 + c[index]; \
+    a##1 = a##1 + c[index+1]; \
+    a##2 = a##2 + c[index+2]; \
+    a##3 = a##3 + c[index+3];
+
+#define MLAS_SET_RESULT_FLOAT32x4(c, index, a)\
+    c[index] = a##0; \
+    c[index+1] = a##1; \
+    c[index+2] = a##2; \
+    c[index+3] = a##3;
+
+#define MLAS_MUL_FLOAT32x4(a, c)\
+    a##0 = a##0 * c; \
+    a##1 = a##1 * c; \
+    a##2 = a##2 * c; \
+    a##3 = a##3 * c;
+
 template<bool ZeroMode, bool ProcessTwoRows>
 size_t
 MlasSgemmKernel(
@@ -42,7 +90,7 @@ Arguments:
 
     B - Supplies the address of matrix B. The matrix data has been packed using
         MlasSgemmCopyPackB or MlasSgemmTransposePackB. Note that in scalar,
-        the packing wide is 4.
+        the packing wide is 4 for wasm taget and 16 for other taget.
 
     C - Supplies the address of matrix C.
 
@@ -64,15 +112,20 @@ Return Value:
 
 --*/
 {
-    float Row0Block00;
-    float Row0Block01;
-    float Row0Block02;
-    float Row0Block03;
+    MLAS_FLOAT32X4(Row0Block0)
+    MLAS_FLOAT32X4(Row1Block0)
 
-    float Row1Block00;
-    float Row1Block01;
-    float Row1Block02;
-    float Row1Block03;
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+    MLAS_FLOAT32X4(Row0Block1)
+    MLAS_FLOAT32X4(Row0Block2)
+    MLAS_FLOAT32X4(Row0Block3)
+
+    MLAS_FLOAT32X4(Row1Block1)
+    MLAS_FLOAT32X4(Row1Block2)
+    MLAS_FLOAT32X4(Row1Block3)
+
+#endif
 
 #if defined(_WIN32)
 
@@ -85,10 +138,15 @@ Return Value:
 
     do {
 
-        float BElements00;
-        float BElements01;
-        float BElements02;
-        float BElements03;
+        MLAS_FLOAT32X4(BElements0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+        MLAS_FLOAT32X4(BElements1)
+        MLAS_FLOAT32X4(BElements2)
+        MLAS_FLOAT32X4(BElements3)
+
+#endif
 
         float Row0AElements0;
         float Row0AElements1;
@@ -99,20 +157,30 @@ Return Value:
         // Clear the block accumulators.
         //
 
-        Row0Block00 = 0.0f;
-        Row0Block01 = 0.0f;
-        Row0Block02 = 0.0f;
-        Row0Block03 = 0.0f;
+        MLAS_SET_ZERO_FLOAT32X4(Row0Block0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+        MLAS_SET_ZERO_FLOAT32X4(Row0Block1)
+        MLAS_SET_ZERO_FLOAT32X4(Row0Block2)
+        MLAS_SET_ZERO_FLOAT32X4(Row0Block3)
+
+#endif
 
         if (ProcessTwoRows) {
-            Row1Block00 = 0.0f;
-            Row1Block01 = 0.0f;
-            Row1Block02 = 0.0f;
-            Row1Block03 = 0.0f;
+            MLAS_SET_ZERO_FLOAT32X4(Row1Block0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_ZERO_FLOAT32X4(Row1Block1)
+            MLAS_SET_ZERO_FLOAT32X4(Row1Block2)
+            MLAS_SET_ZERO_FLOAT32X4(Row1Block3)
+
+#endif
         }
 
         //
-        // Compute the 4x1 or 4x2 output block.
+        // Compute the 4x1 or 4x2 output block for wasm taeget and 16x1 or 16x2 output block for other target.
         //
 
         const float* a = A;
@@ -128,40 +196,77 @@ Return Value:
                 Row1AElements1 = a[lda + 1];
             }
 
-            BElements00 = B[0];
-            BElements01 = B[1];
-            BElements02 = B[2];
-            BElements03 = B[3];
-            Row0Block00 = Row0Block00 + BElements00 * Row0AElements0;
-            Row0Block01 = Row0Block01 + BElements01 * Row0AElements0;
-            Row0Block02 = Row0Block02 + BElements02 * Row0AElements0;
-            Row0Block03 = Row0Block03 + BElements03 * Row0AElements0;
+            MLAS_SET_VALUE_FLOAT32X4(BElements0, B, 0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block0, BElements0, Row0AElements0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_VALUE_FLOAT32X4(BElements1, B, 4)
+            MLAS_SET_VALUE_FLOAT32X4(BElements2, B, 8)
+            MLAS_SET_VALUE_FLOAT32X4(BElements3, B, 12)
+
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block1, BElements1, Row0AElements0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block2, BElements2, Row0AElements0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block3, BElements3, Row0AElements0)
+
+#endif
 
             if (ProcessTwoRows) {
-                Row1Block00 = Row1Block00 + BElements00 * Row1AElements0;
-                Row1Block01 = Row1Block01 + BElements01 * Row1AElements0;
-                Row1Block02 = Row1Block02 + BElements02 * Row1AElements0;
-                Row1Block03 = Row1Block03 + BElements03 * Row1AElements0;
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block0, BElements0, Row1AElements0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block1, BElements1, Row1AElements0)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block2, BElements2, Row1AElements0)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block3, BElements3, Row1AElements0)
+
+#endif
+
             }
 
-            BElements00 = B[4];
-            BElements01 = B[5];
-            BElements02 = B[6];
-            BElements03 = B[7];
-            Row0Block00 = Row0Block00 + BElements00 * Row0AElements1;
-            Row0Block01 = Row0Block01 + BElements01 * Row0AElements1;
-            Row0Block02 = Row0Block02 + BElements02 * Row0AElements1;
-            Row0Block03 = Row0Block03 + BElements03 * Row0AElements1;
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_VALUE_FLOAT32X4(BElements0, B, 16)
+            MLAS_SET_VALUE_FLOAT32X4(BElements1, B, 20)
+            MLAS_SET_VALUE_FLOAT32X4(BElements2, B, 24)
+            MLAS_SET_VALUE_FLOAT32X4(BElements3, B, 28)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block0, BElements0, Row0AElements1)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block1, BElements1, Row0AElements1)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block2, BElements2, Row0AElements1)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block3, BElements3, Row0AElements1)
+
+#else //defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_VALUE_FLOAT32X4(BElements0, B, 4)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block0, BElements0, Row0AElements1)
+
+#endif
 
             if (ProcessTwoRows) {
-                Row1Block00 = Row1Block00 + BElements00 * Row1AElements1;
-                Row1Block01 = Row1Block01 + BElements01 * Row1AElements1;
-                Row1Block02 = Row1Block02 + BElements02 * Row1AElements1;
-                Row1Block03 = Row1Block03 + BElements03 * Row1AElements1;
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block0, BElements0, Row1AElements1)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block1, BElements1, Row1AElements1)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block2, BElements2, Row1AElements1)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block3, BElements3, Row1AElements1)
+
+#endif
+
             }
 
             a += 2;
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+        
+            B += 32;
+
+#else //defined(MLAS_TARGET_WASM_SCALAR)
+
             B += 8;
+
+#endif
+
             k -= 2;
         }
 
@@ -173,72 +278,132 @@ Return Value:
                 Row1AElements0 = a[lda];
             }
 
-            BElements00 = B[0];
-            BElements01 = B[1];
-            BElements02 = B[2];
-            BElements03 = B[3];
-            Row0Block00 = Row0Block00 + BElements00 * Row0AElements0;
-            Row0Block01 = Row0Block01 + BElements01 * Row0AElements0;
-            Row0Block02 = Row0Block02 + BElements02 * Row0AElements0;
-            Row0Block03 = Row0Block03 + BElements03 * Row0AElements0;
+            MLAS_SET_VALUE_FLOAT32X4(BElements0, B, 0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block0, BElements0, Row0AElements0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_VALUE_FLOAT32X4(BElements1, B, 4)
+            MLAS_SET_VALUE_FLOAT32X4(BElements2, B, 8)
+            MLAS_SET_VALUE_FLOAT32X4(BElements3, B, 12)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block1, BElements1, Row0AElements0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block2, BElements2, Row0AElements0)
+            MLAS_ADD_MUL_FLOAT32x4(Row0Block3, BElements3, Row0AElements0)
+
+#endif
 
             if (ProcessTwoRows) {
-                Row1Block00 = Row1Block00 + BElements00 * Row1AElements0;
-                Row1Block01 = Row1Block01 + BElements01 * Row1AElements0;
-                Row1Block02 = Row1Block02 + BElements02 * Row1AElements0;
-                Row1Block03 = Row1Block03 + BElements03 * Row1AElements0;
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block0, BElements0, Row1AElements0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block1, BElements1, Row1AElements0)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block2, BElements2, Row1AElements0)
+                MLAS_ADD_MUL_FLOAT32x4(Row1Block3, BElements3, Row1AElements0)
+
+#endif
+
             }
 
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            B += 16;
+
+#else
+
             B += 4;
+
+#endif
         }
 
         //
         // Multiply by the alpha value.
         //
 
-        Row0Block00 = Row0Block00 * alpha;
-        Row0Block01 = Row0Block01 * alpha;
-        Row0Block02 = Row0Block02 * alpha;
-        Row0Block03 = Row0Block03 * alpha;
+        MLAS_MUL_FLOAT32x4(Row0Block0, alpha)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+        MLAS_MUL_FLOAT32x4(Row0Block1, alpha)
+        MLAS_MUL_FLOAT32x4(Row0Block2, alpha)
+        MLAS_MUL_FLOAT32x4(Row0Block3, alpha)
+
+#endif
 
         if (ProcessTwoRows) {
-            Row1Block00 = Row1Block00 * alpha;
-            Row1Block01 = Row1Block01 * alpha;
-            Row1Block02 = Row1Block02 * alpha;
-            Row1Block03 = Row1Block03 * alpha;
+            MLAS_MUL_FLOAT32x4(Row1Block0, alpha)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_MUL_FLOAT32x4(Row1Block1, alpha)
+            MLAS_MUL_FLOAT32x4(Row1Block2, alpha)
+            MLAS_MUL_FLOAT32x4(Row1Block3, alpha)
+
+#endif
         }
 
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+        if (CountN >= 16) {
+
+#else
+
         if (CountN >= 4) {
+
+#endif
 
             //
             // Store the entire output block.
             //
 
             if (!ZeroMode) {
-                Row0Block00 = Row0Block00 + C[0];
-                Row0Block01 = Row0Block01 + C[1];
-                Row0Block02 = Row0Block02 + C[2];
-                Row0Block03 = Row0Block03 + C[3];
+                MLAS_ADD_FLOAT32x4(Row0Block0, C, 0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                MLAS_ADD_FLOAT32x4(Row0Block1, C, 4)
+                MLAS_ADD_FLOAT32x4(Row0Block2, C, 8)
+                MLAS_ADD_FLOAT32x4(Row0Block3, C, 12)
+
+#endif
+
             }
 
-            C[0] = Row0Block00;
-            C[1] = Row0Block01;
-            C[2] = Row0Block02;
-            C[3] = Row0Block03;
+            MLAS_SET_RESULT_FLOAT32x4(C, 0, Row0Block0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            MLAS_SET_RESULT_FLOAT32x4(C, 4, Row0Block1)
+            MLAS_SET_RESULT_FLOAT32x4(C, 8, Row0Block2)
+            MLAS_SET_RESULT_FLOAT32x4(C, 12, Row0Block3)
+
+#endif
 
             if (ProcessTwoRows) {
 
                 if (!ZeroMode) {
-                    Row1Block00 = Row1Block00 + C[ldc];
-                    Row1Block01 = Row1Block01 + C[ldc + 1];
-                    Row1Block02 = Row1Block02 + C[ldc + 2];
-                    Row1Block03 = Row1Block03 + C[ldc + 3];
+                    MLAS_ADD_FLOAT32x4(Row1Block0, C, ldc)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                    MLAS_ADD_FLOAT32x4(Row1Block1, C, ldc + 4)
+                    MLAS_ADD_FLOAT32x4(Row1Block2, C, ldc + 8)
+                    MLAS_ADD_FLOAT32x4(Row1Block3, C, ldc + 12)
+    
+#endif
+
                 }
 
-                C[ldc] = Row1Block00;
-                C[ldc + 1] = Row1Block01;
-                C[ldc + 2] = Row1Block02;
-                C[ldc + 3] = Row1Block03;
+                MLAS_SET_RESULT_FLOAT32x4(C, ldc, Row1Block0)
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+                MLAS_SET_RESULT_FLOAT32x4(C, ldc + 4, Row1Block1)
+                MLAS_SET_RESULT_FLOAT32x4(C, ldc + 8, Row1Block2)
+                MLAS_SET_RESULT_FLOAT32x4(C, ldc + 12, Row1Block3)
+
+#endif
+
             }
 
         } else {
@@ -246,6 +411,62 @@ Return Value:
             //
             // Store the partial output block.
             //
+
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+            if ((CountN & 8) != 0) {
+
+                if (!ZeroMode) {
+
+                    MLAS_ADD_FLOAT32x4(Row0Block0, C, 0)
+                    MLAS_ADD_FLOAT32x4(Row0Block1, C, 4)
+                }
+
+                MLAS_SET_RESULT_FLOAT32x4(C, 0, Row0Block0)
+                MLAS_SET_RESULT_FLOAT32x4(C, 4, Row0Block1)
+                MLAS_SET_VECTOR_FLOAT32X4(Row0Block0, Row0Block2)
+                MLAS_SET_VECTOR_FLOAT32X4(Row0Block1, Row0Block3)
+
+                if (ProcessTwoRows) {
+
+                    if (!ZeroMode) {
+                        MLAS_ADD_FLOAT32x4(Row1Block0, C, ldc)
+                        MLAS_ADD_FLOAT32x4(Row1Block1, C, ldc+4)
+                    }
+
+                    MLAS_SET_RESULT_FLOAT32x4(C, ldc, Row1Block0)
+                    MLAS_SET_RESULT_FLOAT32x4(C, ldc+4, Row1Block1)
+                    MLAS_SET_VECTOR_FLOAT32X4(Row1Block0, Row1Block2)
+                    MLAS_SET_VECTOR_FLOAT32X4(Row1Block1, Row1Block3)
+                }
+
+                C += 8;
+            }
+            if ((CountN & 4) != 0) {
+
+                if (!ZeroMode) {
+                    MLAS_ADD_FLOAT32x4(Row0Block0, C, 0)
+                }
+
+                MLAS_SET_RESULT_FLOAT32x4(C, 0, Row0Block0)
+                MLAS_SET_VECTOR_FLOAT32X4(Row0Block0, Row0Block1)
+
+                if (ProcessTwoRows) {
+
+                    if (!ZeroMode) {
+                        MLAS_ADD_FLOAT32x4(Row1Block0, C, ldc)
+
+                    }
+
+                    MLAS_SET_RESULT_FLOAT32x4(C, ldc, Row1Block0)
+                    MLAS_SET_VECTOR_FLOAT32X4(Row1Block0, Row1Block1)
+                }
+
+                C += 4;
+            }
+
+#endif
+
             if ((CountN & 2) != 0) {
 
                 if (!ZeroMode) {
@@ -295,8 +516,16 @@ Return Value:
             break;
         }
 
+#if !defined(MLAS_TARGET_WASM_SCALAR)
+
+        C += 16;
+        CountN -= 16;
+
+#else
         C += 4;
         CountN -= 4;
+
+#endif
 
     } while (CountN > 0);
 
