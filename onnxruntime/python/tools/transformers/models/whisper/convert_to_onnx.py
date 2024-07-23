@@ -534,27 +534,27 @@ def main(argv=None):
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
-    elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
-        # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
-        decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
+    # elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
+    #     # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
+    #     decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
 
-        decoder_model = onnx.load_model(decoder_path, load_external_data=True)
-        if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-            logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
-        else:
-            logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
-        if hasattr(args, "collect_cross_qk") and args.collect_cross_qk:
-            update_decoder_subgraph_output_cross_attention(decoder_model.graph)
+    #     decoder_model = onnx.load_model(decoder_path, load_external_data=True)
+    #     if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
+    #         logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
+    #     else:
+    #         logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
+    #     if hasattr(args, "collect_cross_qk") and args.collect_cross_qk:
+    #         update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
-        onnx.save(
-            decoder_model,
-            decoder_path,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            convert_attribute=True,
-            location=f"{os.path.basename(decoder_path)}.data",
-        )
-        onnx.checker.check_model(decoder_path, full_check=True)
+    #     onnx.save(
+    #         decoder_model,
+    #         decoder_path,
+    #         save_as_external_data=True,
+    #         all_tensors_to_one_file=True,
+    #         convert_attribute=True,
+    #         location=f"{os.path.basename(decoder_path)}.data",
+    #     )
+    #     onnx.checker.check_model(decoder_path, full_check=True)
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff
