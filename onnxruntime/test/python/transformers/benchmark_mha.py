@@ -732,7 +732,6 @@ def run_torch_test(
             SDPBackend.MATH,
         ]
     else:
-        device_id = 0
         device = torch.device("cpu")
         dtype = torch.float32
         backends = [None]
