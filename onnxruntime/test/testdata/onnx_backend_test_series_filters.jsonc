@@ -721,6 +721,7 @@
         "^test_reduce_log_sum_empty_set_cpu",
         "^test_reduce_log_sum_exp_empty_set_cpu",
         "^test_reduce_prod_empty_set_cpu",
+        //DML EP does not execute operators with an empty input tensor
         "^test_reduce_min_empty_set_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
