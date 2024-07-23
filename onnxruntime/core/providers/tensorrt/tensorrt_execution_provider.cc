@@ -3342,7 +3342,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   };
 
   // Create compute function
-  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+  compute_info.compute_func = [=, this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
 
     TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
