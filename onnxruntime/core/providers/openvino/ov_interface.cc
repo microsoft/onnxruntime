@@ -96,7 +96,7 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   const std::string& name) {
   ov::CompiledModel obj;
   try {
-      obj = oe.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
+    obj = oe.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -138,7 +138,7 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
-     oe.set_property(ov::cache_dir(cache_dir_path));
+  oe.set_property(ov::cache_dir(cache_dir_path));
 }
 
 #ifdef IO_BUFFER_ENABLED
