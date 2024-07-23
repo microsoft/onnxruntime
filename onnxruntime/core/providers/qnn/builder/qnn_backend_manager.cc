@@ -330,8 +330,8 @@ Status QnnBackendManager::InitializeBackend() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend");
+  Qnn_ErrorHandle_t result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error:", QnnErrorHandleToString(result));
 
   backend_initialized_ = true;
   return Status::OK();
@@ -408,7 +408,7 @@ Status QnnBackendManager::CreateDevice() {
   if (nullptr != qnn_interface_.deviceCreate) {
     Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
     if (QNN_SUCCESS != result)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result));
     }
   }
   device_created_ = true;
@@ -422,9 +422,9 @@ Status QnnBackendManager::ReleaseDevice() {
   }
 
   if (nullptr != qnn_interface_.deviceFree) {
-    auto result = qnn_interface_.deviceFree(device_handle_);
+    Qnn_ErrorHandle_t result = qnn_interface_.deviceFree(device_handle_);
     if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", result);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", QnnErrorHandleToString(result));
     }
   }
 
@@ -451,8 +451,8 @@ Status QnnBackendManager::InitializeProfiling() {
   } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
   }
-  auto result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile!");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
 
   return Status::OK();
 }
@@ -525,13 +525,13 @@ Status QnnBackendManager::CreateContext() {
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
   Qnn_ContextHandle_t context = nullptr;
-  auto result = qnn_interface_.contextCreate(backend_handle_,
+  Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
                                              context_configs,
                                              &context);
   contexts_.push_back(context);
 
-  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
 
   context_created_ = true;
   return Status::OK();
@@ -544,7 +544,7 @@ Status QnnBackendManager::ReleaseContext() {
 
   bool failed = false;
   for (auto context : contexts_) {
-    auto result = qnn_interface_.contextFree(context, nullptr);
+    Qnn_ErrorHandle_t result = qnn_interface_.contextFree(context, nullptr);
     if (QNN_CONTEXT_NO_ERROR != result) {
       failed = true;
     }
