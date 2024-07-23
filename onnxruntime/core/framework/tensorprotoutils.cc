@@ -1276,7 +1276,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
     // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
     // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
     // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
-    auto offset = gsl::narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
+    auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
 
     ONNX_NAMESPACE::StringStringEntryProto* entry = tensor_proto.mutable_external_data()->Add();
     entry->set_key("location");
