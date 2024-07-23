@@ -7,6 +7,7 @@
 #include <optional>
 #include <queue>
 #include <sstream>
+#include <utility>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/extended_graph_edge.h"
@@ -75,7 +76,8 @@ Status ValidateQDQInsertionEdges(Graph& graph, gsl::span<const ExtendedGraphEdge
 
     ORT_RETURN_IF_NOT((edge_src_info.has_value() == src_info.has_value()) &&
                           (!src_info.has_value() ||
-                           (src_info->node_idx == edge_src_info->node_idx && src_info->arg_idx == edge_src_info->arg_idx)),
+                           (src_info->node_idx == edge_src_info->node_idx &&
+                            src_info->arg_idx == edge_src_info->arg_idx)),
                       "Expect all insertion edges to come from the same source node's output slot.");
 
     const Node* edge_dst_node = insertion_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
