@@ -464,7 +464,11 @@ def parse_arguments():
         help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
     # Dependency search with vcpkg
-    parser.add_argument("--use_vcpkg", action="store_true", help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake")
+    parser.add_argument(
+        "--use_vcpkg",
+        action="store_true",
+        help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
+    )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
