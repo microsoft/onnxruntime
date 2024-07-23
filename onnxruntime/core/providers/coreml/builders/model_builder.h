@@ -121,6 +121,13 @@ class ModelBuilder {
     return AddConstant(op_type, value_type, AsSpan(value), shape);
   }
 
+  // helper to convert a span of non-const data to const
+  template <typename T>
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<T> value,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    return AddConstant(op_type, value_type, gsl::span<const T>(value), shape);
+  }
+
   /// <summary>
   /// Add a scalar value as a 'const' operation. See AddConstant for details.
   /// </summary>
