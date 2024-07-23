@@ -446,7 +446,7 @@ void FindPipelineLandmarks(
 //
 // The input graph is a pipeline's stage, which contains some Send's and Recv's.
 //
-// For diferent pipeline stages, they have different communication patterns as
+// For different pipeline stages, they have different communication patterns as
 // shown below.
 //
 //  1. First stage:
@@ -1615,7 +1615,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                                        send_nodes, recv_nodes,
                                                        stage_to_rank));
 
-  // Take care of weights that are shared accross stages.
+  // Take care of weights that are shared across stages.
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
   std::set<const NodeArg*> visited_outputs;

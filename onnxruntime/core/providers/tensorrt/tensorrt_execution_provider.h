@@ -274,13 +274,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
 
-  /**
-   * Refit the weight-stripped engine
-   */
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
                                     std::string& weight_stripped_engine_cath_path,
                                     bool path_check,
+                                    const void* onnx_model_bytestream,
+                                    size_t onnx_model_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
@@ -305,6 +304,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool weight_stripped_engine_enable_ = false;
   bool weight_stripped_engine_refit_ = false;
   std::string onnx_model_folder_path_;
+  const void* onnx_model_bytestream_;
+  size_t onnx_model_bytestream_size_;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;

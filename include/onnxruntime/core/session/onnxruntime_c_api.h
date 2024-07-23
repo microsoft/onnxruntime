@@ -473,13 +473,13 @@ typedef struct OrtCUDAProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -562,13 +562,13 @@ typedef struct OrtROCMProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -2798,7 +2798,7 @@ struct OrtApi {
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
    * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
-   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
@@ -4467,13 +4467,14 @@ struct OrtApi {
    * E.g. a cuda stream or a cublas handle
    *
    * \param context - Kernel context
-   * \param resouce_version - Version of the resource
+   * \param resource_version - Version of the resource
    * \param resource_id - Type of resource
    * \param resource - A pointer to returned resource
    *
    * \since Version 1.16.
    */
-  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version,
+                  _In_ int resource_id, _Outptr_ void** resource);
 
   /** \brief Set user logging function
    *
@@ -4528,10 +4529,10 @@ struct OrtApi {
   ORT_API2_STATUS(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
 
   /**
-   * Set type and shape info of an ouput
+   * Set type and shape info of an output
    *
    * \param[in] context
-   * \param[in] index The index of the ouput
+   * \param[in] index The index of the output
    * \param[out] info Type shape info of the output
    *
    * \since Version 1.17.

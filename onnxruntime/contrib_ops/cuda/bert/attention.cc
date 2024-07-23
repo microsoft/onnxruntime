@@ -149,8 +149,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                        nullptr == relative_position_bias &&
                                        parameters.past_sequence_length == 0 &&
                                        parameters.hidden_size == parameters.v_hidden_size &&
-                                       FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                          enable_trt_flash_attention_, true);
+                                       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                                         enable_trt_flash_attention_, true);
         if (use_causal_fused_runner) {
           // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
           if (nullptr == fused_fp16_runner_.get()) {
@@ -171,8 +171,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               nullptr == present &&
                               nullptr == relative_position_bias &&
                               parameters.hidden_size == parameters.v_hidden_size &&
-                              FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                                 enable_trt_flash_attention_, false);
+                              FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                                enable_trt_flash_attention_, false);
 
       if (use_fused_runner) {
         // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
@@ -184,8 +184,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         }
 
         // In case some kernel not loaded due to shared memory limit, we need to double check here.
-        const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-        if (fused_fp16_runner_->isValid(S)) {
+        const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
+        if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
           fused_runner = fused_fp16_runner_.get();
         }
       }

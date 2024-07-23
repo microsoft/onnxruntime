@@ -310,7 +310,7 @@ ORT_API_STATUS_IMPL(
   winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map =
     winrt::single_threaded_map<winrt::hstring, uint32_t>();
   for (auto freeDimOverride : session_options.free_dimension_overrides) {
-    if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) {
+    if (freeDimOverride.dim_identifier_type == onnxruntime::FreeDimensionOverrideType::Name) {
       override_map.Insert(
         winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value)
       );

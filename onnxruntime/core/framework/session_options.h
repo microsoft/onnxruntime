@@ -62,7 +62,7 @@ enum class ExecutionPriority : int {
 
 struct FreeDimensionOverride {
   std::string dim_identifier;
-  FreeDimensionOverrideType dim_identifer_type;
+  FreeDimensionOverrideType dim_identifier_type;
   int64_t dim_value;
 };
 

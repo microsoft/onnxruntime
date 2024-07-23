@@ -1073,7 +1073,7 @@ class PlannerImpl {
 
 #ifdef ORT_ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
-  // this funciton will optimize the plan by building a reuse plan with stream safety.
+  // this function will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
     InlinedHashMap<NodeIndex, int> dependent_counter;
     for (const auto& it : dependence_graph_) {
@@ -2012,7 +2012,7 @@ class PlannerImpl {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
-                  output_consumed_in_subgraph = false;  // output direclty consumed in current graph
+                  output_consumed_in_subgraph = false;  // output directly consumed in current graph
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:

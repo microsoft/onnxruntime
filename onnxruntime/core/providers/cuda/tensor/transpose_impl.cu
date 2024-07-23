@@ -145,7 +145,7 @@ bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cu
         (input_dims[3] % num_elements_per_thread) == 0 &&
         input_dims[1] <= prop.maxGridSize[1] &&
         input_dims[0] <= prop.maxGridSize[2]) {
-      // There are 2 constrains when luanching the kernels
+      // There are 2 constrains when launching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
       int64_t block_size_x = input_dims[3] / num_elements_per_thread;
@@ -261,7 +261,7 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
     if (input_dims[3] <= prop.maxThreadsPerBlock &&
         input_dims[1] <= prop.maxGridSize[1] &&
         input_dims[0] <= prop.maxGridSize[2]) {
-      // There are 2 constrains when luanching the kernels
+      // There are 2 constrains when launching the kernels
       // 1. block_size_x * block_size_y <= prop.maxThreadsPerBlock
       // 2. block_size_y * num_block_ext >= input_dims[2]
       int64_t block_size_x = input_dims[3];
