@@ -4,8 +4,13 @@
 # --------------------------------------------------------------------------
 
 """
-Benchmark performance of MultiHeadAttention with ORT or PyTorch. For example, run the the following in Linux:
-sh benchmark_mha.sh
+Benchmark performance of MultiHeadAttention with ORT or PyTorch.
+
+In Linux, run the the following:
+   sh benchmark_mha.sh
+
+In Windows, run the the following:
+   benchmark_mha.cmd
 """
 
 import argparse
@@ -406,31 +411,9 @@ def tflops_per_second(flop, time):
         return None
 
 
-def get_gpu_kernel_name(config: MultiHeadAttentionConfig, attention_kernel: SdpaKernel) -> str:
-    if attention_kernel == SdpaKernel.DEFAULT:
-        # This classification is for Nvidia GPU of Compute Capability 8.* like A100.
-        # Note that some kernel might not exist in older or newer GPUs.
-        if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-            if config.input_format == InputFormats.QKV_BSN3H:
-                min_seq_len = os.getenv("ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV")
-                min_length = int(min_seq_len) if min_seq_len is not None else 513
-                if config.sequence_length >= min_length:
-                    return "ort:flash"
-            else:
-                return "ort:flash"
-
-        if (os.getenv("ORT_DISABLE_FUSED_CROSS_ATTENTION") != "1" and config.kv_sequence_length <= 128) or (
-            os.getenv("ORT_DISABLE_FUSED_ATTENTION") != "1"
-            and (config.sequence_length <= 384 or os.getenv("ORT_DISABLE_TRT_FLASH_ATTENTION") != "1")
-        ):
-            return "ort:trt"
-
-        if os.getenv("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION") != "1":
-            return "ort:efficient"
-
-        return "ort:math"
-
+def get_gpu_kernel_name(attention_kernel: SdpaKernel) -> str:
     kernel_names = {
+        SdpaKernel.DEFAULT: "ort:default",
         SdpaKernel.FLASH_ATTENTION: "ort:flash",
         SdpaKernel.EFFICIENT_ATTENTION: "ort:efficient",
         SdpaKernel.CUDNN_FLASH_ATTENTION: "ort:cudnn",
@@ -444,9 +427,9 @@ def get_cpu_kernel_name(config: MultiHeadAttentionConfig) -> str:
     # CPU Flash Attention does not support causal and kv cache etc.
     if not (config.causal or config.use_kv_cache or config.past_sequence_length > 0):
         if os.getenv("ORT_DISABLE_FLASH_ATTENTION") != "1":
-            return "cpu:ort:flash"
+            return "ort:flash"
 
-    return "cpu:ort:math"
+    return "ort:math"
 
 
 # ------------------------------------------------------------------
@@ -570,6 +553,13 @@ def get_test_configs(use_gpu: bool = True):
     return configs
 
 
+def get_compute_capability():
+    assert torch.cuda.is_available()
+    major, minor = torch.cuda.get_device_capability()
+    sm = major * 10 + minor
+    return sm
+
+
 def run_tflops_test(
     csv_writer: csv.DictWriter,
     use_gpu: bool = True,
@@ -586,8 +576,12 @@ def run_tflops_test(
         device = torch.device("cuda", device_id)
         formats = [InputFormats.Q_K_V_BSNH_BSNH_BSNH, InputFormats.Q_KV_BSNH_BSN2H, InputFormats.QKV_BSN3H]
         provider = "CUDAExecutionProvider"
-        print(f"enable_cuda_graph={enable_cuda_graph}")
-        backends = [SdpaKernel.DEFAULT, SdpaKernel.FLASH_ATTENTION, SdpaKernel.EFFICIENT_ATTENTION]
+        # flash attention is available for sm >= 80
+        sm = get_compute_capability()
+        if sm >= 80:
+            backends = [SdpaKernel.DEFAULT, SdpaKernel.FLASH_ATTENTION, SdpaKernel.EFFICIENT_ATTENTION]
+        else:
+            backends = [SdpaKernel.DEFAULT, SdpaKernel.EFFICIENT_ATTENTION]
     else:
         device_id = 0
         device = torch.device("cpu")
@@ -597,27 +591,6 @@ def run_tflops_test(
         backends = [SdpaKernel.DEFAULT]
 
     configs = get_test_configs(use_gpu)
-
-    # List of environment variables to enable/disable attention kernels
-    print("Environment Variables:")
-    env_names = [
-        "ORT_DISABLE_FLASH_ATTENTION",
-        "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV",
-        "ORT_DISABLE_FUSED_ATTENTION",
-        "ORT_DISABLE_TRT_FLASH_ATTENTION",
-        "ORT_ENABLE_FUSED_CAUSAL_ATTENTION",
-        "ORT_DISABLE_FUSED_CROSS_ATTENTION",
-        "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",
-    ]
-
-    env_list = ""
-    for name in env_names:
-        value = os.getenv(name)
-        if value is not None:
-            print(f"{name}={value}")
-            if env_list:
-                env_list += ","
-            env_list += f"{name}={value}"
 
     print("\nformat\tcausal\tprompt\tbatch\tseqlen\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
 
@@ -647,7 +620,7 @@ def run_tflops_test(
                 session = create_session(config, sess_options, attention_kernel=attention_kernel)
 
                 if use_gpu:
-                    kernel = get_gpu_kernel_name(config, attention_kernel)
+                    kernel = get_gpu_kernel_name(attention_kernel)
                 else:
                     kernel = get_cpu_kernel_name(config)
 
@@ -680,8 +653,8 @@ def run_tflops_test(
                 format_str = InputFormats.input_format_str(input_format)
 
                 # compute TFLOPS per second
-                speed = "NA"
-                if not has_past:
+                speed = None
+                if past_sequence_length == 0:
                     speed = tflops_per_second(
                         flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
                     )
@@ -700,7 +673,6 @@ def run_tflops_test(
                     "average_latency": average_latency,
                     "tflops": speed,
                     "kernel": kernel,
-                    "environment_variables": env_list,
                 }
                 csv_writer.writerow(row)
 
@@ -773,11 +745,10 @@ def run_torch_test(
                 continue
 
             speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), torch_latency)
-            kernel = ("Torch" if use_gpu else "Torch:cpu") + (f":{backend_name}" if backend is not None else "")
             input_format = "Q,K,V"
             print(
                 f"{input_format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
-                f"{0}\t{torch_latency * 1000:.2f}\t{speed:.2f}\t{kernel}"
+                f"{0}\t{torch_latency * 1000:.2f}\t{speed:.2f}\t{backend_name}"
             )
             row = {
                 "use_gpu": use_gpu,
@@ -792,8 +763,7 @@ def run_torch_test(
                 "intra_op_num_threads": torch.get_num_threads(),
                 "average_latency": torch_latency,
                 "tflops": speed,
-                "kernel": kernel,
-                "environment_variables": "",
+                "kernel": backend_name,
             }
             csv_writer.writerow(row)
 
@@ -824,14 +794,11 @@ def run_tflops_tests(args):
             "average_latency",
             "tflops",
             "kernel",
-            "environment_variables",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
 
         if args.torch:
-            assert Version(torch.__version__) >= Version("2.3.0")
-            assert args.has_past is False
             run_torch_test(csv_writer, args.use_gpu, args.causal)
         else:
             run_tflops_test(
@@ -845,7 +812,6 @@ def run_tflops_tests(args):
 
 
 def plot_prompt_performance(
-    sm: int,
     model_name: str,
     batch_size: int,
     num_heads: int,
@@ -865,6 +831,7 @@ def plot_prompt_performance(
         "styles": [("red", "solid"), ("yellow", "dashdot"), ("blue", "dashed"), ("green", "dotted")][0 : len(formats)],
     }
 
+    sm = get_compute_capability()
     configs = [
         triton.testing.Benchmark(
             x_names=["sequence_length"],
@@ -917,7 +884,7 @@ def plot_prompt_performance(
     benchmark.run(save_path=".", print_data=True)
 
 
-def run_bert_performance_test(sm: int):
+def run_bert_performance_test():
     """
     Run performance tests for prompt and token generation.
 
@@ -933,7 +900,6 @@ def run_bert_performance_test(sm: int):
 
     for batch_size, num_heads, head_size, max_seq_len, model_name in configures:
         plot_prompt_performance(
-            sm=sm,
             batch_size=batch_size,
             num_heads=num_heads,
             head_size=head_size,
@@ -1007,21 +973,19 @@ if __name__ == "__main__":
         assert args.causal, "--has_past need --causal specified"
 
     if args.use_gpu:
-        assert args.torch or not args.causal, "no causl cuda kernel in MHA op"
+        assert args.torch or not args.causal, "no causal cuda kernel in MHA op"
         assert torch.cuda.is_available()
         if not args.torch:
             assert "CUDAExecutionProvider" in get_available_providers()
 
+    if args.torch:
+        assert Version(torch.__version__) >= Version("2.3.0")
+        assert args.has_past is False
+
     if args.use_gpu and not args.torch:
-        major, minor = torch.cuda.get_device_capability()
-        sm = major * 10 + minor
-
-        if major != 8:
-            print(f"Warning: ORT kernel name logic in this script is for sm=8x, current device is {major}{minor}.")
-
         if platform.system() == "Linux":
             s = torch.cuda.Stream()
             with torch.cuda.stream(s), torch.no_grad():
-                run_bert_performance_test(sm)
+                run_bert_performance_test()
 
     run_tflops_tests(args)

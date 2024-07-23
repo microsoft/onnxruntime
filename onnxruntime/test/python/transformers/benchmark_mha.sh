@@ -28,6 +28,7 @@ python benchmark_mha.py --intra_op_num_threads 8
 
 echo "Benchmark performance on CPU with default threads settings:"
 python benchmark_mha.py
+ORT_DISABLE_FLASH_ATTENTION=1 python benchmark_mha.py
 python benchmark_mha.py --torch
 
 python benchmark_mha.py --causal
