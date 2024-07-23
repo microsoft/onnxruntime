@@ -13,12 +13,8 @@
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
 
-#if defined(__APPLE__)
-#ifdef __OBJC__
+#if defined(__OBJC__)
 @class MLMultiArray;
-#else
-typedef struct objc_object MLMultiArray;
-#endif
 #endif
 
 namespace onnxruntime {
@@ -40,8 +36,12 @@ using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& n
                                                             int32_t requested_onnx_tensor_element_type,
                                                             gsl::span<const int64_t> static_shape)>;
 
-#if defined(__APPLE__)
-// helper function that we unit test
+#if defined(__OBJC__)
+// helper function that we unit test.
+// Handles an MLMultiArray that is contiguous, or has one non-contiguous dimension.
+// The output values can be used to copy the array data to a contiguous buffer.
+// Loop num_blocks times, copying block_size elements each time, moving stride elements between copies.
+// A contiguous array will have num_blocks == 1, block_size == total_size (i.e. can be copied in a single operation)
 Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t& num_blocks, int64_t& block_size, int64_t& stride);
 #endif
 

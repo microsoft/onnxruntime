@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(__APPLE__)
 #import <CoreML/CoreML.h>
 
 #include "gtest/gtest.h"
@@ -69,7 +68,7 @@ TEST(CoreMLUtils, GetMLMultiArrayReadInfo) {
     ValidateGetInfo(array, 8, 8, 16, true);
   }
 
-  // dim -3 with non-contiguous data. 16 elements in the innder dimensions but stride is 24.
+  // dim -3 with non-contiguous data. 16 elements in the inner dimensions but stride is 24.
   {
     NSArray<NSNumber*>* shape = @[ @1, @2, @4, @4 ];
     NSArray<NSNumber*>* strides = @[ @48, @24, @4, @1 ];
@@ -107,4 +106,3 @@ TEST(CoreMLUtils, GetMLMultiArrayReadInfo) {
 }
 }  // namespace test
 }  // namespace onnxruntime
-#endif

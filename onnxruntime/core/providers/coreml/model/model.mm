@@ -466,7 +466,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   for (unsigned long i = 1; i <= rank; i++) {
     int64_t this_stride = [array.strides[rank - i] longLongValue];
     if (this_stride != total_elems) {
-      // non-contiguous if we have to move more than batch_elems for each entry
+      // non-contiguous
       if (block_size != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Multiple non-contiguous dimensions in MLMultiArray are not supported.");
@@ -482,9 +482,10 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   }
 
   if (block_size == 0) {
-    // contiguous
+    // all data is contiguous
     block_size = data_elems;
     stride = array_total_elements;
+    assert(block_size == stride);
   }
 
   num_blocks = data_elems / block_size;

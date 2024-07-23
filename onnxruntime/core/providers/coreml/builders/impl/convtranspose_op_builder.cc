@@ -30,8 +30,8 @@ Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuild
                                                      const logging::Logger& /*logger*/) const {
 #if defined(COREML_ENABLE_MLPROGRAM)
   using namespace CoreML::Specification::MILSpec;  // NOLINT
-  const auto& input_defs = node.InputDefs();
-  const auto& output_defs = node.OutputDefs();
+  const auto input_defs = node.InputDefs();
+  const auto output_defs = node.OutputDefs();
   const auto& input_name = input_defs[0]->Name();
 
   NodeAttrHelper helper(node);
