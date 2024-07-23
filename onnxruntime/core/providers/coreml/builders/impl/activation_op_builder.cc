@@ -91,8 +91,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_op_type = "relu";
     } else if (op_type == "LeakyRelu") {
       coreml_op_type = "leaky_relu";
-    }
-     else {
+    } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
     }
