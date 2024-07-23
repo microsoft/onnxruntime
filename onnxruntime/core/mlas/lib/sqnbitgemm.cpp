@@ -518,7 +518,7 @@ SQ4BitGemm_CompInt8(
                 QuantAScale,
                 b_col,
                 b_col_scale,
-                b_col_zp, 
+                b_col_zp,
                 c_blk,
                 RangeCountM,
                 CountN,
@@ -622,56 +622,6 @@ constexpr auto OperationMap = []() {
 
     return ops;
 }();
-
-void
-ComputeParallelTasksSGemm(const size_t M, const size_t N, const size_t CountK, const size_t BatchN,
-  MLAS_THREADPOOL* ThreadPool,
-  size_t& ThreadCountM, size_t& ThreadCountN, size_t& ThreadsPerGemm)
-{
-    const double Complexity = double(M) * double(N) * double(CountK);
-
-    ptrdiff_t TargetThreadCount;
-
-    if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
-        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
-    }
-
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 8;
-
-    if (TargetThreadCount >= MaximumThreadCount) {
-        TargetThreadCount = MaximumThreadCount;
-    }
-
-    //
-    // Segment the operation across multiple threads.
-    //
-    // N.B. Currently, the operation is segmented as a 1D partition, which
-    // works okay for operations involving skinny matrices.
-    //
-
-    ThreadsPerGemm = (TargetThreadCount + BatchN - 1) / BatchN;
-    if (N > M) {
-        const size_t BlockedN = (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) /
-                                MLAS_SGEMM_STRIDEN_THREAD_ALIGN;
-
-        if (size_t(ThreadsPerGemm) > BlockedN) {
-            ThreadsPerGemm = ptrdiff_t(BlockedN);
-        }
-
-        ThreadCountM = 1;
-        ThreadCountN = ThreadsPerGemm;
-
-    } else {
-        if (size_t(ThreadsPerGemm) > M) {
-            ThreadsPerGemm = ptrdiff_t(M);
-        }
-
-        ThreadCountM = ThreadsPerGemm;
-        ThreadCountN = 1;
-    }
-}
 }  // namespace
 
 void MLASCALL
