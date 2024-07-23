@@ -89,13 +89,23 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_op_type = "tanh";
     } else if (op_type == "Relu") {
       coreml_op_type = "relu";
-    } else {
+    } else if (op_type == "LeakyRelu") {
+      coreml_op_type = "leaky_relu";
+    }
+     else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    if (op_type == "LeakyRelu") {
+      NodeAttrHelper helper(node);
+      const auto alpha = helper.Get("alpha", 0.01f);
+      AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+      //AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha));
+
+    }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
@@ -198,7 +208,7 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (input_params.create_mlprogram) {
-    if (op_type == "PRelu" || op_type == "LeakyRelu") {
+    if (op_type == "PRelu") {
       return false;
     }
   } else
