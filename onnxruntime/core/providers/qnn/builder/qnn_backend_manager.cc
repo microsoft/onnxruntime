@@ -1294,6 +1294,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
 }
 
 const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
   const char* error_msg = nullptr;
   if (QNN_SUCCESS == qnn_interface_.errorGetMessage(error, &error_msg)) {
     return error_msg;
