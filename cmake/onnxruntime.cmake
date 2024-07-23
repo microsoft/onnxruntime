@@ -57,6 +57,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
 
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
     --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -66,6 +67,7 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+endif()
 if(WIN32)
   onnxruntime_add_shared_library(onnxruntime
     ${SYMBOL_FILE}
@@ -98,13 +100,21 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
-  onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
+  else()
+    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
+  endif()
   if (onnxruntime_USE_CUDA)
     set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
   endif()
 endif()
 
-add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
+else()
+  add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+endif()
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
@@ -113,7 +123,7 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
-  else()
+  elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
@@ -132,7 +142,7 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
@@ -140,7 +150,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
   # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
-  # affecting downstream ort library users with the behaviour of dummy __cxa_demangle. So the dummy
+  # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
   # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
   # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
   # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
@@ -200,6 +210,10 @@ set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_flatbuffers
 )
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
+endif()
+
 if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
@@ -216,15 +230,22 @@ target_link_libraries(onnxruntime PRIVATE
 )
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
-  set_target_properties(onnxruntime PROPERTIES
-    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-    LINK_DEPENDS ${SYMBOL_FILE}
-    VERSION ${ORT_VERSION}
-    SOVERSION 1
-    FOLDER "ONNXRuntime")
+  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    set_target_properties(onnxruntime PROPERTIES
+      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+      VERSION ${ORT_VERSION}
+      SOVERSION 1
+      FOLDER "ONNXRuntime")
+  else()
+    set_target_properties(onnxruntime PROPERTIES
+      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+      LINK_DEPENDS ${SYMBOL_FILE}
+      VERSION ${ORT_VERSION}
+      SOVERSION 1
+      FOLDER "ONNXRuntime")
+  endif()
 else()
   # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
   set_target_properties(onnxruntime PROPERTIES
