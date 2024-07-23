@@ -349,7 +349,8 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 void Environment::InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory) {
-  custom_ep_factories_.insert({std::string(ep_name), ep_factory});
+  std::unique_ptr<OrtExecutionProviderFactory> p(ep_factory);
+  custom_ep_factories_.insert({ep_name, std::move(p)});  // TODO(leca): review
 }
 
 }  // namespace onnxruntime

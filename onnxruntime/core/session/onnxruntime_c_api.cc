@@ -2368,6 +2368,16 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterOrtExecutionProviderLibrary, _In_ const cha
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name,
+                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
+  std::unordered_map<std::string, std::string> kv;
+  for (size_t i = 0; i < num_keys; i++) {
+    kv.insert({provider_options_keys[i], provider_options_values[i]});
+  }
+  options->value.custom_ep_options.insert({ep_name, kv});
+  return nullptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2747,6 +2757,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::RegisterOrtExecutionProviderLibrary,
+    &OrtApis::SessionOptionsAppendOrtExecutionProvider,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

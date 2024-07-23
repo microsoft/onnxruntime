@@ -687,10 +687,11 @@ struct OrtApiBase {
 typedef struct OrtExecutionProvider {
   //void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraph* graph, _Out_ int* cnt, _Outptr_ OrtComputeCapability** compute_capability);
   //void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraph* graph, const OrtNode* node, int size, _Out_ int* cnt, _Outptr_ OrtNodeComputeInfo** node_compute_info);
+  const char* type;
 } OrtExecutionProvider;
 
 typedef struct OrtExecutionProviderFactory {
-  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_);
+  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
 } OrtExecutionProviderFactory;
 
 typedef struct OrtApiBase OrtApiBase;
@@ -4679,6 +4680,9 @@ struct OrtApi {
                   size_t num_external_initializer_files);
 
   ORT_API2_STATUS(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
+
+  ORT_API2_STATUS(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name,
+                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 };
 
 /*

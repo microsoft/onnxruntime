@@ -16,7 +16,8 @@ struct OutTreeEpInfo {
 };
 
 struct OutTreeEp : public OrtExecutionProvider {
-OutTreeEp() {}
+    OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : info(ep_info) { type = ep_type; }
+    OutTreeEpInfo info;
 };
 
 struct OutTreeEpFactory : public OrtExecutionProviderFactory {
