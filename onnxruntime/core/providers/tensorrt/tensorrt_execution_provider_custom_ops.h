@@ -24,8 +24,8 @@ struct TensorRTCustomKernel {
       : compute_stream_(compute_stream) {
   }
 
-  void Compute(OrtKernelContext* /*context*/){
-      // The implementation is in TensorRT plugin. No need to implement it here.
+  void Compute(OrtKernelContext* /*context*/) {
+    // The implementation is in TensorRT plugin. No need to implement it here.
   };
 
  private:
