@@ -179,7 +179,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU8_WU8) {
                                         ExpectedEPNodeAssignment::All);
 }
 
-// Test accuracy of 8-bit QDQ LayerNorm with a static scale input and an explict bias input (static).
+// Test accuracy of 8-bit QDQ LayerNorm with a static scale input and an explicit bias input (static).
 TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_StaticBias_AU8_WU8_BU8) {
   RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                         TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),

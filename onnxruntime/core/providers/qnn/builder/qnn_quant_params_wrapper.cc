@@ -135,7 +135,8 @@ Status QnnQuantParamsWrapper::GetScales(/*out*/ std::vector<float>& scales) cons
       break;
     }
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported QNN quantization encoding: ", params_.quantizationEncoding);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported QNN quantization encoding: ",
+                             params_.quantizationEncoding);
   }
 
   return Status::OK();

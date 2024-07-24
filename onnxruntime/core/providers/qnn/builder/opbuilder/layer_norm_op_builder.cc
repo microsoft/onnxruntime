@@ -117,7 +117,7 @@ Status LayerNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_ERROR(scale_input_info.quant_param.GetScales(input1_quant_scales));
 
       const size_t num_bias_scales_offsets = input1_quant_scales.size();
-      assert(input0_scales.size() == 1);  // Expected for per-tensor.
+      assert(input0_quant_scales.size() == 1);  // Expected for per-tensor.
       ORT_RETURN_IF_NOT(num_bias_scales_offsets >= input0_quant_scales.size(),
                         "Input[1] should have >= 1 quantization scale values");
 
