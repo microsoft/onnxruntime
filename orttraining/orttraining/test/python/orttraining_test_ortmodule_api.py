@@ -30,7 +30,13 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _utils
+from onnxruntime.training.ortmodule import (
+    DebugOptions,
+    LogLevel,
+    ORTModule,
+    _fallback,
+    _utils,
+)
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
@@ -5501,7 +5507,7 @@ def test_random_states_unchanged_for_ortmodule():
             return x[: self.dim, :]
 
     def random_state_equal(a, b):
-        assert type(a) == type(b)
+        assert type(a) is type(b)
         if isinstance(a, tuple):
             assert len(a) == len(b)
             return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])

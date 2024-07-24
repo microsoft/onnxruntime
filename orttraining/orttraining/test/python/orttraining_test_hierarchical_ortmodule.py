@@ -9,7 +9,9 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
-from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
+from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import (
+    HierarchicalORTModule,
+)
 
 
 class A(nn.Module):
@@ -198,7 +200,7 @@ def test_hierarchical_ortmodule():
             y.sum().backward()
 
     def call_allclose(y, y_ref):
-        assert type(y) == type(y_ref)
+        assert type(y) is type(y_ref)
         if isinstance(y, Iterable):
             for ele, ele_ref in zip(y, y_ref):
                 torch.allclose(ele, ele_ref)

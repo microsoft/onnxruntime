@@ -610,7 +610,7 @@ class SymbolicShapeInference:
         if all([v is not None for v in values]):
             # some shape compute is in floating point, cast to int for sympy
             for i, v in enumerate(values):
-                if type(v) != np.ndarray:
+                if type(v) is not np.ndarray:
                     continue
                 if len(v.shape) > 1:
                     new_v = None  # ignore value for rank > 1
@@ -1060,7 +1060,7 @@ class SymbolicShapeInference:
                     dim = shape[-i]
                     if letter not in letter_to_dim:
                         letter_to_dim[letter] = dim
-                    elif type(dim) != sympy.Symbol:
+                    elif type(dim) is not sympy.Symbol:
                         letter_to_dim[letter] = dim
             num_operands = num_operands + 1
 

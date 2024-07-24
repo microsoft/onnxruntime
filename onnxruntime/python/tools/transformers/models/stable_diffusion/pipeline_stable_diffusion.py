@@ -31,7 +31,12 @@ import nvtx
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo, get_tokenizer
-from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
+from diffusion_schedulers import (
+    DDIMScheduler,
+    EulerAncestralDiscreteScheduler,
+    LCMScheduler,
+    UniPCMultistepScheduler,
+)
 from engine_builder import EngineType
 from engine_builder_ort_cuda import OrtCudaEngineBuilder
 from engine_builder_ort_trt import OrtTensorrtEngineBuilder
@@ -459,9 +464,9 @@ class StableDiffusionPipeline:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
-            if type(self.scheduler) == UniPCMultistepScheduler:
+            if type(self.scheduler) is UniPCMultistepScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
-            elif type(self.scheduler) == LCMScheduler:
+            elif type(self.scheduler) is LCMScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, generator=self.generator)[0]
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)
