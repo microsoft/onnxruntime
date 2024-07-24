@@ -732,8 +732,7 @@ TEST(ConvFp16Test, Depthwise2D_Bias) {
 
       MLFloat16(9.0f), MLFloat16(10.0f), MLFloat16(11.0f),
       MLFloat16(12.0f), MLFloat16(13.0f), MLFloat16(14.0f),
-      MLFloat16(15.0f), MLFloat16(16.0f), MLFloat16(17.0f)
-  };
+      MLFloat16(15.0f), MLFloat16(16.0f), MLFloat16(17.0f)};
   vector<int64_t> X_shape = {1, 2, 3, 3};
   vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(2.0f)};
   vector<int64_t> W_shape = {2, 1, 1, 1};
@@ -747,8 +746,7 @@ TEST(ConvFp16Test, Depthwise2D_Bias) {
 
       MLFloat16(17.0f), MLFloat16(19.0f), MLFloat16(21.0f),
       MLFloat16(23.0f), MLFloat16(25.0f), MLFloat16(27.0f),
-      MLFloat16(29.0f), MLFloat16(31.0f), MLFloat16(33.0f)
-  };
+      MLFloat16(29.0f), MLFloat16(31.0f), MLFloat16(33.0f)};
 
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
@@ -874,16 +872,36 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
   };
   vector<int64_t> W_shape = {13, 1, 2, 2};
   vector<MLFloat16> B = {
-      MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
-      MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f), MLFloat16(10.0f), MLFloat16(11.0f), MLFloat16(12.0f),
+      MLFloat16(1.0f),
+      MLFloat16(2.0f),
+      MLFloat16(3.0f),
+      MLFloat16(4.0f),
+      MLFloat16(5.0f),
+      MLFloat16(6.0f),
+      MLFloat16(7.0f),
+      MLFloat16(8.0f),
+      MLFloat16(9.0f),
+      MLFloat16(10.0f),
+      MLFloat16(11.0f),
+      MLFloat16(12.0f),
       MLFloat16(13.0f),
   };
   vector<int64_t> B_shape = {13};
   vector<int64_t> Y_shape = {1, 13, 1, 1};
   auto expected_vals = {
-      MLFloat16(15.0f), MLFloat16(128.0f), MLFloat16(369.0f), MLFloat16(738.0f), MLFloat16(1235.0f),
-      MLFloat16(1860.0f), MLFloat16(2613.0f), MLFloat16(3494.0f), MLFloat16(4503.0f), MLFloat16(5640.0f),
-      MLFloat16(6905.0f), MLFloat16(8298.0f), MLFloat16(9819.0f),
+      MLFloat16(15.0f),  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 1.0
+      MLFloat16(128.0f),
+      MLFloat16(369.0f),
+      MLFloat16(738.0f),
+      MLFloat16(1235.0f),
+      MLFloat16(1860.0f),
+      MLFloat16(2613.0f),  // 24.0*24.0 + 25.0*25.0 + 26.0*26.0 + 27.0*27.0 + 7.0
+      MLFloat16(3494.0f),
+      MLFloat16(4503.0f),
+      MLFloat16(5640.0f),
+      MLFloat16(6905.0f),
+      MLFloat16(8298.0f),
+      MLFloat16(9819.0f),  // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 13.0
   };
 
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);

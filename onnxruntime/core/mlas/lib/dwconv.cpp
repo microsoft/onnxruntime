@@ -14,7 +14,6 @@ Abstract:
 
 --*/
 
-
 #include "fp16_common.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -30,7 +29,7 @@ MlasConvDepthwiseKernel(
     size_t OutputCount,
     size_t KernelSize,
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
-    )
+)
 {
     while (OutputCount > 0) {
         size_t ChannelOffset = 0;
@@ -87,8 +86,7 @@ MlasConvDepthwiseKernel(
             Output += c;
         }
         if (PostProc) {
-            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels,
-                              Channels);
+            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels, Channels);
         }
         Input += KernelSize;
         OutputCount -= 1;
@@ -108,7 +106,7 @@ MlasConvDepthwiseKernel(
     size_t OutputCount,
     size_t KernelSize,
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
-    )
+)
 {
     while (OutputCount > 0) {
         for (size_t ChannelOffset = 0; ChannelOffset < Channels; ChannelOffset++) {
@@ -122,16 +120,14 @@ MlasConvDepthwiseKernel(
             *Output++ = MLAS_Float2Half(Accumulator);
         }
         if (PostProc) {
-            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels,
-                              Channels);
+            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels, Channels);
         }
         Input += KernelSize;
         OutputCount -= 1;
     }
 }
 
-#endif // MLAS_F16VEC_INTRINSICS_SUPPORTED
-
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 void
 MLASCALL
@@ -144,7 +140,7 @@ MlasConvDepthwise(
     size_t OutputCount,
     size_t KernelSize,
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
-    )
+)
 {
     MlasConvDepthwiseKernel(
         reinterpret_cast<const _mlas_fp16_* const*>(Input),
@@ -154,5 +150,6 @@ MlasConvDepthwise(
         Channels,
         OutputCount,
         KernelSize,
-        PostProc);
+        PostProc
+    );
 }
