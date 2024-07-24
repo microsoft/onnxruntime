@@ -25,6 +25,7 @@
 #                     'is_tensor' is optional, if not present, the default is False.
 
 import json
+import os
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -276,3 +277,39 @@ def upsample_nearest3d_gradient():
 @register_gradient("org.pytorch.aten", "ATen", "upsample_bicubic2d", "vec")
 def upsample_bicubic2d_gradient():
     return _upsample_gradient("upsample_bicubic2d_backward", 2)
+
+
+ATEN_SDPA_FALLBACK = os.getenv("ORTMODULE_ATEN_SDPA_FALLBACK", None)
+if ATEN_SDPA_FALLBACK:
+    # based on the following internal PyTorch kernel for efficient attention:
+    # https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14784
+    @register_gradient("org.pytorch.aten", "ATen", "_scaled_dot_product_efficient_attention", "")
+    def scaled_dot_product_attention_gradient():
+        return [
+            (
+                "Constant",
+                [],
+                ["grad_input_mask"],
+                {"value": {"value": [1, 1, 1, 0], "dtype": "int", "is_tensor": True}},
+            ),
+            (
+                ("ATen", "org.pytorch.aten"),
+                [
+                    "GO(0)",
+                    "I(0)",
+                    "I(1)",
+                    "I(2)",
+                    "I(3)",
+                    "O(0)",
+                    "O(1)",
+                    "O(2)",
+                    "O(3)",
+                    "I(5)",
+                    "grad_input_mask",
+                    "I(6)",
+                    "I(7)",
+                ],
+                ["GI(0)", "GI(1)", "GI(2)", ""],
+                {"operator": {"value": "_scaled_dot_product_efficient_attention_backward", "dtype": "string"}},
+            ),
+        ]

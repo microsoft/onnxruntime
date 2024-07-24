@@ -33,12 +33,11 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-TrtFusedAttention<T>::TrtFusedAttention() {
-  disable_fused_runner_ = sizeof(T) != 2 ||
-                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-
-  enable_trt_flash_attention_ = sizeof(T) == 2 &&
-                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
+    : CudaKernel(info) {
+  kernel_options_ = this->GetAttentionKernelOptions();
+  disable_fused_runner_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
 }
 
 template <typename T>
@@ -56,11 +55,11 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
-                                                              parameters.head_size,
-                                                              parameters.sequence_length,
-                                                              enable_trt_flash_attention_,
-                                                              false /*causal*/);
+  bool is_fMHA_supported = FusedMHARunnerFP16v2::IsSupported(sm,
+                                                             parameters.head_size,
+                                                             parameters.sequence_length,
+                                                             enable_trt_flash_attention_,
+                                                             false /*causal*/);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -73,8 +72,8 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
   }
 
   // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-  if (fused_fp16_runner_->isValid(S)) {
+  const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(parameters.sequence_length);
+  if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
     fused_runner = fused_fp16_runner_.get();
   }
 
@@ -86,7 +85,8 @@ template class TrtFusedAttention<float>;
 template class TrtFusedAttention<MLFloat16>;
 
 template <typename T>
-PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : TrtFusedAttention<T>(), CudaKernel(info) {
+PackedAttention<T>::PackedAttention(const OpKernelInfo& info)
+    : TrtFusedAttention<T>(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int32_t>(num_heads);
@@ -268,7 +268,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   PackedAttentionParameters parameters;
-  parameters.use_tf32 = UseTF32();
+  parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -295,6 +295,19 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 #endif
 
+  if (this->kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+    }
+
+    debug_info.Print("PackedAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
+
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -313,7 +326,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, UseTF32()));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, this->UseTF32()));
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool no_qkv_workspace = false;  // need workspace to add bias
@@ -341,7 +354,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }
 
 }  // namespace cuda
