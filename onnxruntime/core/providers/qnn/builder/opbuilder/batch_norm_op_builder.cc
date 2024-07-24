@@ -392,15 +392,23 @@ class BatchNormOpBuilder : public BaseOpBuilder {
                      const double rmin,
                      QnnQuantParamsWrapper& quant_param,
                      std::vector<uint8_t>& raw_tensor) const {
+    bool symmetric = false;
     if (info.quant_param.IsQuantized()) {
-      raw_tensor.resize(double_tensor.size());
+      size_t data_size = double_tensor.size();
+      // QNN BatchNorm int32 bias requires symmetric quantizated
+      if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+        data_size *= sizeof(int32_t);
+        symmetric = true;
+      }
+      raw_tensor.resize(data_size);
       float scale = 0.0f;
       int zero_point = 0;
       ORT_RETURN_IF_ERROR(utils::GetQuantParams(static_cast<float>(rmin),
                                                 static_cast<float>(rmax),
                                                 info.qnn_data_type,
                                                 scale,
-                                                zero_point));
+                                                zero_point,
+                                                symmetric));
       quant_param = QnnQuantParamsWrapper(scale, zero_point);
       for (size_t i = 0; i < double_tensor.size(); ++i) {
         // onnx only supports 8 bits quantization
@@ -411,6 +419,10 @@ class BatchNormOpBuilder : public BaseOpBuilder {
         } else if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
           int8_t quant_value = static_cast<int8_t>(quant_value_int);
           raw_tensor[i] = *reinterpret_cast<uint8_t*>(&quant_value);
+        } else if (info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+          int32_t quant_value = static_cast<int32_t>(quant_value_int);
+          size_t pos = i * sizeof(int32_t);
+          std::memcpy(&raw_tensor[pos], reinterpret_cast<uint8_t*>(&quant_value), sizeof(int32_t));
         } else {
           // TODO(adrianlizarraga): Should support 16-bit quantization as well.
           ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", info.qnn_data_type);
@@ -504,6 +516,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   {
     const std::string& scale_name = inputs[1].node_arg.Name();
+    const std::string& bias_name = inputs[2].node_arg.Name();
     TensorInfo var_info = {};
     TensorInfo mean_info = {};
     TensorInfo scale_info = {};
@@ -520,9 +533,11 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(var_info.is_initializer, "var must be initializers");
 
     std::vector<uint8_t> scale_unpacked_tensor;
+    std::vector<uint8_t> bias_unpacked_tensor;
     std::vector<uint8_t> var_unpacked_tensor;
     std::vector<uint8_t> mean_unpacked_tensor;
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*scale_info.initializer_tensor, scale_unpacked_tensor));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*bias_info.initializer_tensor, bias_unpacked_tensor));
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*mean_info.initializer_tensor, mean_unpacked_tensor));
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*var_info.initializer_tensor, var_unpacked_tensor));
 
@@ -536,6 +551,8 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
     double scale_rmax = std::numeric_limits<double>::min();
     double scale_rmin = std::numeric_limits<double>::max();
+    double bias_rmax = std::numeric_limits<double>::min();
+    double bias_rmin = std::numeric_limits<double>::max();
 
     // Calculate and convert new scale, new bias, mean and std to double array (may be dequantized)
     ORT_RETURN_IF_ERROR(PreprocessMean(mean_info,
@@ -554,6 +571,14 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                         scale_rmax,
                                         scale_rmin,
                                         scale_double_tensor));
+    ORT_RETURN_IF_ERROR(PreprocessBias(bias_info,
+                                       bias_unpacked_tensor.data(),
+                                       bias_unpacked_tensor.size(),
+                                       scale_double_tensor,
+                                       mean_double_tensor,
+                                       bias_rmax,
+                                       bias_rmin,
+                                       bias_double_tensor));
 
     if (!qnn_model_wrapper.IsQnnTensorWrapperExist(scale_name)) {
       std::vector<uint8_t> scale_raw_tensor;
@@ -572,8 +597,22 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
     input_names.push_back(scale_name);
 
-    
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));  // Bias
+    if (!qnn_model_wrapper.IsQnnTensorWrapperExist(bias_name)) {
+      std::vector<uint8_t> bias_raw_tensor;
+      QnnQuantParamsWrapper bias_quant_param = bias_info.quant_param;
+      ORT_RETURN_IF_ERROR(Postprocess(bias_info,
+                                      bias_double_tensor,
+                                      bias_rmax,
+                                      bias_rmin,
+                                      bias_quant_param,
+                                      bias_raw_tensor));
+      Qnn_TensorType_t bias_tensor_type = qnn_model_wrapper.GetTensorType(bias_name);
+      QnnTensorWrapper input_tensorwrapper(bias_name, bias_tensor_type, bias_info.qnn_data_type,
+                                           std::move(bias_quant_param), std::move(bias_info.shape),
+                                           std::move(bias_raw_tensor));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+    }
+    input_names.push_back(bias_name);
   }
 
   return Status::OK();

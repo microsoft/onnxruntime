@@ -49,6 +49,9 @@ template <>
 struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
+struct IsTypeQuantLinearCompatible<int32_t> : std::true_type {};
+
+template <>
 struct IsTypeQuantLinearCompatible<Int4x2> : std::true_type {};
 
 template <>

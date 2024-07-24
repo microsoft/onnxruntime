@@ -509,6 +509,9 @@ Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
   } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
     qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
     qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+    qmin = static_cast<T>(std::numeric_limits<int32_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int32_t>::max());
   } else {
     ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
   }
@@ -519,14 +522,26 @@ Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
                       float& scale,
-                      int& zero_point) {
+                      int& zero_point,
+                      bool symmetric) {
   std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
+  if (symmetric) {
+    float abs_max = std::max(abs(rmax), abs(rmin));
+    rmax = abs_max;
+    rmin = -abs_max;
+  }
+
   float qmin = 0.0f;
   float qmax = 255.0f;
   ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
 
   scale = (rmax - rmin) / (qmax - qmin);
-  const float initial_zero_point = qmin - (rmin / scale);
+  float initial_zero_point = 0.0f;
+  if (symmetric) {
+    initial_zero_point = std::round(rmin + rmax) / 2;
+  } else {
+    initial_zero_point = qmin - (rmin / scale);
+  }
   zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
   // To match QNN quantization definition
   zero_point = 0 - zero_point;
