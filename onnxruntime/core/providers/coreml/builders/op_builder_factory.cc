@@ -66,6 +66,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
 
+  CreateGridSampleOpBuilder("GridSample", op_registrations);
+
   return op_registrations;
 }
 
