@@ -27,7 +27,10 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
-                   bool dmmha_packing) {
+                   bool dmmha_packing,
+                   AttentionType operator_type) {
+  // Check inputs for MultiHeadAttention and DecoderMaskedMultiHeadAttention operators.
+  // The inputs are:
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
   //     past_key                   : (B, N, S*, H)
@@ -47,6 +50,7 @@ Status CheckInputs(const T* query,
   //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
+  // For
 
   AttentionQkvFormat qkv_format;
 
@@ -178,7 +182,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' shall be 4D when 'key' is 4D");
       }
 
-      if (bias != nullptr) {
+      if (operator_type == kMultiHeadAttention && bias != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
       }
 
@@ -360,6 +364,7 @@ Status CheckInputs(const T* query,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
                    bool dmmha_packing,
+                   AttentionType operator_type,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
@@ -367,7 +372,7 @@ Status CheckInputs(const T* query,
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
                      past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
-                     past_present_share_buffer, dmmha_packing);
+                     past_present_share_buffer, dmmha_packing, operator_type);
 }
 
 }  // namespace multihead_attention_helper

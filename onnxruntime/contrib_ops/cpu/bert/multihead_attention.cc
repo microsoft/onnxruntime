@@ -85,7 +85,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       scale_,
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
-                                                                      false));
+                                                                      false,
+                                                                      kMultiHeadAttention));
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;

@@ -92,6 +92,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       is_unidirectional,
                                                                       past_present_share_buffer_,
                                                                       is_dmmha_packing,  // dmmha_packing
+                                                                      kDecoderMaskedMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
 
   if (bias) {
@@ -157,7 +158,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.is_cross_attention = true;
     parameters.total_sequence_length = parameters.kv_sequence_length;
     parameters.max_sequence_length = parameters.kv_sequence_length;
-    // parameters.k and paraneters.v are nullptr
+    // parameters.k and parameters.v are nullptr
     parameters.k_cache = const_cast<T1*>(key->Data<T1>());
     parameters.v_cache = const_cast<T1*>(value->Data<T1>());
     parameters.k_bias = nullptr;

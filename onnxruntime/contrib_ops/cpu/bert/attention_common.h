@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace contrib {
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
 enum AttentionMaskType {
   MASK_NONE,                  // No mask
   MASK_1D_KEY_SEQ_LEN,        // [batch_size], key sequence length

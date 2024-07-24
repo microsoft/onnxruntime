@@ -96,6 +96,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       is_unidirectional_,
                                                                       false,  // past_present_share_buffer
                                                                       false,  // dmmha_packing
+                                                                      kMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
 
