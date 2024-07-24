@@ -9,9 +9,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
-from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import (
-    HierarchicalORTModule,
-)
+from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 
 
 class A(nn.Module):

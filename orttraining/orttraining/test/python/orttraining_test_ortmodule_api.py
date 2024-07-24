@@ -30,13 +30,7 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype

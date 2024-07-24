@@ -6,10 +6,7 @@ from collections import abc
 import pytest
 import torch
 
-from onnxruntime.training.utils import (
-    extract_data_and_schema,
-    unflatten_data_using_schema,
-)
+from onnxruntime.training.utils import extract_data_and_schema, unflatten_data_using_schema
 from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
 
