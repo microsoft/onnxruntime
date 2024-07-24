@@ -647,6 +647,164 @@ TEST(ConvTest, Conv2D_group) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Depthwise2D_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f};
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<float> W = {1.0f, 2.0f};
+  vector<int64_t> W_shape = {2, 1, 1, 1};
+  vector<float> B = {1.0f, -1.0f};
+  vector<int64_t> B_shape = {2};
+  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  auto expected_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 17.0f, 19.0f, 21.0f, 23.0f, 25.0f, 27.0f, 29.0f, 31.0f, 33.0f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Depthwise2D_Bias_Complex) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      13,                           // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {
+      // C = 0
+      0.0f, 1.0f,
+      2.0f, 3.0f,
+
+      // C = 1
+      4.0f, 5.0f,
+      6.0f, 7.0f,
+
+      // C = 2
+      8.0f, 9.0f,
+      10.0f, 11.0f,
+
+      // C = 3
+      12.0f, 13.0f,
+      14.0f, 15.0f,
+
+      // C = 4
+      16.0f, 17.0f,
+      18.0f, 19.0f,
+
+      // C = 5
+      20.0f, 21.0f,
+      22.0f, 23.0f,
+
+      // C = 6
+      24.0f, 25.0f,
+      26.0f, 27.0f,
+
+      // C = 7
+      28.0f, 29.0f,
+      30.0f, 31.0f,
+
+      // C = 8
+      32.0f, 33.0f,
+      34.0f, 35.0f,
+
+      // C = 9
+      36.0f, 37.0f,
+      38.0f, 39.0f,
+
+      // C = 10
+      40.0f, 41.0f,
+      42.0f, 43.0f,
+
+      // C = 11
+      44.0f, 45.0f,
+      46.0f, 47.0f,
+
+      // C = 12
+      48.0f, 49.0f,
+      50.0f, 51.0f,
+  };
+  vector<int64_t> X_shape = {1, 13, 2, 2};
+  vector<float> W = {
+      // M = 0
+      0.0f, 1.0f,
+      2.0f, 3.0f,
+
+      // M = 1
+      4.0f, 5.0f,
+      6.0f, 7.0f,
+
+      // M = 2
+      8.0f, 9.0f,
+      10.0f, 11.0f,
+
+      // M = 3
+      12.0f, 13.0f,
+      14.0f, 15.0f,
+
+      // M = 4
+      16.0f, 17.0f,
+      18.0f, 19.0f,
+
+      // M = 5
+      20.0f, 21.0f,
+      22.0f, 23.0f,
+
+      // M = 6
+      24.0f, 25.0f,
+      26.0f, 27.0f,
+
+      // M = 7
+      28.0f, 29.0f,
+      30.0f, 31.0f,
+
+      // M = 8
+      32.0f, 33.0f,
+      34.0f, 35.0f,
+
+      // M = 9
+      36.0f, 37.0f,
+      38.0f, 39.0f,
+
+      // M = 10
+      40.0f, 41.0f,
+      42.0f, 43.0f,
+
+      // M = 11
+      44.0f, 45.0f,
+      46.0f, 47.0f,
+
+      // M = 12
+      48.0f, 49.0f,
+      50.0f, 51.0f,
+  };
+  vector<int64_t> W_shape = {13, 1, 2, 2};
+  vector<float> B = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f};
+  vector<int64_t> B_shape = {13};
+  vector<int64_t> Y_shape = {1, 13, 1, 1};
+  auto expected_vals = {
+      15.0f, 128.0f, 369.0f, 738.0f, 1235.0f, 1860.0f, 2613.0f, 3494.0f, 4503.0f, 5640.0f, 6905.0f, 8298.0f, 9819.0f
+  };
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvTest, ConvDimWithZero) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad

@@ -1762,6 +1762,7 @@ MLASCALL
 MlasConvDepthwise(
     const MLAS_FP16* const* Input,
     const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,

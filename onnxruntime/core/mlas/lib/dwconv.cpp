@@ -24,6 +24,7 @@ void
 MlasConvDepthwiseKernel(
     const _mlas_fp16_* const* Input,
     const _mlas_fp16_* Filter,
+    const _mlas_fp16_* Bias,
     _mlas_fp16_* Output,
     size_t Channels,
     size_t OutputCount,
@@ -36,7 +37,7 @@ MlasConvDepthwiseKernel(
         size_t c = Channels;
 
         while (c >= 8) {
-            MLAS_FLOAT16X8 Accumulator = MlasZeroFloat16x8();
+            MLAS_FLOAT16X8 Accumulator = Bias == nullptr ? MlasZeroFloat16x8() : MlasLoadFloat16x8(&Bias[ChannelOffset]);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
@@ -54,7 +55,7 @@ MlasConvDepthwiseKernel(
         }
 
         if (c >= 4) {
-            MLAS_FLOAT16X4 Accumulator = MlasZeroFloat16x4();
+            MLAS_FLOAT16X4 Accumulator = Bias == nullptr ? MlasZeroFloat16x4() : MlasLoadFloat16x4(&Bias[ChannelOffset]);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
@@ -72,7 +73,7 @@ MlasConvDepthwiseKernel(
         }
 
         if (c > 0) {
-            MLAS_FLOAT16X4 Accumulator = MlasZeroFloat16x4();
+            MLAS_FLOAT16X4 Accumulator = Bias == nullptr ? MlasZeroFloat16x4() : MlasLoadFloat16x4(&Bias[ChannelOffset]);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
@@ -101,6 +102,7 @@ void
 MlasConvDepthwiseKernel(
     const _mlas_fp16_* const* Input,
     const _mlas_fp16_* Filter,
+    const _mlas_fp16_* Bias,
     _mlas_fp16_* Output,
     size_t Channels,
     size_t OutputCount,
@@ -110,7 +112,7 @@ MlasConvDepthwiseKernel(
 {
     while (OutputCount > 0) {
         for (size_t ChannelOffset = 0; ChannelOffset < Channels; ChannelOffset++) {
-            float Accumulator = 0.0f;
+            float Accumulator = Bias == nullptr ? 0.0f : MLAS_Half2Float(Bias[ChannelOffset]);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
@@ -136,6 +138,7 @@ MLASCALL
 MlasConvDepthwise(
     const MLAS_FP16* const* Input,
     const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,
@@ -146,6 +149,7 @@ MlasConvDepthwise(
     MlasConvDepthwiseKernel(
         reinterpret_cast<const _mlas_fp16_* const*>(Input),
         reinterpret_cast<const _mlas_fp16_*>(Filter),
+        reinterpret_cast<const _mlas_fp16_*>(Bias),
         reinterpret_cast<_mlas_fp16_*>(Output),
         Channels,
         OutputCount,

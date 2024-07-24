@@ -714,6 +714,184 @@ TEST(ConvFp16Test, Conv2D_group) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvFp16Test, Depthwise2D_Bias) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {
+      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(2.0f),
+      MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f), MLFloat16(8.0f),
+
+      MLFloat16(9.0f), MLFloat16(10.0f), MLFloat16(11.0f),
+      MLFloat16(12.0f), MLFloat16(13.0f), MLFloat16(14.0f),
+      MLFloat16(15.0f), MLFloat16(16.0f), MLFloat16(17.0f)
+  };
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(2.0f)};
+  vector<int64_t> W_shape = {2, 1, 1, 1};
+  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> B_shape = {2};
+  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  auto expected_vals = {
+      MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+      MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+      MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f),
+
+      MLFloat16(17.0f), MLFloat16(19.0f), MLFloat16(21.0f),
+      MLFloat16(23.0f), MLFloat16(25.0f), MLFloat16(27.0f),
+      MLFloat16(29.0f), MLFloat16(31.0f), MLFloat16(33.0f)
+  };
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      13,                           // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {
+      // C = 0
+      MLFloat16(0.0f), MLFloat16(1.0f),
+      MLFloat16(2.0f), MLFloat16(3.0f),
+
+      // C = 1
+      MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f),
+
+      // C = 2
+      MLFloat16(8.0f), MLFloat16(9.0f),
+      MLFloat16(10.0f), MLFloat16(11.0f),
+
+      // C = 3
+      MLFloat16(12.0f), MLFloat16(13.0f),
+      MLFloat16(14.0f), MLFloat16(15.0f),
+
+      // C = 4
+      MLFloat16(16.0f), MLFloat16(17.0f),
+      MLFloat16(18.0f), MLFloat16(19.0f),
+
+      // C = 5
+      MLFloat16(20.0f), MLFloat16(21.0f),
+      MLFloat16(22.0f), MLFloat16(23.0f),
+
+      // C = 6
+      MLFloat16(24.0f), MLFloat16(25.0f),
+      MLFloat16(26.0f), MLFloat16(27.0f),
+
+      // C = 7
+      MLFloat16(28.0f), MLFloat16(29.0f),
+      MLFloat16(30.0f), MLFloat16(31.0f),
+
+      // C = 8
+      MLFloat16(32.0f), MLFloat16(33.0f),
+      MLFloat16(34.0f), MLFloat16(35.0f),
+
+      // C = 9
+      MLFloat16(36.0f), MLFloat16(37.0f),
+      MLFloat16(38.0f), MLFloat16(39.0f),
+
+      // C = 10
+      MLFloat16(40.0f), MLFloat16(41.0f),
+      MLFloat16(42.0f), MLFloat16(43.0f),
+
+      // C = 11
+      MLFloat16(44.0f), MLFloat16(45.0f),
+      MLFloat16(46.0f), MLFloat16(47.0f),
+
+      // C = 12
+      MLFloat16(48.0f), MLFloat16(49.0f),
+      MLFloat16(50.0f), MLFloat16(51.0f),
+  };
+  vector<int64_t> X_shape = {1, 13, 2, 2};
+  vector<MLFloat16> W = {
+      // M = 0
+      MLFloat16(0.0f), MLFloat16(1.0f),
+      MLFloat16(2.0f), MLFloat16(3.0f),
+
+      // M = 1
+      MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f),
+
+      // M = 2
+      MLFloat16(8.0f), MLFloat16(9.0f),
+      MLFloat16(10.0f), MLFloat16(11.0f),
+
+      // M = 3
+      MLFloat16(12.0f), MLFloat16(13.0f),
+      MLFloat16(14.0f), MLFloat16(15.0f),
+
+      // M = 4
+      MLFloat16(16.0f), MLFloat16(17.0f),
+      MLFloat16(18.0f), MLFloat16(19.0f),
+
+      // M = 5
+      MLFloat16(20.0f), MLFloat16(21.0f),
+      MLFloat16(22.0f), MLFloat16(23.0f),
+
+      // M = 6
+      MLFloat16(24.0f), MLFloat16(25.0f),
+      MLFloat16(26.0f), MLFloat16(27.0f),
+
+      // M = 7
+      MLFloat16(28.0f), MLFloat16(29.0f),
+      MLFloat16(30.0f), MLFloat16(31.0f),
+
+      // M = 8
+      MLFloat16(32.0f), MLFloat16(33.0f),
+      MLFloat16(34.0f), MLFloat16(35.0f),
+
+      // M = 9
+      MLFloat16(36.0f), MLFloat16(37.0f),
+      MLFloat16(38.0f), MLFloat16(39.0f),
+
+      // M = 10
+      MLFloat16(40.0f), MLFloat16(41.0f),
+      MLFloat16(42.0f), MLFloat16(43.0f),
+
+      // M = 11
+      MLFloat16(44.0f), MLFloat16(45.0f),
+      MLFloat16(46.0f), MLFloat16(47.0f),
+
+      // M = 12
+      MLFloat16(48.0f), MLFloat16(49.0f),
+      MLFloat16(50.0f), MLFloat16(51.0f),
+  };
+  vector<int64_t> W_shape = {13, 1, 2, 2};
+  vector<MLFloat16> B = {
+      MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+      MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f), MLFloat16(10.0f), MLFloat16(11.0f), MLFloat16(12.0f),
+      MLFloat16(13.0f),
+  };
+  vector<int64_t> B_shape = {13};
+  vector<int64_t> Y_shape = {1, 13, 1, 1};
+  auto expected_vals = {
+      MLFloat16(15.0f), MLFloat16(128.0f), MLFloat16(369.0f), MLFloat16(738.0f), MLFloat16(1235.0f),
+      MLFloat16(1860.0f), MLFloat16(2613.0f), MLFloat16(3494.0f), MLFloat16(4503.0f), MLFloat16(5640.0f),
+      MLFloat16(6905.0f), MLFloat16(8298.0f), MLFloat16(9819.0f),
+  };
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // NNAPI/CoreML EP requires weight to be an initializer
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvFp16Test, ConvDimWithZero) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
