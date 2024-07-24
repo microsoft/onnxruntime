@@ -15,11 +15,11 @@ def parse_arguments():
 
 
 args = parse_arguments()
-print("Generating symbol file for %s" % str(args.config))
+print(f"Generating symbol file for {args.config!s}")
 with open(args.version_file) as f:
     VERSION_STRING = f.read().strip()
 
-print("VERSION:%s" % VERSION_STRING)
+print(f"VERSION:{VERSION_STRING}")
 
 symbols = set()
 for c in args.config:
@@ -41,16 +41,16 @@ with open(args.output, "w") as file:
     elif args.style == "xcode":
         pass  # xcode compile don't has any header.
     else:
-        file.write("VERS_%s {\n" % VERSION_STRING)
+        file.write(f"VERS_{VERSION_STRING} {{\n")
         file.write(" global:\n")
 
     for symbol in symbols:
         if args.style == "vc":
             file.write(" %s @%d\n" % (symbol, symbol_index))
         elif args.style == "xcode":
-            file.write("_%s\n" % symbol)
+            file.write(f"_{symbol}\n")
         else:
-            file.write("  %s;\n" % symbol)
+            file.write(f"  {symbol};\n")
         symbol_index += 1
 
     if args.style == "gcc":
