@@ -1076,7 +1076,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i
-            end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
+            end_index = min(zero_bin_index + i + 1, num_bins)
 
             thresholds[i - num_half_quantized_bin] = (hist_edges[start_index], hist_edges[end_index])
 

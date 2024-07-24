@@ -46,7 +46,7 @@ def PrintResult(op, axes, keepdims, res):  # noqa: N802
     print("      {")
     print(" // axes_")
     print("{", end="")
-    print(*axes, sep=", ", end="") if axes else print("")
+    print(*axes, sep=", ", end="") if axes else print()
     print("},")
     print(" // keep_dims_")
     print(keepdims, ",")

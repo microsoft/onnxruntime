@@ -24,7 +24,7 @@ def get_attribute(node, attr_name, default_value=None):
 
 
 def get_dim_from_proto(dim):
-    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) is str else None  # noqa: E721
+    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) is str else None
 
 
 def is_sequence(type_proto):
@@ -1940,7 +1940,7 @@ class SymbolicShapeInference:
         # handle sympy_data if needed, for slice in shape computation
         if (
             node.input[0] in self.sympy_data_
-            and [0] == axes
+            and axes == [0]
             and starts is not None
             and len(starts) == 1
             and ends is not None
