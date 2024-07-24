@@ -94,7 +94,8 @@ void set_params_fprop(Flash_fwd_params& params,
   // Set the dimensions.
 #if defined(_MSC_VER)
 #pragma warning(push)
-#pragma warning(disable : 2220)  // Ignore warning is treated as an error 
+#pragma warning(disable : 4267)  // Ignore conversion from 'size_t' to 'int', possible loss of data
+#pragma warning(disable : 4244)  // Ignore conversion from 'double' to 'float', possible loss of data
 #endif
   params.b = batch_size;
   params.h = num_heads;
