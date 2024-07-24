@@ -105,7 +105,7 @@ def parse_arguments(argv=None):
         required=False,
         type=float,
         default=0,
-        help="the aboslute and relative tolerance for parity verification",
+        help="the absolute and relative tolerance for parity verification",
     )
 
     parser.add_argument(

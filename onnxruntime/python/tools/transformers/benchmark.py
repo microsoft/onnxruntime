@@ -930,7 +930,7 @@ def main():
 
     if len(results) == 0:
         if args.batch_sizes != [0]:
-            logger.warning("No any result avaiable.")
+            logger.warning("No any result available.")
         return
 
     csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"

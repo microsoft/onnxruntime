@@ -2465,6 +2465,10 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
   if (strcmp(key, "user_compute_stream") == 0) {
     tensorrt_options->has_user_compute_stream = 1;
     tensorrt_options->user_compute_stream = value;
+  } else if (strcmp(key, "trt_onnx_bytestream") == 0) {
+    tensorrt_options->trt_onnx_bytestream = value;
+  } else if (strcmp(key, "trt_onnx_bytestream_size") == 0) {
+    tensorrt_options->trt_onnx_bytestream_size = *reinterpret_cast<size_t*>(value);
   }
   return nullptr;
 #else

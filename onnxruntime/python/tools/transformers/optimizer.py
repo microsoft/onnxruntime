@@ -531,7 +531,7 @@ def _parse_arguments():
         "--disable_symbolic_shape_infer",
         required=False,
         action="store_true",
-        help="diable symoblic shape inference",
+        help="diable symbolic shape inference",
     )
     parser.set_defaults(disable_symbolic_shape_infer=False)
 

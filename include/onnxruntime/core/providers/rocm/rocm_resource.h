@@ -3,7 +3,7 @@
 
 #include "core/providers/resource.h"
 
-#define ORT_ROCM_RESOUCE_VERSION 1
+#define ORT_ROCM_RESOURCE_VERSION 1
 
 enum RocmResource : int {
   hip_stream_t = rocm_resource_offset,
