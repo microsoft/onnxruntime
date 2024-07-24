@@ -76,7 +76,8 @@ Status ValidateQDQInsertionEdges(Graph& graph, gsl::span<const ExtendedGraphEdge
   ORT_RETURN_IF_NOT(graph.GetNodeArg(node_arg_name) != nullptr,
                     "QDQ insertion edge does not have a valid graph NodeArg for ", node_arg_name);
   ORT_RETURN_IF_NOT(src_node != nullptr || first_dst_node != nullptr,
-                    "NodeArg ", node_arg_name, " must have a source or a destination node");
+                    "QDQ insertion edge [0] for NodeArg ", node_arg_name,
+                    " must have a source or a destination node");
 
   for (size_t i = 1; i < num_edges; i++) {
     const ExtendedGraphEdge& insertion_edge = insertion_edges[i];
