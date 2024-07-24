@@ -29,29 +29,58 @@ Status CheckInputs(const T* query,
                    bool past_present_share_buffer,
                    bool dmmha_packing,
                    AttentionType operator_type) {
-  // Check inputs for MultiHeadAttention and DecoderMaskedMultiHeadAttention operators.
-  // The inputs are:
+  // ---------------------------------------------------------------
+  // B: batch_size; S: q_sequence_length; D: hidden_size; D_v: hidden_size of value;
+  // N: num_heads; H: head_size; L: kv_sequence_length, P: past_sequence_length (P = L - S)
+  // ---------------------------------------------------------------
+  // MultiHeadAttention inputs:
+  // ---------------------------------------------------------------
+  //  The inputs are:
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
-  //     relative_position_bias     : (B, 1, S, L)
-  //     past_key                   : (B, N, S*, H)
-  //     past_value                 : (B, N, S*, H)
-  // When no packing for q/k/v:
+  //     relative_position_bias     : (B, N, S, L) or (1, N, S, L)
+  //     past_key                   : (B, N, P, H)
+  //     past_value                 : (B, N, P, H)
+  //  When no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, L, D) or (B, N, S*, H)
-  //     value            (V)       : (B, L, D_v) or (B, N, S*, H)
-  //     bias             (Q/K/V)   : (D + D + D_v)
-  // When packed kv is used:
+  //     key              (K)       : (B, L, D)
+  //     value            (V)       : (B, L, D_v)
+  //     bias             (Q/K/V)   : None or (D + D + D_v)
+  //   or cross attention (kv cache is not used in this case):
+  //     query            (Q)       : (B, S, D)
+  //     key              (K)       : (B, N, L, H)
+  //     value            (V)       : (B, N, L, H)
+  //     bias             (Q/K/V)   : None
+  //  When packed kv is used:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, N, 2, H)
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
-  // When packed qkv is used:
+  //  When packed qkv is used:
   //     query            (Q)       : (B, L, N, 3, H) or (B, S, 3*D)
   //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
-  // For
-
+  // ---------------------------------------------------------------
+  // DecoderMaskedMultiHeadAttention inputs:
+  // ---------------------------------------------------------------
+  //     query            (Q)       : (B, 1, D)
+  //     key              (K)       : (B, L, D)
+  //     value            (V)       : (B, L, D)
+  //   or cross attention (kv cache is not used in this case):
+  //     query            (Q)       : (B, 1, D)
+  //     key              (K)       : (B, N, L, H)
+  //     value            (V)       : (B, N, L, H)
+  //   or
+  //     query            (Q)       : (B, 1, 3*D)
+  //     key              (K)       : None
+  //     value            (V)       : None
+  //   Other inputs:
+  //     bias             (Q/K/V)   : None or (3*D)
+  //     key_padding_mask (K/V)     : (B, L)
+  //     relative_position_bias     : (1, N, S, L)
+  //     past_key                   : (B, N, P, H)
+  //     past_value                 : (B, N, P, H)
+  // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format;
 
   const auto& query_dims = query->Shape().GetDims();
