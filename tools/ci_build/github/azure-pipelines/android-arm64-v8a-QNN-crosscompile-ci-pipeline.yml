@@ -60,8 +60,6 @@ jobs:
   - script: |
       export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
       export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
     displayName: set Android ENVs
 
   - script: |
