@@ -50,6 +50,11 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("axes", axes);
   options.set("keepDimensions", keep_dims == 1);
   options.set("selectLastIndex", select_last_index == 1);
+  // TODO: use WebNN's opSupportLimits API to check the backend's supported output data types.
+  // If the backend doesn't support int64 output, we should use default int32 output data type
+  // then do a type casting (int32 -> int64) for the output. Refer to the CoreML EP for how to
+  // support int64 output.
+  options.set("outputDataType", "int64");
   emscripten::val output = emscripten::val::object();
 
   const auto& op_type = node.OpType();

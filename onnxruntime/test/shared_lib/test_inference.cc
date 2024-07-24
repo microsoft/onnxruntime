@@ -1620,7 +1620,7 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
@@ -1674,7 +1674,7 @@ TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "outp
 // Has memory leak
 #if defined(__ANDROID__) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
 #else
@@ -1705,7 +1705,7 @@ TEST(CApiTest, test_custom_op_shape_infer_attr) {
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, test_custom_op_library_copy_variadic) {
-// To accomodate a reduced op build pipeline
+// To accommodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, test_custom_op_library_copy_variadic) {
 #else
