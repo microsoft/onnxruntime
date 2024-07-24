@@ -200,19 +200,19 @@ Module['jsepInit'] = (name, params) => {
     };
   } else if(name === 'webnn') {
     // Functions called from EM_ASM need to be assigned in a way that can be minified.
+    // Functions called via emscripten::val::module_property need to be assigned by name so that the minifier doesn't
+    // change the name.
+
     [Module.jsepBackend,
      Module.jsepReserveBufferId,
      Module.jsepReleaseBufferId,
-     Module.jsepEnsureBuffer,
+     Module['jsepEnsureBuffer'],
      Module.jsepUploadBuffer,
-     Module.jsepDownloadBuffer,
+     Module['jsepDownloadBuffer'],
     ] = params;
 
-
-    // Functions called via emscripten::val::module_property need to be assigned in a way that the minifier won't
-    // change the name
-    Module['jsepEnsureBuffer'] = Module.jsepEnsureBuffer;
-    Module['jsepDownloadBuffer'] = Module.jsepDownloadBuffer;
+    // This function is called from both JS and an EM_ASM block, it needs both a minifiable name and an explicit name.
+    Module['jsepReleaseBufferId'] = Module.jsepReleaseBufferId;
 
     // Functions called from JS also need to have explicit names.
     const backend = Module.jsepBackend;
@@ -225,7 +225,6 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
-    Module['jsepReleaseBufferId'] = Module.jsepReleaseBufferId;
     Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
       return backend['createMLBufferDownloader'](bufferId, type);
     }
