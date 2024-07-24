@@ -92,6 +92,10 @@ void set_params_fprop(Flash_fwd_params& params,
   params.softmax_lse_ptr = softmax_lse_d;
 
   // Set the dimensions.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 2220)  // Ignore warning is treated as an error 
+#endif
   params.b = batch_size;
   params.h = num_heads;
   params.h_k = num_heads_k;
@@ -119,6 +123,9 @@ void set_params_fprop(Flash_fwd_params& params,
   if (window_size_left >= 0 && window_size_right < 0) {
     window_size_right = seqlen_k;
   }
+#if defined(_MSC_VER)r
+#pragma warning(pop)
+#endif
   params.window_size_left = window_size_left;
   params.window_size_right = window_size_right;
 
