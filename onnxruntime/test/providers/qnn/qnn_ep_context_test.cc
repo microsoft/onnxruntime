@@ -654,7 +654,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 // Context binary only contains a single QNN graph, generated context cache model (detached mode) only has 1 EPContext node
 // Create another Onnx model which also reference to the bin file,
 // but the node name is not same with the QNN graph name inside the bin file.
-// This is to support backward compitable for the models generated before the PR that
+// This is to support backward compatible for the models generated before the PR that
 // make context generation support multi-partition
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphNameInCtx) {
   ProviderOptions provider_options;
@@ -732,7 +732,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
 }
 
-// Model has 2 EPContext nodes, both with main_context=1 and embeded context binary
+// Model has 2 EPContext nodes, both with main_context=1 and embedded context binary
 TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
   ProviderOptions provider_options;
 #if defined(_WIN32)

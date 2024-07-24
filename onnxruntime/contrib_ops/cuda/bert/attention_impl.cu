@@ -245,12 +245,10 @@ Status FusedTrtSelfAttention(
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(data.fused_runner);
 
-  const int S = causal ? sequence_length : fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+  const int s = causal ? sequence_length : fused_fp16_runner->NormalizeSequenceLength(sequence_length);
 
   // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
-  const int B = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
-
-  fused_fp16_runner->setup(S, B);
+  const int b = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
 
   if (!causal) {
     assert(data.qkv_format == AttentionQkvFormat::QKV_BSN3H);
@@ -261,12 +259,12 @@ Status FusedTrtSelfAttention(
       packed_qkv = data.query;
     }
 
-    fused_fp16_runner->run(packed_qkv, sequence_offset, data.output, stream);
+    fused_fp16_runner->Run(b, s, packed_qkv, sequence_offset, data.output, stream);
     DUMP_TENSOR("fused output", data.output,
                 batch_size, sequence_length, parameters.num_heads, parameters.v_head_size);
   } else {
     assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
-    fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
+    fused_fp16_runner->Run(b, s, data.gemm_buffer, sequence_offset, data.output, stream);
     DUMP_TENSOR("fused causal output", data.output,
                 batch_size, sequence_length, parameters.num_heads, parameters.v_head_size);
   }

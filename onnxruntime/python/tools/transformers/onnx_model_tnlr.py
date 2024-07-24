@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class FusionTnlrAttention(FusionAttention):
     """
     Fuse TNLR Attention subgraph into one Attention node.
-    TNLR Attention has extra addtion after qk nodes and adopts [S, B, NH] as I/O shape.
+    TNLR Attention has extra addition after qk nodes and adopts [S, B, NH] as I/O shape.
     """
 
     def __init__(

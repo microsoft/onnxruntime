@@ -145,7 +145,12 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, const s
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
+/// <param name="override_element_type">
+///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
+///   the original ONNX node has type int64.
+/// </param>
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type = std::nullopt);
 
 /// <summary>
 /// Add pad_type and pad values.
