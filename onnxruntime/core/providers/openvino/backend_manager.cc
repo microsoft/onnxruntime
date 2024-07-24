@@ -188,8 +188,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
                                                       model_blob_str,
-                                                      openvino_sdk_version_,
-                                                      GetGlobalContext().device_type));
+                                                      openvino_sdk_version_));
 
   return Status::OK();
 }

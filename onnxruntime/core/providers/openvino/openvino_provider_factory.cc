@@ -125,7 +125,7 @@ struct OpenVINO_Provider : Provider {
 
       for (auto& device : available_devices) {
         if (ov_supported_device_types.find(device) == ov_supported_device_types.end()) {
-          auto ov_supported_device_types_update = ov_supported_device_types.emplace(device);
+          ov_supported_device_types.emplace(device);
         }
       }
       if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
