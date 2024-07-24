@@ -522,7 +522,7 @@ Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
                       float& scale,
-                      int& zero_point,
+                      int32_t& zero_point,
                       bool symmetric) {
   std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
   if (symmetric) {
@@ -542,7 +542,7 @@ Status GetQuantParams(float rmin,
   } else {
     initial_zero_point = qmin - (rmin / scale);
   }
-  zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
+  zero_point = static_cast<int32_t>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
   // To match QNN quantization definition
   zero_point = 0 - zero_point;
   return Status::OK();

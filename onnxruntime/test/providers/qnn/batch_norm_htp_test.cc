@@ -102,7 +102,7 @@ static GetTestModelFn BuildBatchNormTestCase(const TestInputDef<FLOAT_TYPE>& inp
   };
 }
 
-template <typename InputQType, typename ScaleQType, typename BiasQType>
+template <typename InputQType, typename ScaleQType>
 GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float>& input_def,
                                                         const TestInputDef<float>& scale_def,
                                                         const TestInputDef<float>& bias_def) {
@@ -123,14 +123,8 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
     NodeArg* scale_qdq = AddQDQNodePair<ScaleQType>(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     NodeArg* bias_qdq;
-    if (sizeof(BiasQType) == sizeof(int)) {
-      // bias (as int32) => DQ =>
-      bias_qdq = MakeTestQDQBiasInput(builder, bias_def, input_qparams.scale * scale_qparams.scale, true);
-    } else {
-      NodeArg* bias = MakeTestInput(builder, bias_def);
-      QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams<BiasQType>(bias_def);
-      bias_qdq = AddQDQNodePair<BiasQType>(builder, bias, bias_qparams.scale, bias_qparams.zero_point);
-    }
+    // bias (as int32) => DQ =>
+    bias_qdq = MakeTestQDQBiasInput(builder, bias_def, input_qparams.scale * scale_qparams.scale, true);
 
     std::vector<float> mean_vals(num_channels);
     std::vector<float> var_vals(num_channels);
@@ -154,7 +148,7 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
  * \param input_shape The input's shape.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  */
-template <typename InputQType, typename ScaleQType, typename BiasQType>
+template <typename InputQType, typename ScaleQType>
 static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
                                 const TestInputDef<float>& scale_def,
                                 const TestInputDef<float>& bias_def,
@@ -169,7 +163,7 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildBatchNormTestCase(input_def, scale_def, bias_def),
-                       BuildQDQBatchNormTestCase<InputQType, ScaleQType, BiasQType>(input_def, scale_def, bias_def),
+                       BuildQDQBatchNormTestCase<InputQType, ScaleQType>(input_def, scale_def, bias_def),
                        provider_options,
                        21,
                        expected_ep_assignment,
@@ -203,11 +197,11 @@ static void RunBatchNormFP16Test(const TestInputDef<float>& input_def,
 TEST_F(QnnHTPBackendTests, BatchNormRank2) {
   constexpr int64_t num_channels = 2;
 
-  RunBatchNormQDQTest<uint8_t, uint8_t, int32_t>(TestInputDef<float>({4, num_channels}, false,
-                                                                     {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f}),  // Input data
-                                                 TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),                    // Scale initializer
-                                                 TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),                    // Bias initializer
-                                                 ExpectedEPNodeAssignment::All);
+  RunBatchNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({4, num_channels}, false,
+                                                            {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f}),  // Input data
+                                        TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),                    // Scale initializer
+                                        TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),                    // Bias initializer
+                                        ExpectedEPNodeAssignment::All);
 }
 
 // TODO: FIX TRANSLATION!!!
@@ -216,11 +210,11 @@ TEST_F(QnnHTPBackendTests, BatchNormRank2) {
 TEST_F(QnnHTPBackendTests, BatchNorm1D) {
   constexpr int64_t num_channels = 2;
 
-  RunBatchNormQDQTest<uint8_t, uint8_t, uint8_t>(TestInputDef<float>({1, num_channels, 3}, false,
-                                                                     {-5.0f, -4.0f, -3.0f, 0.0f, 2.0f, 5.0f}),  // Input data
-                                                 TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),       // Scale initializer
-                                                 TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),       // Bias initializer
-                                                 ExpectedEPNodeAssignment::All);
+  RunBatchNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, num_channels, 3}, false,
+                                                            {-5.0f, -4.0f, -3.0f, 0.0f, 2.0f, 5.0f}),  // Input data
+                                        TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),       // Scale initializer
+                                        TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),       // Bias initializer
+                                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
@@ -230,12 +224,12 @@ TEST_F(QnnHTPBackendTests, BatchNorm2D_a8w8b8) {
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
 
-  RunBatchNormQDQTest<uint8_t, uint8_t, uint8_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
-                                                 TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
-                                                 TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
-                                                 ExpectedEPNodeAssignment::All,
-                                                 // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
-                                                 QDQTolerance(0.006f));
+  RunBatchNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
+                                        TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
+                                        TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
+                                        ExpectedEPNodeAssignment::All,
+                                        // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
+                                        QDQTolerance(0.006f));
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
@@ -245,12 +239,12 @@ TEST_F(QnnHTPBackendTests, BatchNorm2D_a8w8b32) {
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
 
-  RunBatchNormQDQTest<uint8_t, uint8_t, int32_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
-                                                 TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
-                                                 TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
-                                                 ExpectedEPNodeAssignment::All,
-                                                 // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
-                                                 QDQTolerance(0.006f));
+  RunBatchNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
+                                        TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
+                                        TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
+                                        ExpectedEPNodeAssignment::All,
+                                        // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
+                                        QDQTolerance(0.006f));
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
@@ -260,12 +254,12 @@ TEST_F(QnnHTPBackendTests, BatchNorm2D_a16w8b32) {
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
 
-  RunBatchNormQDQTest<uint16_t, uint8_t, int32_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
-                                                  TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
-                                                  TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
-                                                  ExpectedEPNodeAssignment::All,
-                                                  // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
-                                                  QDQTolerance(0.006f));
+  RunBatchNormQDQTest<uint16_t, uint8_t>(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
+                                         TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
+                                         TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
+                                         ExpectedEPNodeAssignment::All,
+                                         // Require a slightly increased tolerance on Windows ARM64 (from 0.4% to 0.6%).
+                                         QDQTolerance(0.006f));
 }
 
 // Test FP16 BatchNormalization on the HTP backend.
@@ -314,11 +308,11 @@ TEST_F(QnnHTPBackendTests, BatchNorm_FP32_as_FP16) {
 TEST_F(QnnHTPBackendTests, BatchNorm3D) {
   constexpr int64_t num_channels = 2;
   constexpr int64_t num_elems = 1 * num_channels * 3 * 4 * 5;
-  RunBatchNormQDQTest<uint8_t, uint8_t, uint8_t>(TestInputDef<float>({1, num_channels, 3, 4, 5}, false,
-                                                                     std::vector<float>(num_elems)),       // Input data (all zeros)
-                                                 TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
-                                                 TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
-                                                 ExpectedEPNodeAssignment::None);
+  RunBatchNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, num_channels, 3, 4, 5}, false,
+                                                            std::vector<float>(num_elems)),       // Input data (all zeros)
+                                        TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
+                                        TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
+                                        ExpectedEPNodeAssignment::None);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
