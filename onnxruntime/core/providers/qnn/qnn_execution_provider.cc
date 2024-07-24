@@ -566,7 +566,7 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
       std::back_inserter(result),
       [&](const auto& supported_partition) {
         return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN,
-                                            /*drop_constant_initializers*/false);  // TODO: could this be set to true?
+                                            /*drop_constant_initializers*/ false);  // TODO: could this be set to true?
       });
 
   const size_t num_of_partitions = result.size();
