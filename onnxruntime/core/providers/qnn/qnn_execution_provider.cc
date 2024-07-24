@@ -660,7 +660,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Create partitions from supported nodes.
   std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(
-      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map, true);
+      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map);
 
   // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
   // We also count the number of supported nodes in all valid partitions.
