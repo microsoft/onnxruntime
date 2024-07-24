@@ -73,7 +73,7 @@ def create_moe_onnx_graph(
             "MoE_0",
             k=topk,
             normalize_routing_weights=1,
-            #activation_type="silu",
+            # activation_type="silu",
             domain="com.microsoft",
         ),
     ]
@@ -429,7 +429,7 @@ class TestArflowMoE(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
-#----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # class MoEBlockForOnnxExport(torch.autograd.Function):
 #     @staticmethod
 #     def forward(
@@ -625,4 +625,4 @@ if __name__ == "__main__":
 
 #         return tensor_model_parallel_all_reduce(final_hidden_states).view(
 #             batch_size, sequence_length, hidden_dim)
-#----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
