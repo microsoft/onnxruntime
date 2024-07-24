@@ -18,7 +18,7 @@ parameters:
   displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
   type: boolean
   default: false
-
+stages:
 - template: templates/ondevice-training-cpu-packaging-pipeline.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
