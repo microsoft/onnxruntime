@@ -61,17 +61,17 @@ Status CheckInputs(const T* query,
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
   // ---------------------------------------------------------------
-  // DecoderMaskedMultiHeadAttention inputs:
+  // DecoderMaskedMultiHeadAttention inputs (S=1):
   // ---------------------------------------------------------------
-  //     query            (Q)       : (B, 1, D)
+  //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D)
-  //   or cross attention (kv cache is not used in this case):
-  //     query            (Q)       : (B, 1, D)
+  //   or cross attention (kv cache and relative_position_bias are not used in this case):
+  //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
   //   or
-  //     query            (Q)       : (B, 1, 3*D)
+  //     query            (Q)       : (B, S, 3*D)
   //     key              (K)       : None
   //     value            (V)       : None
   //   Other inputs:
@@ -154,8 +154,9 @@ Status CheckInputs(const T* query,
     max_sequence_length = static_cast<int>(past_key_dims[2]);
     if (past_present_share_buffer) {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
       }
       past_sequence_length = *((*past_seq_len).template Data<int32_t>());
     }
@@ -166,13 +167,15 @@ Status CheckInputs(const T* query,
 
   if (key != nullptr) {
     if (query_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'query' is expected to have 3 dimensions when key is given, got ",
                              query_dims.size());
     }
 
     const auto& key_dims = key->Shape().GetDims();
     if (key_dims.size() != 3 && key_dims.size() != 4 && key_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
                              key_dims.size());
     }
     if (query_dims[0] != key_dims[0]) {
@@ -189,13 +192,16 @@ Status CheckInputs(const T* query,
       qkv_format = Q_K_V_BSNH;
       kv_sequence_length = static_cast<int>(key_dims[1]);
     } else if (key_dims.size() == 5) {
-      if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
+      if (static_cast<int>(key_dims[2]) != num_heads ||
+          static_cast<int>(key_dims[3]) != 2 ||
+          static_cast<int>(key_dims[4]) != head_size) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
             "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
       }
       if (value != nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Expect 'value' be none when 'key' has packed kv format.");
       }
 
       qkv_format = Q_KV_BSNH_BSN2H;
@@ -211,6 +217,7 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' shall be 4D when 'key' is 4D");
       }
 
+      // Bias is supported in DecoderMaskedMultiHeadAttention only for cross attention.
       if (operator_type == kMultiHeadAttention && bias != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
       }
@@ -220,10 +227,12 @@ Status CheckInputs(const T* query,
     }
   } else {  // packed QKV
     if (query_dims.size() != 3 && query_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ",
                              query_dims.size());
     }
-    if (query_dims.size() == 5 && (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3)) {
+    if (query_dims.size() == 5 &&
+        (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3)) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
@@ -277,7 +286,7 @@ Status CheckInputs(const T* query,
     }
   }
 
-  // NOTE: In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
+  // In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
   bool pass_past_in_kv = false;
   int v_hidden_size = hidden_size;
   if (value != nullptr) {
