@@ -42,6 +42,7 @@ jobs:
       clean: all
 
     steps:
+
       - script: |
           ls -R /data/qnn_test_data
         displayName: Check QNN test data
@@ -51,13 +52,14 @@ jobs:
         inputs:
           versionSpec: $(pythonVersion)
 
+      - template: templates/use-android-ndk.yml
+
       - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
         displayName: Install coreutils and ninja
 
       - template: templates/jobs/download_linux_qnn_sdk.yml
         parameters:
           QnnSDKVersion: ${{ parameters.QnnSdk }}
-
       - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \

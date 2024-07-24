@@ -46,6 +46,8 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
+  - template: templates/use-android-ndk.yml
+
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
@@ -55,7 +57,6 @@ jobs:
   - template: templates/jobs/download_linux_qnn_sdk.yml
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
-
   - script: |
       export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
       export ANDROID_HOME=/usr/local/lib/android/sdk
