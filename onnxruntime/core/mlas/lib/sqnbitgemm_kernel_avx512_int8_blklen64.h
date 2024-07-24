@@ -281,8 +281,6 @@ accumulate_blklen64_r1c1blk1_avx512(
     const __m512 scale_b_16_ps = _mm512_broadcast_f32x2(scale_b_ps);
 
     if constexpr (vnni) {
-        const __m512i one_32_epi16 = _mm512_set1_epi16(1);
-
         __m512i dot_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv_64_epi8, av_32_epi8);
         __m512 sum_16_ps = _mm512_cvtepi32_ps(dot_16_epi32);
 

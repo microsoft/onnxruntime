@@ -33,9 +33,9 @@ accumulate_blklen16_r1c1blk8_avx512(
     __m512i bv0_64_epi8, bv1_64_epi8;
     load_4blk_4b_packed_blklen16(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
 
-    const __m256 scale_b_ps = _mm256_load_ps(scale_b);  // 01234567
+    const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     {
-        const __m256 scale_a0_ps = _mm256_load_ps(scale_a);  // 01234567
+        const __m256 scale_a0_ps = _mm256_loadu_ps(scale_a);  // 01234567
         const __m256 scale_a0b_ps = _mm256_mul_ps(scale_b_ps, scale_a0_ps);
         __m512 scale_a0b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a0b_ps))
@@ -74,9 +74,9 @@ accumulate_blklen16_r2c1blk4_avx512(
     __m512i bv0_64_epi8, bv1_64_epi8;
     load_2blk_4b_packed_blklen64(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
 
-    const __m256 scale_b_ps = _mm256_load_ps(scale_b);  // 01234567
+    const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     {
-        const __m256 scale_a0_ps = _mm256_load_ps(scale_a0);  // 01234567
+        const __m256 scale_a0_ps = _mm256_loadu_ps(scale_a0);  // 01234567
         const __m256 scale_a0b_ps = _mm256_mul_ps(scale_b_ps, scale_a0_ps);
         __m512 scale_a0b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a0b_ps))
@@ -98,7 +98,7 @@ accumulate_blklen16_r2c1blk4_avx512(
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
     }
     {
-        const __m256 scale_a1_ps = _mm256_load_ps(scale_a1);  // 01234567
+        const __m256 scale_a1_ps = _mm256_loadu_ps(scale_a1);  // 01234567
         const __m256 scale_a1b_ps = _mm256_mul_ps(scale_b_ps, scale_a1_ps);
         __m512 scale_a1b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a1b_ps))
@@ -133,9 +133,9 @@ accumulate_blklen16_r1c1blk8_avx512vnni(
     __m512i bv0_64_epi8, bv1_64_epi8;
     load_4blk_4b_packed_blklen16(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
 
-    const __m256 scale_b_ps = _mm256_load_ps(scale_b);  // 01234567
+    const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     {
-        const __m256 scale_a0_ps = _mm256_load_ps(scale_a);  // 01234567
+        const __m256 scale_a0_ps = _mm256_loadu_ps(scale_a);  // 01234567
         const __m256 scale_a0b_ps = _mm256_mul_ps(scale_b_ps, scale_a0_ps);
         __m512 scale_a0b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a0b_ps))
@@ -172,9 +172,9 @@ accumulate_blklen16_r2c1blk4_avx512vnni(
     __m512i bv0_64_epi8, bv1_64_epi8;
     load_2blk_4b_packed_blklen64(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
 
-    const __m256 scale_b_ps = _mm256_load_ps(scale_b);  // 01234567
+    const __m256 scale_b_ps = _mm256_loadu_ps(scale_b);  // 01234567
     {
-        const __m256 scale_a0_ps = _mm256_load_ps(scale_a0);  // 01234567
+        const __m256 scale_a0_ps = _mm256_loadu_ps(scale_a0);  // 01234567
         const __m256 scale_a0b_ps = _mm256_mul_ps(scale_b_ps, scale_a0_ps);
         __m512 scale_a0b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a0b_ps))
@@ -194,7 +194,7 @@ accumulate_blklen16_r2c1blk4_avx512vnni(
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
     }
     {
-        const __m256 scale_a1_ps = _mm256_load_ps(scale_a1);  // 01234567
+        const __m256 scale_a1_ps = _mm256_loadu_ps(scale_a1);  // 01234567
         const __m256 scale_a1b_ps = _mm256_mul_ps(scale_b_ps, scale_a1_ps);
         __m512 scale_a1b_16_ps = _mm512_castsi512_ps(
             _mm512_broadcast_i64x4(_mm256_castps_si256(scale_a1b_ps))

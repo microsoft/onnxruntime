@@ -300,7 +300,6 @@ Q4Int8GemmM1C4BlkLen32Avx2(
             // load A
             const std::byte* QuantABlk0 = QuantAPtr;
             const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk0);
-            const __m256i zero = _mm256_setzero_si256();
             const float& scale_a00 = *QuantAScalePtr;
             {
                 const float& scale_00 = scale_a00 * (QuantBScalePtr)[0];
@@ -373,7 +372,7 @@ Q4Int8GemmM1C1BlkLen32Avx2(
     const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
     const float* BiasPtr = Bias;
     auto* SumPtr = C;
-    
+
     const __m256i low_mask = _mm256_set1_epi8(0x0F);
     const __m256i bzp8 = _mm256_set1_epi8(8);
     for (size_t n = 0; n < CountN; n++) {
@@ -381,7 +380,7 @@ Q4Int8GemmM1C1BlkLen32Avx2(
         const float* QuantAScalePtr = QuantAScale;
         const std::byte* QuantBDataPtr = QuantBDataColPtr;
         const float* QuantBScalePtr = QuantBScaleColPtr;
-        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;        
+        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
         __m256 acc0 = _mm256_setzero_ps();
         size_t k_blks_remaining = BlockCountK;
@@ -503,7 +502,7 @@ void SQ4BitGemmM1Kernel_BlkLen32_CompInt8_Impl2(
     constexpr size_t BlkLen = 32;
 #if defined SQ4BitGemmM1Kernel_BlkLen32_CompInt8_NewLayout
 #else
-    constexpr bool HasZeroPoint = false; 
+    constexpr bool HasZeroPoint = false;
 #endif
 
     float* CRowPtr = C;
