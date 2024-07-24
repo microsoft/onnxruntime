@@ -228,9 +228,22 @@ common::Status SaveInitializedTensors(
   id_to_initialized_tensor.reserve(initialized_tensor_set.size());
   user_supplied_initializer_ids.reserve(initialized_tensor_set.size());
 
+  // Special case: ORT format model where an EP takes nodes and copies initializers into the compiled model.
+  // Those initializers become unused so don't end up in ort_value_name_idx_map, but as we don't run
+  // Graph::Resolve with an ORT format model they will still exist in GetAllInitializedTensors.
+  // We can ignore lookup failures in this case.
+  const bool unresolved_graph = graph.GetGraph().GraphResolveNeeded();
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
-    ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
+
+    if (auto status = ort_value_name_idx_map.GetIdx(entry.first, ort_value_index); !status.IsOK()) {
+      if (unresolved_graph) {
+        continue;
+      }
+
+      return status;
+    }
+
     if (use_user_supplied_initializer(entry.first)) {
       user_supplied_initializer_ids.insert(ort_value_index);
     }
