@@ -13,7 +13,7 @@ namespace tvm_codegen {
 
 using CoordTransFunc = std::function<tvm::Array<tvm::Expr>(const tvm::Array<tvm::Expr>&)>;
 
-// WeightLayout is data layout trasnformer for weight/initializer
+// WeightLayout is data layout transformer for weight/initializer
 class WeightLayout {
  public:
   // Static function to return unique string as a key

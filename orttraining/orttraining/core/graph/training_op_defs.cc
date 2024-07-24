@@ -1737,7 +1737,7 @@ void RegisterTrainingOpSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  // TODO: Depreacate this schema when training support is udpated to opset-12
+  // TODO: Depreacate this schema when training support is updated to opset-12
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherND)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
@@ -1820,7 +1820,7 @@ Example 4:
       .Input(0, "shape", "The shape of source data input of GatherND.", "T1")
       .Input(1, "indices", "Tensor of rank q >= 1.", "Tind")
       .Input(2, "update", "The gradient of the output.", "T")
-      .Output(0, "output", "Tensor graident of the input.", "T")
+      .Output(0, "output", "Tensor gradient of the input.", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
@@ -2493,7 +2493,7 @@ Example 4:
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(
           "Returns the reduction axes for computing gradients of s0 op s1 with broadcast."
-          "The ouput axes are deterministic from last to first. "
+          "The output axes are deterministic from last to first. "
           "Output is an empty vector when no reduction is necessary for the corresponding input.")
       .Input(0, "a_shape", "The 1st input shape as Tensor.", "T")
       .Input(1, "b_shape", "The 2nd input shape as Tensor.", "T")
@@ -2530,7 +2530,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2568,7 +2568,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "1 bit compresssed input", "T1")
+      .Input(0, "X", "1 bit compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2606,7 +2606,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -2682,7 +2682,7 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X", "compresssed input", "T1")
+      .Input(0, "X", "compressed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
       .Attr("to",
             "The data type to which the elements of the input tensor are cast. "
@@ -3191,7 +3191,7 @@ Return true if all elements are true and false otherwise.
             "Strictly must be one of the types from DataType enum in TensorProto",
             AttributeProto::INT)
       .Attr("fuse_outputs",
-            "If true, fuse all outputs into one continous buffer.",
+            "If true, fuse all outputs into one continuous buffer.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .TypeConstraint(
@@ -3240,7 +3240,7 @@ Return true if all elements are true and false otherwise.
       .Input(1, "scale", "Scale scalar tensor.", "ScaleT")
       .Output(0, "output", "The scaled output tensor.", "T")
       .Attr("scale_down",
-            "If true, the output tensor is input tensor devided by scale, "
+            "If true, the output tensor is input tensor divided by scale, "
             "otherwise, it's input tensor multiplied by scale. "
             "The default value is false.",
             AttributeProto::INT,
@@ -3636,7 +3636,7 @@ Return true if all elements are true and false otherwise.
           fail_shape_inference("RecordEvent must have at least (num_outputs + 1) inputs.");
 
         // note: if num_input > num_output + 1,
-        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // the additional inputs (idx >= num_output + 1) are regarded as dependencies
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);
@@ -3689,7 +3689,7 @@ Return true if all elements are true and false otherwise.
           fail_shape_inference("WaitEvent must have at least 1 output.");
 
         // note: if num_input > num_output + 1,
-        // the additional inputs (idx >= num_ouput + 1) are regarded as dependencies
+        // the additional inputs (idx >= num_output + 1) are regarded as dependencies
         // which are only used for maintain topological order
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i + 1, i);

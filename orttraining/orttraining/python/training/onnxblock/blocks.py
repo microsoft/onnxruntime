@@ -403,12 +403,12 @@ class InputLike(Block):
     def build(self, input_name: Optional[str] = None):
         cloned_input = None
         with contextlib.suppress(LookupError):
-            # Supress LookupError because we want to try to get the input from the output if it's not found in the inputs
+            # Suppress LookupError because we want to try to get the input from the output if it's not found in the inputs
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
 
         if cloned_input is None:
             with contextlib.suppress(LookupError):
-                # Supress LookupError because we deal with the case where no input or output was found later.
+                # Suppress LookupError because we deal with the case where no input or output was found later.
                 cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
 
         if cloned_input is None:

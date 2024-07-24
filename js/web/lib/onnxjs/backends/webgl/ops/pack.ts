@@ -85,7 +85,7 @@ function getOutOfBoundsCondition(rank: number, shape: readonly number[], dims: s
 }
 
 /**
- * code snippet to sample input texture with output coordiantes
+ * code snippet to sample input texture with output coordinates
  */
 function getOutput(shape: readonly number[], dims: string[]): string {
   const rank = shape.length;

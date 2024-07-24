@@ -55,11 +55,11 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
-                                                              parameters.head_size,
-                                                              parameters.sequence_length,
-                                                              enable_trt_flash_attention_,
-                                                              false /*causal*/);
+  bool is_fMHA_supported = FusedMHARunnerFP16v2::IsSupported(sm,
+                                                             parameters.head_size,
+                                                             parameters.sequence_length,
+                                                             enable_trt_flash_attention_,
+                                                             false /*causal*/);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -72,8 +72,8 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
   }
 
   // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-  if (fused_fp16_runner_->isValid(S)) {
+  const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(parameters.sequence_length);
+  if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
     fused_runner = fused_fp16_runner_.get();
   }
 

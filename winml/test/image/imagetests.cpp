@@ -211,12 +211,12 @@ class ImageTests : public ::testing::Test {
   bool ShouldSkip(
     const std::wstring& model_file_name, const std::wstring& image_file_name, const InputImageSource input_image_source
   ) {
-    // Case that the tensor's shape doesn't match model's shape should be skiped
+    // Case that the tensor's shape doesn't match model's shape should be skipped
     if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && (InputImageSource::FromGPUResource == input_image_source || InputImageSource::FromCPUResource == input_image_source)) {
       return true;
     }
 
-    // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
+    // Case that the images's shape doesn't match model's shape which expects free dimension should be skipped.
     // Because the fns-candy is not real model that can handle free dimensional input
     if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && L"fns-candy_Bgr8_freeDimInput.onnx" == model_file_name) {
       return true;
