@@ -123,7 +123,7 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
     NodeArg* scale_qdq = AddQDQNodePair<ScaleQType>(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     NodeArg* bias_qdq;
-    if (sizeof(BiasQType) == sizeof(int32_t)) {
+    if (sizeof(BiasQType) == sizeof(int)) {
       // bias (as int32) => DQ =>
       bias_qdq = MakeTestQDQBiasInput(builder, bias_def, input_qparams.scale * scale_qparams.scale, true);
     } else {
