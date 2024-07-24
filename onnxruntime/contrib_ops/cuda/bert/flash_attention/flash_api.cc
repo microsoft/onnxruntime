@@ -123,7 +123,7 @@ void set_params_fprop(Flash_fwd_params& params,
   if (window_size_left >= 0 && window_size_right < 0) {
     window_size_right = seqlen_k;
   }
-#if defined(_MSC_VER)r
+#if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
   params.window_size_left = window_size_left;
