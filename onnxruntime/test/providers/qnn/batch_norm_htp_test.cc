@@ -80,7 +80,7 @@ template <typename FLOAT_TYPE>
 static GetTestModelFn BuildBatchNormTestCase(const TestInputDef<FLOAT_TYPE>& input_def,
                                              const TestInputDef<FLOAT_TYPE>& scale_def,
                                              const TestInputDef<FLOAT_TYPE>& bias_def) {
-  ORT_ENFORCE(input_def.IsRawData());            // Need raw data to compute mean and variance inputs.
+  ORT_ENFORCE(input_def.IsRawData());  // Need raw data to compute mean and variance inputs.
 
   return [input_def, scale_def, bias_def](ModelTestBuilder& builder) {
     const auto& input_shape = input_def.GetShape();
@@ -106,7 +106,7 @@ template <typename InputQType, typename ScaleQType, typename BiasQType>
 GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float>& input_def,
                                                         const TestInputDef<float>& scale_def,
                                                         const TestInputDef<float>& bias_def) {
-  ORT_ENFORCE(input_def.IsRawData());            // Need raw data to compute mean and variance inputs.
+  ORT_ENFORCE(input_def.IsRawData());  // Need raw data to compute mean and variance inputs.
 
   return [input_def, scale_def, bias_def](ModelTestBuilder& builder,
                                           std::vector<QuantParams<InputQType>>& output_qparams) {
@@ -127,9 +127,9 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
       // bias (as int32) => DQ =>
       bias_qdq = MakeTestQDQBiasInput(builder, bias_def, input_qparams.scale * scale_qparams.scale, true);
     } else {
-       NodeArg* bias = MakeTestInput(builder, bias_def);
-       QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams<BiasQType>(bias_def);
-       bias_qdq = AddQDQNodePair<BiasQType>(builder, bias, bias_qparams.scale, bias_qparams.zero_point);
+      NodeArg* bias = MakeTestInput(builder, bias_def);
+      QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams<BiasQType>(bias_def);
+      bias_qdq = AddQDQNodePair<BiasQType>(builder, bias, bias_qparams.scale, bias_qparams.zero_point);
     }
 
     std::vector<float> mean_vals(num_channels);
