@@ -835,14 +835,14 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
 
 // Test that models run with various SoC model values
 TEST_F(QnnHTPBackendTests, HTPSocModels) {
-  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
-                                                      "0",  // "Unknown"
+  constexpr std::array<const char*, 3> soc_models = {"",   // No explicit SoC model specified
+                                                     "0",  // "Unknown"
 #if defined(_M_ARM64)
-                                                      "37" };  // SC8280X
+                                                     "37"};  // SC8280X
 #elif defined(__linux__)
-                                                      "30" };  // SM8350
+                                                     "30"};  // SM8350
 #else
-                                                      "" };
+                                                     ""};
 #endif
 
   for (auto soc_model : soc_models) {
