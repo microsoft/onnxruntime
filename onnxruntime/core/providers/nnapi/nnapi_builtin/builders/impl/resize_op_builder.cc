@@ -274,8 +274,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
           return false;
         }
 
-        if (!utils::IsScalingByAFactorOfN(h_in, scale_h) ||
-            !utils::IsScalingByAFactorOfN(w_in, scale_w)) {
+        if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h) ||
+            !utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
           LOGS_DEFAULT(VERBOSE) << "Input size must be evenly divisible by output size when downsampling";
           return false;
         }
