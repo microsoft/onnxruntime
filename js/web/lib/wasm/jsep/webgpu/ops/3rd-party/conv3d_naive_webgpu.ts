@@ -27,6 +27,7 @@ import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../
 import {createTensorShapeVariables, getElementAt, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
 import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet} from '../fuse-utils';
+
 import {typeSnippet} from './activation_util';
 
 const arrayProduct = (arr: number[]) => {
@@ -304,13 +305,17 @@ export const createConv3DNaiveProgramInfo =
               let xRCorner = xFRCCorner.y;
               let xCCorner = xFRCCorner.z;
               let xShapeY = ${
-            isChannelsLast ? getElementAt('uniforms.x_shape', 1, x.rank) : getElementAt('uniforms.x_shape', 2, x.rank)};
+            isChannelsLast ? getElementAt('uniforms.x_shape', 1, x.rank) :
+                             getElementAt('uniforms.x_shape', 2, x.rank)};
               let xShapeZ = ${
-            isChannelsLast ? getElementAt('uniforms.x_shape', 2, x.rank) : getElementAt('uniforms.x_shape', 3, x.rank)};
+            isChannelsLast ? getElementAt('uniforms.x_shape', 2, x.rank) :
+                             getElementAt('uniforms.x_shape', 3, x.rank)};
               let xShapeW = ${
-            isChannelsLast ? getElementAt('uniforms.x_shape', 3, x.rank) : getElementAt('uniforms.x_shape', 4, x.rank)};
+            isChannelsLast ? getElementAt('uniforms.x_shape', 3, x.rank) :
+                             getElementAt('uniforms.x_shape', 4, x.rank)};
               let xShapeU = ${
-            isChannelsLast ? getElementAt('uniforms.x_shape', 4, x.rank) : getElementAt('uniforms.x_shape', 1, x.rank)};
+            isChannelsLast ? getElementAt('uniforms.x_shape', 4, x.rank) :
+                             getElementAt('uniforms.x_shape', 1, x.rank)};
               let inputDepthNearestVec4 = (xShapeU / 4) * 4;
               let inputDepthVec4Remainder = xShapeU % 4;
 
