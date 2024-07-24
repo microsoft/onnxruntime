@@ -4002,7 +4002,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   };
 
   // Create compute function
-  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+  compute_info.compute_func = [=, this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
     Ort::KernelContext ctx(context);
 
     TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
