@@ -47,7 +47,7 @@ namespace npu {
                        std::vector<std::shared_ptr<tim::vx::Tensor>>& outputs,                    \
                        const NodeUnit& node_unit) override {                                      \
       LOGS_DEFAULT(INFO) << "Creating " << #onnx_op_type << " Op";                                \
-      auto op = graph_ep->GetGraph() -> CreateOperation<tim::vx::ops::vsinpu_op_kind>();          \
+      auto op = graph_ep->GetGraph()->CreateOperation<tim::vx::ops::vsinpu_op_kind>();            \
       (*op).BindInputs(inputs).BindOutputs(outputs);                                              \
       return true;                                                                                \
       ;                                                                                           \

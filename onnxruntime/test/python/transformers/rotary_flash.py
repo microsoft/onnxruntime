@@ -486,9 +486,6 @@ class ApplyRotaryEmbKV(torch.autograd.Function):
         return dkv, None, None, None, None
 
 
-apply_rotary_emb_kv_ = ApplyRotaryEmbKV.apply
-
-
 def apply_rotary_emb_kv_(
     kv,
     cos,
