@@ -9,6 +9,7 @@
     "start": "react-native start"
   },
   "dependencies": {
+    "@react-native-community/cli": "^14.0.0",
     "react": "^18.1.0",
     "react-native": "^0.74.2",
     "react-native-fs": "^2.20.0"
