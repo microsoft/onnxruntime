@@ -210,6 +210,59 @@ accumulate_blklen32_r2c1blk4_avx512vnni(
     }
 }
 
+MLAS_FORCEINLINE void
+accumulate_1blk_dot_avx512vnni(const __m256i& av_32_epi8, const __m256i& bv_32_epi8, const float& combined_scale, __m256& acc)
+{
+    __m256i sum_8_epi32 = _mm256_dpbusds_epi32(_mm256_setzero_si256(), bv_32_epi8, av_32_epi8);
+    const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
+    acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
+}
+
+template <bool vnni>
+static MLAS_FORCEINLINE void
+accumulate_blklen32_r1c1blk1_avx512(
+    const __m256i& av00_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float& combined_scale00,
+    __m256& acc0
+)
+{
+    if constexpr (vnni) {
+        // | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+        const __m128i bv_packed0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
+        __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
+        bv_32_epi8 = _mm256_and_si256(_mm256_set1_epi8(0x0F), bv_32_epi8);
+        accumulate_1blk_dot_avx512vnni(av00_32_epi8, bv_32_epi8, combined_scale00, acc0);
+    } else {
+        accumulate_blklen32_r1c1blk1_avx2<false>(av00_32_epi8, QuantBDataPtr, combined_scale00, acc0);
+    }
+}
+
+template <bool vnni>
+static MLAS_FORCEINLINE void
+accumulate_blklen32_r2c1blk1_avx512(
+    const __m256i& av00_32_epi8,
+    const __m256i& av10_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float& combined_scale00,
+    const float& combined_scale10,
+    __m256& acc0,
+    __m256& acc1
+)
+{
+    if constexpr (vnni) {
+        // | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+        const __m128i bv_packed0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
+        __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
+        bv_32_epi8 = _mm256_and_si256(_mm256_set1_epi8(0x0F), bv_32_epi8);
+
+        accumulate_1blk_dot_avx512vnni(av00_32_epi8, bv_32_epi8, combined_scale00, acc0);
+        accumulate_1blk_dot_avx512vnni(av10_32_epi8, bv_32_epi8, combined_scale10, acc1);
+    } else {
+        accumulate_blklen32_r2c1blk1_avx2<false>(av00_32_epi8, av10_32_epi8, QuantBDataPtr, combined_scale00, combined_scale10, acc0, acc1);
+    }
+}
+
 template <bool vnni>
 MLAS_FORCEINLINE void
 Q4Int8GemmR2xC4BlkLen32Avx512(
@@ -342,44 +395,28 @@ Q4Int8GemmR2xC4BlkLen32Avx512(
                     // Col0
                     const float scale_00 = scale_a00 * (QuantBScalePtr)[0];
                     const float scale_10 = scale_a10 * (QuantBScalePtr)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r2c1blk1_avx2<true>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc2[0], acc2[NCols4]);
-                    } else {
-                        accumulate_blklen32_r2c1blk1_avx2<false>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc2[0], acc2[NCols4]);
-                    }
+                    accumulate_blklen32_r2c1blk1_avx512<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc2[0], acc2[NCols4]);
                 }
 
                 {
                     // Col1
                     const float scale_00 = scale_a00 * (QuantBScalePtr + 1)[0];
                     const float scale_10 = scale_a10 * (QuantBScalePtr + 1)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r2c1blk1_avx2<true>(av_00_epi8, av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, scale_10, acc2[1], acc2[NCols4 + 1]);
-                    } else {
-                        accumulate_blklen32_r2c1blk1_avx2<false>(av_00_epi8, av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, scale_10, acc2[1], acc2[NCols4 + 1]);
-                    }
+                    accumulate_blklen32_r2c1blk1_avx512<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, scale_10, acc2[1], acc2[NCols4 + 1]);
                 }
 
                 {
                     // Col2
                     const float scale_00 = scale_a00 * (QuantBScalePtr + 2)[0];
                     const float scale_10 = scale_a10 * (QuantBScalePtr + 2)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r2c1blk1_avx2<true>(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[2], acc2[NCols4 + 2]);
-                    } else {
-                        accumulate_blklen32_r2c1blk1_avx2<false>(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[2], acc2[NCols4 + 2]);
-                    }
+                    accumulate_blklen32_r2c1blk1_avx512<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[2], acc2[NCols4 + 2]);
                 }
 
                 {
                     // Col3
                     const float& scale_00 = scale_a00 * (QuantBScalePtr + 3)[0];
                     const float& scale_10 = scale_a10 * (QuantBScalePtr + 3)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r2c1blk1_avx2<true>(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[3], acc2[NCols4 + 3]);
-                    } else {
-                        accumulate_blklen32_r2c1blk1_avx2<false>(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[3], acc2[NCols4 + 3]);                    
-                    }
+                    accumulate_blklen32_r2c1blk1_avx512<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, scale_10, acc2[3], acc2[NCols4 + 3]);
                 }
                 QuantAPtr += BlkLen32;
                 QuantAScalePtr++;
@@ -492,11 +529,7 @@ Q4Int8GemmR2C1BlkLen32Avx512(
 
                 const float& scale_00 = scale_a00 * (QuantBScalePtr)[0];
                 const float& scale_10 = scale_a10 * (QuantBScalePtr)[0];
-                if constexpr (vnni) {
-                    accumulate_blklen32_r2c1blk1_avx2<true>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc20, acc21);
-                } else {
-                    accumulate_blklen32_r2c1blk1_avx2<false>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc20, acc21);
-                }
+                accumulate_blklen32_r2c1blk1_avx512<vnni>(av_00_epi8, av_10_epi8, QuantBDataPtr, scale_00, scale_10, acc20, acc21);
 
                 QuantAPtr += BlkLen32;
                 QuantAScalePtr++;
@@ -603,35 +636,19 @@ Q4Int8GemmR1xC4BlkLen32Avx512(
                 const float& scale_a00 = *QuantAScalePtr;
                 {
                     const float& scale_00 = scale_a00 * (QuantBScalePtr)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r1c1blk1_avx2<true>(av_00_epi8, QuantBDataPtr, scale_00, acc2[0]);
-                    } else {
-                        accumulate_blklen32_r1c1blk1_avx2<false>(av_00_epi8, QuantBDataPtr, scale_00, acc2[0]);
-                    }
+                    accumulate_blklen32_r1c1blk1_avx512<vnni>(av_00_epi8, QuantBDataPtr, scale_00, acc2[0]);
                 }
                 {
                     const float& scale_00 = scale_a00 * (QuantBScalePtr + 1)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r1c1blk1_avx2<true>(av_00_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, acc2[1]);
-                    } else {
-                        accumulate_blklen32_r1c1blk1_avx2<false>(av_00_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, acc2[1]);
-                    }
+                    accumulate_blklen32_r1c1blk1_avx512<vnni>(av_00_epi8, QuantBDataPtr + BlkDataSizeInBytes16, scale_00, acc2[1]);
                 }
                 {
                     const float& scale_00 = scale_a00 * (QuantBScalePtr + 2)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r1c1blk1_avx2<true>(av_00_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, acc2[2]);
-                    } else {
-                        accumulate_blklen32_r1c1blk1_avx2<false>(av_00_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, acc2[2]);
-                    }
+                    accumulate_blklen32_r1c1blk1_avx512<vnni>(av_00_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes16, scale_00, acc2[2]);
                 }
                 {
                     const float& scale_00 = scale_a00 * (QuantBScalePtr + 3)[0];
-                    if constexpr (vnni) {
-                        accumulate_blklen32_r1c1blk1_avx2<true>(av_00_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, acc2[3]);
-                    } else {
-                        accumulate_blklen32_r1c1blk1_avx2<false>(av_00_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, acc2[3]);
-                    }
+                    accumulate_blklen32_r1c1blk1_avx512<vnni>(av_00_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes16, scale_00, acc2[3]);
                 }
 
                 QuantAPtr += BlkLen32;
@@ -726,11 +743,7 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
 
                 const float& scale_a00 = *QuantAScalePtr;
                 const float& scale_00 = scale_a00 * (QuantBScalePtr)[0];
-                if constexpr (vnni) {
-                    accumulate_blklen32_r1c1blk1_avx2<true>(av_00_epi8, QuantBDataPtr, scale_00, acc2);
-                } else {
-                    accumulate_blklen32_r1c1blk1_avx2<false>(av_00_epi8, QuantBDataPtr, scale_00, acc2);
-                }
+                accumulate_blklen32_r1c1blk1_avx512<vnni>(av_00_epi8, QuantBDataPtr, scale_00, acc2);
 
                 QuantAPtr += BlkLen32;
                 QuantAScalePtr++;
