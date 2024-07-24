@@ -61,8 +61,11 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
-                                                         {{"Gather", {}},
+                                                         {{"Expand", {}},
+                                                          {"Flatten", {}},
+                                                          {"Gather", {}},
                                                           {"Reshape", {}},
+                                                          {"Tile", {}},
                                                           {"Transpose", {}},
                                                           {"Squeeze", {}},
                                                           {"Unsqueeze", {}}},
