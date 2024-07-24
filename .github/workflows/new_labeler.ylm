@@ -1,0 +1,325 @@
+name: Issue Triage
+description: Assign label to new issues without a label
+resource: repository
+
+configuration:
+  resourceManagementConfiguration:
+    eventResponderTasks:
+      - description: Add labels to unassigned issue
+        triggerOnOwnActions: falsetriggerOnOwnActions: false
+        if:
+          - payloadType: Issues
+          - and:
+              - isOpen
+              - not:
+                  and:
+                    - isAssignedToSomeone
+                    - isLabeled
+        then:
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bc\s*sharp\b|\bc#)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bc\s*sharp\b|\bc#)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: api:CSharp
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bjava\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bjava\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: api:Java
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bjavascript\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bjavascript\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: api:JavaScript
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bacl\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bacl\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:ACL
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\barmnn\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\barmnn\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:ArmNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bcann\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bcann\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:CANN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bcore-?ml\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bcore-?ml\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:CoreML
+          - if:
+              - titleContains:
+                  pattern: "/\bcuda\b/i"
+                  isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:CUDA
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bdirect\s*ml\b|\bdml\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bdirect\s*ml\b|\bdml\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:DML
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bmi\s*graph\s*x\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bmi\s*graph\s*x\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:MIGraphX
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bone\s*dnn\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bone\s*dnn\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:oneDNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bopen\s*vino\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bopen\s*vino\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:OpenVINO
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bqnn\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bqnn\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:QNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\brockchip\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\brockchip\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:RockchipNPU
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\brocm\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\brocm\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:ROCm
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bsnpe\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bsnpe\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:SNPE
+          - if:
+              - titleContains:
+                  pattern: "/(\btensor\s*rt\b|\btrt\b)/i"
+                  isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:TensorRT
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\btvm\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\btvm\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:tvm
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bvitis(?:ai)?\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bvitis(?:ai)?\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:VitisAI
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bwebgpu\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bwebgpu\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:WebGPU
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bwebnn\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bwebnn\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:WebNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/\bxnn\s*pack\b/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/\bxnn\s*pack\b/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: ep:Xnnpack
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bjetson\b|\bjetpack\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bjetson\b|\bjetpack\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: platform:jetson
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bdot\s*net\b|\bnuget\b|\.net\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bdot\s*net\b|\bnuget\b|\.net\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: .NET
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: platform:mobile
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: platform:web
+          - if:
+              - titleContains:
+                  pattern: "/(\bwindows\b|\bwinrt\b|\bwinml\b)/i"
+                  isRegEx: true
+            then:
+              - addLabel:
+                  label: platform:windows
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bhugging-?\s*face\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(\bhugging-?\s*face\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: model:transformer
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: "/(\bquantization\b|\bquantized*\b)/i"
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: "/(is this a quantized model\?\n\nYes|\bquantization\b|\bquantized*\b)/i"
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: quantization
