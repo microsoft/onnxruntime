@@ -63,26 +63,31 @@ NodeAttributes MakeDQAttrsFromQ(const Node& q_node) {
 
 // Validates edges into which to insert Q -> DQ ops.
 // - Must have at least one edge.
-// - All edges with a source node must originate from the same source node's output.
+// - All edges must correspond to the same graph NodeArg (i.e., same source but potentially different destination).
 // - All edges must be attached to either a source node or a destination node.
 Status ValidateQDQInsertionEdges(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion_edges) {
-  ORT_RETURN_IF(insertion_edges.empty(), "Expected at least one edge into which to insert QDQ pair.");
+  const size_t num_edges = insertion_edges.size();
+  ORT_RETURN_IF(num_edges == 0, "Expected at least one edge into which to insert QDQ pair.");
 
-  const auto& src_info = insertion_edges[0].GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
-  const Node* src_node = src_info.has_value() ? graph.GetNode(src_info->node_idx) : nullptr;
+  const ExtendedGraphEdge& first_edge = insertion_edges[0];
+  const Node* src_node = first_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
+  const Node* first_dst_node = first_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+  const std::string& node_arg_name = first_edge.arg_name;
+  ORT_RETURN_IF_NOT(graph.GetNodeArg(node_arg_name) != nullptr,
+                    "QDQ insertion edge does not have a valid graph NodeArg for ", node_arg_name);
+  ORT_RETURN_IF_NOT(src_node != nullptr || first_dst_node != nullptr,
+                    "NodeArg ", node_arg_name, " must have a source or a destination node");
 
-  for (const auto& insertion_edge : insertion_edges) {
-    const auto& edge_src_info = insertion_edge.GetNodeInfoAtEnd(ExtendedGraphEdge::End::Source);
-
-    ORT_RETURN_IF_NOT((edge_src_info.has_value() == src_info.has_value()) &&
-                          (!src_info.has_value() ||
-                           (src_info->node_idx == edge_src_info->node_idx &&
-                            src_info->arg_idx == edge_src_info->arg_idx)),
-                      "Expect all insertion edges to come from the same source node's output slot.");
+  for (size_t i = 1; i < num_edges; i++) {
+    const ExtendedGraphEdge& insertion_edge = insertion_edges[i];
+    ORT_RETURN_IF_NOT(insertion_edge.arg_name == node_arg_name,
+                      "QDQ insertion edge [", i, "] has NodeArg ", insertion_edge.arg_name,
+                      " but expected NodeArg ", node_arg_name);
 
     const Node* edge_dst_node = insertion_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
     ORT_RETURN_IF_NOT(src_node != nullptr || edge_dst_node != nullptr,
-                      "At least one graph node must be specified in the propagation edges.");
+                      "QDQ insertion edge [", i, "] for NodeArg ", node_arg_name,
+                      " must have a source or a destination node");
   }
 
   return Status::OK();
