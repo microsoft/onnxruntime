@@ -35,6 +35,11 @@
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
+#ifdef USE_CUDA
+#include <cuda.h>   // for CUDA_VERSION
+#include <cudnn.h>  // for CUDNN_MAJOR
+#endif
+
 #include <pybind11/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -951,21 +956,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
-      } else {
-        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW(
-              "CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and"
-              "cuDNN as mentioned in the GPU requirements page "
-              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
-              " make sure they're in the PATH, and that your GPU is supported.");
-        }
       }
     }
     LOGS_DEFAULT(WARNING) << "Failed to create "
                           << type
-                          << ". Please reference "
-                          << "https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements"
-                          << "to ensure all dependencies are met.";
+                          << ". Require cuDNN " << CUDNN_MAJOR << ".* and "
+                          << "CUDA " << (CUDA_VERSION / 1000) << ".*"
+#if defined(_MSC_VER)
+                          << ", and the latest MSVC runtime"
+#endif
+                          << ". Please install all dependencies as mentioned in the GPU requirements page"
+                             " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+                             "make sure they're in the PATH, and that your GPU is supported.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
