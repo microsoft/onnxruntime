@@ -115,7 +115,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(cudnn_handle, reduce_desc, input_tensor, output_tensor, &indices_bytes));
   auto indices_cuda = GetScratchBuffer<uint32_t>(indices_bytes, stream);
 
-  // need to allocate a separate buffer for ArgMin/ArgMax comparsion output
+  // need to allocate a separate buffer for ArgMin/ArgMax comparison output
   auto output_count = output_shape.Size();
 
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES) {

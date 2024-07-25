@@ -13,13 +13,15 @@ namespace onnxruntime {
 
 bool ReluQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
+      !graph_utils::IsSupportedProvider(node, {kCpuExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
   }
 
   // if Relu is followed by QuantizeLinear, it can be fused into QuantizeLinear potentially
   const auto& next_node = *node.OutputNodesBegin();
-  if (!QDQ::MatchQNode(next_node)) {
+  if (!graph_utils::IsSupportedProvider(next_node, {kCpuExecutionProvider}) ||
+      !QDQ::MatchQNode(next_node)) {
     return false;
   }
 

@@ -17,8 +17,8 @@
 
   # Header paths
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  if(OpenVINO_VERSION VERSION_LESS 2023.0)
-    message(FATAL_ERROR "OpenVINO 2023.0 and newer are supported. Please, latest OpenVINO release")
+  if(OpenVINO_VERSION VERSION_LESS 2024.0)
+    message(FATAL_ERROR "OpenVINO 2024.0 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
   if (WIN32)
@@ -45,11 +45,6 @@
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS} $ENV{OPENCL_INCS}/../../cl_headers/)
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS})
 
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MINOR=${VERSION_MINOR_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_BUILD=${VERSION_BUILD_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_STRING=\"${VERSION_STRING}\")
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 
   if(MSVC)

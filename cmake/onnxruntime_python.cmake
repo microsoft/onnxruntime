@@ -97,8 +97,12 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
-if(onnxruntime_USE_CUDA AND onnxruntime_CUDNN_HOME)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+if(onnxruntime_USE_CUDA)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    # cudnn_home is optional for Window when cuda and cudnn are installed in the same directory.
+    if(onnxruntime_CUDNN_HOME)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -192,10 +196,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
-
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
@@ -514,7 +514,8 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/mobile_helpers/*.py
     ${REPO_ROOT}/tools/ci_build/github/android/mobile_package.required_operators.config
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
-    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
 )
 file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
@@ -565,6 +566,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/requirements.txt
+      $<TARGET_FILE_DIR:${build_output_target}>
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -666,6 +670,15 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (onnxruntime_BUILD_SHARED_LIB)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
 
 if (onnxruntime_USE_OPENVINO)
   add_custom_command(
@@ -1025,7 +1038,4 @@ if (onnxruntime_USE_QNN)
   endif()
 endif()
 
-endif()
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
 endif()

@@ -8,7 +8,7 @@
 #include <optional>
 #include <utility>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"
@@ -1142,7 +1142,7 @@ bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
 bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
-                                      const Path& model_path,
+                                      const std::filesystem::path& model_path,
                                       bool is_quant_matmul,
                                       bool is_conv_matmul_u8s8_weight) {
   // zero point is optional here
@@ -1282,7 +1282,7 @@ bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& nod
 bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
-                                  const Path& path,
+                                  const std::filesystem::path& path,
                                   float required_scale, int32_t required_zp) {
   float scale = 0.0f;
   int32_t zp = 0;

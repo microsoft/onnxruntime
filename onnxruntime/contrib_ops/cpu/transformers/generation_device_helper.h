@@ -10,7 +10,7 @@
 #endif
 
 #include <vector>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
@@ -106,7 +106,7 @@ using ProcessLogitsFunc = std::function<Status(
     const transformers::IGenerationParameters* parameters,  // parameters
     int step,                                               // iteration counter
     Stream* stream,                                         // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
+    const IConsoleDumper* dumper)>;                         // tensor dumper
 
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
@@ -121,7 +121,7 @@ using GreedySearchProcessLogitsFunc = std::function<Status(
     bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     Stream* ort_stream,                                     // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
+    const IConsoleDumper* dumper)>;                         // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -182,7 +182,7 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper)>;
+    const IConsoleDumper* dumper)>;
 
 //------------------------------------------------
 //  Modified functions for Whisper Model
@@ -277,7 +277,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper);            // tensor dumper
+                     const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
@@ -291,7 +291,7 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                                  bool do_sampling,                                       // whether to do sampling
                                  int step,                                               // iteration counter
                                  Stream* stream,                                         // cuda stream (for CUDA only)
-                                 const transformers::IConsoleDumper* dumper);            // tensor dumper
+                                 const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
@@ -367,7 +367,7 @@ Status UpdateDecoderFeeds(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model with float input like Whisper

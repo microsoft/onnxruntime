@@ -1,5 +1,6 @@
 #pragma once
 #include "sqnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 //
 // Quantized B data packing function implementation.
@@ -99,6 +100,52 @@ SQ4BitGemmPackQuantBData(
     );
 }
 
+//
+// Workspace size calculation function implementation.
+//
+
+static size_t
+SQ4BitGemmPerGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(N);
+
+    switch(ComputeType) {
+        case CompInt8: {
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+            return PerGemmWorkspaceSize;
+        }
+        default: {
+            return 0;
+        }
+    }
+}
+
+static size_t
+SQ4BitGemmPerGemmWorkspaceAlignment(
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
+
+    switch (ComputeType) {
+        case CompInt8: {
+            return Q8BlkAlignment();
+        }
+        default: {
+            return 1;
+        }
+    }
+}
+
 void
 Q4BitBlkDequantBForSgemm_CompFp32_avx2(
     const size_t BlkLen,
@@ -111,17 +158,19 @@ Q4BitBlkDequantBForSgemm_CompFp32_avx2(
     const size_t BlockStrideQuantB
 );
 
-void
-SQ4BitGemmM1Kernel_CompInt8_avx2(
+size_t
+SQ4BitGemmKernel_CompInt8_avx2(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* QuantBData,
     const float* QuantBScale,
     const std::byte* QuantBZeroPoint,
     float* C,
+    size_t CountM,
     size_t CountN,
     size_t CountK,
-    size_t BlockStrideQuantB,
+    size_t BlockCountK,
+    size_t ldc,
     const float* Bias
 );
 

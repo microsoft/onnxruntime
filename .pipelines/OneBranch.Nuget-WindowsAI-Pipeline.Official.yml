@@ -173,7 +173,7 @@ extends:
               $arm64_static_runtime_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm64_static_runtime_nuget_package))
               [System.IO.Compression.ZipFile]::ExtractToDirectory($arm64_static_runtime_nuget_package, $arm64_static_runtime_nupkg_unzipped_directory)
 
-             
+
 
               $x64_static_runtime_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native')
               $x64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native', 'static')
@@ -185,7 +185,7 @@ extends:
               $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
               $arm64_static_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
               $arm64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native', 'static')
-              
+
               $uap_build_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'build', 'native')
               $uap_build_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'build', 'uap10.0')
 
@@ -262,7 +262,7 @@ extends:
               $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
               $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
               $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
-              
+
               New-Item -Path $x86_runtime_path_new -ItemType Directory
               New-Item -Path $arm64_runtime_path_new -ItemType Directory
 
@@ -293,12 +293,21 @@ extends:
         - script: |
             dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
 
-        - task: EsrpCodeSigning@2
+        - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
           displayName: "Sign Nuget package"
           inputs:
-            ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
+            ConnectedServiceName: 'OnnxrunTimeCodeSign_20240611'
+            AppRegistrationClientId: '53d54d02-978d-4305-8572-583cf6711c4f'
+            AppRegistrationTenantId: '72f988bf-86f1-41af-91ab-2d7cd011db47'
+            AuthAKVName: 'buildkeyvault'
+            AuthCertName: '53d54d02-SSL-AutoRotate'
+            AuthSignCertName: '53d54d02-978d-4305-8572-583cf6711c4f'
+
             FolderPath: $(Build.ArtifactStagingDirectory)
             Pattern: '*.nupkg'
+            SessionTimeout: 90
+            ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
+            MaxConcurrency: 25
             signConfigType: inlineSignParams
             inlineOperation: |
                [
@@ -307,14 +316,14 @@ extends:
                        "operationSetCode": "NuGetSign",
                        "parameters": [ ],
                        "toolName": "sign",
-                       "toolVersion": "1.0"
+                       "toolVersion": "6.2.9304.0"
                    },
                    {
                        "keyCode": "CP-401405",
                        "operationSetCode": "NuGetVerify",
                        "parameters": [ ],
                        "toolName": "sign",
-                       "toolVersion": "1.0"
+                       "toolVersion": "6.2.9304.0"
                    }
                ]
 

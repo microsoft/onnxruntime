@@ -270,3 +270,8 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
+
+// When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
+// Refer to MatMulNBits op schema for more details.
+// If not provided, default is 4.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";

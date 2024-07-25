@@ -27,6 +27,8 @@ constexpr const char* kDLACore = "trt_dla_core";
 constexpr const char* kDumpSubgraphs = "trt_dump_subgraphs";
 constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
+constexpr const char* kWeightStrippedEngineEnable = "trt_weight_stripped_engine_enable";
+constexpr const char* kOnnxModelFolderPath = "trt_onnx_model_folder_path";
 constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
@@ -51,12 +53,17 @@ constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
 constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
 constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
 constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
+constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
+constexpr const char* kONNXBytestream = "trt_onnx_bytestream";
+constexpr const char* kONNXBytestreamSize = "trt_onnx_bytestream_size";
+
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
+  void* onnx_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -92,6 +99,8 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePath, info.engine_cache_path)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kWeightStrippedEngineEnable, info.weight_stripped_engine_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kOnnxModelFolderPath, info.onnx_model_folder_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePrefix, info.engine_cache_prefix)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
@@ -115,10 +124,21 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpEpContextModel, info.dump_ep_context_model)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineHwCompatible, info.engine_hw_compatible)
+          .AddValueParser(
+              tensorrt::provider_option_names::kONNXBytestream,
+              [&onnx_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                onnx_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(tensorrt::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
+  info.onnx_bytestream = onnx_bytestream;
   return info;
 }
 
@@ -139,6 +159,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, MakeStringWithClassicLocale(info.engine_cache_path)},
+      {tensorrt::provider_option_names::kWeightStrippedEngineEnable, MakeStringWithClassicLocale(info.weight_stripped_engine_enable)},
+      {tensorrt::provider_option_names::kOnnxModelFolderPath, MakeStringWithClassicLocale(info.onnx_model_folder_path)},
       {tensorrt::provider_option_names::kEngineCachePrefix, MakeStringWithClassicLocale(info.engine_cache_prefix)},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
@@ -163,6 +185,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextFilePath, MakeStringWithClassicLocale(info.ep_context_file_path)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.engine_hw_compatible)},
+      {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
+      {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
   };
   return options;
 }
@@ -180,6 +205,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   const std::string kProfilesMaxShapes_ = empty_if_null(info.trt_profile_max_shapes);
   const std::string kProfilesOptShapes_ = empty_if_null(info.trt_profile_opt_shapes);
   const std::string kEpContextFilePath_ = empty_if_null(info.trt_ep_context_file_path);
+  const std::string kOnnxModelFolderPath_ = empty_if_null(info.trt_onnx_model_folder_path);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
@@ -198,6 +224,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.trt_engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, kEngineCachePath_},
       {tensorrt::provider_option_names::kEngineCachePrefix, kEngineCachePrefix_},
+      {tensorrt::provider_option_names::kWeightStrippedEngineEnable, MakeStringWithClassicLocale(info.trt_weight_stripped_engine_enable)},
+      {tensorrt::provider_option_names::kOnnxModelFolderPath, kOnnxModelFolderPath_},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
@@ -220,6 +248,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kEpContextFilePath, kEpContextFilePath_},
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.trt_engine_hw_compatible)},
+      {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.trt_onnx_bytestream))},
+      {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.trt_onnx_bytestream_size)},
   };
   return options;
 }
@@ -289,6 +320,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dla_core = internal_options.dla_core;
   trt_provider_options_v2.trt_dump_subgraphs = internal_options.dump_subgraphs;
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
+  trt_provider_options_v2.trt_weight_stripped_engine_enable = internal_options.weight_stripped_engine_enable;
+  trt_provider_options_v2.trt_onnx_model_folder_path = copy_string_if_needed(internal_options.onnx_model_folder_path);
 
   trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
   trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);
@@ -319,5 +352,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
   trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
+  trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
+  trt_provider_options_v2.trt_onnx_bytestream = internal_options.onnx_bytestream;
+  trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
 }
 }  // namespace onnxruntime

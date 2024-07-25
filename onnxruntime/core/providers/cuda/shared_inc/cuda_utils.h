@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -35,7 +35,7 @@ enum class BroadcastIndexType : int32_t {
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() {};
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
@@ -193,6 +193,17 @@ struct Channels<LAYOUT_NCHW> {
   static constexpr size_t H = 2;
   static constexpr size_t W = 3;
 };
+
+// Calculates ceil(a / b). User must be careful to ensure that there
+// is no overflow or underflow in the calculation.
+template <typename T>
+constexpr T divUp(T a, T b) { return (a + b - (T)1) / b; }
+
+// Rounds a up to the next highest multiple of b. User must be careful
+// to ensure that there is no overflow or underflow in the calculation
+// of divUp.
+template <typename T>
+constexpr T roundUp(T a, T b) { return divUp<T>(a, b) * b; }
 
 }  // namespace cuda
 }  // namespace onnxruntime

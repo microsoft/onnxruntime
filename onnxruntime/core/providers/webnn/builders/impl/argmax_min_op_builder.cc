@@ -21,7 +21,9 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -48,6 +50,11 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("axes", axes);
   options.set("keepDimensions", keep_dims == 1);
   options.set("selectLastIndex", select_last_index == 1);
+  // TODO: use WebNN's opSupportLimits API to check the backend's supported output data types.
+  // If the backend doesn't support int64 output, we should use default int32 output data type
+  // then do a type casting (int32 -> int64) for the output. Refer to the CoreML EP for how to
+  // support int64 output.
+  options.set("outputDataType", "int64");
   emscripten::val output = emscripten::val::object();
 
   const auto& op_type = node.OpType();
@@ -66,13 +73,47 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                            const Node& node,
-                                           WebnnDeviceType /* device_type */,
+                                           WebnnDeviceType device_type,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
+
+  // WebNN CPU backend only supports select_last_index = 0.
+  if (device_type == WebnnDeviceType::CPU) {
+    NodeAttrHelper helper(node);
+    const auto select_last_index = helper.Get("select_last_index", 0);
+    if (select_last_index) {
+      LOGS(logger, VERBOSE) << "ArgMax/ArgMin with select_last_index = 1 is not supported on WebNN CPU backend.";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ArgMaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+                                                const logging::Logger& logger) const {
+  const auto& input = *node.InputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
+  // WebNN CPU backend doesn't support int64, uint64 input data types for argMax and argMin.
+  if (device_type == WebnnDeviceType::CPU) {
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
+  }
+
+  if (!IsSupportedDataType(input_type, supported_data_types)) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
 
   return true;
 }

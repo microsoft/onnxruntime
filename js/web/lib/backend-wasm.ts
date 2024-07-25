@@ -54,9 +54,11 @@ export const initializeFlags = (): void => {
     }
   }
 
-  // overwrite wasm paths override if not set
-  if (env.wasm.wasmPaths === undefined && scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
-    env.wasm.wasmPaths = scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
+  if (!BUILD_DEFS.DISABLE_DYNAMIC_IMPORT) {
+    // overwrite wasm paths override if not set
+    if (env.wasm.wasmPaths === undefined && scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
+      env.wasm.wasmPaths = scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
+    }
   }
 };
 

@@ -2665,10 +2665,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define GEMM_FLOAT8_TYPES \
-  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+  {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
 #else
 #define GEMM_FLOAT8_TYPES \
-  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+  {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
 #endif
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
@@ -3297,6 +3297,11 @@ void RegisterContribSchemas() {
       .Attr(
           "ep_sdk_version",
           "(Optional) SDK version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
+          "onnx_model_filename",
+          "(Optional) Filename of the original ONNX model.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(

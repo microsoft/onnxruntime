@@ -90,6 +90,8 @@ struct Tensorrt_Provider : Provider {
     info.dump_subgraphs = options.trt_dump_subgraphs != 0;
     info.engine_cache_enable = options.trt_engine_cache_enable != 0;
     info.engine_cache_path = options.trt_engine_cache_path == nullptr ? "" : options.trt_engine_cache_path;
+    info.weight_stripped_engine_enable = options.trt_weight_stripped_engine_enable != 0;
+    info.onnx_model_folder_path = options.trt_onnx_model_folder_path == nullptr ? "" : options.trt_onnx_model_folder_path;
     info.engine_decryption_enable = options.trt_engine_decryption_enable != 0;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
@@ -113,6 +115,9 @@ struct Tensorrt_Provider : Provider {
     info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
     info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
+    info.engine_hw_compatible = options.trt_engine_hw_compatible != 0;
+    info.onnx_bytestream = options.trt_onnx_bytestream;
+    info.onnx_bytestream_size = options.trt_onnx_bytestream_size;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

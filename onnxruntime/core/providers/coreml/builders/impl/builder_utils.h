@@ -7,7 +7,7 @@
 
 #include <optional>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/common.h"
@@ -114,8 +114,10 @@ template <typename T>
 COREML_SPEC::MILSpec::Value CreateScalarTensorValue(const T& data);
 
 /// <summary>Create a NamedValueType from an ONNX tensor NodeArg.</summary>
+/// <param name="node_arg">NodeArg to create NamedValueType from.</param>
+/// <param name="convert_scalar">If true, scalar shapes are converted to 1D.</param>
 /// <remarks>Used to create inputs for the 'main' function in an ML Program.</remarks>
-COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg);
+COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg, bool convert_scalar = false);
 
 /// <summary>
 /// Add an input argument to a MILSpec::Operation
@@ -132,7 +134,12 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
+/// <param name="override_element_type">
+///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
+///   the original ONNX node has type int64.
+/// </param>
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type = std::nullopt);
 
 /// <summary>
 /// Add pad_type and pad values.

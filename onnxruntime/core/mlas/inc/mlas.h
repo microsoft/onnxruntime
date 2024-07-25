@@ -1222,6 +1222,26 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
+void
+MLASCALL
+MlasQuantizeLinearU4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
+void
+MLASCALL
+MlasQuantizeLinearS4(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    );
+
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
@@ -1805,3 +1825,35 @@ MlasNhwcAvgPool(
     );
 
 #endif
+
+struct MlasFlashAttentionThreadedArgs {
+    int batch_size;
+    int num_heads;
+    int q_sequence_length;
+    int kv_sequence_length;
+    int qk_head_size;
+    int v_head_size;
+    int q_block_size;
+    int kv_block_size;
+    float scale;
+    int thread_count;
+    float* buffer;
+    size_t buffer_size_per_thread;
+    const float* query;
+    const float* key;
+    const float* value;
+    float* output;
+};
+
+/**
+ * @brief Per-thread worker function for fp32 Flash Attention
+ * @param thread_id    Thread index
+ * @param args         Arguments
+ * @return
+*/
+void
+MLASCALL
+MlasFlashAttention(
+    MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);

@@ -12,14 +12,16 @@
 
 #define ORT_CUDA_CTX
 
-#include "cuda_resource.h"
-#include "core/providers/custom_op_context.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #ifndef USE_CUDA_MINIMAL
 #include <cublas_v2.h>
 #include <cudnn.h>
 #endif
+
+#include "core/providers/cuda/cuda_resource.h"
+#include "core/providers/custom_op_context.h"
+
 namespace Ort {
 
 namespace Custom {
@@ -51,7 +53,8 @@ struct CudaContext : public CustomOpContext {
     cudnn_conv_use_max_workspace = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv_use_max_workspace_t);
 
     cudnn_conv1d_pad_to_nc1d = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv1d_pad_to_nc1d_t);
-    enable_skip_layer_norm_strict_mode = FetchResource<bool>(kernel_ctx, CudaResource::enable_skip_layer_norm_strict_mode_t);
+    enable_skip_layer_norm_strict_mode = FetchResource<bool>(
+        kernel_ctx, CudaResource::enable_skip_layer_norm_strict_mode_t);
     prefer_nhwc = FetchResource<bool>(kernel_ctx, CudaResource::prefer_nhwc_t);
     use_tf32 = FetchResource<bool>(kernel_ctx, CudaResource::use_tf32_t);
   }
@@ -59,13 +62,16 @@ struct CudaContext : public CustomOpContext {
   template <typename T>
   T FetchResource(const OrtKernelContext& kernel_ctx, CudaResource resource_type) {
     if constexpr (sizeof(T) > sizeof(void*)) {
-      ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_INVALID_ARGUMENT);
+      ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type),
+                        OrtErrorCode::ORT_INVALID_ARGUMENT);
     }
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
-    OrtStatus* status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, resource_type, &resource);
+    OrtStatus* status = ort_api.KernelContext_GetResource(
+        &kernel_ctx, ORT_CUDA_RESOURCE_VERSION, resource_type, &resource);
     if (status) {
-      ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resouce type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resource type: " + std::to_string(resource_type),
+                        OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     T t = {};
     memcpy(&t, &resource, sizeof(T));

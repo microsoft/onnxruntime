@@ -25,6 +25,14 @@ try:
 except ImportError:
     float8e4m3fn = None
 
+# INT4 np.dtypes added in ONNX 1.16. These map to np.int8/np.uint8 because numpy
+# does not support sub-byte types.
+try:
+    from onnx.reference.custom_element_types import int4, uint4
+except ImportError:
+    int4 = None
+    uint4 = None
+
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -81,6 +89,8 @@ class QuantType(Enum):
     QFLOAT8E4M3FN = 2
     QInt16 = 3
     QUInt16 = 4
+    QInt4 = 5
+    QUInt4 = 6
 
     def __str__(self):
         return self.name
@@ -104,6 +114,10 @@ class QuantType(Enum):
             return TensorProto.INT16
         if self == QuantType.QFLOAT8E4M3FN:
             return TensorProto.FLOAT8E4M3FN
+        if self == QuantType.QUInt4:
+            return TensorProto.UINT4
+        if self == QuantType.QInt4:
+            return TensorProto.INT4
         raise ValueError(f"Unexpected value qtype={self!r}.")
 
 
@@ -128,6 +142,8 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
+    onnx_proto.TensorProto.INT4: int4,  # base_dtype is np.int8
+    onnx_proto.TensorProto.UINT4: uint4,  # base_dtype is np.uint8
 }
 
 ONNX_INT_TYPE_RANGE = {
@@ -135,6 +151,8 @@ ONNX_INT_TYPE_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-128, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(65535, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-32768, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=uint4), numpy.array(15, dtype=uint4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-8, dtype=int4), numpy.array(7, dtype=int4)),
 }
 
 ONNX_INT_TYPE_SYMMETRIC_RANGE = {
@@ -147,6 +165,8 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=int4), numpy.array(7, dtype=int4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-4, dtype=int4), numpy.array(3, dtype=int4)),
 }
 
 
@@ -203,6 +223,11 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
+        # Quantizes data for all integer types.
+        #
+        # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
+        # which matches the python reference ONNX implementation of QuantizeLinear.
+        # This data can be packed into 4-bit elements by using pack_bytes_to_4bit().
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
 
@@ -332,7 +357,7 @@ def quantize_data(
     - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
         `m = max(abs(rmin), abs(rmax))`
 
-    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
+    and add necessary intermediate nodes to transform quantized weight to full weight using the equation
 
     :math:`r = S(q-z)`, where
 
@@ -372,7 +397,14 @@ def quantize_data(
             )
         return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
-    if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
+    if qType in (
+        TensorProto.INT8,
+        TensorProto.UINT8,
+        TensorProto.INT16,
+        TensorProto.UINT16,
+        TensorProto.INT4,
+        TensorProto.UINT4,
+    ):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
@@ -434,6 +466,36 @@ def normalize_axis(axis: int, rank: int) -> tuple[bool, int]:
     axis_norm = axis + rank if axis < 0 else axis
     is_valid = axis_norm >= 0 and axis_norm < rank
     return is_valid, axis_norm
+
+
+def pack_bytes_to_4bit(src_8bit: bytes) -> bytearray:
+    """
+    Copies a source array of 8-bit values into a destination bytearray of packed 4-bit values.
+    Assumes that the source values are already in the appropriate int4 range.
+    :parameter src_8bit: The 8-bit element values to pack.
+    :return A bytearray with every two 8-bit src elements packed into a single byte.
+    """
+    num_elems = len(src_8bit)
+    if num_elems == 0:
+        return bytearray()
+
+    dst_size = (num_elems + 1) // 2  # Ex: 5 8-bit elems packed into 3 bytes
+    dst = bytearray(dst_size)
+
+    src_i: int = 0
+    dst_i: int = 0
+
+    # Pack two 8-bit elements into a single byte in each iteration.
+    while src_i < num_elems - 1:
+        dst[dst_i] = ((src_8bit[src_i + 1] & 0xF) << 4) | (src_8bit[src_i] & 0xF)
+        dst_i += 1
+        src_i += 2
+
+    if src_i < num_elems:
+        # Odd number of elements.
+        dst[dst_i] = src_8bit[src_i] & 0xF
+
+    return dst
 
 
 class QuantizedInitializer:

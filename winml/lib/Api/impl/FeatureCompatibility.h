@@ -375,11 +375,11 @@ static void (*FeatureKindCompatibilityMatrix[4][4])(
 ) = {
   //                 Tensor,                          Sequence,                           Map,                    Image
   /* Tensor */ {verify<K::Tensor, K::Tensor>, not_compatible, not_compatible, verify<K::Tensor, K::Image>},
- /* Sequence */
+  /* Sequence */
   {not_compatible, verify<K::Sequence, K::Sequence>, not_compatible, not_compatible},
- /* Map */
+  /* Map */
   {not_compatible, not_compatible, verify<K::Map, K::Map>, not_compatible},
- /* Image */
+  /* Image */
   {verify<K::Image, K::Tensor>, not_compatible, not_compatible, verify<K::Image, K::Image>}
 };
 }  // namespace compatibility_details

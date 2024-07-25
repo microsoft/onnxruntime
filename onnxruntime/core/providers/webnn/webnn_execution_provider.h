@@ -19,8 +19,7 @@ class Model;
 
 class WebNNExecutionProvider : public IExecutionProvider {
  public:
-  WebNNExecutionProvider(const std::string& webnn_device_flags, const std::string& webnn_threads_number,
-                         const std::string& webnn_power_flags);
+  explicit WebNNExecutionProvider(const std::string& webnn_device_flags);
   virtual ~WebNNExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -43,8 +42,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
-  emscripten::val wnn_context_ = emscripten::val::object();
-  emscripten::val wnn_builder_ = emscripten::val::object();
+  emscripten::val wnn_context_ = emscripten::val::undefined();
+  mutable emscripten::val wnn_builder_ = emscripten::val::undefined();
 
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;

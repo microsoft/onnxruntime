@@ -19,6 +19,8 @@ Abstract:
 
 #include <cassert>
 
+#include "sqnbitgemm_q8_block.h"
+
 namespace
 {
 
@@ -79,7 +81,7 @@ MlasIsSQNBitGemmAvailable(
                    Dispatch->Q4BitBlkDequantBForSgemm_CompFp32 != nullptr;
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Dispatch->SQ4BitGemmM1Kernel_CompInt8 != nullptr &&
+            return Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr &&
                    Dispatch->QuantizeARow_CompInt8 != nullptr;
         }
         default: {
@@ -92,53 +94,58 @@ namespace
 {
 
 size_t
-SQNBitGemmWorkspaceAlignment(SQNBitGemmVariant Variant)
-{
-    switch (Variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Q8BlkAlignment();
-        }
-        default: {
-            return 1;
-        }
-    }
-}
-
-size_t
 SQNBitGemmPerGemmWorkspaceSize(
-    SQNBitGemmVariant Variant,
     size_t M,
     size_t N,
     size_t K,
-    size_t BlkLen
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-
-    switch (Variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            // workspace buffer is used for block quantization of A to int8
-            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
-            return PerGemmWorkspaceSize;
-        }
-        default: {
-            return 0;
-        }
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 0;
     }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceSize != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, ComputeType);
+    }
+
+    return 0;
+}
+
+size_t
+SQNBitGemmPerGemmWorkspaceAlignment(
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+)
+{
+    const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
+    if (Dispatch == nullptr) {
+        return 1;
+    }
+
+    if (BlkBitWidth == 4 && Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment != nullptr) {
+        return Dispatch->SQ4BitGemmPerGemmWorkspaceAlignment(BlkLen, ComputeType);
+    }
+
+    return 1;
 }
 
 size_t
 SQNBitGemmPerGemmWorkspaceStride(
-    SQNBitGemmVariant Variant,
     size_t M,
     size_t N,
     size_t K,
-    size_t BlkLen
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Size = SQNBitGemmPerGemmWorkspaceSize(Variant, M, N, K, BlkLen);
-    const auto Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+    const auto Size = SQNBitGemmPerGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    const auto Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
     return MlasDivRoundup(Size, Alignment) * Alignment;
 }
 
@@ -155,14 +162,12 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
-
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
     if (PerGemmWorkspaceStride == 0) {
         return 0;
     }
 
-    const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+    const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
 
     const size_t WorkspaceSize = BatchN * PerGemmWorkspaceStride;
 
@@ -368,15 +373,17 @@ SQ4BitGemm_CompFp32(
             if (bias) {
                 AddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
             }
+
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
                     RowsHandled, CountN, ldc
                 );
             }
 
             c_blk += ldc * RowsHandled;
             a_row += lda * RowsHandled;
+
             RowsRemaining -= RowsHandled;
         }
     }
@@ -427,36 +434,6 @@ SQ4BitGemm_CompInt8(
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 
-    if (RangeCountM == 1) {
-        size_t CountN;
-        for (size_t n = 0; n < RangeCountN; n += CountN) {
-            CountN = std::min(RangeCountN - n, size_t{128});
-
-            const std::byte* a_row = QuantA;
-            const std::byte* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            const std::byte* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-            float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
-                BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
-        }
-        return;
-    }
-
-    // This is a naive M > 1 implementation that repeatedly calls the M=1 kernel.
-    // TODO Replace it with an optimized implementation.
     size_t CountN;
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
@@ -469,21 +446,24 @@ SQ4BitGemm_CompInt8(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        for (size_t m = 0; m < RangeCountM; ++m) {
-            GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmM1Kernel_CompInt8(
+        size_t RowsRemaining = RangeCountM;
+        while (RowsRemaining > 0) {
+            const auto RowsHandled = GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, k_blks, ldc, bias
             );
 
             if (DataParams->PostProcessor != nullptr) {
                 DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
+                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
+                    RowsHandled, CountN, ldc
                 );
             }
 
-            c_blk += ldc;
-            a_row += lda;
+            c_blk += RowsHandled * ldc;
+            a_row += RowsHandled * lda;
+
+            RowsRemaining -= RowsHandled;
         }
     }
 }
@@ -574,14 +554,14 @@ MlasSQNBitGemmBatch(
     // Ensure `Workspace` has correct alignment.
     //
     if (Workspace != nullptr) {
-        const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
+        const size_t Alignment = SQNBitGemmPerGemmWorkspaceAlignment(BlkBitWidth, BlkLen, ComputeType);
         const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(Workspace);
         Workspace = reinterpret_cast<void*>(
             (WorkspaceAddress + Alignment - 1) & (~(Alignment - 1))
         );
     }
 
-    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
+    const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(M, N, K, BlkBitWidth, BlkLen, ComputeType);
 
     if (const auto InitializeWorkspaceOperation = OperationMap[Variant].InitializeWorkspace;
         InitializeWorkspaceOperation != nullptr) {
