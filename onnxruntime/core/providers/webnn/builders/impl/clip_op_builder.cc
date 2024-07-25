@@ -53,6 +53,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                     "GetClipMinMax failed");
   options.set("minValue", minValue);
   options.set("maxValue", maxValue);
+  options.set("label", node.Name());
   emscripten::val input = model_builder.GetOperand(input_name);
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("clamp", input, options);
 
