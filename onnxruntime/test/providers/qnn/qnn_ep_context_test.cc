@@ -287,7 +287,6 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
   std::string node_name_prefix = "node_name_prefix_test";
-  provider_options["context_node_name_prefix"] = node_name_prefix;
 
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
@@ -299,6 +298,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
+  so.AddConfigEntry(kOrtSessionOptionEpContextNodeNamePrefix, node_name_prefix.c_str());
   so.AppendExecutionProvider("QNN", provider_options);
 
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);

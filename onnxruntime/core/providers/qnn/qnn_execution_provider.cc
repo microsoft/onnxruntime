@@ -199,6 +199,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
     context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
+
+    // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
+    // generate the QNN context model separately.
+    // It could happen that the generated EPContext node in separate graph has same node name.
+    // User can set this context_node_name_prefix for each split pieces to avoid that happens.
+    context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -376,17 +383,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_fp16_precision: " << enable_HTP_FP16_precision_ << " only 0 or 1 allowed. Set to 0.";
     }
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
-  }
-
-  // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
-  // generate the QNN context model separately.
-  // It could happen that the generated EPContext node in separate graph has same node name.
-  // User can set this context_node_name_prefix for each split pieces to avoid that happens.
-  static const std::string QNN_CONTEXT_NODE_NAME_PREFIX = "context_node_name_prefix";
-  auto context_node_name_prefix_pos = provider_options_map.find(QNN_CONTEXT_NODE_NAME_PREFIX);
-  if (context_node_name_prefix_pos != provider_options_map.end()) {
-    context_node_name_prefix_ = context_node_name_prefix_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
