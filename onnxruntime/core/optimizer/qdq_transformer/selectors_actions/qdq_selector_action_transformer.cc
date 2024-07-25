@@ -58,15 +58,16 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // int16 MaxPool is not supported by the ONNX specification.
   // int16 Resize is not supported by the ORT implementation (although allowed by ONNX).
   //
-  // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative scale will change the ordering
-  // of the elements between quantized & de-quantized values.
+  // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
+  // scale will change the ordering of the elements between quantized & de-quantized values.
   std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"Resize", {}}},
                                                          std::move(selector_disallow_16bit),
                                                          std::move(drop_action_no_int16));
 
-  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale = std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
+  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale =
+      std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_and_positive_scale_name,
                                                          {{"MaxPool", {12}}},
                                                          std::move(selector_disallow_16bit_and_nonpositive_scale),
