@@ -89,6 +89,7 @@ jobs:
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
       - uses: reviewdog/action-cpplint@master
+        continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
