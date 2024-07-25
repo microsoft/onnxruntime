@@ -73,7 +73,7 @@ jobs:
           checkout_path: ${{ github.workspace }}
 
   lint-cpp:
-    name: Lint C++
+    name: Optional Lint C++
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
