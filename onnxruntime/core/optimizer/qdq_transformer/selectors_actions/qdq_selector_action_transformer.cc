@@ -52,7 +52,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Use a separate selectors & actions for MaxPool and Resize.
+  // Use separate selectors & actions for MaxPool and Resize.
   //
   // They disallow 16-bit types for MaxPool and Resize:
   // int16 MaxPool is not supported by the ONNX specification.
