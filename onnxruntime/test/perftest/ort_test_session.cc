@@ -699,6 +699,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16"};
+        size_t num_gpus = 10;
+        for (size_t i = 0; i <= num_gpus; i++) {
+          ov_supported_device_types.emplace("GPU." + std::to_string(i));
+        }
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
