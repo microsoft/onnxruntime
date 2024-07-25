@@ -55,10 +55,15 @@ struct OrtVitisAIEpAPI {
   uint32_t (*vaip_get_version)();
   void (*get_backend_compilation_cache)(const std::string& model_path, const onnxruntime::Graph& graph, const char* json_config, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
   void (*restore_backend_compilation_cache)(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);
+  void (*create_ep_context_nodes)(
+      onnxruntime::Graph& ep_context_graph,
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+      vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
   void Ensure() {
     if (handle_)
       return;
     auto& env = Provider_GetHost()->Env__Default();
+    auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
 #ifdef _WIN32
     // this dll is already linked to the executable, normally a test program
     handle_ = reinterpret_cast<void*>(GetModuleHandle(TEXT("onnxruntime_vitisai_ep.dll")));
@@ -81,6 +86,10 @@ struct OrtVitisAIEpAPI {
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "get_compilation_cache", (void**)&get_backend_compilation_cache));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "restore_compilation_cache", (void**)&restore_backend_compilation_cache));
+    status1 = (env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
+    if (!status1.IsOK()) {
+      LOGS(logger, WARNING) << "create_ep_context_nodes is not defined, please upgrade onnxruntime_vitisai_ep.dll. However, it still works.";
+    }
   }
 
  private:
@@ -144,6 +153,24 @@ void get_backend_compilation_cache(const onnxruntime::PathString& model_path_str
 
 void restore_backend_compilation_cache(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path) {
   s_library_vitisaiep.restore_backend_compilation_cache(cache_dir, cache_key, cache_data, model_path);
+}
+
+bool has_create_ep_context_nodes() {
+  return s_library_vitisaiep.create_ep_context_nodes != nullptr;
+}
+
+std::optional<std::vector<Node*>> create_ep_context_nodes(
+    onnxruntime::Graph& ep_context_graph,
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps) {
+  if (s_library_vitisaiep.create_ep_context_nodes) {
+    vaip_core::DllSafe<std::vector<Node*>> nodes;
+    s_library_vitisaiep.create_ep_context_nodes(ep_context_graph, eps, &nodes);
+    if (nodes.get()) {
+      auto ret = std::vector<Node*>(*nodes);
+      return ret;
+    }
+  }
+  return std::nullopt;
 }
 
 struct MyCustomOpKernel : OpKernel {
