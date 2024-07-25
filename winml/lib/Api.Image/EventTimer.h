@@ -4,7 +4,9 @@ class EventTimer {
  public:
   bool Start() {
     auto now = std::chrono::high_resolution_clock::now();
-    if (!_started || std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() > _kDurationBetweenSendingEvents) {
+    if (!_started ||
+        std::chrono::duration_cast<std::chrono::microseconds>(now - _startTime).count() >
+          _kDurationBetweenSendingEvents) {
       _started = true;
       _startTime = std::chrono::high_resolution_clock::now();
       return true;
