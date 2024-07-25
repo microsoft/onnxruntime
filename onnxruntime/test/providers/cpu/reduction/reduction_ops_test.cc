@@ -267,14 +267,14 @@ TEST(ReductionOpTest, ReduceL1_double) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
   test.AddOutput<double>("reduced", {1, 2, 1}, {33.0f, 45.0f});
   test.Run();
 }
@@ -444,14 +444,14 @@ TEST(ReductionOpTest, ReduceL2_double) {
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
   test.AddOutput<double>("reduced", {2}, {15.71623325f, 20.07485962f});
   test.Run();
 }
@@ -550,20 +550,19 @@ TEST(ReductionOpTest, ReduceLogSum_double) {
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
   test.AddOutput<double>("reduced", {3, 1, 2},
-                        {1.38629436f, 1.79175949f,
-                         2.48490667f, 2.6390574f,
-                         2.99573231f, 3.09104252f});
+                         {1.38629436f, 1.79175949f,
+                          2.48490667f, 2.6390574f,
+                          2.99573231f, 3.09104252f});
   test.Run();
 }
-
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceLogSum_bfloat16) {
@@ -3063,14 +3062,14 @@ TEST(ReductionOpTest, ReduceProd_double) {
   OpTester test("ReduceProd");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddInput<double>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
   test.AddOutput<double>("reduced", {1, 2, 1}, {5400.f, 88704.f});
   test.Run();
 }
