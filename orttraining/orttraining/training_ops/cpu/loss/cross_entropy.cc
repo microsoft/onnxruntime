@@ -7,7 +7,7 @@
 #include "core/providers/common.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {

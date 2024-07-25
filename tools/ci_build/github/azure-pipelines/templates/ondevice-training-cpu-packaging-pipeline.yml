@@ -317,3 +317,4 @@ stages:
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'
     NativePackagePrefix: 'onnxruntime-training'
+    CustomOpArtifactName: 'onnxruntime-training-linux-x64'

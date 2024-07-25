@@ -13,6 +13,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/platform/threadpool.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -132,12 +133,12 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvBNFusion>());
       rules.push_back(std::make_unique<PadFusion>());
       rules.push_back(std::make_unique<MatmulBNFusion>());
-      rules.push_back(std::make_unique<ReluQuantFusion>());
       rules.push_back(std::make_unique<LabelEncoderFusion>());
       break;
 
     case TransformerLevel::Level2:
       rules.push_back(std::make_unique<ClipQuantFusion>());
+      rules.push_back(std::make_unique<ReluQuantFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
       break;
 
@@ -187,7 +188,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
-    const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
+    const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -287,6 +289,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                onnxruntime::kJsExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_dml_eps = {onnxruntime::kCpuExecutionProvider,
                                                             onnxruntime::kDmlExecutionProvider};
+      const int64_t qdq_matmulnbits_accuracy_level =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                "4"));
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsAvx2PrecisionMode, "0") == "1" && MlasPlatformU8S8Overflow();
@@ -300,7 +306,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!qdq_is_int8_allowed) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(avx2_precision_mode, cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
+                                                                                 SatApplyContextVariant{},
+                                                                                 qdq_matmulnbits_accuracy_level,
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -409,7 +418,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
-    const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
+    const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
@@ -423,12 +433,18 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";
-
+      const int64_t qdq_matmulnbits_accuracy_level =
+          ParseStringWithClassicLocale<int64_t>(
+              session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                                "4"));
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
       if (!disable_quant_qdq) {
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed, apply_context));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
+                                                                                 apply_context,
+                                                                                 qdq_matmulnbits_accuracy_level,
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));

@@ -674,7 +674,7 @@ class GraphImpl implements Graph, Graph.Transformer {
   }
 
   /**
-   * Delete the specifed node. Assume the node has one incoming input and the first output connected to other nodes.
+   * Delete the specified node. Assume the node has one incoming input and the first output connected to other nodes.
    * An input validation must be done before calling this function.
    * @param nodeIndex The index of node to be deleted
    */

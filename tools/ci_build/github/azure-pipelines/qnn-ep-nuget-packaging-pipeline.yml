@@ -2,13 +2,13 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.23.0.240531
+  default: 2.24.0.240626
 
 - name: build_config
   displayName: Build Configuration
   type: string
   default: 'RelWithDebInfo'
-  
+
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
   type: boolean
@@ -17,7 +17,18 @@ parameters:
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
+  default: true
+
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
   default: false
+
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
 
 stages:
 
@@ -60,25 +71,25 @@ stages:
       inputs:
         artifactName: 'drop-nuget-qnn-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
-        
+
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - QNN NuGet arm64'
       inputs:
         artifactName: 'drop-nuget-qnn-arm64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
-    
+
     - task: PowerShell@2
       displayName: 'Bundle NuGet'
       inputs:
         targetType: 'inline'
         script: |
-        
+
           $x64_nupkgs = (Get-ChildItem $(Build.BinariesDirectory)/nuget-artifact-x64 -Filter Microsoft.ML.OnnxRuntime.QNN*.nupkg -Recurse)
           $nuget_package_name = $x64_nupkgs[0].Name
           $x64_nuget_package = $x64_nupkgs[0].FullName
 
           $nupkg_unzipped_directory = [System.IO.Path]::Combine($Env:BUILD_ARTIFACTSTAGINGDIRECTORY, 'nuget_unzip_merged', [System.IO.Path]::GetFileNameWithoutExtension($nuget_package_name))
-                    
+
           $x64_unzip_cmd = "7z.exe x $x64_nuget_package -y -o$nupkg_unzipped_directory"
           Invoke-Expression -Command $x64_unzip_cmd
 
@@ -94,9 +105,9 @@ stages:
           }
 
           $merged_zip = [System.IO.Path]::Combine($merged_nuget_path, 'qnn_nuget.zip')
-          $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*" 
+          $zip_cmd = "7z.exe a -r $merged_zip $nupkg_unzipped_directory/*"
           Invoke-Expression -Command $zip_cmd
-          
+
           $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $nuget_package_name)
           move $merged_zip $merged_nuget
         workingDirectory: $(Build.BinariesDirectory)
@@ -113,3 +124,13 @@ stages:
         artifactName: 'drop-signed-nuget-qnn'
         targetPath: '$(Build.ArtifactStagingDirectory)/nuget-artifact-merged'
 
+- template: templates/publish-nuget-steps.yml
+  parameters:
+    download_artifacts_steps:
+      - template: templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline Artifact - Signed NuGet Qnn Package'
+          ArtifactName: 'drop-signed-nuget-qnn'
+          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+          SpecificArtifact: ${{ parameters.specificArtifact }}
+          BuildId: ${{ parameters.BuildId }}

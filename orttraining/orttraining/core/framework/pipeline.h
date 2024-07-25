@@ -247,7 +247,7 @@ struct PipelineWorkerState {
 
 struct PipelineWorkerPool {
   PipelineWorkerPool() = default;
-  PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers){};
+  PipelineWorkerPool(size_t num_workers) : workers(num_workers), worker_states(num_workers) {};
   void Join(size_t worker_id);
   void JoinAll();
 

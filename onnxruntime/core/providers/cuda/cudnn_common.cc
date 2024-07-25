@@ -6,7 +6,7 @@
 
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/common/inlined_containers.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 #ifndef USE_CUDA_MINIMAL

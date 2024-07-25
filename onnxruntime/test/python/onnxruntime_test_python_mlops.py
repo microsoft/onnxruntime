@@ -173,7 +173,7 @@ class TestInferenceSession(unittest.TestCase):
         # In memory, the size of each element is fixed and equal to the
         # longest element. We cannot use bytes because numpy is trimming
         # every final 0 for strings and bytes before creating the array
-        # (to save space). It does not have this behaviour for void
+        # (to save space). It does not have this behavior for void
         # but as a result, numpy does not know anymore the size
         # of each element, they all have the same size.
         c1 = np.array([b"A\0A\0\0", b"B\0B\0\0", b"C\0C\0\0"], np.void).reshape(1, 3)

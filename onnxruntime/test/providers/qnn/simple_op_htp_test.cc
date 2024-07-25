@@ -304,7 +304,7 @@ TEST_F(QnnHTPBackendTests, DISABLE_UnaryOp_Elu_U16) {
 // Expected val: 0
 // QNN QDQ val: -10 (err 10)
 // CPU QDQ val: 0 (err 0)
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Relu) {
+TEST_F(QnnHTPBackendTests, UnaryOp_Relu) {
   RunQDQOpTest<uint8_t>("Relu",
                         {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
                         {},

@@ -3,7 +3,7 @@
 
 #include "core/providers/resource.h"
 
-#define ORT_CUDA_RESOUCE_VERSION 3
+#define ORT_CUDA_RESOURCE_VERSION 3
 
 enum CudaResource : int {
   cuda_stream_t = cuda_resource_offset,  // 10000

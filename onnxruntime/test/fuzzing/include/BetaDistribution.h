@@ -83,7 +83,7 @@ class BetaDistribution {
       calc_type highest_probability_temp = highest_probability;
       highest_probability = std::max({highest_probability_temp, distribution(sample)});
 
-      // A new sample number with a higher probabilty has been found
+      // A new sample number with a higher probability has been found
       //
       if (highest_probability > highest_probability_temp) {
         likely_number = sample;
@@ -137,7 +137,7 @@ class BetaDistribution {
     }
   }
 
-  // Generate the probabilty of having this number
+  // Generate the probability of having this number
   //
   inline calc_type distribution(calc_type randVar) {
     if (randVar > max() || randVar < min()) {

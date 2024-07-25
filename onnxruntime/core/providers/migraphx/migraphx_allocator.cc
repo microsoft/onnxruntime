@@ -3,7 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "migraphx_call.h"
-#include "hip_allocator.h"
+#include "migraphx_allocator.h"
 #include "core/common/status.h"
 #include "core/framework/float16.h"
 #include "core/common/status.h"
@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 
-void HIPAllocator::CheckDevice() const {
+void MIGraphXAllocator::CheckDevice() const {
 #ifndef NDEBUG
   // check device to match at debug build
   // if it's expected to change, call hipSetDevice instead of the check
@@ -23,7 +23,7 @@ void HIPAllocator::CheckDevice() const {
 #endif
 }
 
-void* HIPAllocator::Alloc(size_t size) {
+void* MIGraphXAllocator::Alloc(size_t size) {
   CheckDevice();
   void* p = nullptr;
   if (size > 0) {
@@ -32,24 +32,24 @@ void* HIPAllocator::Alloc(size_t size) {
   return p;
 }
 
-void HIPAllocator::Free(void* p) {
+void MIGraphXAllocator::Free(void* p) {
   CheckDevice();
   (void)hipFree(p);  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
-void* HIPExternalAllocator::Alloc(size_t size) {
+void* MIGraphXExternalAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     p = alloc_(size);
 
-    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    // review(codemzs): ORT_ENFORCE does not seem appropriate.
     ORT_ENFORCE(p != nullptr);
   }
 
   return p;
 }
 
-void HIPExternalAllocator::Free(void* p) {
+void MIGraphXExternalAllocator::Free(void* p) {
   free_(p);
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_.find(p);
@@ -59,7 +59,7 @@ void HIPExternalAllocator::Free(void* p) {
   }
 }
 
-void* HIPExternalAllocator::Reserve(size_t size) {
+void* MIGraphXExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
   std::lock_guard<OrtMutex> lock(lock_);

@@ -82,7 +82,8 @@ class GraphEP {
 
   void UpdateTensorMap(const std::string& name, const std::shared_ptr<tim::vx::Tensor>& dst_tensor);
 
-  std::shared_ptr<NodeIOInfo> ConstructNodeIO(const std::shared_ptr<tim::vx::Operation>& op, std::vector<NodeArg*> input_arg, std::vector<NodeArg*> output_arg);
+  std::shared_ptr<NodeIOInfo> ConstructNodeIO(const std::shared_ptr<tim::vx::Operation>& op,
+                                              std::vector<NodeArg*> input_arg, std::vector<NodeArg*> output_arg);
 
   bool BindTensors(const std::shared_ptr<NodeIOInfo>& nodeio_info);
 

@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/basic_types.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/graph/graph.h"
 #include "core/graph/runtime_optimization_record.h"
