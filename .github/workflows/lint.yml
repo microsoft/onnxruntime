@@ -93,7 +93,7 @@ jobs:
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
-          level: warning
+          level: info
           flags: --linelength=120
             --exclude=java/src/main/native/*.c
             --exclude=onnxruntime/core/mlas/inc/*
