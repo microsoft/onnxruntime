@@ -11,7 +11,7 @@ use_scale = False  # set this to test upsample vs resize
 
 @mb.program(input_specs=[mb.TensorSpec(shape=x_shape)], opset_version=target)
 def prog(x):
-    global use_scale
+    global use_scale  # noqa
 
     if use_scale:
         align = mb.const(val=False)
