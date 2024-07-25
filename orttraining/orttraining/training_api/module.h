@@ -12,6 +12,19 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+class EvalSessionWrapper : public InferenceSession {
+ public:
+  using InferenceSession::InferenceSession;
+
+  Graph& GetMutableGraph() const {
+    return model_->MainGraph();
+  }
+
+  Model& GetMutableModel() {
+    return *model_;
+  }
+};
+
 struct Parameter {
  public:
   Parameter(const std::string& name, const OrtValue& data, const bool requires_grad)

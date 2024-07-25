@@ -675,8 +675,10 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   // since the eval session graph will have been modified.
   finished_training_ = true;
 
-  std::shared_ptr<onnxruntime::Model> inference_model = eval_sess_->GetModel();
-  Graph& inference_graph = inference_model->MainGraph();
+  EvalSessionWrapper& eval_sess_wrapper = static_cast<EvalSessionWrapper&>(*eval_sess_);
+
+  Model& inference_model = eval_sess_wrapper.GetMutableModel();
+  Graph& inference_graph = eval_sess_wrapper.GetMutableGraph();
 
   // The cloned model's outputs are transformed such that the model has outputs as defined by graph_output_names
   // Any nodes not contributing to the inference outputs will be pruned.
@@ -693,9 +695,9 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
         ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
     PathString inference_model_pathstring = ToPathString(inference_model_path);
     ORT_THROW_IF_ERROR(
-        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
+        Model::SaveWithExternalInitializers(inference_model, inference_model_pathstring, external_data_name, 64));
   } else {
-    ORT_THROW_IF_ERROR(Model::Save(*inference_model, ToPathString(inference_model_path)));
+    ORT_THROW_IF_ERROR(Model::Save(inference_model, ToPathString(inference_model_path)));
   }
   // Save the model at the desired location.
   return Status::OK();
