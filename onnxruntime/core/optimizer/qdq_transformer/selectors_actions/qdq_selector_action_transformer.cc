@@ -35,7 +35,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q. Merge into target and remove DQ and Q.
   const std::string drop_action_name{"drop"};
   const std::string drop_action_no_int16_name{"drop_no_int16_support"};
-  const std::string drop_action_no_int16_nor_nonpositive_scale_name{"drop_no_int16_support_no_nonpositive_scale"};
+  const std::string drop_action_no_int16_and_positive_scale_name{"drop_no_int16_support_and_positive_scale"};
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
@@ -47,7 +47,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
   std::unique_ptr<Action> drop_action_no_int16 = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
-  std::unique_ptr<Action> drop_action_no_int16_nor_nonpositive_scale = std::make_unique<MergeIntoTargetFixed>(
+  std::unique_ptr<Action> drop_action_no_int16_and_positive_scale = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
@@ -67,10 +67,10 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(drop_action_no_int16));
 
   std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale = std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
-  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_nor_nonpositive_scale_name,
+  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_and_positive_scale_name,
                                                          {{"MaxPool", {12}}},
                                                          std::move(selector_disallow_16bit_and_nonpositive_scale),
-                                                         std::move(drop_action_no_int16_nor_nonpositive_scale));
+                                                         std::move(drop_action_no_int16_and_positive_scale));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
@@ -84,8 +84,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #else
   qdq_selector_action_registry.RegisterAction(drop_action_no_int16_name, std::move(drop_action_no_int16));
   qdq_selector_action_registry.RegisterAction(
-      drop_action_no_int16_nor_nonpositive_scale_name,
-      std::move(drop_action_no_int16_nor_nonpositive_scale));
+      drop_action_no_int16_and_positive_scale_name,
+      std::move(drop_action_no_int16_and_positive_scale));
   qdq_selector_action_registry.RegisterAction(drop_action_name, std::move(drop_action));
 #endif
 }
