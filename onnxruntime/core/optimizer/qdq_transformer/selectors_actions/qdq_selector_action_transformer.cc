@@ -83,7 +83,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(drop_action));
 #else
   qdq_selector_action_registry.RegisterAction(drop_action_no_int16_name, std::move(drop_action_no_int16));
-  qdq_selector_action_registry.RegisterAction(drop_action_no_int16_nor_nonpositive_scale_name, std::move(drop_action_no_int16_nor_nonpositive_scale));
+  qdq_selector_action_registry.RegisterAction(
+      drop_action_no_int16_nor_nonpositive_scale_name,
+      std::move(drop_action_no_int16_nor_nonpositive_scale));
   qdq_selector_action_registry.RegisterAction(drop_action_name, std::move(drop_action));
 #endif
 }
