@@ -402,7 +402,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
       }
       raw_tensor.resize(data_size);
       float scale = 0.0f;
-      int zero_point = 0;
+      int32_t zero_point = 0;
       ORT_RETURN_IF_ERROR(utils::GetQuantParams(static_cast<float>(rmin),
                                                 static_cast<float>(rmax),
                                                 info.qnn_data_type,
