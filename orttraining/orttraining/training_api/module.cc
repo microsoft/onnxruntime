@@ -671,6 +671,19 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
                 "Cannot export the model with a nominal state. Please load the model parameters first.");
   ORT_RETURN_IF(!eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
 
+  class EvalSessionWrapper : public InferenceSession {
+   public:
+    using InferenceSession::InferenceSession;
+
+    Graph& GetMutableGraph() const {
+      return model_->MainGraph();
+    }
+
+    Model& GetMutableModel() {
+      return *model_;
+    }
+  };
+
   // Once finished_training is set to true, will no longer be able to train or evaluate with this module
   // since the eval session graph will have been modified.
   finished_training_ = true;
