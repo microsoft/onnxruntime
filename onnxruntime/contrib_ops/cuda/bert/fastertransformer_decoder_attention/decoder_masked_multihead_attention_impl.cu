@@ -183,6 +183,14 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
   }
 
+  int attention_bias_offset = 0;
+  if (params.relative_attention_bias != nullptr) {
+    attention_bias_offset = hi * params.sequence_length * params.total_sequence_length;
+    if (params.broadcast_res_pos_bias) {
+      attention_bias_offset += bbi * params.num_heads * params.sequence_length * params.total_sequence_length;
+    }
+  }
+
   if (!params.is_cross_attention) {
     Qk_vec_k k;
 
@@ -286,8 +294,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       // Normalize qk.
       qk *= inv_sqrt_dh;
       if (params.relative_attention_bias != nullptr) {
-        qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + tlength]);
+        qk = add_vec(qk, reinterpret_cast<T*>(params.relative_attention_bias)[attention_bias_offset + tlength]);
       }
       qk_max = qk;
       qk_smem[tlength] = qk;
@@ -386,8 +393,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       // Store the product to shared memory. There's one qk value per timestep. Update the max.
       if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
         if (params.relative_attention_bias != nullptr) {
-          qk = add_vec(qk,
-                       reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+          qk = add_vec(qk, reinterpret_cast<T*>(params.relative_attention_bias)[attention_bias_offset + ti]);
         }
         qk_max = fmaxf(qk_max, qk);
         qk_smem[ti] = qk;
@@ -479,8 +485,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
         if (time_bounds_cond[k_unroll] && (tidx % THREADS_PER_KEY == 0)) {
           if (params.relative_attention_bias != nullptr) {
-            qk[k_unroll] = add_vec(qk[k_unroll],
-                                   reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + time_step[k_unroll]]);
+            qk[k_unroll] = add_vec(
+                qk[k_unroll],
+                reinterpret_cast<T*>(params.relative_attention_bias)[attention_bias_offset + time_step[k_unroll]]);
           }
           qk_max = fmaxf(qk_max, qk[k_unroll]);
           qk_smem[time_step[k_unroll]] = qk[k_unroll];

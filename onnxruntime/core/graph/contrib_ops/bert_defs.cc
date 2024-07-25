@@ -824,6 +824,9 @@ constexpr const char* DecoderMaskedMultiHeadAttention_ver1_doc = R"DOC(
 Multihead attention that supports input sequence length of 1.
 Similar to DecoderMaskedSelfAttention but this op excludes QKV MatMul and Bias.
 This op supports both Self and Cross Attention.
+
+Note that total_sequence_length = past_sequence_length + kv_sequence_length,
+and past_sequence_length is 0 if past_key is not provided.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -867,12 +870,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "mask_index",
-               "Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)",
+               "Mask values of shape (batch_size, total_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(4,
                "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
+               " or (1, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(5,
@@ -959,9 +963,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
 Multi-Head Self/Cross Attention. Bias from input projection is included.
 
-The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
-means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
+The key padding mask is optional. When it is 2D or 3D tensor, value 0 means padding or 1 otherwise.
+When key has right-side padding, its shape could be (batch_size): it is actual length of
 each key sequence excluding paddings.
+
+Note that total_sequence_length = past_sequence_length + kv_sequence_length,
+and past_sequence_length is 0 if past_key is not provided.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -981,17 +988,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(0))
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
+               "Query with shape (batch_size, sequence_length, hidden_size), "
+               "or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
+               "Key with shape (batch_size, kv_sequence_length, hidden_size), "
+               "or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), "
+               "or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(3,
@@ -1001,13 +1011,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), "
+               "Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, total_sequence_length), "
                "or (batch_size, sequence_length, total_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,
                "relative_position_bias",
-               "relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
+               "relative position bias: addition to QxK' "
+               "with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
                " or (1, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
@@ -1027,14 +1038,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for cross attention key with shape (batch_size, num_heads, kv_sequence_length, head_size)"
-                "or present state for self attention key with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "present state of key with shape (batch_size, num_heads, total_sequence_length, head_size)",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
-                "or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "present state of value with shape (batch_size, num_heads, total_sequence_length, head_size)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")

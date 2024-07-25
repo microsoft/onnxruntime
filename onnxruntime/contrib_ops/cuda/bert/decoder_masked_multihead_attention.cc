@@ -151,8 +151,9 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
     if (relative_position_bias != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, NOT_IMPLEMENTED,
+          "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
     }
 
     parameters.is_cross_attention = true;

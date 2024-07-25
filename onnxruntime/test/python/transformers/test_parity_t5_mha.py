@@ -30,6 +30,7 @@ def create_t5_mha_graph(
     num_heads,
     use_past,
     is_static_kv,
+    broadcast_attention_bias,
 ):
     use_present = not use_past
     if not is_static_kv and use_past:
@@ -94,7 +95,9 @@ def create_t5_mha_graph(
     if use_rpb:
         graph_inputs.append(
             helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, seq_len, rpb_length]
+                "relative_position_bias",
+                TensorProto.FLOAT,
+                [1 if broadcast_attention_bias else batch_size, num_heads, seq_len, rpb_length],
             )
         )
 
@@ -161,6 +164,7 @@ def create_t5_decoder_masked_mha_graph(
     head_size,
     num_heads,
     is_cross_attention,
+    broadcast_attention_bias,
 ):
     nodes = [
         helper.make_node(
@@ -220,7 +224,9 @@ def create_t5_decoder_masked_mha_graph(
         graph_inputs.append(helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, 1, hidden_size]))
         graph_inputs.append(
             helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, 1, past_sequence_length + 1]
+                "relative_position_bias",
+                TensorProto.FLOAT,
+                [1 if broadcast_attention_bias else batch_size, num_heads, 1, past_sequence_length + 1],
             )
         )
         # use past_sequence_length + 1 to simulate max_sequence_length
@@ -277,7 +283,13 @@ class T5Config:
 
 
 class T5Attention(nn.Module):
-    def __init__(self, config: T5Config, is_static_kv, use_decoder_masked_kernel: bool = False):
+    def __init__(
+        self,
+        config: T5Config,
+        is_static_kv,
+        use_decoder_masked_kernel: bool = False,
+        broadcast_attention_bias: bool = True,
+    ):
         super().__init__()
         self.is_decoder = config.is_decoder
         self.is_static_kv = is_static_kv
@@ -305,6 +317,8 @@ class T5Attention(nn.Module):
         self.use_past = config.use_past
         self.use_decoder_masked_kernel = use_decoder_masked_kernel
 
+        self.broadcast_attention_bias = broadcast_attention_bias
+
         # Create onnx graph
         if self.use_decoder_masked_kernel:
             self.onnx_graph = create_t5_decoder_masked_mha_graph(
@@ -314,6 +328,7 @@ class T5Attention(nn.Module):
                 self.head_size,
                 self.num_heads,
                 is_static_kv,
+                broadcast_attention_bias,
             )
         else:
             self.onnx_graph = create_t5_mha_graph(
@@ -324,6 +339,7 @@ class T5Attention(nn.Module):
                 self.num_heads,
                 self.use_past,
                 is_static_kv,
+                broadcast_attention_bias,
             )
 
     # Reorder 'K' from [B, N, S, H] to [B, N, H/4, S, 4]
@@ -354,6 +370,7 @@ class T5Attention(nn.Module):
         hidden_states = torch.normal(mean=0.5, std=0.1, size=(self.batch_size, self.seq_len, self.hidden_size)).to(
             torch.float32
         )
+
         key_value_states = torch.normal(
             mean=0.5, std=0.1, size=(self.batch_size, self.kv_sequence_length, self.hidden_size)
         ).to(torch.float32)
@@ -367,12 +384,22 @@ class T5Attention(nn.Module):
         attention_mask = torch.ones((self.batch_size, self.kv_sequence_length)).to(torch.float32)
         position_bias_length = self.seq_len if not self.use_past else self.kv_sequence_length + self.seq_len
         position_bias = torch.normal(
-            mean=0.5, std=0.1, size=(1, self.num_heads, position_bias_length, position_bias_length)
+            mean=0.5,
+            std=0.1,
+            size=(
+                1 if self.broadcast_attention_bias else self.batch_size,
+                self.num_heads,
+                position_bias_length,
+                position_bias_length,
+            ),
         ).to(torch.float32)
         if self.use_decoder_masked_kernel:
-            position_bias = torch.normal(mean=5, std=0.1, size=(1, self.num_heads, 1, position_bias_length)).to(
-                torch.float32
-            )
+            position_bias = torch.normal(
+                mean=5,
+                std=0.1,
+                size=(1 if self.broadcast_attention_bias else self.batch_size, self.num_heads, 1, position_bias_length),
+            ).to(torch.float32)
+
         return hidden_states, key_value_states, past_key_value, attention_mask, position_bias
 
     def torch_forward(
@@ -458,7 +485,7 @@ class T5Attention(nn.Module):
         if position_bias is None:
             if not self.has_relative_attention_bias:
                 position_bias = torch.zeros(
-                    (1, self.n_heads, real_seq_length, key_length), device=scores.device, dtype=scores.dtype
+                    (1, self.n_heads, real_seq_length, 1), device=scores.device, dtype=scores.dtype
                 )
             else:
                 assert position_bias is not None
@@ -471,6 +498,8 @@ class T5Attention(nn.Module):
         if mask is not None:
             # Adjust onnx mask shape
             mask = (1 - mask.unsqueeze(1).unsqueeze(2)) * torch.finfo(torch.float32).min
+            print("mask shape", mask.shape)
+            print("position_bias shape", position_bias.shape)
             position_bias = position_bias + mask  # (batch_size, n_heads, seq_length, key_length)
 
         if self.pruned_heads:
@@ -480,6 +509,8 @@ class T5Attention(nn.Module):
         else:
             position_bias_masked = position_bias
 
+        print("scores shape", scores.shape)
+        print("position_bias_masked shape", position_bias_masked.shape)
         scores += position_bias_masked
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
             scores
@@ -691,20 +722,24 @@ def compare_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_
         head_size=head_size,
         use_past=False,
     )
-    T5CrossAttention = T5Attention(config, is_static_kv=False)  # noqa: N806
 
-    hidden_states, _, _, _, position_bias = T5CrossAttention.create_inputs()
-    torch_output = T5CrossAttention.torch_forward(
-        hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
-    )
-    ort_output = T5CrossAttention.ort_forward(
-        hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
-    )
+    for broadcast_position_bias in [True, False]:
+        SelfAttention = T5Attention(
+            config, is_static_kv=False, broadcast_attention_bias=broadcast_position_bias
+        )  # noqa: N806
 
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
-        assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-        assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+        hidden_states, _, _, _, position_bias = SelfAttention.create_inputs()
+        torch_output = SelfAttention.torch_forward(
+            hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
+        )
+        ort_output = SelfAttention.ort_forward(
+            hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
+        )
+
+        if ort_output is not None:
+            assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+            assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+            assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
 def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=False):
@@ -718,21 +753,26 @@ def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size,
         use_past=True,
     )
 
-    T5CrossAttention = T5Attention(config, is_static_kv=False, use_decoder_masked_kernel=use_dmmha)  # noqa: N806
+    for broadcast_position_bias in [True, False]:
+        SelfAttention = T5Attention(
+            config,
+            is_static_kv=False,
+            use_decoder_masked_kernel=use_dmmha,
+            broadcast_attention_bias=broadcast_position_bias,
+        )  # noqa: N806
+        hidden_states, _, past_key_value, _, position_bias = SelfAttention.create_inputs()
+        torch_output = SelfAttention.torch_forward(
+            hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+        )
+        ort_output = SelfAttention.ort_forward(
+            hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+        )
 
-    hidden_states, _, past_key_value, _, position_bias = T5CrossAttention.create_inputs()
-    torch_output = T5CrossAttention.torch_forward(
-        hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
-    )
-    ort_output = T5CrossAttention.ort_forward(
-        hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
-    )
-
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
-        if not use_dmmha:
-            assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-            assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+        if ort_output is not None:
+            assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+            if not use_dmmha:
+                assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+                assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
 class TestT5MHAParity(unittest.TestCase):
