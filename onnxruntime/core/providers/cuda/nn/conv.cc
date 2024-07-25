@@ -219,7 +219,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_operation_graph(handle));
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
-    std::string message = MakeString("Failed to initialize CUDNN Frontend", ex.what());
+    std::string message = MakeString("Failed to initialize CUDNN Frontend", ex.what(),
+                                     "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
@@ -230,7 +231,8 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_plans(handle));
   } catch (const std::exception& ex) {
     if (!fuse_bias && !fuse_act && use_tf32) {
-      std::string message = MakeString("OP not supported by CUDNN Frontend", ex.what());
+      std::string message = MakeString("OP not supported by CUDNN Frontend", ex.what(),
+                                       "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
       return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
     }
 
