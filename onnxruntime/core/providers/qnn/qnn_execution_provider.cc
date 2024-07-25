@@ -565,7 +565,8 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
       supported_groups.begin(), supported_groups.end(),
       std::back_inserter(result),
       [&](const auto& supported_partition) {
-        return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN);
+        return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN,
+                                            /*drop_constant_initializers*/ false);  // TODO: could this be set to true?
       });
 
   const size_t num_of_partitions = result.size();
@@ -660,7 +661,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Create partitions from supported nodes.
   std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(
-      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map, true);
+      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map);
 
   // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
   // We also count the number of supported nodes in all valid partitions.

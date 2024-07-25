@@ -19,8 +19,8 @@ std::string_view GetMode(const NodeAttrHelper& helper) {
   // opset 20+ uses linear, nearest, cubic
   // bilinear is what CoreML uses, so prefer that
   // bicubic/cubic isn't supported
-
-  const auto& mode = helper.Get("mode", "linear");
+  static const std::string default_mode = "linear";  // static in case we ever return the default as a string_view
+  const auto& mode = helper.Get("mode", default_mode);
   if (mode == "linear") {
     return "bilinear";
   }
