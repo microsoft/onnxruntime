@@ -116,6 +116,48 @@ index c0894f1d7..559481fee 100644
 +#define hip_check_error HIP_CHECK_ERROR
 +#endif
 +
+diff --git a/include/ck/utility/amd_buffer_addressing.hpp b/include/ck/utility/amd_buffer_addressing.hpp
+index cfa4cabee..ab22134fc 100644
+--- a/include/ck/utility/amd_buffer_addressing.hpp
++++ b/include/ck/utility/amd_buffer_addressing.hpp
+@@ -991,7 +991,8 @@ __device__ void amd_direct_load_global_to_lds(const T* global_base_ptr,
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
+diff --git a/include/ck_tile/core/arch/amd_buffer_addressing.hpp b/include/ck_tile/core/arch/amd_buffer_addressing.hpp
+index 53f42a742..b2f1f790a 100644
+--- a/include/ck_tile/core/arch/amd_buffer_addressing.hpp
++++ b/include/ck_tile/core/arch/amd_buffer_addressing.hpp
+@@ -26,7 +26,12 @@ struct __attribute__((packed)) buffer_resource
+ CK_TILE_DEVICE int32x4_t make_wave_buffer_resource(const void* ptr, uint32_t size = 0xffffffff)
+ {
+     buffer_resource res{ptr, size, CK_TILE_BUFFER_RESOURCE_3RD_DWORD};
+-    return __builtin_bit_cast(int32x4_t, res);
++    int32x4_t r = __builtin_bit_cast(int32x4_t, res);
++    r.x         = __builtin_amdgcn_readfirstlane(r.x);
++    r.y         = __builtin_amdgcn_readfirstlane(r.y);
++    r.z         = __builtin_amdgcn_readfirstlane(r.z);
++    r.w         = __builtin_amdgcn_readfirstlane(r.w);
++    return r;
+ }
+ 
+ // TODO: glc/slc/...
+@@ -2016,7 +2021,8 @@ CK_TILE_DEVICE void amd_direct_load_global_to_lds(const T* global_base_ptr,
+     asm volatile("s_mov_b32 m0, %0; \n\t"
+                  "buffer_load_dword %1, %2, 0 offen lds;\n\t" ::"s"(lds_ptr_sgpr),
+                  "v"(global_offset_bytes),
+-                 "s"(src_resource));
++                 "s"(src_resource)
++                 : "memory");
+ #else
+     // LDS pointer must be attributed with the LDS address space.
+     __attribute__((address_space(3))) uint32_t* lds_ptr =
 diff --git a/include/ck_tile/core/utility/transpose_vectors.hpp b/include/ck_tile/core/utility/transpose_vectors.hpp
 index a164c3f94..293ead89a 100644
 --- a/include/ck_tile/core/utility/transpose_vectors.hpp
