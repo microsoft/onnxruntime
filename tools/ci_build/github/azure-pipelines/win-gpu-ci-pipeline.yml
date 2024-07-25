@@ -28,6 +28,13 @@ pr:
 #### end trigger ####
 
 parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
@@ -43,7 +50,7 @@ stages:
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: >-
-          --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8"
+          --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --enable_cuda_profiling --enable_transformers_tool_test
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
@@ -65,7 +72,7 @@ stages:
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: >-
-          --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8"
+          --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --skip_onnx_tests
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
@@ -105,7 +112,7 @@ stages:
         # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
         additionalBuildFlags: >-
           --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda
-          --cuda_home="$(Agent.TempDirectory)\v11.8"
+          --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
         msbuildPlatform: x64
