@@ -1408,6 +1408,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
+
+  // We don't run Graph::Resolve() on an ORT format model, but a compiling EP may copy initializers to its
+  // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
+  // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
+  Status RemovedUnusedInitializersOrtFormat();
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1541,12 +1546,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
-  // Recursively find all subgraphs including nested subgraphs
-  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
-
-  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
-  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
-
   common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
@@ -1576,9 +1575,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Implementation for initializer replacement
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
-  // Clear all unused initializers and NodeArgs
-  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
-
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
@@ -1587,6 +1583,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Recursively find all subgraphs including nested subgraphs
+  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
+
+  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
+  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
+
+  // Clear all unused initializers and NodeArgs
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>

@@ -3387,6 +3387,18 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
 }
+
+Status Graph::RemovedUnusedInitializersOrtFormat() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    graph.CleanUnusedInitializersAndNodeArgs(nullptr);
+    return Status::OK();
+  };
+
+  auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+  return result;
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {

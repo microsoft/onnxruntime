@@ -39,14 +39,13 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     for (const auto* input : node.InputDefs()) {
       input_names.emplace_back(input->Name());
     }
-    AddOperationInputs(*op, "values", input_names);
+    AddOperationVariadicInput(*op, "values", input_names);
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", *axis));
     AddOperationInput(*op, "interleave", model_builder.AddScalarConstant(op->type(), "interleave", interleave));
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
+  } else  // NOLINT
+#endif    // defined(COREML_ENABLE_MLPROGRAM)
   {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
@@ -82,7 +81,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       // For some reason, the concat in CoreML running on 3d tensor will concat on wrong axis
       // Instead of concat on axis 0, it will concat on axis 1
       // Disable Concat support for 3d tensor for now
-      // TODO, add ExpandDims and Squeeze, 3d -ExpandDims-> 4d -> Concat -Squeeze-> 3d
+      // TODO: add ExpandDims and Squeeze, 3d -ExpandDims-> 4d -> Concat -Squeeze-> 3d
       LOGS(logger, VERBOSE) << "Concat only support 4d shape for now, input is "
                             << rank << "d shape";
       return false;

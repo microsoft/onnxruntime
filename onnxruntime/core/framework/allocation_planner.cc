@@ -225,8 +225,7 @@ class PlannerImpl {
   }
 
   int& UseCount(OrtValueIndex n) {
-    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(),
-                "invalid value index: ", n, " against size ", ort_value_info_.size());
+    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(), "invalid value index: ", n, " against size ", ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
@@ -643,21 +642,9 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    //
-    // Special case: ORT format model where an EP takes nodes and copies initializers into the compiled model.
-    // Those initializers become unused so don't end up in ort_value_name_idx_map_, but as we don't run
-    // Graph::Resolve with an ORT format model they will still exist in GetAllInitializedTensors.
-    // We can ignore lookup failures in this case.
-    const bool unresolved_graph = graph_viewer_.GetGraph().GraphResolveNeeded();
     for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
       const auto& initializer_name = pair.first;
-      OrtValueIndex index = -1;
-      auto status = ort_value_name_idx_map_.GetIdx(initializer_name, index);
-      if (status.IsOK()) {
-        UseCount(initializer_name)++;
-      } else {
-        ORT_ENFORCE(unresolved_graph, status.ErrorMessage());
-      }
+      UseCount(initializer_name)++;
     }
 
     for (auto& stream_execution_order : stream_nodes_) {
@@ -722,21 +709,10 @@ class PlannerImpl {
     }
 
     // All initializers should be treated as input
-    //
-    // Special case: ORT format model where an EP takes nodes and copies initializers into the compiled model.
-    // Those initializers become unused so don't end up in ort_value_name_idx_map_, but as we don't run
-    // Graph::Resolve with an ORT format model they will still exist in GetAllInitializedTensors.
-    // We can ignore lookup failures in this case.
-    const bool unresolved_graph = graph_viewer_.GetGraph().GraphResolveNeeded();
     for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
       const auto& initializer_name = pair.first;
-      OrtValueIndex index = -1;
-      auto status = ort_value_name_idx_map_.GetIdx(initializer_name, index);
-      if (status.IsOK()) {
-        ProcessDef(index, graph_viewer_.GetNodeArg(initializer_name));
-      } else {
-        ORT_ENFORCE(unresolved_graph, status.ErrorMessage());
-      }
+      OrtValueIndex index = Index(initializer_name);
+      ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;

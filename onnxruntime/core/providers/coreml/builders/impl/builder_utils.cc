@@ -309,26 +309,26 @@ COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& n
 
 void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std::string_view value_name) {
   MILSpec::Argument arg;
-  arg.mutable_arguments()->Add()->set_name(std::string(value_name));
+  arg.mutable_arguments()->Add()->set_name(value_name.data(), value_name.size());
 
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddOperationInputs(MILSpec::Operation& op, std::string_view input_name,
-                        const std::vector<std::string_view>& value_names) {
+void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
+                               const std::vector<std::string_view>& value_names) {
   MILSpec::Argument arg;
   for (const auto& value : value_names) {
-    arg.mutable_arguments()->Add()->set_name(std::string(value));
+    arg.mutable_arguments()->Add()->set_name(value.data(), value.size());
   }
 
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, const std::string& output_name,
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
                                     int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
-  output_arg.set_name(output_name);
+  output_arg.set_name(output_name.data(), output_name.size());
 
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();

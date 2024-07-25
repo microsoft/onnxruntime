@@ -6,7 +6,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Add||
 |ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Clip||
-|ai:onnx:Concat||
+|ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
 |ai.onnx:ConvTranspose|Weight and bias must be constant.<br/>padding_type of SAME_UPPER/SAME_LOWER is not supported.<br/>kernel_shape must have default values.<br/>output_shape is not supported.<br/>output_padding must have default values.|
 |ai.onnx.DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
@@ -27,4 +27,4 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
 |ai:onnx:Tanh||
-|ai:onnx:Transpose||
+|ai.onnx:Transpose||
