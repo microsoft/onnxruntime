@@ -30,22 +30,20 @@ Status CheckInputs(const T* query,
                    bool dmmha_packing,
                    AttentionType operator_type) {
   // ---------------------------------------------------------------
-  // B: batch_size; S: q_sequence_length; D: hidden_size; D_v: hidden_size of value;
-  // N: num_heads; H: head_size; L: kv_sequence_length, P: past_sequence_length (P = L - S)
+  // B: batch_size; D: hidden_size; D_v: hidden_size of value;
+  // N: num_heads; H: head_size;
+  // S: q_sequence_length;
+  // P: past_sequence_length; L: kv_sequence_length; T: total_sequence_length
+  //    Note that T == P + L
   // ---------------------------------------------------------------
   // MultiHeadAttention inputs:
   // ---------------------------------------------------------------
-  //  The inputs are:
-  //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
-  //     relative_position_bias     : (B, N, S, L) or (1, N, S, L)
-  //     past_key                   : (B, N, P, H)
-  //     past_value                 : (B, N, P, H)
-  //  When no packing for q/k/v:
+  //  When no packing:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D_v)
   //     bias             (Q/K/V)   : None or (D + D + D_v)
-  //   or cross attention (kv cache is not used in this case):
+  //  When it is cross attention (kv cache is not used in this case):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
@@ -55,31 +53,41 @@ Status CheckInputs(const T* query,
   //     key              (K)       : (B, L, N, 2, H)
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
-  //  When packed qkv is used:
-  //     query            (Q)       : (B, L, N, 3, H) or (B, S, 3*D)
+  //  When packed qkv is used (S==L in this case):
+  //     query            (Q)       : (B, S, N, 3, H)
   //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
+  //
+  //  Other inputs:
+  //     key_padding_mask (K/V)     : (B) or (3 * B + 2) or (B, T) or (B, S, T)
+  //     relative_position_bias     : (B, N, S, T) or (1, N, S, T)
+  //     past_key                   : (B, N, P, H)
+  //     past_value                 : (B, N, P, H)
   // ---------------------------------------------------------------
   // DecoderMaskedMultiHeadAttention inputs (S=1):
   // ---------------------------------------------------------------
+  //  When no packing:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D)
-  //   or cross attention (kv cache and relative_position_bias are not used in this case):
+  //  When it is cross attention (kv cache and relative_position_bias are not used, so L==T in this case):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
-  //   or
-  //     query            (Q)       : (B, S, 3*D)
+  //  When packed kv is used (S==L in this case):
+  //     query            (Q)       : (B, S, D + D + D_v)
   //     key              (K)       : None
   //     value            (V)       : None
-  //   Other inputs:
-  //     bias             (Q/K/V)   : None or (3*D)
-  //     key_padding_mask (K/V)     : (B, L)
-  //     relative_position_bias     : (1, N, S, L)
+  //
+  //  Other inputs:
+  //     bias             (Q/K/V)   : None or (D + D + D_v)
+  //     key_padding_mask (K/V)     : (B, T)
+  //     relative_position_bias     : (1, N, S, T)
   //     past_key                   : (B, N, P, H)
   //     past_value                 : (B, N, P, H)
+  //     past_sequence_length       : scalar (1) when past_present_share_buffer is True, or None
+  //  Remaining inputs (beam_width, cache_indirection) are not checked in the class.
   // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format;
 
