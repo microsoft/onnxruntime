@@ -52,6 +52,12 @@ class QnnModelWrapper {
 
   ~QnnModelWrapper() = default;
 
+  const QNN_INTERFACE_VER_TYPE& GetQnnInterface() const { return qnn_interface_; }
+  const Qnn_BackendHandle_t& GetQnnBackendHandle() const { return backend_handle_; }
+  const std::unordered_map<std::string, size_t>& GetInputIndexMap() const { return input_index_map_; }
+  const std::unordered_map<std::string, size_t>& GetOutputIndexMap() const { return output_index_map_; }
+  const std::unordered_set<std::string>& GetInitializerLookup() const { return initializer_lookup_; }
+
   bool CreateQnnGraph(const Qnn_ContextHandle_t& context,
                       const std::string& graph_name,
                       const QnnGraph_Config_t** graph_configs = nullptr);

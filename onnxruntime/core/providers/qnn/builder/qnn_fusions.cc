@@ -15,15 +15,7 @@
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-
-#define QNN_RETURN_OK_IF_ERROR(expr, logger)             \
-  do {                                                   \
-    auto _status = (expr);                               \
-    if ((!_status.IsOK())) {                             \
-      LOGS((logger), VERBOSE) << _status.ErrorMessage(); \
-      return Status::OK();                               \
-    }                                                    \
-  } while (0)
+#include "core/providers/qnn/builder/qnn_conv_activation_fusion.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -34,53 +26,26 @@ namespace qnn {
  *
  * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
  * \param qnn_model_wrapper The QNN model that is being built.
- * \param start_node_unit The node unit that could potentially start the DQ -> Q sequence.
- * \param node_unit_map Maps a node to its node unit.
- * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
- *                           in this set.
+ * \param dq_node_unit The DQ node unit.
+ * \param q_node_unit The Q node unit.
  * \param logger The logger.
  * \param do_op_validation True if should call QNN operator validation APIs.
  * \return An onnxruntime::Status
  */
 static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes,
                                        QnnModelWrapper& qnn_model_wrapper,
-                                       const NodeUnit& start_node_unit,
-                                       const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                       const std::unordered_set<const NodeUnit*>& handled_node_units,
+                                       const NodeUnit& dq_node_unit,
+                                       const NodeUnit& q_node_unit,
                                        const logging::Logger& logger,
                                        bool do_op_validation) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
 
   // Looking for a standalone DQ to start the sequence.
-  if (start_node_unit.OpType() != QDQ::DQOpName || start_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
-  }
+  assert(dq_node_unit.OpType() == QDQ::DQOpName && dq_node_unit.UnitType() == NodeUnit::Type::SingleNode);
+  assert(q_node_unit.OpType() == QDQ::QOpName && q_node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
-  const Node& dq_node = start_node_unit.GetNode();
-
-  // DQ must have a single Q child. DQ must not produce a graph output.
-  auto children = graph_utils::FindChildrenByType(dq_node, QDQ::QOpName);
-  if (children.size() != 1 || dq_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(dq_node)) {
-    return Status::OK();
-  }
-
-  const Node& q_node = *children[0];
-  const auto q_node_unit_it = node_unit_map.find(&q_node);
-
-  ORT_RETURN_IF(q_node_unit_it == node_unit_map.end(), "Node does not have a corresponding NodeUnit");
-
-  const NodeUnit* q_node_unit = q_node_unit_it->second;
-
-  // Check if Q node has already been handled. Should not be the case if this
-  // fusion function has been called in topological order, but check to be safe.
-  if (handled_node_units.count(q_node_unit) != 0) {
-    return Status::OK();
-  }
-
-  // Q child must not already be part of a QDQ NodeUnit (i.e., be standalone).
-  if (q_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
-  }
+  const Node& dq_node = dq_node_unit.GetNode();
+  const Node& q_node = q_node_unit.GetNode();
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
     return graph_viewer.GetConstantInitializer(initializer_name, true);
@@ -91,9 +56,9 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
     return Status::OK();
   }
 
-  const auto& node_name = utils::GetNodeName(start_node_unit);
-  const NodeUnitIODef& input_def = start_node_unit.Inputs()[0];
-  const NodeUnitIODef& output_def = q_node_unit->Outputs()[0];
+  const auto& node_name = utils::GetNodeName(dq_node_unit);
+  const NodeUnitIODef& input_def = dq_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = q_node_unit.Outputs()[0];
 
   QnnTensorWrapper input_tensor;
   QnnTensorWrapper output_tensor;
@@ -115,14 +80,14 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
   // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << " Adding QNN Convert via fusion. dq_node name: [" << dq_node.Name()
                         << "] dq_node optype: [" << dq_node.OpType()
-                        << "] q_node name: [" << q_node_unit->Name()
-                        << "] q_node optype: [" << q_node_unit->OpType()
+                        << "] q_node name: [" << q_node_unit.Name()
+                        << "] q_node optype: [" << q_node_unit.OpType()
                         << "]";
 
   // Add a QNN Convert to the model. Get the input from the DQ node, and the output from the Q node.
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(*q_node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(q_node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     QNN_OP_CONVERT,
                                                     {input_def.node_arg.Name()},
@@ -131,8 +96,72 @@ static Status TryHandleConvertSequence(std::vector<const NodeUnit*>& fused_nodes
                                                     do_op_validation),
                     "Failed to add fused Convert node.");
 
-  fused_nodes.push_back(&start_node_unit);
-  fused_nodes.push_back(q_node_unit);
+  fused_nodes.push_back(&dq_node_unit);
+  fused_nodes.push_back(&q_node_unit);
+
+  return Status::OK();
+}
+
+/**
+ * Tries to fuse sequences that start with a DQ node.
+ *
+ * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
+ * \param qnn_model_wrapper The QNN model that is being built.
+ * \param dq_node_unit The DQ node unit that could potentially start a sequence.
+ * \param node_unit_map Maps a node to its node unit.
+ * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
+ *                           in this set.
+ * \param logger The logger.
+ * \param do_op_validation True if should call QNN operator validation APIs.
+ * \return An onnxruntime::Status
+ */
+static Status TryHandleDequantize(std::vector<const NodeUnit*>& fused_nodes,
+                                  QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& dq_node_unit,
+                                  const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                  const std::unordered_set<const NodeUnit*>& handled_node_units,
+                                  const logging::Logger& logger,
+                                  bool do_op_validation) {
+  // Expect that this function is called with a standalone DQ.
+  assert(dq_node_unit.OpType() == QDQ::DQOpName && dq_node_unit.UnitType() == NodeUnit::Type::SingleNode);
+
+  const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
+  const Node& dq_node = dq_node_unit.GetNode();
+
+  // DQ must have a single child (1 output edge) and must not produce a graph output.
+  if (dq_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(dq_node)) {
+    return Status::OK();
+  }
+
+  const Node& child_node = dq_node.OutputEdgesBegin()->GetNode();
+  const auto child_node_unit_it = node_unit_map.find(&child_node);
+  ORT_RETURN_IF(child_node_unit_it == node_unit_map.end(), "Node does not have a corresponding NodeUnit");
+  const NodeUnit* child_node_unit = child_node_unit_it->second;
+
+  // Check if child node has already been handled. Should not be the case if this
+  // fusion function has been called in topological order, but check to be safe.
+  if (handled_node_units.count(child_node_unit) != 0) {
+    return Status::OK();
+  }
+
+  // child must not already be part of a QDQ NodeUnit (i.e., be standalone).
+  if (child_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
+    return Status::OK();
+  }
+
+  const std::string& child_type = child_node.OpType();
+
+  // Try (DQ -> Q) into QNN's Convert op.
+  if (child_type == QDQ::QOpName) {
+    return TryHandleConvertSequence(fused_nodes, qnn_model_wrapper, dq_node_unit, *child_node_unit,
+                                    logger, do_op_validation);
+  }
+
+  // Try (DQ -> Conv/ConvTranspose -> Relu/Clip -> Q) into QNN Conv/ConvTranspose.
+  if (child_type == "Conv" || child_type == "ConvTranspose") {
+    return TryConvActivationFusion(fused_nodes, qnn_model_wrapper, *child_node_unit, node_unit_map,
+                                   handled_node_units, logger, do_op_validation);
+  }
 
   return Status::OK();
 }
@@ -269,7 +298,7 @@ Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
                   bool validate) {
   // Maps a starting operator type to the fusion function.
   static std::unordered_map<std::string, FusionFunc> fusions = {
-      {"DequantizeLinear", TryHandleConvertSequence},
+      {"DequantizeLinear", TryHandleDequantize},
       {"HardSigmoid", TryHandleHardSigmoidSequence},
   };
 
