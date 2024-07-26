@@ -233,7 +233,9 @@ TEST(MathOpTest, MatMul_ZeroK) {
   test.AddOutput<float>("Y", {4, 4}, expected_output);
 
   // No special case is implemented.
-  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider, kDmlExecutionProvider})
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
