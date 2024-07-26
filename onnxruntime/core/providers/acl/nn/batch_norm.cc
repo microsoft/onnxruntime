@@ -118,7 +118,7 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     ACLImportMemory(tbatch_norm.b->allocator(), (void*)b_data, B->Shape().Size() * 4);
     ACLImportMemory(tbatch_norm.scale->allocator(), (void*)scale_data, S->Shape().Size() * 4);
 
-    // allocate space for input tensor to accomodate paddings and strides
+    // allocate space for input tensor to accommodate paddings and strides
     tbatch_norm.in->allocator()->allocate();
 
     tbatch_norm.layer = std::move(layer);

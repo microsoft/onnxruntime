@@ -14,8 +14,8 @@ namespace fs = std::filesystem;
 namespace onnxruntime {
 
 constexpr const uint8_t kXCCode = 1;
-constexpr const uint8_t kDDCode = 2;
-constexpr const uint8_t kVCode = 4;
+[[maybe_unused]] constexpr const uint8_t kDDCode = 2;
+[[maybe_unused]] constexpr const uint8_t kVCode = 4;
 
 static constexpr const char* kEPContextOp = "EPContext";
 static constexpr const char* kMainContextAttr = "main_context";

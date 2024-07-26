@@ -12,6 +12,7 @@
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
+#include "core/framework/int4.h"
 #include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
@@ -106,6 +107,22 @@ class RandomValueGenerator {
       val[i] = static_cast<TByte>(distribution(generator_));
     }
     return val;
+  }
+
+  template <typename TInt4>
+  typename std::enable_if<
+      std::is_same_v<TInt4, Int4x2> || std::is_same_v<TInt4, UInt4x2>,
+      std::vector<TInt4>>::type
+  Uniform(gsl::span<const int64_t> dims, TInt4 min, TInt4 max) {
+    using UnpackedType = typename TInt4::UnpackedType;
+    std::vector<UnpackedType> data_int8 = Uniform<UnpackedType>(dims, min.GetElem(0), max.GetElem(0));
+    std::vector<TInt4> data(TInt4::CalcNumInt4Pairs(data_int8.size()));
+    for (size_t i = 0; i < data_int8.size(); i++) {
+      size_t r = i >> 1;
+      size_t c = i & 0x1;
+      data[r].SetElem(c, data_int8[i]);
+    }
+    return data;
   }
 
   // Gaussian distribution for float

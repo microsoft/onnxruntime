@@ -178,10 +178,14 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const s
     ORT_ENFORCE(weights_def.IsInitializer() && weights_def.IsRawData());
     std::vector<float> weight_scales;
     std::vector<WeightQType> weight_zero_points;
-    GetTestInputQuantParamsPerChannel<WeightQType>(weights_def, weight_scales, weight_zero_points,
-                                                   static_cast<size_t>(weight_quant_axis), true);
-
     TensorShape weights_shape = weights_def.GetTensorShape();
+    int64_t pos_weight_quant_axis = weight_quant_axis;
+    if (pos_weight_quant_axis < 0) {
+      pos_weight_quant_axis += static_cast<int64_t>(weights_shape.NumDimensions());
+    }
+    GetTestInputQuantParamsPerChannel<WeightQType>(weights_def, weight_scales, weight_zero_points,
+                                                   static_cast<size_t>(pos_weight_quant_axis), true);
+
     std::vector<WeightQType> quantized_weights;
     size_t num_weight_storage_elems = weights_shape.Size();
     if constexpr (std::is_same_v<WeightQType, Int4x2> || std::is_same_v<WeightQType, UInt4x2>) {
@@ -189,7 +193,7 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const s
     }
     quantized_weights.resize(num_weight_storage_elems);
     QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
-                                       weight_scales, weight_zero_points, weight_quant_axis);
+                                       weight_scales, weight_zero_points, pos_weight_quant_axis);
 
     NodeArg* weights_initializer = builder.MakeInitializer<WeightQType>(weights_def.GetShape(), quantized_weights);
     NodeArg* weights_dq = builder.MakeIntermediate();
@@ -750,6 +754,34 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
                                               weight_def,
                                               bias_def,
                                               0,             // weight quant axis
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              1,             // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              21);    // opset
+}
+
+// Test per-channel QDQ Conv with INT4 weights and a negative weight quantization axis that still points to dimension 0.
+TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, Int4x2>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              -4,            // negative weight quant axis (same as 0)
                                               {1, 1},        // Strides
                                               {0, 0, 0, 0},  // Pads
                                               {1, 1},        // Dilations

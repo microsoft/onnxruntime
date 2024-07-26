@@ -35,30 +35,16 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
-    : TrtFusedAttention<T>(), CudaKernel(info) {
+    : TrtFusedAttention<T>(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int32_t>(num_heads);
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-#if USE_FLASH_ATTENTION
-  disable_flash_attention_ = sizeof(T) != 2 || onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
-                                                   attention::kDisableFlashAttention, false);
-  min_seq_len_for_flash_attention_packed_qkv_ = ParseEnvironmentVariableWithDefault<int>(
-      attention::kMinSeqLenForFlashAttentionPackedQKV,
-      attention::kDefaultMinSeqLenForFlashAttentionPackedQKV);
-#else
-  disable_flash_attention_ = true;
-  min_seq_len_for_flash_attention_packed_qkv_ = 0;
-#endif
+  disable_flash_attention_ = sizeof(T) != 2 || !this->kernel_options_->UseFlashAttention();
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
-      attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
+  disable_memory_efficient_attention_ = !this->kernel_options_->UseEfficientAttention();
 }
 
 template <typename T>
@@ -228,7 +214,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   const Tensor* relative_position_bias = context->Input<Tensor>(6);
 
   PackedAttentionParameters parameters;
-  parameters.use_tf32 = UseTF32();
+  parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(query->Shape(),
                                   key,
                                   value,
@@ -255,7 +241,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 
     // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
     if (use_flash_attention && key == nullptr && value == nullptr &&
-        parameters.sequence_length < min_seq_len_for_flash_attention_packed_qkv_) {
+        parameters.sequence_length < this->kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
       use_flash_attention = false;
     }
   }
@@ -271,10 +257,24 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention =
         is_good_for_rpb &&
-        (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
+        (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
         has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
+
+  if (this->kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+    }
+
+    debug_info.Print("PackedMultiHeadAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 

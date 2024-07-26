@@ -1188,7 +1188,7 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
                                     fetch_names,
                                     &fetches));
 
-    // Assume that user-specified fetches are avaliable only on the last pipeline stage.
+    // Assume that user-specified fetches are available only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
     // params_.pipeline_parallel_size is 1. Thus, the following condition is always true if there
     // is no pipeline.

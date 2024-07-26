@@ -319,7 +319,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterForwardRunner(function_address);
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
@@ -328,7 +328,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterBackwardRunner(function_address);
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_torch_autograd_function", [](std::string function_full_qual_name, py::object obj) -> void {
@@ -336,8 +336,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterTorchAutogradFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_shape_inference_function", [](std::string function_full_qual_name, py::object obj) -> void {
@@ -345,8 +345,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterShapeInferenceFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("get_shape_inference_function", [](std::string function_full_qual_name) -> py::object {
@@ -368,8 +368,8 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterInputAliasFunction(function_full_qual_name, obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(function_full_qual_name);
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(function_full_qual_name);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_miscellaneous_const_input", [](py::object obj) -> void {
@@ -377,7 +377,7 @@ void addObjectMethodsForTraining(py::module& m) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterMiscellaneousConstInput(obj.ptr());
 #else
-        ORT_UNUSED_PARAMETER(obj);
+    ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("unregister_python_functions", []() -> void {
@@ -391,14 +391,14 @@ void addObjectMethodsForTraining(py::module& m) {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
   m.def("is_triton_enabled", []() -> bool {
 #ifdef ENABLE_TRITON
     return true;
 #else
-        return false;
+    return false;
 #endif
   });
 #ifdef ENABLE_TRITON
@@ -1036,7 +1036,7 @@ void addObjectMethodsForTraining(py::module& m) {
 #ifdef __linux__
           return true;
 #else
-        return false;
+    return false;
 #endif
         });
 #endif

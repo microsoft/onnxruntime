@@ -164,6 +164,7 @@ void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_
 void SetTensorTypeInfo(MILSpec::TensorType& tensor_type, MILSpec::DataType data_type,
                        const ONNX_NAMESPACE::TensorShapeProto* shape, bool convert_scalar = false) {
   tensor_type.set_datatype(data_type);
+
   if (shape) {
     auto rank = shape->dim_size();
     if (convert_scalar && rank == 0) {
@@ -308,12 +309,35 @@ COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& n
 
 void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std::string_view value_name) {
   MILSpec::Argument arg;
-  arg.mutable_arguments()->Add()->set_name(std::string(value_name));
+  arg.mutable_arguments()->Add()->set_name(value_name.data(), value_name.size());
 
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output) {
+void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
+                               const std::vector<std::string_view>& value_names) {
+  MILSpec::Argument arg;
+  for (const auto& value : value_names) {
+    arg.mutable_arguments()->Add()->set_name(value.data(), value.size());
+  }
+
+  (*op.mutable_inputs())[input_name] = std::move(arg);
+}
+
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
+                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
+  auto& outputs = *op.mutable_outputs();
+  auto& output_arg = *outputs.Add();
+  output_arg.set_name(output_name.data(), output_name.size());
+
+  MILSpec::ValueType& value = *output_arg.mutable_type();
+  MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
+
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(element_type), shape, /*convert_scalar*/ true);
+}
+
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -321,8 +345,10 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
-  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(output.TypeAsProto()->tensor_type().elem_type()),
-                    output.Shape(), /*convert_scalar*/ true);
+  auto elem_type = override_element_type ? *override_element_type
+                                         : output.TypeAsProto()->tensor_type().elem_type();
+
+  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,

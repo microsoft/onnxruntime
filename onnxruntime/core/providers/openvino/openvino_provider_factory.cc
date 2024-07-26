@@ -14,7 +14,8 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
                           int num_streams, void* context,
                           bool enable_opencl_throttling, bool disable_dynamic_shapes,
                           bool export_ep_ctx_blob, bool enable_qdq_optimizer,
-                          bool disable_cpu_fallback)
+                          bool disable_cpu_fallback,
+                          bool so_epctx_embed_mode)
       : precision_(precision),
         enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
@@ -25,10 +26,12 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         disable_dynamic_shapes_(disable_dynamic_shapes),
         export_ep_ctx_blob_(export_ep_ctx_blob),
         enable_qdq_optimizer_(enable_qdq_optimizer),
-        disable_cpu_fallback_(disable_cpu_fallback) {
+        disable_cpu_fallback_(disable_cpu_fallback),
+        so_epctx_embed_mode_(so_epctx_embed_mode) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
   }
+
   ~OpenVINOProviderFactory() override {
   }
 
@@ -48,13 +51,15 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool export_ep_ctx_blob_;
   bool enable_qdq_optimizer_;
   bool disable_cpu_fallback_;
+  bool so_epctx_embed_mode_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, precision_, enable_npu_fast_compile_, num_of_threads_,
                                      cache_dir_, model_priority_, num_streams_, context_, enable_opencl_throttling_,
                                      disable_dynamic_shapes_, export_ep_ctx_blob_, enable_qdq_optimizer_,
-                                     disable_cpu_fallback_);
+                                     disable_cpu_fallback_,
+                                     so_epctx_embed_mode_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
@@ -105,6 +110,8 @@ struct OpenVINO_Provider : Provider {
 
     bool disable_cpu_fallback = false;
 
+    bool so_epctx_embed_mode = true;
+
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
       device_type = provider_options_map.at("device_type").c_str();
 
@@ -113,6 +120,14 @@ struct OpenVINO_Provider : Provider {
       std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                        "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                        "GPU.0_FP16", "GPU.1_FP16"};
+      OVDevices devices;
+      std::vector<std::string> available_devices = devices.get_ov_devices();
+
+      for (auto& device : available_devices) {
+        if (ov_supported_device_types.find(device) == ov_supported_device_types.end()) {
+          ov_supported_device_types.emplace(device);
+        }
+      }
       if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
         std::string deprecated_device = device_type;
         int delimit = device_type.find("_");
@@ -128,8 +143,8 @@ struct OpenVINO_Provider : Provider {
             (device_type.find("MULTI:") == 0) ||
             (device_type.find("AUTO:") == 0))) {
         ORT_THROW(
-            "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-            "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
+            "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
+            "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
             " HETERO/MULTI/AUTO options available. \n");
       }
     }
@@ -253,9 +268,8 @@ struct OpenVINO_Provider : Provider {
         }
       }
     }
-
-    if (provider_options_map.find("export_ep_ctx_blob") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("export_ep_ctx_blob");
+    if (provider_options_map.find("so_export_ep_ctx_blob") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("so_export_ep_ctx_blob");
       if (bool_flag == "true" || bool_flag == "True")
         export_ep_ctx_blob = true;
       else if (bool_flag == "false" || bool_flag == "False")
@@ -271,6 +285,23 @@ struct OpenVINO_Provider : Provider {
         disable_cpu_fallback = false;
       bool_flag = "";
     }
+    if (provider_options_map.find("so_epctx_embed_mode") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("so_epctx_embed_mode");
+      if (bool_flag == "true" || bool_flag == "True")
+        so_epctx_embed_mode = true;
+      else if (bool_flag == "false" || bool_flag == "False")
+        so_epctx_embed_mode = false;
+      bool_flag = "";
+    }
+
+    if (provider_options_map.find("so_epctx_path") != provider_options_map.end()) {
+      // The path to dump epctx model is valid only when epctx is enabled.
+      // Overrides the cache_dir option to dump model cache files from OV.
+      if (export_ep_ctx_blob) {
+        cache_dir = provider_options_map.at("so_epctx_path").c_str();
+      }
+    }
+
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      const_cast<char*>(precision.c_str()),
                                                      enable_npu_fast_compile,
@@ -283,7 +314,8 @@ struct OpenVINO_Provider : Provider {
                                                      disable_dynamic_shapes,
                                                      export_ep_ctx_blob,
                                                      enable_qdq_optimizer,
-                                                     disable_cpu_fallback);
+                                                     disable_cpu_fallback,
+                                                     so_epctx_embed_mode);
   }
 
   void Initialize() override {

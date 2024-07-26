@@ -234,7 +234,7 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     if total_ops == 0:
         print("Error ...")
-        raise
+        raise RuntimeError
 
     if len(trt_op_map) == 0:
         total_cuda_and_cpu_ops = total_ops
