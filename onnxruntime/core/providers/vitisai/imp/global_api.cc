@@ -432,6 +432,22 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.AddInitializedTensor(tensor);
   };
 
+  the_global_api.get_model_path = [](const Graph& graph) -> vaip_core::DllSafe<std::filesystem::path> {
+    std::filesystem::path model_path = graph.ModelPath();
+    return vaip_core::DllSafe(model_path);
+  };
+
+  the_global_api.create_empty_model = [](const std::filesystem::path& path) -> Model* {
+    auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
+    auto& logger = logging::LoggingManager::DefaultLogger();
+    auto model = Model::Create(std::move(*model_proto), path, nullptr, logger);
+    return model.release();
+  };
+
+  the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
+    graph.SetOutputs(inputs);
+  };
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
