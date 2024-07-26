@@ -51,7 +51,11 @@ GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
 
   std::vector<NodeIndex> node_indexs = graph.GetNodesInTopologicalOrder();
   node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_nodes_included_eps.count(index) > 0; }), node_indexs.end());
-  node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_support_optypes_by_eps.count(graph.GetNode(index)->OpType()) == 0; }), node_indexs.end());
+  node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(),
+                                   [&](NodeIndex index) {
+                                    auto node = graph.GetNode(index);
+                                    return all_support_optypes_by_eps.count(node->Domain() + ":" + node->OpType()) == 0; }),
+                    node_indexs.end());
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& n : node_indexs) {
