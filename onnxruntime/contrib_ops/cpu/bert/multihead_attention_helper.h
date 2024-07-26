@@ -47,7 +47,7 @@ Status CheckInputs(const T* query,
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D_v)
   //     bias             (Q/K/V)   : None or (D + D + D_v)
-  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache is not used in this case):
+  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache is not used in this case, L == T, D == D_v):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
@@ -57,7 +57,7 @@ Status CheckInputs(const T* query,
   //     key              (K/V)     : (B, L, N, 2, H)
   //     value                      : None
   //     bias                       : None
-  //  QKV_BSN3H - packed qkv (S==L in this case):
+  //  QKV_BSN3H - packed qkv (S == L, D == D_v in this case):
   //     query            (Q/K/V)   : (B, S, N, 3, H)
   //     key                        : None
   //     value                      : None
@@ -96,15 +96,17 @@ Status CheckInputs(const T* query,
   AttentionQkvFormat qkv_format = UNKNOWN;
 
   const auto& query_dims = query->Shape().GetDims();
-  if (query_dims.size() != 3 && query_dims.size() != 5) {
+
+  int query_rank = static_cast<int>(query_dims.size());
+  if (query_rank != 3 && query_rank != 5) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 or 5 dimensions, got ",
-                           query_dims.size());
+                           query_rank);
   }
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
   bool dmmha_packing = operator_type == kDecoderMaskedMultiHeadAttention && key == nullptr && value == nullptr;
-  int hidden_size = (query_dims.size() == 3)
+  int hidden_size = (query_rank == 3)
                         ? (dmmha_packing ? (static_cast<int>(query_dims[2]) / 3) : static_cast<int>(query_dims[2]))
                         : (num_heads * static_cast<int>(query_dims[4]));
   int head_size = static_cast<int>(hidden_size) / num_heads;
@@ -178,9 +180,22 @@ Status CheckInputs(const T* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
 
-  if (query_dims.size() == 3) {
+  TensorShape empty_shape;
+  const auto& key_dims = (key == nullptr) ? empty_shape.GetDims() : key->Shape().GetDims();
+  if (key_dims.size() > 0 && query_dims[0] != key_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
+  }
+
+  const auto& value_dims = (value == nullptr) ? empty_shape.GetDims() : value->Shape().GetDims();
+  if (value_dims.size() > 0 && query_dims[0] != value_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'value' shall have same dim 0 (batch size)");
+  }
+
+  int v_hidden_size = hidden_size;
+  if (query_rank == 3) {
     if (key == nullptr) {
-      // Packed qkv used by DecoderMaskedMultiHeadAttention. Query shape is (B, S, 3D).
       if (value != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'value' shall absent when 'key' is absent");
@@ -188,24 +203,29 @@ Status CheckInputs(const T* query,
 
       if (operator_type != kMultiHeadAttention) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Pack qkv of 3D input is not support in MultiHeadAttention");
+                               "Packed qkv of 3D format is not support in MultiHeadAttention");
       }
 
+      // Packed qkv used by DecoderMaskedMultiHeadAttention. Query shape is (B, S, 3D), no key and value.
       qkv_format = QKV_BS3NH;
     } else {  // key != nullptr
       const auto& key_dims = key->Shape().GetDims();
-      if (query_dims[0] != key_dims[0]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'query' and 'key' shall have same dim 0 (batch size)");
-      }
 
       if (key_dims.size() == 3) {
         if (key_dims[2] != query_dims[2]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
         }
+
+        if (value_dims.size() != 3) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT,
+              "Expect 'value' of 3 dimension");
+        }
+
         qkv_format = Q_K_V_BSNH;
         kv_sequence_length = static_cast<int>(key_dims[1]);
+        v_hidden_size = static_cast<int>(value_dims[2]);
       } else if (key_dims.size() == 5) {
         if (static_cast<int>(key_dims[2]) != num_heads ||
             static_cast<int>(key_dims[3]) != 2 ||
@@ -233,7 +253,9 @@ Status CheckInputs(const T* query,
         }
 
         if (value == nullptr || value->Shape() != key->Shape()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' and 'value' shall have same shape for cross attention");
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT,
+              "Input 'key' and 'value' shall have same shape (batch_size, num_heads, kv_sequence_length, head_size)");
         }
 
         if (past_key != nullptr || past_value != nullptr) {
@@ -243,17 +265,25 @@ Status CheckInputs(const T* query,
 
         qkv_format = Q_K_V_BSNH_BNSH_BNSH;
         kv_sequence_length = static_cast<int>(key_dims[2]);
+        v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
                                key_dims.size());
       }
     }
-  } else {  // query_dims.size() == 5
-    if (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3) {
+  } else {  // query_rank == 5
+    if (static_cast<int>(query_dims[2]) != num_heads ||
+        static_cast<int>(query_dims[3]) != 3 ||
+        static_cast<int>(key_dims[3]) != head_size) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed qkv");
+    }
+
+    if (key != nullptr || value != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Expect 'key' and 'value' be none when 'query' has packed qkv format.");
     }
 
     qkv_format = QKV_BSN3H;
@@ -293,16 +323,6 @@ Status CheckInputs(const T* query,
     if (mask_type == AttentionMaskType::MASK_UNKNOWN) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'key_padding_mask' shape shall be 1D, 2D, or 3D");
-    }
-  }
-
-  int v_hidden_size = hidden_size;
-  if (value != nullptr) {
-    const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() == 3) {
-      v_hidden_size = static_cast<int>(value_dims[2]);
-    } else {  // value_dims.size() == 4
-      v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
     }
   }
 
