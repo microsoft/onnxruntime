@@ -49,7 +49,7 @@ def run_inference(args):
             no_repeat_ngram_size=no_repeat_ngram_size,
         )
         time_cost = time.time() - start_time
-        print("--- %s seconds ---" % (time_cost))
+        print(f"--- {time_cost} seconds ---")
         for j in range(batch_num):
             for i in range(beam):
                 print(
@@ -81,7 +81,7 @@ def run_inference(args):
         start_time = time.time()
         out = sess.run(None, ort_inputs)
         time_cost = time.time() - start_time
-        print("--- %s seconds ---" % (time_cost))
+        print(f"--- {time_cost} seconds ---")
         for j in range(batch_num):
             for i in range(beam):
                 print(

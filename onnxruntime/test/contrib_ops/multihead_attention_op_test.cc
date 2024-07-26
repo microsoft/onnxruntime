@@ -394,8 +394,8 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-    if (data.sequence_length >= contrib::attention::kMinSeqLenForMemoryEfficientAttentionFp32 ||
-        data.kv_sequence_length >= contrib::attention::kMinSeqLenForMemoryEfficientAttentionFp32) {
+    if (data.sequence_length >= contrib::attention::kDefaultMinSeqLenForEfficientAttentionFp32 ||
+        data.kv_sequence_length >= contrib::attention::kDefaultMinSeqLenForEfficientAttentionFp32) {
       kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
       if (!SkipAttentionKernel(data, kernel_type)) {
         RunMultiHeadAttentionKernel(

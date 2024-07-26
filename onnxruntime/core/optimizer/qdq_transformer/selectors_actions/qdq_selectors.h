@@ -48,7 +48,8 @@ class NodeGroupSelector {
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true, bool allow_nonpositive_scale = true)
+  explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                    bool allow_nonpositive_scale = true)
       : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
@@ -205,6 +206,14 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool allow_4bit_;
 };
 
+// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+class DQMatMulNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 // Input: DQ nodes for A, B and optional C
 // Output: optional Q node for Y
 class GemmNodeGroupSelector : public NodeGroupSelector {
@@ -357,6 +366,13 @@ class MatMulSelector : public BaseSelector {
   MatMulSelector(bool int8_allowed, bool allow_16bit = false, bool allow_4bit = false)
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
                                                                allow_16bit, allow_4bit)) {}
+};
+
+// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+class DQMatMulToMatMulNBitsSelector : public BaseSelector {
+ public:
+  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
 };
 
 // Input: DQ nodes for A, B and optional C

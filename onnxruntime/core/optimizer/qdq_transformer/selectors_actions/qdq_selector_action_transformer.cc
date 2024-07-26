@@ -36,7 +36,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   const std::string drop_action_name{"drop"};
   const std::string drop_action_no_nonpositive_scale_name{"drop_no_nonpositive_scale"};
   const std::string drop_action_no_int16_name{"drop_no_int16_support"};
-  const std::string drop_action_no_int16_nor_nonpositive_scale_name{"drop_no_int16_support_no_nonpositive_scale"};
+  const std::string drop_action_no_int16_and_positive_scale_name{"drop_no_int16_support_and_positive_scale"};
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
@@ -50,32 +50,33 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   std::unique_ptr<Action> drop_action_no_nonpositive_scale = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
-  std::unique_ptr<Action> drop_action_no_int16_nor_nonpositive_scale = std::make_unique<MergeIntoTargetFixed>(
+  std::unique_ptr<Action> drop_action_no_int16_and_positive_scale = std::make_unique<MergeIntoTargetFixed>(
       std::vector<NodeAndMoveInfo>(moves));  // Copy before std::move(moves)
   std::unique_ptr<Action> drop_action = std::make_unique<MergeIntoTargetFixed>(std::move(moves));
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Use a separate selectors & actions for MaxPool and Resize.
+  // Use separate selectors & actions for MaxPool and Resize.
   //
   // They disallow 16-bit types for MaxPool and Resize:
   // int16 MaxPool is not supported by the ONNX specification.
   // int16 Resize is not supported by the ORT implementation (although allowed by ONNX).
   //
-  // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative scale will change the ordering
-  // of the elements between quantized & de-quantized values.
+  // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
+  // scale will change the ordering of the elements between quantized & de-quantized values.
   std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"Resize", {}}},
                                                          std::move(selector_disallow_16bit),
                                                          std::move(drop_action_no_int16));
 
-  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale = std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
-  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_nor_nonpositive_scale_name,
+  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale =
+      std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
+  qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_and_positive_scale_name,
                                                          {{"MaxPool", {12}},
                                                           {"ReduceMin", {}},
                                                           {"ReduceMax", {}}},
                                                          std::move(selector_disallow_16bit_and_nonpositive_scale),
-                                                         std::move(drop_action_no_int16_nor_nonpositive_scale));
+                                                         std::move(drop_action_no_int16_and_positive_scale));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true);
   // DepthToSpace and SpaceToDepth not included because there are no integer implementations.
@@ -95,6 +96,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(drop_action));
 #else
   qdq_selector_action_registry.RegisterAction(drop_action_no_int16_name, std::move(drop_action_no_int16));
+  qdq_selector_action_registry.RegisterAction(
+      drop_action_no_int16_and_positive_scale_name,
+      std::move(drop_action_no_int16_and_positive_scale));
   qdq_selector_action_registry.RegisterAction(drop_action_name, std::move(drop_action));
 #endif
 }
@@ -253,6 +257,30 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 #endif
 }
 
+void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_registry,
+                                int64_t qdq_matmulnbits_accuracy_level,
+                                concurrency::ThreadPool* intra_op_thread_pool) {
+  // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
+  // DQ's weight is int4/uint4. DQ's scale is float/float16.
+  // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
+  const std::string action_name{"DQMatMulToMatMulNBits"};
+
+  std::unique_ptr<Action> action =
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                         intra_op_thread_pool);
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"MatMul", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+
+#else
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+
 void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 to 5 nodes. 0=DQ A, 1=DQ B, 2=DQ C(optional), 3=Gemm, 4=Q Y(optional)
   // Replace with QGemm
@@ -296,7 +324,9 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
-SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
+SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed,
+                                                    int64_t qdq_matmulnbits_accuracy_level,
+                                                    concurrency::ThreadPool* intra_op_thread_pool) {
   SelectorActionRegistry qdq_selector_action_registry;
   SplitQDQRules(qdq_selector_action_registry);
   DropQDQNodesRules(qdq_selector_action_registry);
@@ -308,17 +338,22 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
   GemmQDQRules(qdq_selector_action_registry);
   WhereQDQRules(qdq_selector_action_registry);
+  DQMatMulToMatMulNBitsRules(qdq_selector_action_registry,
+                             qdq_matmulnbits_accuracy_level,
+                             intra_op_thread_pool);
 
   return qdq_selector_action_registry;
 }
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(
-    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(bool is_int8_allowed,
+                                                           const SatApplyContextVariant& apply_context,
+                                                           int64_t qdq_matmulnbits_accuracy_level,
+                                                           concurrency::ThreadPool* intra_op_thread_pool)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorActionRegistry(is_int8_allowed),
+          CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level, intra_op_thread_pool),
           apply_context,
           // this transformer is only compatible with the CPU and DML EP
           {kCpuExecutionProvider, kDmlExecutionProvider}} {

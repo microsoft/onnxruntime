@@ -13,6 +13,7 @@
 #include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -114,22 +115,6 @@ class ModelTestBuilder {
       data.push_back(x != 0);
     }
     return MakeInput<bool>(shape, data);
-  }
-
-  template <typename TInt4>
-  typename std::enable_if<
-      std::is_same_v<TInt4, Int4x2> || std::is_same_v<TInt4, UInt4x2>,
-      NodeArg*>::type
-  MakeInputInt4(const std::vector<int64_t>& shape, typename TInt4::UnpackedType min, typename TInt4::UnpackedType max) {
-    using UnpackedType = typename TInt4::UnpackedType;
-    std::vector<UnpackedType> data_int8 = rand_gen_.Uniform<UnpackedType>(shape, min, max);
-    std::vector<TInt4> data(TInt4::CalcNumInt4Pairs(data_int8.size()));
-    for (size_t i = 0; i < data_int8.size(); i++) {
-      size_t r = i >> 1;
-      size_t c = i & 0x1;
-      data[r].SetElem(c, data_int8[i]);
-    }
-    return MakeInput<TInt4>(shape, data);
   }
 
   template <typename T>
@@ -249,7 +234,7 @@ class ModelTestBuilder {
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<bool>());
     std::unique_ptr<bool[]> data_buffer = std::make_unique<bool[]>(data.size());
     for (size_t i = 0; i < data.size(); ++i) data_buffer[i] = data[i];
-    tensor_proto.set_raw_data(data_buffer.get(), data.size());
+    utils::SetRawDataInTensorProto(tensor_proto, data_buffer.get(), data.size());
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);

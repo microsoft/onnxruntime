@@ -2,11 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10.0 and CUDA 11.8 by default
+# Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10 and CUDA 12 by default
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-ARG TRT_VERSION=10.0.1.6-1.cuda11.8
+ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
+ARG TRT_VERSION=10.2.0.19-1.cuda12.4
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH /opt/python/cp38-cp38/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}

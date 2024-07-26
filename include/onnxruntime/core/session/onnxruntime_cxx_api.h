@@ -2175,8 +2175,8 @@ struct Op : detail::Base<OrtOp> {
 /// </summary>
 struct ShapeInferContext {
   struct SymbolicInteger {
-    SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
-    SymbolicInteger(const char* s) : s_(s), is_int_(false){};
+    SymbolicInteger(int64_t i) : i_(i), is_int_(true) {};
+    SymbolicInteger(const char* s) : s_(s), is_int_(false) {};
     SymbolicInteger(const SymbolicInteger&) = default;
     SymbolicInteger(SymbolicInteger&&) = default;
 

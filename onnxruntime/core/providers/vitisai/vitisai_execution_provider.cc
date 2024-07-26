@@ -86,7 +86,7 @@ void VitisAIExecutionProvider::PrepareEPContextEnablement(
     model_path_str_ = ToPathString(GetTopLevelModelPath(graph_viewer).string());
   }
   std::string backend_cache_dir, backend_cache_key;
-  get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
+  get_backend_compilation_cache(model_path_str_, graph_viewer, info_, kXCCode | kDDCode | kVCode, backend_cache_dir, backend_cache_key, backend_cache_data_);
   info_["cacheDir"] = backend_cache_dir;
   info_["cacheKey"] = backend_cache_key;
   // Create a new model, reusing the graph name, the op-domain-to-opset-version map,
@@ -100,7 +100,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto& ep_ctx_graph = p_ep_ctx_model_->MainGraph();
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str_);
-    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
+    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
       ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
     }
@@ -136,7 +136,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       info_["cacheDir"] = cache_dir;
       info_["cacheKey"] = cache_key;
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << PathToUTF8String(ep_ctx_model_file_loc_);
-      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
+      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, true);
       restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, graph_viewer.ModelPath().string());
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {

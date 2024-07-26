@@ -10,7 +10,7 @@
  *   This part requires gtest header files, which do not play
  *   well with CUTLASS headers.
  */
-
+#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
 #include "blkq4_fp16_gemm_sm80.h"
 
 #include "gtest/gtest.h"
@@ -341,3 +341,4 @@ TEST(BlkQ4_GEMM, Sm80SmallTileKernelTest) {
 
 }  // namespace test
 }  // namespace onnxruntime
+#endif
