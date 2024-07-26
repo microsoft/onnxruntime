@@ -27,6 +27,9 @@ enum DataLocation {
 };
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
+#ifndef ORT_WASM64
+static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
+#endif
 
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
