@@ -225,7 +225,7 @@ struct OrtApiForVaip {
       const std::string& name, const std::vector<int64_t>& shape,
       const std::vector<int16_t>& data);                                 // [89]
   DllSafe<std::filesystem::path> (*get_model_path)(const Graph& graph);  // [90]
-  Model* (*create_empty_model)(const std::filesystem::path& path);       //[91]
+  Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);       //[91]
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);  // [92]
 };

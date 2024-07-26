@@ -496,6 +496,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) override { return p->add_tensors(); }
 
   // GraphProto (wrapped)
+  std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(); }
   void GraphProto__operator_delete(ONNX_NAMESPACE::GraphProto* p) override { delete p; }
 
   const ONNX_NAMESPACE::ValueInfoProto& GraphProto__input(const ONNX_NAMESPACE::GraphProto* p, int index) override { return p->input(index); }
@@ -540,6 +541,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) override { return p->mutable_opset_import(index); }
   int ModelProto__opset_import_size(const ONNX_NAMESPACE::ModelProto* p) override { return p->opset_import_size(); }
   ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) override { return p->add_opset_import(); }
+  void ModelProto__set_graph(ONNX_NAMESPACE::ModelProto* p, ONNX_NAMESPACE::GraphProto* graph_proto) override { return p->set_allocated_graph(graph_proto); }
 
   // NodeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::NodeProto>(); }

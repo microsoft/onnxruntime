@@ -388,6 +388,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) = 0;
 
   // GraphProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() = 0;
   virtual void GraphProto__operator_delete(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) = 0;
 
@@ -429,6 +430,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
   virtual int ModelProto__opset_import_size(const ONNX_NAMESPACE::ModelProto* p) = 0;
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) = 0;
+  virtual void ModelProto__set_graph(ONNX_NAMESPACE::ModelProto* p, ONNX_NAMESPACE::GraphProto* graph_proto) = 0;
 
   // NodeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;
