@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -12,6 +13,34 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+struct QnnNodeGroup {
+  using IndexType = size_t;
+  enum class Type : uint8_t {
+    Undefined = 0,
+    NodeUnit,
+    ConvActivationFusion,
+    DQQFusion,
+    HardSigmoidMulFusion,
+    COUNT,
+  };
+
+  static std::string_view TypeToString(QnnNodeGroup::Type type);
+
+  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const;
+  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const;
+  const std::vector<const NodeUnit*>& GetNodeUnits() const { return node_units_; }
+  const NodeUnit* GetTargetNodeUnit(const logging::Logger& logger) const;
+
+  QnnNodeGroup::Type type_ = QnnNodeGroup::Type::Undefined;
+  IndexType index_ = 0;
+  std::vector<const NodeUnit*> node_units_;
+};
+
+Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
+                        QnnModelWrapper& qnn_model_wrapper,
+                        const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                        const logging::Logger& logger);
 
 /**
  * Tries to fuse a node sequence starting from the given starting node. Should be called in a topologically ordered

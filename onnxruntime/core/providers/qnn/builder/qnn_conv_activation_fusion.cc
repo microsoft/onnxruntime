@@ -219,6 +219,34 @@ static std::optional<QDQ::NodeGroup> GetConvQDQNodeGroup(
   return node_group;
 }
 
+Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
+                                  gsl::span<const NodeUnit*> dq_node_units,
+                                  const NodeUnit* conv_node_unit,
+                                  const NodeUnit* activation_node_unit,
+                                  const NodeUnit* q_node_unit,
+                                  const logging::Logger& logger,
+                                  bool validate) {
+  QDQ::NodeGroup custom_node_group;
+  custom_node_group.dq_nodes.reserve(dq_node_units.size());
+  custom_node_group.q_nodes = std::vector<NodeIndex>{q_node_unit->Index()};
+  custom_node_group.target_node = conv_node_unit->Index();
+  auto get_node_idx = [](const NodeUnit* n) { return n->Index(); };
+  std::transform(dq_node_units.begin(), dq_node_units.end(), std::back_inserter(custom_node_group.dq_nodes),
+                 get_node_idx);
+
+  NodeUnit custom_node_unit(qnn_model_wrapper.GetGraphViewer(), custom_node_group, activation_node_unit->GetNode());
+  const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit.OpType());
+  if (conv_op_builder == nullptr) {
+    return Status::OK();
+  }
+
+  if (validate) {
+    return conv_op_builder->IsOpSupported(qnn_model_wrapper, custom_node_unit, logger);
+  }
+
+  return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, custom_node_unit, logger, validate);
+}
+
 Status TryConvActivationFusion(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
                                QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& conv_node_unit,
@@ -268,7 +296,7 @@ Status TryConvActivationFusion(/*out*/ std::vector<const NodeUnit*>& fused_nodes
     return Status::OK();
   }
 
-  NodeUnit qdq_node_unit(graph_viewer, *qdq_node_group);
+  NodeUnit qdq_node_unit(graph_viewer, *qdq_node_group, activation_node);
 
   // Create a temporary QnnModelWrapper for validation only. We need to be sure that this fusion will work before
   // modifying the actual QnnModelWrapper. This allows us to revert to the traditional OpBuilder workflow if this

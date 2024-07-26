@@ -4,6 +4,7 @@
 #include "core/providers/qnn/builder/qnn_fusions.h"
 
 #include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,6 +20,234 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+static Status QnnDQQFusionAdd(QnnModelWrapper& qnn_model_wrapper,
+                              const NodeUnit& dq_node_unit,
+                              const NodeUnit& q_node_unit,
+                              const logging::Logger& logger,
+                              bool validate = false) {
+  assert(dq_node_unit.OpType() == QDQ::DQOpName && q_node_unit.OpType() == QDQ::QOpName);
+  const auto& node_name = utils::GetNodeName(dq_node_unit);
+  const NodeUnitIODef& input_def = dq_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = q_node_unit.Outputs()[0];
+
+  QnnTensorWrapper input_tensor;
+  QnnTensorWrapper output_tensor;
+
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor), logger);
+
+  if (validate) {
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_CONVERT,
+                                                          {input_tensor.GetQnnTensor()},
+                                                          {output_tensor.GetQnnTensor()},
+                                                          {}),
+                        logger);
+  } else {
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(q_node_unit),
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_CONVERT,
+                                                      {input_def.node_arg.Name()},
+                                                      {output_def.node_arg.Name()},
+                                                      {},
+                                                      validate),
+                      "Failed to add fused Convert node.");
+  }
+}
+
+static Status QnnHardSigmoidMulFusionAdd(QnnModelWrapper& qnn_model_wrapper,
+                                         const NodeUnit& hardsigmoid_node_unit,
+                                         const NodeUnit& mul_node_unit,
+                                         const logging::Logger& logger,
+                                         bool validate = false) {
+  assert(hardsigmoid_node_unit.OpType() == "HardSigmoid" && mul_node_unit.OpType() == "Mul");
+  const auto& node_name = utils::GetNodeName(hardsigmoid_node_unit);
+  const NodeUnitIODef& input_def = hardsigmoid_node_unit.Inputs()[0];
+  const NodeUnitIODef& output_def = mul_node_unit.Outputs()[0];
+
+  QnnTensorWrapper input_tensor;
+  QnnTensorWrapper output_tensor;
+
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(input_def, input_tensor), logger);
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.MakeTensorWrapper(output_def, output_tensor), logger);
+
+  if (validate) {
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.ValidateQnnNode(node_name,
+                                                          QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                          QNN_OP_HARD_SWISH,
+                                                          {input_tensor.GetQnnTensor()},
+                                                          {output_tensor.GetQnnTensor()},
+                                                          {}),
+                        logger);
+  } else {
+    LOGS(logger, VERBOSE) << " Adding QNN HardSwish via fusion. HardSigmoid name: [" << hardsigmoid_node_unit.Name()
+                          << "] Mul name: [" << mul_node_unit.Name() << "]";
+
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor)), "Failed to add input");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)), "Failed to add output");
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(node_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_HARD_SWISH,
+                                                      {input_def.node_arg.Name()},
+                                                      {output_def.node_arg.Name()},
+                                                      {},
+                                                      validate),
+                      "Failed to add fused HardSwish node.");
+  }
+}
+
+std::string_view QnnNodeGroup::TypeToString(QnnNodeGroup::Type type) {
+  static std::array<std::string_view, static_cast<size_t>(QnnNodeGroup::Type::COUNT)> type_names = {
+      "Undefined",
+      "NodeUnit",
+      "ConvActivationFusion",
+      "DQQFusion",
+      "HardSigmoidMulFusion",
+  };
+
+  return type_names[static_cast<size_t>(type)];
+}
+
+Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  switch (type_) {
+    case Type::NodeUnit: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 1 && node_units_[0] != nullptr, "");
+      const auto* op_builder = qnn::GetOpBuilder(node_units_[0]->OpType());
+      ORT_RETURN_IF_NOT(op_builder != nullptr, "");
+      return op_builder->IsOpSupported(qmw, *node_units_[0], logger);
+    }
+    case Type::ConvActivationFusion: {
+      const size_t num_node_units = node_units_.size();
+      ORT_RETURN_IF_NOT((num_node_units == 5 || num_node_units == 6), "");
+
+      const bool has_bias_dq = num_node_units == 6;
+      std::vector<const NodeUnit*> dq_node_units = {node_units_[0], node_units_[1]};
+      const NodeUnit* conv_node_unit = node_units_[num_node_units - 3];
+      const NodeUnit* activation_node_unit = node_units_[num_node_units - 2];
+      const NodeUnit* q_node_unit = node_units_[num_node_units - 1];
+
+      if (has_bias_dq) {
+        dq_node_units.push_back(node_units_[2]);
+      }
+      return QnnConvActivationFusionAdd(qmw,
+                                        dq_node_units,
+                                        conv_node_unit,
+                                        activation_node_unit,
+                                        q_node_unit,
+                                        logger,
+                                        /*validate*/ true);
+    }
+    case Type::DQQFusion: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 2, "");
+      const NodeUnit* dq_node_unit = node_units_[0];
+      const NodeUnit* q_node_unit = node_units_[1];
+      ORT_RETURN_IF_NOT(dq_node_unit != nullptr && q_node_unit != nullptr, "");
+      return QnnDQQFusionAdd(qmw, *dq_node_unit, *q_node_unit, logger, /*validate*/ true);
+    }
+    case Type::HardSigmoidMulFusion: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 2, "");
+      const NodeUnit* hardsigmoid_node_unit = node_units_[0];
+      const NodeUnit* mul_node_unit = node_units_[1];
+      ORT_RETURN_IF_NOT(hardsigmoid_node_unit != nullptr && mul_node_unit != nullptr, "");
+      return QnnHardSigmoidMulFusionAdd(qmw, *hardsigmoid_node_unit, *mul_node_unit, logger, /*validate*/ true);
+    }
+    default:
+      std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(type_),
+                                         " in QnnNodeGroup::IsSupported()");
+      LOGS(logger, ERROR) << error_msg;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_msg);
+  }
+}
+
+Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  switch (type_) {
+    case Type::NodeUnit: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 1 && node_units_[0] != nullptr, "");
+      const auto* op_builder = qnn::GetOpBuilder(node_units_[0]->OpType());
+      ORT_RETURN_IF_NOT(op_builder != nullptr, "");
+      return op_builder->AddToModelBuilder(qmw, *node_units_[0], logger, /*do_op_validation*/ false);
+    }
+    case Type::ConvActivationFusion: {
+      const size_t num_node_units = node_units_.size();
+      ORT_RETURN_IF_NOT((num_node_units == 5 || num_node_units == 6), "");
+
+      const bool has_bias_dq = num_node_units == 6;
+      std::vector<const NodeUnit*> dq_node_units = {node_units_[0], node_units_[1]};
+      const NodeUnit* conv_node_unit = node_units_[num_node_units - 3];
+      const NodeUnit* activation_node_unit = node_units_[num_node_units - 2];
+      const NodeUnit* q_node_unit = node_units_[num_node_units - 1];
+
+      if (has_bias_dq) {
+        dq_node_units.push_back(node_units_[2]);
+      }
+      return QnnConvActivationFusionAdd(qmw,
+                                        dq_node_units,
+                                        conv_node_unit,
+                                        activation_node_unit,
+                                        q_node_unit,
+                                        logger,
+                                        /*validate*/ false);
+    }
+    case Type::DQQFusion: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 2, "");
+      const NodeUnit* dq_node_unit = node_units_[0];
+      const NodeUnit* q_node_unit = node_units_[1];
+      ORT_RETURN_IF_NOT(dq_node_unit != nullptr && q_node_unit != nullptr, "");
+      return QnnDQQFusionAdd(qmw, *dq_node_unit, *q_node_unit, logger, /*validate*/ false);
+    }
+    case Type::HardSigmoidMulFusion: {
+      ORT_RETURN_IF_NOT(node_units_.size() == 2, "");
+      const NodeUnit* hardsigmoid_node_unit = node_units_[0];
+      const NodeUnit* mul_node_unit = node_units_[1];
+      ORT_RETURN_IF_NOT(hardsigmoid_node_unit != nullptr && mul_node_unit != nullptr, "");
+      return QnnHardSigmoidMulFusionAdd(qmw, *hardsigmoid_node_unit, *mul_node_unit, logger, /*validate*/ false);
+    }
+    default:
+      std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(type_),
+                                         " in QnnNodeGroup::AddToModelBuilder()");
+      LOGS(logger, ERROR) << error_msg;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_msg);
+  }
+}
+
+const NodeUnit* QnnNodeGroup::GetTargetNodeUnit(const logging::Logger& logger) const {
+  switch (type_) {
+    case Type::NodeUnit: {
+      if (node_units_.size() != 1) {
+        return nullptr;
+      }
+      return node_units_[0];
+    }
+    case Type::ConvActivationFusion: {
+      const size_t num_node_units = node_units_.size();
+      if (!(num_node_units == 5 || num_node_units == 6)) {
+        return nullptr;
+      }
+      return node_units_[num_node_units - 3];
+    }
+    case Type::DQQFusion: {
+      if (node_units_.size() != 2) {
+        return nullptr;
+      }
+      return node_units_[0];
+    }
+    case Type::HardSigmoidMulFusion: {
+      if (node_units_.size() != 2) {
+        return nullptr;
+      }
+      return node_units_[0];
+    }
+    default:
+      std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(type_),
+                                         " in QnnNodeGroup::AddToModelBuilder()");
+      LOGS(logger, ERROR) << error_msg;
+      return nullptr;
+  }
+}
 
 /**
  * Tries to merge a DQ -> Q sequence into a QNN Convert operator. The DQ -> Q must be converting from
@@ -319,5 +548,111 @@ Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
   return Status::OK();
 }
 
+static Status TryQnnFusions(/*out*/ std::optional<QnnNodeGroup>& fused_node_group,
+                            QnnModelWrapper& qnn_model_wrapper,
+                            const NodeUnit& starting_node_unit,
+                            const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                            const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+                            const logging::Logger& logger) {
+  return Status::OK();
+}
+
+Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
+                        QnnModelWrapper& qnn_model_wrapper,
+                        const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                        const logging::Logger& logger) {
+  const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
+  const std::vector<NodeIndex> sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  const size_t approx_num_node_units = static_cast<size_t>(graph_viewer.NumberOfNodes() / 2);
+
+  std::vector<QnnNodeGroup::IndexType> sorted_qnn_node_group_indices;
+  sorted_qnn_node_group_indices.reserve(approx_num_node_units);
+
+  std::vector<QnnNodeGroup> tmp_qnn_node_groups;
+  tmp_qnn_node_groups.reserve(approx_num_node_units);
+
+  {
+    std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType> node_unit_to_qnn_node_group;
+    std::vector<gsl::not_null<const NodeUnit*>> sorted_node_units;
+    sorted_node_units.reserve(approx_num_node_units);
+
+    // Create QnnNodeGroups for fusions first.
+    for (NodeIndex node_index : sorted_node_indices) {
+      gsl::not_null<const Node*> node = graph_viewer.GetNode(node_index);
+
+      // Get the NodeUnit associated with the node.
+      const auto node_unit_it = node_to_node_unit.find(node);
+      ORT_RETURN_IF_NOT(node_unit_it != node_to_node_unit.end(), "Could not find NodeUnit for Node ", node->Name());
+      gsl::not_null<const NodeUnit*> node_unit = node_unit_it->second;
+
+      // Skip this node if it is not the NodeUnit's target node to ensure NodeUnits are visited in topological order.
+      if (node != &node_unit->GetNode()) {
+        continue;
+      }
+
+      sorted_node_units.push_back(node_unit);
+
+      if (node_unit_to_qnn_node_group.count(node_unit) != 0) {
+        continue;  // Already handled this node unit
+      }
+
+      std::optional<QnnNodeGroup> fused_node_group;
+      ORT_RETURN_IF_ERROR(TryQnnFusions(fused_node_group, qnn_model_wrapper, *node_unit,
+                                        node_to_node_unit, node_unit_to_qnn_node_group, logger));
+
+      if (fused_node_group.has_value()) {
+        const QnnNodeGroup::IndexType index = tmp_qnn_node_groups.size();
+        fused_node_group->index_ = index;
+
+        for (const NodeUnit* fused_node_unit : fused_node_group->GetNodeUnits()) {
+          assert(fused_node_unit != nullptr);
+          node_unit_to_qnn_node_group.insert({fused_node_unit, index});
+        }
+
+        tmp_qnn_node_groups.push_back(std::move(*fused_node_group));
+      }
+    }
+
+    // Create QnnNodeGroups for the leftover NodeUnits.
+    for (gsl::not_null<const NodeUnit*> node_unit : sorted_node_units) {
+      const auto it = node_unit_to_qnn_node_group.find(node_unit);
+      if (it != node_unit_to_qnn_node_group.end()) {
+        // Already handled this NodeUnit.
+        const QnnNodeGroup& qnn_node_group = tmp_qnn_node_groups[it->second];
+        if (node_unit == qnn_node_group.GetTargetNodeUnit(logger)) {
+          sorted_qnn_node_group_indices.push_back(qnn_node_group.index_);
+        }
+        continue;
+      }
+
+      const QnnNodeGroup::IndexType index = tmp_qnn_node_groups.size();
+      QnnNodeGroup fused_node_group = {};
+      fused_node_group.type_ = QnnNodeGroup::Type::NodeUnit;
+      fused_node_group.index_ = index;
+      fused_node_group.node_units_.resize(1);
+      fused_node_group.node_units_[0] = node_unit;
+      tmp_qnn_node_groups.push_back(std::move(fused_node_group));
+
+      node_unit_to_qnn_node_group.insert({node_unit, index});
+      sorted_qnn_node_group_indices.push_back(index);
+    }
+
+    assert(tmp_qnn_node_groups.size() == sorted_qnn_node_group_indices.size());
+  }
+
+  // Copy QnnNodeGroups to output in sorted (topological) order.
+  qnn_node_groups.resize(0);
+  qnn_node_groups.reserve(tmp_qnn_node_groups.size());
+  for (auto index : sorted_qnn_node_group_indices) {
+    assert(index < tmp_qnn_node_groups.size());
+    QnnNodeGroup qnn_node_group = std::move(tmp_qnn_node_groups[index]);
+    qnn_node_group.index_ = qnn_node_groups.size();
+    qnn_node_groups.push_back(std::move(qnn_node_group));
+  }
+
+  assert(qnn_node_groups.size() == sorted_qnn_node_group_indices.size());
+
+  return Status::OK();
+}
 }  // namespace qnn
 }  // namespace onnxruntime
