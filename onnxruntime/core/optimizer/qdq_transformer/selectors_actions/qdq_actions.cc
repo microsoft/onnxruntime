@@ -453,7 +453,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                     scale_dst_name);
 
   if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp));
+    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp.value()));
     replacement_node.MutableInputArgsCount().push_back(1);
     ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name, std::move(zp_dst_ptr)).second,
                       "Failed to add buffered tensor ",
