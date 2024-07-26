@@ -61,7 +61,7 @@ Routine Description:
 
     This implementation supports sampling a portion of the convolution
     patches. This avoids the need to allocate very large buffers to store
-    all of the convolution patches at once, when the underyling GEMM
+    all of the convolution patches at once, when the underlying GEMM
     implementation will already break up the operation into panels. Multiple
     threads can also be used to process different portions of the image.
 
@@ -267,7 +267,7 @@ Routine Description:
 
     This implementation supports sampling a portion of the convolution
     patches. This avoids the need to allocate very large buffers to store
-    all of the convolution patches at once, when the underyling GEMM
+    all of the convolution patches at once, when the underlying GEMM
     implementation will already break up the operation into panels. Multiple
     threads can also be used to process different portions of the image.
 

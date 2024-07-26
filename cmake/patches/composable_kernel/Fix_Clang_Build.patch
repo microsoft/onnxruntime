@@ -44,7 +44,7 @@ index c23746e7f..bc326c8b5 100644
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
 @@ -269,12 +248,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
-     message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
+     message(STATUS "CK_HIP_VERSION_PATCH overridden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
 -link_libraries(hip::device)

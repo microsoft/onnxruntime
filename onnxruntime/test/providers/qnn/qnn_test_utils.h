@@ -42,7 +42,7 @@ struct QuantParams {
         symmetric);
   }
 
-  static QuantParams<QType> Compute(float rmin, float rmax, QType qmin, QType qmax, bool symmetric = false) {
+  static QuantParams<QType> Compute(float rmin, float rmax, float qmin, float qmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -56,8 +56,8 @@ struct QuantParams {
       rmin = -abs_max;
     }
 
-    float qmin_flt = static_cast<float>(qmin);
-    float qmax_flt = static_cast<float>(qmax);
+    float qmin_flt = qmin;
+    float qmax_flt = qmax;
     const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
     float initial_zero_point = 0.0f;
 
@@ -517,6 +517,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
 
+  // Uncomment to save f32 model to disk for debugging.
+  // ASSERT_STATUS_OK(onnxruntime::Model::Save(f32_model, ToPathString("cmp_accuracy.f32.onnx")));
+
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
   InferenceModel(f32_model_data, "f32_model_logger", {}, ExpectedEPNodeAssignment::All,
@@ -555,6 +558,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   qdq_helper.SetGraphOutputs();
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
+
+  // Uncomment to save QDQ model to disk for debugging.
+  // ASSERT_STATUS_OK(onnxruntime::Model::Save(qdq_model, ToPathString("cmp_accuracy.qdq.onnx")));
 
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);

@@ -1,21 +1,21 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
 
 using ApiAttributeVariant = std::variant<
-    const DML_TENSOR_DESC*, 
-    const DML_OPERATOR_DESC*, 
-    UINT, 
-    UINT64, 
-    INT, 
-    FLOAT, 
-    const UINT*, 
-    const INT*, 
-    const FLOAT*, 
-    const DML_SCALE_BIAS*, 
-    DML_SIZE_2D, 
-    DML_SCALAR_UNION, 
+    const DML_TENSOR_DESC*,
+    const DML_OPERATOR_DESC*,
+    UINT,
+    UINT64,
+    INT,
+    FLOAT,
+    const UINT*,
+    const INT*,
+    const FLOAT*,
+    const DML_SCALE_BIAS*,
+    DML_SIZE_2D,
+    DML_SCALAR_UNION,
     BOOL
     >;
 
@@ -39,20 +39,20 @@ namespace OperatorFieldTypes
 }
 
 using OperatorFieldVariant = std::variant<
-    OperatorFieldTypes::TensorDesc, 
-    OperatorFieldTypes::TensorDescArray, 
-    OperatorFieldTypes::FusedActivationOperatorDesc, 
-    OperatorFieldTypes::FusedActivationOperatorDescArray, 
-    OperatorFieldTypes::UInt, 
-    OperatorFieldTypes::UInt64, 
-    OperatorFieldTypes::Int, 
-    OperatorFieldTypes::Float, 
-    OperatorFieldTypes::UIntArray, 
-    OperatorFieldTypes::IntArray, 
-    OperatorFieldTypes::FloatArray, 
-    OperatorFieldTypes::ScaleBias, 
-    OperatorFieldTypes::Size2D, 
-    OperatorFieldTypes::ScalarUnion, 
+    OperatorFieldTypes::TensorDesc,
+    OperatorFieldTypes::TensorDescArray,
+    OperatorFieldTypes::FusedActivationOperatorDesc,
+    OperatorFieldTypes::FusedActivationOperatorDescArray,
+    OperatorFieldTypes::UInt,
+    OperatorFieldTypes::UInt64,
+    OperatorFieldTypes::Int,
+    OperatorFieldTypes::Float,
+    OperatorFieldTypes::UIntArray,
+    OperatorFieldTypes::IntArray,
+    OperatorFieldTypes::FloatArray,
+    OperatorFieldTypes::ScaleBias,
+    OperatorFieldTypes::Size2D,
+    OperatorFieldTypes::ScalarUnion,
     OperatorFieldTypes::Bool
     >;
 
@@ -126,4 +126,3 @@ private:
     const DML_SCHEMA_FIELD* m_schema;
     OperatorFieldVariant m_data;
 };
-

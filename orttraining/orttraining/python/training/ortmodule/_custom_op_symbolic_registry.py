@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from typing import Callable
 
 import torch
@@ -969,3 +970,26 @@ def softmax(g, input, dim, dtype=None):
     softmax = g.op("Softmax", casted_input, axis_i=dim)
 
     return softmax
+
+
+ATEN_SDPA_FALLBACK = os.getenv("ORTMODULE_ATEN_SDPA_FALLBACK", None)
+if ATEN_SDPA_FALLBACK:
+    # based on the following internal PyTorch kernel for efficient attention:
+    # https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778
+    @register_symbolic("scaled_dot_product_attention")
+    def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+        dropout_p_f = g.op("Cast", dropout_p, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        compute_logsumexp = g.op("Constant", value_t=torch.tensor([1], dtype=torch.bool))
+        return g.op(
+            "org.pytorch.aten::ATen",
+            query,
+            key,
+            value,
+            attn_mask,
+            compute_logsumexp,
+            dropout_p_f,
+            is_causal,
+            scale,
+            operator_s="_scaled_dot_product_efficient_attention",
+            outputs=4,
+        )[0]
