@@ -23,21 +23,24 @@ struct RocmContext : public CustomOpContext {
     void* resource = {};
     OrtStatus* status = nullptr;
 
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_ROCM_RESOUCE_VERSION, RocmResource::hip_stream_t, &resource);
+    status = ort_api.KernelContext_GetResource(
+        &kernel_ctx, ORT_ROCM_RESOURCE_VERSION, RocmResource::hip_stream_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch hip stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     hip_stream = reinterpret_cast<hipStream_t>(resource);
 
     resource = {};
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_ROCM_RESOUCE_VERSION, RocmResource::miopen_handle_t, &resource);
+    status = ort_api.KernelContext_GetResource(
+        &kernel_ctx, ORT_ROCM_RESOURCE_VERSION, RocmResource::miopen_handle_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch miopen handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     miopen_handle = reinterpret_cast<miopenHandle_t>(resource);
 
     resource = {};
-    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_ROCM_RESOUCE_VERSION, RocmResource::rocblas_handle_t, &resource);
+    status = ort_api.KernelContext_GetResource(
+        &kernel_ctx, ORT_ROCM_RESOURCE_VERSION, RocmResource::rocblas_handle_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch rocblas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }

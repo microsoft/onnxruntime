@@ -152,7 +152,7 @@ Status Sample(AllocatorPtr& allocator,
                                                         1,
                                                         generator,
                                                         *sampled_idx));
-  // TODO: update presense_mask()
+  // TODO: update presence_mask()
 #ifdef DEBUG_GENERATION
   dumper->Print("sampled_idx", *sampled_idx);
 #endif

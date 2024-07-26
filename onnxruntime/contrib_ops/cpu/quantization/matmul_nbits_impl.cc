@@ -40,6 +40,13 @@ void Dequantize4BitsKernelReOrder(
   }
   T* output_i = output + out_y * out_cols + out_x;
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
+    const uint8_t* c = (const uint8_t*)(&quant_value);
+    quant_value = (uint32_t)c[0] |
+                  (uint32_t)c[1] << 8 |
+                  (uint32_t)c[2] << 16 |
+                  (uint32_t)c[3] << 24;
+  }
   const int remain_x = std::min(8, out_cols - out_x);
   const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx_x * 8) & (block_size - 1));
   for (int i = 0; i < remain_x; i++) {

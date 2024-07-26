@@ -77,6 +77,7 @@ ignore = [
     "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
+    "N813", # Allow importing camelcase names in lowercase
     "N999", # Module names
     "NPY002", # np.random.Generator may not always fit our use cases
     "PERF203", # "try-except-in-loop" only affects Python <3.11, and the improvement is minor; can have false positives
@@ -84,6 +85,7 @@ ignore = [
     "PYI041", # May create confusion
     "PYI024", # May create confusion
     "SIM102", # We don't perfer always combining if branches
+    "SIM103", # Do not collapse if-else
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
     "SIM116", # Don't use dict lookup to replace if-else

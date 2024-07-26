@@ -15,6 +15,8 @@ set(contrib_ops_excluded_files
   "bert/attention_softmax.h"
   "bert/attention_softmax.cu"
   "bert/attention_prepare_qkv.cu"
+  "bert/attention_kernel_options.h"
+  "bert/attention_kernel_options.cc"
   "bert/decoder_attention_impl.h"
   "bert/decoder_attention_impl.cu"
   "bert/decoder_masked_multihead_attention.h"

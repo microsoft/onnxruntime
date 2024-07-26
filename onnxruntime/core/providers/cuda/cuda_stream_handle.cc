@@ -179,7 +179,7 @@ Status CudaStream::CleanUpOnRunEnd() {
 }
 
 void* CudaStream::GetResource(int version, int id) const {
-  ORT_ENFORCE(version <= ORT_CUDA_RESOUCE_VERSION, "resource version unsupported!");
+  ORT_ENFORCE(version <= ORT_CUDA_RESOURCE_VERSION, "resource version unsupported!");
   void* resource{};
   switch (id) {
     case CudaResource::cuda_stream_t:

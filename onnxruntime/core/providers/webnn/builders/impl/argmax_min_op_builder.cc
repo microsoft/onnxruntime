@@ -40,23 +40,20 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   int64_t axis = helper.Get("axis", 0);
   const auto keep_dims = helper.Get("keepdims", 1);
-  const auto select_last_index = helper.Get("select_last_index", 0);
 
   axis = HandleNegativeAxis(axis, input_rank);
-  emscripten::val axes = emscripten::val::array();
-  axes.call<void>("push", static_cast<uint32_t>(axis));
 
   emscripten::val options = emscripten::val::object();
-  options.set("axes", axes);
   options.set("keepDimensions", keep_dims == 1);
-  options.set("selectLastIndex", select_last_index == 1);
+  // TODO(Honry): check whether int64 output data type is supported by WebNN opSupportLimits() API.
+  options.set("outputDataType", "int64");
   emscripten::val output = emscripten::val::object();
 
   const auto& op_type = node.OpType();
   if (op_type == "ArgMax") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMax", input, narrow<uint32_t>(axis), options);
   } else if (op_type == "ArgMin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, options);
+    output = model_builder.GetBuilder().call<emscripten::val>("argMin", input, narrow<uint32_t>(axis), options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ArgMaxMinOpBuilder, unknown op: ", op_type);
   }
@@ -76,15 +73,6 @@ bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
-  // WebNN CPU backend only supports select_last_index = 0.
-  if (device_type == WebnnDeviceType::CPU) {
-    NodeAttrHelper helper(node);
-    const auto select_last_index = helper.Get("select_last_index", 0);
-    if (select_last_index) {
-      LOGS(logger, VERBOSE) << "ArgMax/ArgMin with select_last_index = 1 is not supported on WebNN CPU backend.";
-      return false;
-    }
-  }
   return true;
 }
 

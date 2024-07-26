@@ -1333,6 +1333,14 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_cache_enable_ = info.engine_cache_enable;
     weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
     onnx_model_folder_path_ = info.onnx_model_folder_path;
+    onnx_model_bytestream_ = info.onnx_bytestream;
+    onnx_model_bytestream_size_ = info.onnx_bytestream_size;
+    if ((onnx_model_bytestream_ != nullptr && onnx_model_bytestream_size_ == 0) ||
+        (onnx_model_bytestream_ == nullptr && onnx_model_bytestream_size_ != 0)) {
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "When providing either 'trt_onnx_bytestream_size' or "
+                                         "'trt_onnx_bytestream' both have to be provided"));
+    }
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
@@ -1757,7 +1765,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_file_path: " << ep_context_file_path_
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
-                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_;
+                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2597,28 +2606,42 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                                                       std::string& onnx_model_folder_path,
                                                       std::string& weight_stripped_engine_cath_path,
                                                       bool path_check,
+                                                      const void* onnx_model_bytestream,
+                                                      size_t onnx_model_bytestream_size,
                                                       nvinfer1::ICudaEngine* trt_engine,
                                                       bool serialize_refitted_engine,
                                                       bool detailed_build_log) {
 #if NV_TENSORRT_MAJOR >= 10
+  bool refit_from_file = onnx_model_bytestream == nullptr && onnx_model_bytestream_size == 0;
   std::filesystem::path onnx_model_path{onnx_model_folder_path};
-  onnx_model_path.append(onnx_model_filename);
-  if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "For security purpose, the ONNX model path should be set with "
-                           "a relative path, but it is an absolute path: " +
-                               onnx_model_path.string());
-  }
-  if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "The ONNX model path has '..'. For security purpose, it's not "
-                           "allowed to point outside the directory.");
-  }
+  if (refit_from_file) {
+    if (!onnx_model_filename.empty()) {
+      onnx_model_path.append(onnx_model_filename);
+    }
+    if (onnx_model_path.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The ONNX model was not provided as path. "
+                             "Please use provide an ONNX bytestream to enable refitting the weightless engine.");
+    } else {
+      // check if file path to ONNX is legal
+      if (path_check && IsAbsolutePath(onnx_model_path.string())) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "For security purpose, the ONNX model path should be set with "
+                               "a relative path, but it is an absolute path: " +
+                                   onnx_model_path.string());
+      }
+      if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "The ONNX model path has '..'. For security purpose, it's not "
+                               "allowed to point outside the directory.");
+      }
 
-  if (!std::filesystem::exists(onnx_model_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "The ONNX model " + onnx_model_path.string() +
-                               " does not exist.");
+      if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "The ONNX model " + onnx_model_path.string() +
+                                   " does not exist.");
+      }
+    }
   }
 
   // weight-stripped engine refit logic
@@ -2626,9 +2649,18 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
   auto refitter = std::unique_ptr<nvinfer1::IRefitter>(nvinfer1::createInferRefitter(*trt_engine, trt_logger));
   auto parser_refitter = std::unique_ptr<nvonnxparser::IParserRefitter>(
       nvonnxparser::createParserRefitter(*refitter, trt_logger));
-  if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+  if (refit_from_file) {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitting from file on disk: " << onnx_model_path.string();
+    if (!parser_refitter->refitFromFile(onnx_model_path.string().c_str())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in: " + onnx_model_path.string());
+    }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refitting from byte array";
+    if (!parser_refitter->refitFromBytes(onnx_model_bytestream, onnx_model_bytestream_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP's IParserRefitter could not refit deserialized weight-stripped engine with weights contained in the provided bytestraem");
+    }
   }
   if (refitter->refitCudaEngine()) {
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully refitted the weight-stripped engine.";
@@ -3212,10 +3244,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
 
     if (weight_stripped_engine_refit_) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refit engine from main ONNX file after engine build";
+      char* onnx = string_buf.data();
+      size_t onnx_size = string_buf.size();
       auto status = RefitEngine(model_path_,
                                 onnx_model_folder_path_,
                                 engine_cache_path,
                                 false /* path check for security */,
+                                onnx,
+                                onnx_size,
                                 trt_engine.get(),
                                 true /* serialize refitted engine to disk */,
                                 detailed_build_log_);
@@ -3685,6 +3722,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                   onnx_model_folder_path_,
                                   engine_cache_path,
                                   false /* path check for security */,
+                                  onnx_model_bytestream_,
+                                  onnx_model_bytestream_size_,
                                   trt_engine,
                                   true /* serialize refitted engine to disk */,
                                   detailed_build_log_);
@@ -3910,6 +3949,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            compute_capability_,
                                                            weight_stripped_engine_enable_,
                                                            onnx_model_folder_path_,
+                                                           onnx_model_bytestream_,
+                                                           onnx_model_bytestream_size_,
                                                            detailed_build_log_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {

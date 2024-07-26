@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.23.0.240531'
+  QnnSdk: '2.24.0.240626'
   build_config: 'RelWithDebInfo'  
   IsReleaseBuild: false
   DoEsrp: false
@@ -103,7 +103,7 @@ stages:
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages and create project.assets.json'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           platform: 'Any CPU'
           configuration: ${{ parameters.build_config }}
           msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
@@ -112,7 +112,7 @@ stages:
       - task: MSBuild@1
         displayName: 'Build C# bindings'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           platform: 'Any CPU'
           configuration: ${{ parameters.build_config }}
           msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'

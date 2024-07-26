@@ -977,6 +977,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     12,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
     {REG_INFO(     18,  ReduceMin,                          typeNameListDefault,            supportedTypeListFloat16to32Ints32to64, DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
+    {REG_INFO(     20,  ReduceMin,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  ArgMax,                             typeNameListDefault,            supportedTypeListArgMinMax,             DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ArgMax,                             typeNameListDefault,            supportedTypeListArgMinMax,             DmlGraphSupport::Supported)},
     {REG_INFO(     12,  ArgMax,                             typeNameListDefault,            supportedTypeListArgMinMax,             DmlGraphSupport::Supported)},
