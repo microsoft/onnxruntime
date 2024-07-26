@@ -38,16 +38,6 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
   std::vector<MatMulTestData<T>> test_cases;
 
   test_cases.push_back(
-      {"test with empty inputs and zero filled output",
-       {4, 0},
-       {0, 4},
-       {4, 4},
-       {0, 0, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
-        0, 0, 0, 0}});
-
-  test_cases.push_back(
       {"test padding and broadcast A > B",
        {3, 1, 1, 2},
        {2, 2, 2},
@@ -227,6 +217,25 @@ TEST(MathOpTest, MatMulInt64Type) {
 
 TEST(MathOpTest, MatMulUint64Type) {
   RunMatMulTest<uint64_t>(9);
+}
+
+TEST(MathOpTest, MatMul_ZeroK) {
+  // test with empty inputs and zero filled output
+  constexpr const std::array<float, 0> empty_input{};
+  const std::vector<float> expected_output{0, 0, 0, 0,
+                                           0, 0, 0, 0,
+                                           0, 0, 0, 0,
+                                           0, 0, 0, 0};
+  OpTester test("MatMul", 14);
+
+  test.AddInput<float>("A", {4, 0}, empty_input);
+  test.AddInput<float>("B", {0, 4}, empty_input);
+  test.AddOutput<float>("Y", {4, 4}, expected_output);
+
+  // No special case is implemented.
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider, kDmlExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
