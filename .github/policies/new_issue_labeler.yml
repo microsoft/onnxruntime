@@ -1,12 +1,18 @@
-name: Issue Triage
+name: New Issue Labeler
 description: Assign label to new issues without a label
 resource: repository
 
 configuration:
   resourceManagementConfiguration:
     eventResponderTasks:
-      - description: Add labels to unassigned issue
-        triggerOnOwnActions: falsetriggerOnOwnActions: false
+      - description: >-
+          Search for issue where -
+          * Issue is open
+          * Issue is not assigned to someone
+          * Issue is not labeled
+
+          Then -
+          * Apply relevant label(s) using RegEx
         if:
           - payloadType: Issues
           - and:
@@ -19,10 +25,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bc\s*sharp\b|\bc#)/i"
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bc\s*sharp\b|\bc#)/i"
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -30,10 +36,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bjava\b/i"
+                      pattern: '/\bjava\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bjava\b/i"
+                      pattern: '/\bjava\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -41,10 +47,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bjavascript\b/i"
+                      pattern: '/\bjavascript\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bjavascript\b/i"
+                      pattern: '/\bjavascript\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -52,10 +58,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bacl\b/i"
+                      pattern: '/\bacl\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bacl\b/i"
+                      pattern: '/\bacl\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -63,10 +69,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\barmnn\b/i"
+                      pattern: '/\barmnn\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\barmnn\b/i"
+                      pattern: '/\barmnn\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -74,10 +80,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bcann\b/i"
+                      pattern: '/\bcann\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bcann\b/i"
+                      pattern: '/\bcann\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -85,17 +91,17 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bcore-?ml\b/i"
+                      pattern: '/\bcore-?ml\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bcore-?ml\b/i"
+                      pattern: '/\bcore-?ml\b/i'
                       isRegEx: true
             then:
               - addLabel:
                   label: ep:CoreML
           - if:
               - titleContains:
-                  pattern: "/\bcuda\b/i"
+                  pattern: '/\bcuda\b/i'
                   isRegEx: true
             then:
               - addLabel:
@@ -103,10 +109,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bdirect\s*ml\b|\bdml\b)/i"
+                      pattern: '/(\bdirect\s*ml\b|\bdml\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bdirect\s*ml\b|\bdml\b)/i"
+                      pattern: '/(\bdirect\s*ml\b|\bdml\b)/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -114,10 +120,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bmi\s*graph\s*x\b/i"
+                      pattern: '/\bmi\s*graph\s*x\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bmi\s*graph\s*x\b/i"
+                      pattern: '/\bmi\s*graph\s*x\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -125,10 +131,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bone\s*dnn\b/i"
+                      pattern: '/\bone\s*dnn\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bone\s*dnn\b/i"
+                      pattern: '/\bone\s*dnn\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -136,10 +142,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bopen\s*vino\b/i"
+                      pattern: '/\bopen\s*vino\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bopen\s*vino\b/i"
+                      pattern: '/\bopen\s*vino\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -147,10 +153,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bqnn\b/i"
+                      pattern: '/\bqnn\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bqnn\b/i"
+                      pattern: '/\bqnn\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -158,10 +164,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\brockchip\b/i"
+                      pattern: '/\brockchip\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\brockchip\b/i"
+                      pattern: '/\brockchip\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -169,10 +175,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\brocm\b/i"
+                      pattern: '/\brocm\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\brocm\b/i"
+                      pattern: '/\brocm\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -180,17 +186,17 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bsnpe\b/i"
+                      pattern: '/\bsnpe\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bsnpe\b/i"
+                      pattern: '/\bsnpe\b/i'
                       isRegEx: true
             then:
               - addLabel:
                   label: ep:SNPE
           - if:
               - titleContains:
-                  pattern: "/(\btensor\s*rt\b|\btrt\b)/i"
+                  pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
                   isRegEx: true
             then:
               - addLabel:
@@ -198,10 +204,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\btvm\b/i"
+                      pattern: '/\btvm\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\btvm\b/i"
+                      pattern: '/\btvm\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -209,10 +215,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bvitis(?:ai)?\b/i"
+                      pattern: '/\bvitis(?:ai)?\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bvitis(?:ai)?\b/i"
+                      pattern: '/\bvitis(?:ai)?\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -220,10 +226,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bwebgpu\b/i"
+                      pattern: '/\bwebgpu\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bwebgpu\b/i"
+                      pattern: '/\bwebgpu\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -231,10 +237,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bwebnn\b/i"
+                      pattern: '/\bwebnn\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bwebnn\b/i"
+                      pattern: '/\bwebnn\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -242,10 +248,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/\bxnn\s*pack\b/i"
+                      pattern: '/\bxnn\s*pack\b/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/\bxnn\s*pack\b/i"
+                      pattern: '/\bxnn\s*pack\b/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -253,10 +259,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bjetson\b|\bjetpack\b)/i"
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bjetson\b|\bjetpack\b)/i"
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -264,10 +270,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bdot\s*net\b|\bnuget\b|\.net\b)/i"
+                      pattern: '/(\bdot\s*net\b|\bnuget\b|\.net\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bdot\s*net\b|\bnuget\b|\.net\b)/i"
+                      pattern: '/(\bdot\s*net\b|\bnuget\b|\.net\b)/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -275,10 +281,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i"
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i"
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
                       isRegEx: true
             then:
               - addLabel:
@@ -286,17 +292,17 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i"
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i"
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
                       isRegEx: true
             then:
               - addLabel:
                   label: platform:web
           - if:
               - titleContains:
-                  pattern: "/(\bwindows\b|\bwinrt\b|\bwinml\b)/i"
+                  pattern: '/(\bwindows\b|\bwinrt\b|\bwinml\b)/i'
                   isRegEx: true
             then:
               - addLabel:
@@ -304,21 +310,17 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: "/(\bhugging-?\s*face\b)/i"
+                      pattern: '/(\bhugging-?\s*face\b)/i'
                       isRegEx: true
                   - bodyContains:
-                      pattern: "/(\bhugging-?\s*face\b)/i"
+                      pattern: '/(\bhugging-?\s*face\b)/i'
                       isRegEx: true
             then:
               - addLabel:
                   label: model:transformer
           - if:
-              - or:
-                  - titleContains:
-                      pattern: "/(\bquantization\b|\bquantized*\b)/i"
-                      isRegEx: true
-                  - bodyContains:
-                      pattern: "/(is this a quantized model\?\n\nYes|\bquantization\b|\bquantized*\b)/i"
+              - titleContains:
+                      pattern: '/(quant|\bqdq\b)/i'
                       isRegEx: true
             then:
               - addLabel:
