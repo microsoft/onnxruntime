@@ -145,6 +145,9 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
            parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
     // Transpose past_key and past_value to use memory efficient attention
 
+    // Here we have assumption that there is no bias for key and value when they are in BNSH format.
+    // TODO: Both flash attention and efficient attention can support bias for key and value in BNSH format.
+    //       So there is no need to tranpose key and value to BSNH format.
     // past_key (BxNxSxH) => temp_k_workspace (BxSxNxH)
     ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, kv_sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, data.past_key, data.temp_k_workspace));
