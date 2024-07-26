@@ -432,9 +432,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.AddInitializedTensor(tensor);
   };
 
-  the_global_api.get_model_path = [](const Graph& graph) -> vaip_core::DllSafe<std::filesystem::path> {
-    std::filesystem::path model_path = graph.ModelPath();
-    return vaip_core::DllSafe(model_path);
+  the_global_api.get_model_path = [](const Graph& graph) -> const std::filesystem::path& {
+    return graph.ModelPath();
   };
 
   the_global_api.create_empty_model = [](const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset) -> Model* {
