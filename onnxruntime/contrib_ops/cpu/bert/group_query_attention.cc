@@ -16,6 +16,8 @@
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
 
+#include <iostream>
+
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
@@ -103,6 +105,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   if (do_rotary_) {
+    // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
     rotary_params.sequence_length = sequence_length;
@@ -114,17 +117,48 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.seq_stride = head_size;
     rotary_params.head_stride = sequence_length * rotary_params.seq_stride;
     rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) * rotary_params.head_stride;
-    rotary_params.position_ids_format = sequence_length == 1 ? 1 : 0;
+    rotary_params.position_ids_format = parameters.is_interactive || !parameters.is_prompt ? 1 : 0;
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
-    std::vector<int64_t> pos_ids(sequence_length == 1 ? batch_size : 1);
-    if (sequence_length == 1) {
+    // Generate position ids
+    // std::vector<int64_t> pos_ids(sequence_length == 1 ? batch_size : 1);
+    // if (sequence_length == 1) {
+    //   for (int b = 0; b < batch_size; b++) {
+    //     pos_ids[b] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b]);
+    //   }
+    // } else {
+    //   pos_ids[0] = static_cast<int64_t>(0);
+    // }
+    const int pos_ids_size = parameters.is_interactive ? batch_size * sequence_length : (parameters.is_prompt ? 1 : batch_size);
+    std::vector<int64_t> pos_ids(pos_ids_size);
+    // const int32_t* seqlens_k_data = seqlens_k->Data<const int32_t>();
+    if (parameters.is_interactive) {
+      for (int b = 0; b < batch_size; b++) {
+        for (int s = 0; s < sequence_length; s++) {
+          if (seqlens_k->Data<int32_t>()[b] + s < seqlens_k->Data<int32_t>()[batch_size + b]) {
+            pos_ids[b * sequence_length + s] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b] + s);
+          } else {
+            pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
+          }
+        }
+      }
+      // print pos_ids
+      // std::cout << "pos_ids: ";
+      // for (int i = 0; i < pos_ids_size; i++) {
+      //   if (i % sequence_length == 0) {
+      //     std::cout << std::endl;
+      //   }
+      //   std::cout << pos_ids[i] << " ";
+      // }
+      // std::cout << std::endl;
+    } else if (parameters.is_prompt) {
+      pos_ids[0] = static_cast<int64_t>(0);
+    } else {
       for (int b = 0; b < batch_size; b++) {
         pos_ids[b] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b]);
       }
-    } else {
-      pos_ids[0] = static_cast<int64_t>(0);
     }
+    // Initialize separate buffers for rotary embeddings
     const T* q_input;
     const T* k_input;
     T* q_rotary;
@@ -149,6 +183,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       Q = RotaryQ;
       K = RotaryK;
     }
+    // Run rotary embedding for Q and K
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids.data(), cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
@@ -161,6 +196,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
                                               pos_ids.data(), cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
+    // Pack V into rotary QKV buffer
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;
       T* v_rotary = k_rotary + kv_num_heads_ * sequence_length * head_size;

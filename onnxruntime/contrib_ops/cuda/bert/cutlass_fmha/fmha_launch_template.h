@@ -42,8 +42,10 @@ struct RightPaddingBatchHook {
 
     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
 
-    // Advance to current batch - in case of different sequence lengths
-    if (p.seqlen_k_ptr) {
+    // When seqstart_k_ptr is provided, we interpret it as past sequence length. This is used for interactive mode in GQA
+    if (p.seqstart_k_ptr) {
+      p.num_keys = p.seqstart_k_ptr[batch_id] + p.num_queries;
+    } else if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
     }
 

@@ -24,7 +24,7 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* seqlens_k,
                    const Tensor* total_seqlen,
                    float scale) {
-  // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
+  // Note: Here S* is past_cache_sequence_length, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   // no packing for q/k/v:
@@ -169,12 +169,16 @@ Status CheckInputs(const Tensor* query,
 
   // Check seqlens_k tensor (holding past seqlen for token gen)
   const auto& seqlens_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  bool is_interactive = seqlens_dim.size() == 2;
+  if (is_interactive && (seqlens_dim[1] != batch_size || seqlens_dim[0] != 2)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "seqlens_k must be shape (2, batch_size), or shape (batch_size).");
+  } else if (!is_interactive && (seqlens_dim.size() > 1 || seqlens_dim[0] != batch_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens_k must be shape (batch_size).");
   }
 
-  // Set present sequence length and kv_share_buffer from input total_seqlen tensor
+  // Set present sequence length from input total_seqlen tensor
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length tensor must be of one element.");
@@ -194,11 +198,11 @@ Status CheckInputs(const Tensor* query,
     }
     if (cos_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be not be less than total_sequence_length.");
+                             "cos_cache dimension 0 shall not be less than total_sequence_length.");
     }
     if (sin_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be not be less than total_sequence_length.");
+                             "sin_cache dimension 0 shall not be less than total_sequence_length.");
     }
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -218,7 +222,17 @@ Status CheckInputs(const Tensor* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  bool is_prompt = sequence_length != 1;
+  bool is_prompt;
+  if (is_interactive) {
+    is_prompt = false; // irrelevant for interactive decoding
+  } else {
+    // If not interactive, sequence_length is 1 for token gen and arbitrarily large for prompt
+    is_prompt = (sequence_length == total_sequence_length);
+    if (!is_prompt && sequence_length != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "sequence_length shall be 1 when it is not prompt.");
+    }
+  }
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -234,6 +248,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->is_unidirectional = true;
+    output_parameters->is_interactive = is_interactive;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
     output_parameters->qkv_format = qkv_format;

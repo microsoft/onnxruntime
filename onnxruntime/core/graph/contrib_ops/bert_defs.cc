@@ -1105,11 +1105,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(5,
                "seqlens_k",
                // For prompt, the value is number of tokens (excluding padding) - 1.
-               "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
+               "First case: 1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1)."
+               "Second case: 2D tensor of shape (2, batch_size) where the first row is past sequence lengths and the"
+               "second row is total sequence lengths. This allows for arbitrarily long inputs with past"
+               "context, which is useful for interactive decoding and system prompt preprocessing.",
                "M")
         .Input(6,
                "total_sequence_length",
-               "Scalar tensor of total sequence length (past + new).",
+               "Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for"
+               "checking inputs and determining prompt vs token generation case if we are in First Case of seqlens_k.",
                "M")
         .Input(7,
                "cos_cache",
