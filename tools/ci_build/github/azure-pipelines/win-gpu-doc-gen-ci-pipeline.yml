@@ -1,0 +1,61 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
+stages:
+- stage: kernelDocumentation
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda.bat
+        buildArch: x64
+        # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
+        additionalBuildFlags: >-
+          --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda
+          --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: false
+        GenerateDocumentation: true
+        ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-A10
