@@ -55,7 +55,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t K,
                 const float* A,
                 size_t lda,
-                const void* QuantBData,
+                const void* /*QuantBData*/,
                 const void* PackedQuantBDataWorkspace,
                 const float* QuantBScale,
                 const void* QuantBZeroPoint,
@@ -71,7 +71,12 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBDataWorkspace = PackedQuantBDataWorkspace != nullptr ? PackedQuantBDataWorkspace : QuantBData;
+#ifdef MLAS_TARGET_AMD64_IX86
+    if (ComputeType == CompInt8) {
+      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+    }
+#endif
+    params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
