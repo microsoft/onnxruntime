@@ -26,13 +26,6 @@
 #include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 
-// manually enable to test logic for handling non-contiguous MLMultiArray as we don't have a unit test setup
-// that can hit that.
-// #define TEST_MLMULTIARRAY_HANDLING
-#ifdef TEST_MLMULTIARRAY_HANDLING
-#include <assert.h>
-#endif
-
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
 asm(".linker_option \"-framework\", \"CoreML\"");
@@ -581,11 +574,6 @@ Model::Model(const std::string& path,
 Model::~Model() {}
 
 Status Model::LoadModel() {
-  // arbitrary place to run this when manually enabled for temporary testing
-#ifdef TEST_MLMULTIARRAY_HANDLING
-  ValidateMLMultiArrayHandling();
-#endif
-
   return execution_->LoadModel();
 }
 
