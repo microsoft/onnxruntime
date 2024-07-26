@@ -450,7 +450,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
     // and pointing the location to tensor's buffer.
     ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(weight_dst_name, std::move(weight_dst_ptr)).second,
                       "Failed to add buffered tensor ",
-                      weight_dst_name);  
+                      weight_dst_name);
   }
 
   input_defs.push_back(&graph_utils::AddInitializer(graph, scale_T_tp));

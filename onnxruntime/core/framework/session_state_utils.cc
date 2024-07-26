@@ -106,6 +106,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
   }
 
+  ORT_RETURN_IF(buffered_tensor && !utils::HasExternalData(tensor_proto),
+                "With buffered tensor, tensor proto must use external location and point to buffered tensor");
+
   // Get shape and type of the tensor, and allocate the empty tensor
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
