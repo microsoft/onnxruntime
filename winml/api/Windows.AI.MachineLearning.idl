@@ -9,7 +9,7 @@ import "windows.media.idl";
 #ifndef WINDOWSAI_RAZZLE_BUILD
 // Pull in definition for DualApiPartitionAttribute, because the WinML IDL
 // does not build in the OS Repo, and needs to access internal definitions for
-// various custom attirbute definitions.
+// various custom attribute definitions.
 import "dualapipartitionattribute.idl";
 import "windows.graphics.directx.direct3d11.idl";
 import "windows.graphics.imaging.idl";

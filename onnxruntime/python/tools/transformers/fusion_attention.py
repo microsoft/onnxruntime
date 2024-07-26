@@ -672,7 +672,7 @@ class FusionAttention(Fusion):
                 q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads
             )
             mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
-        elif type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
+        elif type(k_matmul) is NodeProto and type(v_matmul) is NodeProto:
             if self.disable_multi_head_attention_bias:
                 mha_inputs.extend([q_add.output[0], k_matmul.output[0], v_add.output[0]])
             else:

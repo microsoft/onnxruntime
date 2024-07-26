@@ -1118,8 +1118,8 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   head_size = v_reshape_shape[3];
 
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
-  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the correspondig
-  // initializer. We need to get the shape information from the input of concat.
+  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the
+  // corresponding initializer. We need to get the shape information from the input of concat.
   InlinedVector<int64_t> reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
     if (CheckDistilBertReshapeShape(graph, reshape, hidden_size, record_node_idx, logger)) {

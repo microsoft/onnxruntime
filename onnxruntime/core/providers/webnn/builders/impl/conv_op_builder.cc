@@ -56,72 +56,41 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
 
   // Add Padding.
   AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
-  if (node.OpType() == "Conv") {
+  std::vector<int64_t> pads_out;
+  if (node.OpType() == "Conv" || node.OpType() == "ConvInteger") {
     // Calculate explicit padding for autoPad.
     if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-      std::vector<int64_t> pads_out;
       ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
                                         pads, strides, dilations, auto_pad_type, pads_out, !is_nhwc));
       pads = pads_out;
     }
   } else if (node.OpType() == "ConvTranspose") {
-    // When the 'output_shape' is specificed, the 'output_padding' values
-    // in options.outputPadding are ignored.
-    std::vector<int64_t> dims;
-    std::vector<int64_t> output_padding{0, 0};
-    if (helper.HasAttr("output_shape")) {
-      // Default value of 'output_shape' will be ignored as we already check if it existed.
-      dims = helper.Get("output_shape", std::vector<int64_t>{-1, -1});
-      // Extract the height and width.
-      std::vector<int64_t> output_shape;
-      if (dims.size() == 1 && is_conv1d) {  // ConvTranspose 1d
-        output_shape = {dims[0], 1};
-      } else if (dims.size() == 2 && !is_conv1d) {
-        output_shape = dims;
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid output shape");
-      }
-      // Padding values are auto generated.
-      if (helper.HasAttr("kernel_shape")) {
-        std::vector<int64_t> kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{-1, -1});
-        if (is_conv1d) {  // ConvTranspose 1d
-          kernel_shape.push_back(1);
-        }
-        std::vector<int64_t> total_padding(2);
-        for (size_t i = 0; i < 2; i++) {
-          // Get the dimensions of H and W.
-          // For NHWC layout, the dimensions of H and W correspond to index 1 and 2.
-          // For NCHW layout, the dimensions of H and W correspond to index 2 and 3.
-          if (is_nhwc) {
-            total_padding[i] = strides[i] * (input_shape[i + 1] - 1) + output_padding[i] +
-                               ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
-          } else {
-            total_padding[i] = strides[i] * (input_shape[i + 2] - 1) + output_padding[i] +
-                               ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
-          }
-        }
-        AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
-        if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-          pads[0] = total_padding[0] / 2;
-          pads[1] = total_padding[0] - pads[0];
-          pads[2] = total_padding[1] / 2;
-          pads[3] = total_padding[1] - pads[2];
-          if (AutoPadType::SAME_LOWER == auto_pad_type) {
-            std::swap(pads[0], pads[1]);
-            std::swap(pads[2], pads[3]);
-          }
-        }
-      }
-      options.set("outputSizes", emscripten::val::array(GetVecUint32FromVecInt64(output_shape)));
-    } else {
-      output_padding = helper.Get("output_padding", std::vector<int64_t>{0, 0});
-      if (output_padding.size() == 1 && is_conv1d) {  // ConvTranspose 1d
-        output_padding.push_back(0);
-      }
-      options.set("outputPadding", emscripten::val::array(GetVecUint32FromVecInt64(output_padding)));
+    std::vector<int64_t> output_shape = helper.Get("output_shape", std::vector<int64_t>{-1, -1});
+    // Appending 1's if it is ConvTranspose 1d and output shape is provided.
+    if (output_shape.size() == 1 && is_conv1d && output_shape[0] != -1) {
+      output_shape.push_back(1);
     }
+
+    std::vector<int64_t> output_padding = helper.Get("output_padding", std::vector<int64_t>{0, 0});
+    // Appending 0's if it is ConvTranspose 1d.
+    if (output_padding.size() == 1 && is_conv1d) {
+      output_padding.push_back(0);
+    }
+    options.set("outputPadding", emscripten::val::array(GetVecUint32FromVecInt64(output_padding)));
+
+    // If output shape is explicitly provided, compute the pads.
+    // Otherwise compute the output shape, as well as the pads if the auto_pad attribute is SAME_UPPER/SAME_LOWER.
+    ORT_RETURN_IF_ERROR(ComputeConvTransposePadsAndOutputShape(input_shape, weight_shape[2], weight_shape[3],
+                                                               pads, strides, dilations, output_padding,
+                                                               auto_pad_type, pads_out, output_shape, !is_nhwc));
+
+    if (output_shape[0] != -1 && output_shape[1] != -1) {
+      options.set("outputSizes", emscripten::val::array(GetVecUint32FromVecInt64(output_shape)));
+    }
+    pads = pads_out;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "conv_op_builder only supports Op Conv and ConvTranspose.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "conv_op_builder only supports Op Conv, ConvInteger and ConvTranspose.");
   }
 
   const auto group = helper.Get("group", static_cast<uint32_t>(1));

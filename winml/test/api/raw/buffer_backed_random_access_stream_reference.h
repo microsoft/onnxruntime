@@ -347,8 +347,9 @@ struct BufferBackedRandomAccessStreamReference
   }
 
   virtual HRESULT STDMETHODCALLTYPE OpenReadAsync(
-    /* [retval, out] */ __RPC__deref_out_opt
-      __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType** operation
+    /* [retval, out] */
+    __RPC__deref_out_opt __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType**
+      operation
   ) override {
     auto open_read_async = Microsoft::WRL::Make<BufferBackedRandomAccessStreamReferenceOpenReadAsync>();
     open_read_async.CopyTo(operation);

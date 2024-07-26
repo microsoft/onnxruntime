@@ -1603,6 +1603,11 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // a compiling EP (e.g. CoreML) may copy initializers to its own memory. run the cleanup of unused initializers
+  // so that they can be freed.
+  ORT_RETURN_IF_ERROR(graph.RemovedUnusedInitializersOrtFormat());
+#endif
   return Status::OK();
 }
 
@@ -2827,7 +2832,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
     }
   }
 
-  // returns a list of initializers that can be overriden.
+  // returns a list of initializers that can be overridden.
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
 }
 
