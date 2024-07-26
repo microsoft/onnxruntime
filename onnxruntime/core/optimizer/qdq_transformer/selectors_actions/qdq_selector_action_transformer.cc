@@ -60,17 +60,17 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   //
   // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
   // scale will change the ordering of the elements between quantized & de-quantized values.
-  std::unique_ptr<NodeSelector> selector_disallow_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
+  std::unique_ptr<NodeSelector> selector_no_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"Resize", {}}},
-                                                         std::move(selector_disallow_16bit),
+                                                         std::move(selector_no_16bit),
                                                          std::move(drop_action_no_int16));
 
-  std::unique_ptr<NodeSelector> selector_disallow_16bit_and_nonpositive_scale =
+  std::unique_ptr<NodeSelector> selector_no_16bit_and_positive_scale =
       std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_and_positive_scale_name,
                                                          {{"MaxPool", {12}}},
-                                                         std::move(selector_disallow_16bit_and_nonpositive_scale),
+                                                         std::move(selector_no_16bit_and_positive_scale),
                                                          std::move(drop_action_no_int16_and_positive_scale));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true);
