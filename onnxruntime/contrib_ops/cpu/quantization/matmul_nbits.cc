@@ -281,7 +281,6 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
 }
 
 Status MatMulNBits::Compute(OpKernelContext* ctx) const {
-  //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
   const auto* a_data = a->Data<float>();

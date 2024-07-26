@@ -534,6 +534,7 @@ SQ4BitGemm_CompInt8(
                 RowsRemaining -= RowsHandled;
             }
         }
+#ifdef MLAS_TARGET_AMD64_IX86
         else if (GetMlasPlatform().SQNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
         {
             const float* b_blk_sum = QuantBBlkSum + n * k_blks;
@@ -562,6 +563,7 @@ SQ4BitGemm_CompInt8(
                 );
             }
         }
+#endif
     }
 }
 
