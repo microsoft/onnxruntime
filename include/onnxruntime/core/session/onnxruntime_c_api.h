@@ -306,7 +306,8 @@ ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(ExecutionProviderFactory);
-ORT_RUNTIME_CLASS(Graph);
+ORT_RUNTIME_CLASS(Node);
+ORT_RUNTIME_CLASS(GraphViewer);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -684,16 +685,6 @@ struct OrtApiBase {
   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
 
-typedef struct OrtExecutionProvider {
-  //void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraph* graph, _Out_ int* cnt, _Outptr_ OrtComputeCapability** compute_capability);
-  //void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraph* graph, const OrtNode* node, int size, _Out_ int* cnt, _Outptr_ OrtNodeComputeInfo** node_compute_info);
-  const char* type;
-} OrtExecutionProvider;
-
-typedef struct OrtExecutionProviderFactory {
-  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
-} OrtExecutionProviderFactory;
-
 typedef struct OrtApiBase OrtApiBase;
 
 /** \brief The Onnxruntime library's entry point to access the C API
@@ -701,6 +692,50 @@ typedef struct OrtApiBase OrtApiBase;
  * Call this to get the a pointer to an ::OrtApiBase
  */
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
+
+typedef struct OrtMetaDef {
+  const char* name;
+  const char* domain;
+  int since_version;
+
+  const char** inputs;
+  int input_len;
+  const char** outputs;
+  int output_len;
+  const char** constant_initializers;
+  int initializer_len;
+
+  const char* doc_string;
+} OrtMetaDef;
+
+typedef struct OrtIndexedSubGraph {
+  OrtMetaDef* meta_def; // TODO(leca): how to define a nested structure pointer?
+  size_t* node_index;
+  size_t node_index_len;
+} OrtIndexedSubGraph;
+
+typedef struct OrtComputeContext {
+  void*(ORT_API_CALL* AllocateFunc)(void*, size_t, size_t);
+  void(ORT_API_CALL* DestroyFunc)(void*, void*);
+  void* allocator_handle;
+  const char* node_name;
+} OrtComputeContext;
+
+typedef struct OrtNodeComputeInfo {
+  int(ORT_API_CALL* CreateFunctionStateFunc)(OrtComputeContext*, void**);
+  OrtStatusPtr(ORT_API_CALL* ComputeFunc)(void*, const OrtApi*, OrtKernelContext*);
+  void(ORT_API_CALL* DestroyFunctionStateFunc)(void*);
+} OrtNodeComputeInfo;
+
+typedef struct OrtExecutionProvider {
+  void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
+  void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo*** node_compute_info);
+  const char* type;
+} OrtExecutionProvider;
+
+typedef struct OrtExecutionProviderFactory {
+  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
+} OrtExecutionProviderFactory;
 
 /** \brief Thread work loop function
  *
@@ -4843,7 +4878,21 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
 
-ORT_API(bool, OrtGraph_IsConstantInitializer, const OrtGraph* graph, const char* name, bool check_outer_scope);
+ORT_API(bool, OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope);
+
+ORT_API(const size_t*, OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, size_t* len);
+
+ORT_API(const OrtNode*, OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index);
+
+ORT_API(const char*, OrtNode_GetOpType, const OrtNode* node);
+
+ORT_API(size_t, OrtNode_GetInputSize, const OrtNode* node);
+
+ORT_API(const char*, OrtNode_GetIthInputName, const OrtNode* node, size_t i);
+
+ORT_API(size_t, OrtNode_GetOutputSize, const OrtNode* node);
+
+ORT_API(const char*, OrtNode_GetIthOutputName, const OrtNode* node, size_t i);
 
 #ifdef __cplusplus
 }
