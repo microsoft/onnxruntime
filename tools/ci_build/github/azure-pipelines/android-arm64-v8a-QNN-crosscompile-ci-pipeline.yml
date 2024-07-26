@@ -46,8 +46,6 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
-  - template: templates/use-android-ndk.yml
-
   - script: |
       env | grep ANDROID
     displayName: View Android ENVs
