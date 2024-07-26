@@ -443,21 +443,32 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   auto& input_defs = replacement_node.MutableInputDefs();
   input_defs.push_back(&graph_utils::AddInitializer(graph, weight_T_tp));
   replacement_node.MutableInputArgsCount().push_back(1);
-  ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(weight_dst_name, std::move(weight_dst_ptr)).second,
-                    "Failed to add buffered tensor ",
-                    weight_dst_name);
+  if (weight_T_tp.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+    // If tensor is too small, tensor proto directly copies data from tensor. The tensor allocated
+    // here can be directly destructed.
+    // Only keep the tensor in p_buffered_tensors_ when the tensor proto is using external data location
+    // and pointing the location to tensor's buffer.
+    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(weight_dst_name, std::move(weight_dst_ptr)).second,
+                      "Failed to add buffered tensor ",
+                      weight_dst_name);  
+  }
+
   input_defs.push_back(&graph_utils::AddInitializer(graph, scale_T_tp));
   replacement_node.MutableInputArgsCount().push_back(1);
-  ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(scale_dst_name, std::move(scale_dst_ptr)).second,
-                    "Failed to add buffered tensor ",
-                    scale_dst_name);
+  if (scale_T_tp.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(scale_dst_name, std::move(scale_dst_ptr)).second,
+                      "Failed to add buffered tensor ",
+                      scale_dst_name);
+  }
 
   if (zp_T_tp) {
     input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp.value()));
     replacement_node.MutableInputArgsCount().push_back(1);
-    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name, std::move(zp_dst_ptr)).second,
-                      "Failed to add buffered tensor ",
-                      zp_dst_name);
+    if (zp_T_tp->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+      ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name, std::move(zp_dst_ptr)).second,
+                        "Failed to add buffered tensor ",
+                        zp_dst_name);
+    }
   }
 
   return Status::OK();
