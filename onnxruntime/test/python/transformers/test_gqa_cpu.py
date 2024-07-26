@@ -120,16 +120,6 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
                 x_rot[:, :, :, 1::2] = imag
             else:
                 x_rot = torch.cat((real, imag), dim=-1)
-        # else:
-        #     cos_x = cos[:, 0:seq_len, :, :]
-        #     sin_x = sin[:, 0:seq_len, :, :]
-        #     real = cos_x * x1 - sin_x * x2
-        #     imag = sin_x * x1 + cos_x * x2
-        #     if interleaved:
-        #         x_rot[:, :, :, 0::2] = real
-        #         x_rot[:, :, :, 1::2] = imag
-        #     else:
-        #         x_rot = torch.cat((real, imag), dim=-1)
         else:
             batch_size = x.shape[0]
             cos_x = torch.zeros((batch_size, seq_len, 1, cos.shape[3]), device=x.device)
@@ -514,7 +504,9 @@ def create_group_query_attention_graph_interactive(
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
-        config.kv_sequence_length if share_buffer else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        config.kv_sequence_length
+        if share_buffer
+        else config.sequence_length + (0 if no_past else config.kv_sequence_length)
     )
     nodes = [
         helper.make_node(
@@ -590,7 +582,11 @@ def create_group_query_attention_graph_interactive(
             ),
         ]
     if rotary:
-        rot_seqlen = config.kv_sequence_length if share_buffer else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        rot_seqlen = (
+            config.kv_sequence_length
+            if share_buffer
+            else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        )
         graph_input += [
             helper.make_tensor_value_info(
                 "cos_cache",
@@ -614,7 +610,9 @@ def create_group_query_attention_graph_interactive(
             helper.make_tensor_value_info(
                 "past_key",
                 TensorProto.FLOAT,
-                None if no_past else [
+                None
+                if no_past
+                else [
                     config.batch_size,
                     past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
                     config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
@@ -624,7 +622,9 @@ def create_group_query_attention_graph_interactive(
             helper.make_tensor_value_info(
                 "past_value",
                 TensorProto.FLOAT,
-                None if no_past else [
+                None
+                if no_past
+                else [
                     config.batch_size,
                     past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
                     config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
@@ -888,7 +888,6 @@ def gqa_prompt_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
-        # TODO: do we need io binding for cpu input?
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
             "past_key", "cpu", 0, numpy.float32, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
@@ -1075,7 +1074,7 @@ def gqa_interactive_func(
     window_size=-1,
     rotary_interleaved=False,
 ):
-    assert(seqlens_k is not None)
+    assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_interactive(
         config,
         past_kv_format,
@@ -1097,7 +1096,7 @@ def gqa_interactive_func(
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
         new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
     if share_buffer:
-        assert(past_k is not None and past_v is not None)
+        assert past_k is not None and past_v is not None
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cpu", 0),
@@ -1148,12 +1147,7 @@ def gqa_interactive_func(
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
-            "total_sequence_length": torch.tensor(
-                [total_seqlen], dtype=torch.int32
-            )
-            .detach()
-            .cpu()
-            .numpy(),
+            "total_sequence_length": torch.tensor([total_seqlen], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
@@ -1742,7 +1736,6 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length - config.sequence_length + 1,
@@ -1943,7 +1936,6 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
     k_cache_ref = torch.cat((k_cache_ref, new_k), 1)
     v_cache_ref = torch.cat((v_cache_ref, new_v), 1)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length,
@@ -2141,7 +2133,6 @@ def parity_check_gqa_interactive(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
 
     if no_past:
         past_seqlens = torch.zeros(config.batch_size, dtype=torch.int32, device="cpu")
@@ -2270,23 +2261,28 @@ def parity_check_gqa_interactive(
     )
 
     # Make sure past-present buffer updating correctly
-    # print(new_seqlens)
-    # print(total_seqlens)
     for b in range(config.batch_size):
-        # print(present_k[b, 0, : total_seqlens[b], 0] - k_cache_ref[b, 0, : total_seqlens[b], 0].detach().cpu().numpy())
-        # print(present_v[b, 0, : total_seqlens[b], 0] - v_cache_ref[b, 0, : total_seqlens[b], 0].detach().cpu().numpy())
-        assert numpy.allclose(present_k[b, :, : total_seqlens[b]],
-                              k_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
-                              rtol=rtol, atol=atol, equal_nan=True)
-        assert numpy.allclose(present_v[b, :, : total_seqlens[b]],
-                              v_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
-                              rtol=rtol, atol=atol, equal_nan=True)
-        all_close = numpy.allclose(out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]],
-                                   rtol=rtol, atol=atol, equal_nan=True)
-        if not all_close: break
+        assert numpy.allclose(
+            present_k[b, :, : total_seqlens[b]],
+            k_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        assert numpy.allclose(
+            present_v[b, :, : total_seqlens[b]],
+            v_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        all_close = numpy.allclose(
+            out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]], rtol=rtol, atol=atol, equal_nan=True
+        )
+        if not all_close:
+            break
 
     # Compare results
-    # all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
     correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(correct)
     return all_close
@@ -2363,7 +2359,6 @@ def parity_check_gqa_interactive_no_buff(
     elif causal:
         left_window_size = -1
         window_size = (-1, 0)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
 
     if no_past:
         past_seqlens = torch.zeros(config.batch_size, dtype=torch.int32, device="cpu")
@@ -2389,7 +2384,7 @@ def parity_check_gqa_interactive_no_buff(
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * config.head_size) / 16) * 16
         angle_seqlen = config.sequence_length if no_past else config.kv_sequence_length + config.sequence_length
-        angle = (torch.rand(angle_seqlen, rotary_dim // 2, device="cpu") * 2 * math.pi)
+        angle = torch.rand(angle_seqlen, rotary_dim // 2, device="cpu") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float32)
         sin = torch.sin(angle).to(dtype=torch.float32)
         rot = LlamaMSRotaryEmbedding()
@@ -2513,23 +2508,28 @@ def parity_check_gqa_interactive_no_buff(
     )
 
     # Make sure present kv is updating correctly
-    # print(new_seqlens)
-    # print(total_seqlens)
     for b in range(config.batch_size):
-        # print(present_k[b, 0, : total_seqlens[b], 0] - k_cache_ref[b, 0, : total_seqlens[b], 0].detach().cpu().numpy())
-        # print(present_v[b, 0, : total_seqlens[b], 0] - v_cache_ref[b, 0, : total_seqlens[b], 0].detach().cpu().numpy())
-        assert numpy.allclose(present_k[b, :, : total_seqlens[b]],
-                              k_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
-                              rtol=rtol, atol=atol, equal_nan=True)
-        assert numpy.allclose(present_v[b, :, : total_seqlens[b]],
-                              v_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
-                              rtol=rtol, atol=atol, equal_nan=True)
-        all_close = numpy.allclose(out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]],
-                                   rtol=rtol, atol=atol, equal_nan=True)
-        if not all_close: break
+        assert numpy.allclose(
+            present_k[b, :, : total_seqlens[b]],
+            k_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        assert numpy.allclose(
+            present_v[b, :, : total_seqlens[b]],
+            v_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        )
+        all_close = numpy.allclose(
+            out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]], rtol=rtol, atol=atol, equal_nan=True
+        )
+        if not all_close:
+            break
 
     # Compare results
-    # all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
     correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
     print(correct)
     return all_close
@@ -2703,17 +2703,4 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # config = Config(1, 32, 128, -1, 32, 8, 16)
-    # parity_check_gqa_interactive(
-    #     config,
-    #     causal=True,
-    #     local=False,
-    #     no_past=False,
-    #     past_format=Formats.BNSH,
-    #     rtol=1e-3,
-    #     atol=1e-3,
-    #     rotary=True,
-    #     rotary_interleaved=False,
-    #     packed=False,
-    # )
     unittest.main()

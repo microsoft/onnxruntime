@@ -16,8 +16,6 @@
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
 
-#include <iostream>
-
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
@@ -121,17 +119,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
     // Generate position ids
-    // std::vector<int64_t> pos_ids(sequence_length == 1 ? batch_size : 1);
-    // if (sequence_length == 1) {
-    //   for (int b = 0; b < batch_size; b++) {
-    //     pos_ids[b] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b]);
-    //   }
-    // } else {
-    //   pos_ids[0] = static_cast<int64_t>(0);
-    // }
     const int pos_ids_size = parameters.is_interactive ? batch_size * sequence_length : (parameters.is_prompt ? 1 : batch_size);
     std::vector<int64_t> pos_ids(pos_ids_size);
-    // const int32_t* seqlens_k_data = seqlens_k->Data<const int32_t>();
     if (parameters.is_interactive) {
       for (int b = 0; b < batch_size; b++) {
         for (int s = 0; s < sequence_length; s++) {
@@ -142,15 +131,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
           }
         }
       }
-      // print pos_ids
-      // std::cout << "pos_ids: ";
-      // for (int i = 0; i < pos_ids_size; i++) {
-      //   if (i % sequence_length == 0) {
-      //     std::cout << std::endl;
-      //   }
-      //   std::cout << pos_ids[i] << " ";
-      // }
-      // std::cout << std::endl;
     } else if (parameters.is_prompt) {
       pos_ids[0] = static_cast<int64_t>(0);
     } else {

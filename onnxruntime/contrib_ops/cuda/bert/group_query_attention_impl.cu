@@ -343,7 +343,6 @@ Status LaunchConcatKVInPlace(int batch_size,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// TODO(aciddelgado): why do we have two versions of this function?
 // Concat new to kv buffer in place
 template <typename T>
 Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
@@ -355,7 +354,7 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                              const int max_threads_per_block) {
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
   const int* past_seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr
-                                  : reinterpret_cast<const int*>(data.seqlens_k);
+                                                                                   : reinterpret_cast<const int*>(data.seqlens_k);
 
   assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
          parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -704,7 +703,7 @@ Status FlashAttention(
   // }
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR("flash attention output", data.output, 1, sequence_length, num_heads, head_size);
+  DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
 }
@@ -792,7 +791,7 @@ Status EfficientAttention(
       constexpr int thr_per_blk = 256;
       int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
       repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, parameters.sequence_length,
-                                                            batch_size);
+                                                             batch_size);
     } else {
       ORT_RETURN_IF_ERROR(LaunchGetSeqlenBuff(parameters, data.seqlens_k, data.seqlens_k_total, true, stream, 256));
     }

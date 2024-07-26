@@ -11,8 +11,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 
-#include <iostream>
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -103,22 +101,22 @@ class GQAAttentionBase {
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
-  void ComputeAttentionProbs(T* attention_probs,                  // output buffer with size BxNxSxT
-                             const T* Q,                          // Q data. Its size is BxNxSxH
-                             const T* K,                          // k data. Its size is BxNxLxH
-                             const int32_t* seqlens_k,            // past sequence lengths tensor
-                             int batch_size,                      // batch size of self-attention
-                             int sequence_length,                 // sequence length of self-attention (S)
-                             int past_buffer_sequence_length,     // sequence length of past state
-                             int present_buffer_sequence_length,  // sequence length of present state
-                             int head_size,                       // head size of self-attention
-                             const T* past_key,                   // past key only
-                             T* present_key,                      // present key only
-                             const bool past_present_share_buffer,// whether present key and value share the same buffer
-                             const bool packed_qkv,               // whether Q, K, V are packed
-                             const bool is_interactive,           // whether it is interactive
-                             const bool is_prompt,                // whether it is prompt
-                             ThreadPool* tp) const {              // thread pool
+  void ComputeAttentionProbs(T* attention_probs,                    // output buffer with size BxNxSxT
+                             const T* Q,                            // Q data. Its size is BxNxSxH
+                             const T* K,                            // k data. Its size is BxNxLxH
+                             const int32_t* seqlens_k,              // past sequence lengths tensor
+                             int batch_size,                        // batch size of self-attention
+                             int sequence_length,                   // sequence length of self-attention (S)
+                             int past_buffer_sequence_length,       // sequence length of past state
+                             int present_buffer_sequence_length,    // sequence length of present state
+                             int head_size,                         // head size of self-attention
+                             const T* past_key,                     // past key only
+                             T* present_key,                        // present key only
+                             const bool past_present_share_buffer,  // whether present key and value share the same buffer
+                             const bool packed_qkv,                 // whether Q, K, V are packed
+                             const bool is_interactive,             // whether it is interactive
+                             const bool is_prompt,                  // whether it is prompt
+                             ThreadPool* tp) const {                // thread pool
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
@@ -157,8 +155,6 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = static_cast<size_t>(i) / static_cast<size_t>(num_heads_);
         const size_t head_index = static_cast<size_t>(i) % static_cast<size_t>(num_heads_);
-        // const int past_seqlen =
-        //     sequence_length == 1 ? static_cast<int>(seqlens_k[batch_index]) : past_buffer_sequence_length;
         const size_t past_seqlen =
             is_interactive || !is_prompt ? static_cast<size_t>(seqlens_k[batch_index]) : past_buffer_sequence_length;
         const size_t past_chunk_length = static_cast<size_t>(past_seqlen) * head_size;
@@ -174,7 +170,6 @@ class GQAAttentionBase {
           k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
         }
         if (nullptr != present_key) {
-          // TODO(aciddelgado): refactor now that interactive decoding is supported
           k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
                                   !is_interactive && is_prompt ? 0 : past_chunk_length, kv_input_chunk_length,
                                   past_present_share_buffer, i / kv_num_heads_factor);
@@ -200,7 +195,6 @@ class GQAAttentionBase {
         // compute Softmax
         T* output_softmax = output;
         for (size_t seq = 0; seq < q_seqlen; seq++) {
-          // int seq_causal_length = sequence_length == 1 ? total_seqlen : seq + 1; // E
           size_t seq_causal_length = is_interactive ? past_seqlen + seq + 1 : (is_prompt ? seq + 1 : total_seqlen);
           if (local_window_size_ > 0 && seq_causal_length > static_cast<size_t>(local_window_size_) + 1) {
             for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
@@ -224,22 +218,22 @@ class GQAAttentionBase {
   }
 
   template <typename T>
-  void ComputeVxAttentionScore(T* output,                           // buffer for the result with size BxSxNxH
-                               const T* attention_probs,            // Attention probs with size BxNxSxT
-                               const T* V,                          // V value with size BxN_kvxSxH
-                               const int32_t* seqlens_k,            // past sequence lengths tensor
-                               int batch_size,                      // batch size
-                               int sequence_length,                 // sequence length
-                               int past_buffer_sequence_length,     // sequence length in past state
-                               int present_buffer_sequence_length,  // sequence length in past state
-                               int head_size,                       // head size of Q, K, V
-                               int hidden_size,                     // hidden size of Output
-                               const T* past_value,                 // past value only
-                               T* present_value,                    // present value only
-                               const bool past_present_share_buffer,// whether present key and value share the same buffer
-                               const bool packed_qkv,               // whether Q, K, V are packed
-                               const bool is_interactive,           // whether it is interactive
-                               const bool is_prompt,                // whether it is prompt
+  void ComputeVxAttentionScore(T* output,                             // buffer for the result with size BxSxNxH
+                               const T* attention_probs,              // Attention probs with size BxNxSxT
+                               const T* V,                            // V value with size BxN_kvxSxH
+                               const int32_t* seqlens_k,              // past sequence lengths tensor
+                               int batch_size,                        // batch size
+                               int sequence_length,                   // sequence length
+                               int past_buffer_sequence_length,       // sequence length in past state
+                               int present_buffer_sequence_length,    // sequence length in past state
+                               int head_size,                         // head size of Q, K, V
+                               int hidden_size,                       // hidden size of Output
+                               const T* past_value,                   // past value only
+                               T* present_value,                      // present value only
+                               const bool past_present_share_buffer,  // whether present key and value share the same buffer
+                               const bool packed_qkv,                 // whether Q, K, V are packed
+                               const bool is_interactive,             // whether it is interactive
+                               const bool is_prompt,                  // whether it is prompt
                                ThreadPool* tp) const {
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size

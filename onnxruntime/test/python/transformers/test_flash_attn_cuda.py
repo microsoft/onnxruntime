@@ -578,7 +578,9 @@ def create_group_query_attention_graph_interactive(
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
-        config.kv_sequence_length if share_buffer else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        config.kv_sequence_length
+        if share_buffer
+        else config.sequence_length + (0 if no_past else config.kv_sequence_length)
     )
     nodes = [
         helper.make_node(
@@ -654,7 +656,11 @@ def create_group_query_attention_graph_interactive(
             ),
         ]
     if rotary:
-        rot_seqlen = config.kv_sequence_length if share_buffer else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        rot_seqlen = (
+            config.kv_sequence_length
+            if share_buffer
+            else config.sequence_length + (0 if no_past else config.kv_sequence_length)
+        )
         graph_input += [
             helper.make_tensor_value_info(
                 "cos_cache",
@@ -678,7 +684,9 @@ def create_group_query_attention_graph_interactive(
             helper.make_tensor_value_info(
                 "past_key",
                 TensorProto.FLOAT16,
-                None if no_past else [
+                None
+                if no_past
+                else [
                     config.batch_size,
                     past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
                     config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
@@ -688,7 +696,9 @@ def create_group_query_attention_graph_interactive(
             helper.make_tensor_value_info(
                 "past_value",
                 TensorProto.FLOAT16,
-                None if no_past else [
+                None
+                if no_past
+                else [
                     config.batch_size,
                     past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
                     config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
@@ -734,6 +744,7 @@ def create_group_query_attention_graph_interactive(
 
     model = helper.make_model(graph)
     return model.SerializeToString()
+
 
 def generate_random_padding_mask(max_seqlen, batch_size, device, mode="random"):
     assert mode in ["full", "random", "third"]
@@ -1176,7 +1187,7 @@ def gqa_interactive_func(
     window_size=-1,
     rotary_interleaved=False,
 ):
-    assert(seqlens_k is not None)
+    assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_interactive(
         config,
         past_kv_format,
@@ -1198,7 +1209,7 @@ def gqa_interactive_func(
         new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
         new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
     if share_buffer:
-        assert(past_k is not None and past_v is not None)
+        assert past_k is not None and past_v is not None
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
@@ -1249,12 +1260,7 @@ def gqa_interactive_func(
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
-            "total_sequence_length": torch.tensor(
-                [total_seqlen], dtype=torch.int32
-            )
-            .detach()
-            .cpu()
-            .numpy(),
+            "total_sequence_length": torch.tensor([total_seqlen], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
@@ -2310,7 +2316,9 @@ def parity_check_gqa_interactive(
     v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...")
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
-    key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length # Technically extra calculation, but I think it matches Flash
+    key_padding_mask = (
+        arange < cache_seqlens_expanded + config.sequence_length
+    )  # Technically extra calculation, but I think it matches Flash
     out_ref, _ = attention_ref(
         q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
     )
@@ -2361,9 +2369,6 @@ def parity_check_gqa_interactive(
         f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
 
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[1, 0, :, 0])
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[1, 0, : total_seqlens[1], 0])
-
     # Make sure past-present buffer updating correctly
     for b in range(config.batch_size):
         numpy.testing.assert_allclose(
@@ -2382,7 +2387,14 @@ def parity_check_gqa_interactive(
             equal_nan=True,
             err_msg=err_msg,
         )
-        numpy.testing.assert_allclose(out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]], rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+        numpy.testing.assert_allclose(
+            out[b, : new_seqlens[b]],
+            out_ref[b, : new_seqlens[b]],
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
+        )
 
 
 def parity_check_gqa_interactive_no_buff(
@@ -2499,7 +2511,6 @@ def parity_check_gqa_interactive_no_buff(
                 "b 1 (s h) d -> b s h d",
                 s=config.sequence_length,
             )
-        # q_ro = q
         k_ro = rotary_embedding(new_k.clone(), cos, sin, seqlen_offsets=past_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
@@ -2586,28 +2597,7 @@ def parity_check_gqa_interactive_no_buff(
         f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
 
-    # # Calculate the absolute difference
-    # difference = numpy.abs(out[0, :new_seqlens[0]] - out_ref[0, :new_seqlens[0]])
-
-    # # Identify the indices where the difference exceeds the tolerance
-    # indices = numpy.where(difference > (atol + rtol * numpy.abs(out_ref[0, :new_seqlens[0]])))
-
-    # print("Indices of differing elements:", indices)
-    # print(total_seqlens)
-    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
-
-    # print((out - out_ref)[4, : new_seqlens[4], 0, 0])
-    # Make sure past-present buffer updating correctly
     for b in range(config.batch_size):
-        # print(new_seqlens[b])
-        # # Calculate the absolute difference
-        # difference = numpy.abs(out[b, :new_seqlens[b]] - out_ref[b, :new_seqlens[b]])
-
-        # # Identify the indices where the difference exceeds the tolerance
-        # indices = numpy.where(difference > (atol + rtol * numpy.abs(out_ref[b, :new_seqlens[b]])))
-
-        # print("Indices of differing elements:", indices)
-
         numpy.testing.assert_allclose(
             present_k[b, :, : total_seqlens[b]],
             k_cache_ref[b, :, : total_seqlens[b]].detach().cpu().numpy(),
@@ -2624,7 +2614,14 @@ def parity_check_gqa_interactive_no_buff(
             equal_nan=True,
             err_msg=err_msg,
         )
-        numpy.testing.assert_allclose(out[b, : new_seqlens[b]], out_ref[b, : new_seqlens[b]], rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+        numpy.testing.assert_allclose(
+            out[b, : new_seqlens[b]],
+            out_ref[b, : new_seqlens[b]],
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
+        )
 
 
 def has_flash_attention():
@@ -3120,8 +3117,4 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # TestGQA('test_gqa_past_flash_attention').debug()
-    # asdf = TestGQA()
-    # config = Config(5, 32, 128, -1, 4, 4, 16)
-    # asdf.test_gqa_interactive_memory_efficient_attention("", config, True, True, False, False)
     unittest.main()

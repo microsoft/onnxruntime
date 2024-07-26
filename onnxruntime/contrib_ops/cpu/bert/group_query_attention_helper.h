@@ -224,13 +224,13 @@ Status CheckInputs(const Tensor* query,
 
   bool is_prompt;
   if (is_interactive) {
-    is_prompt = false; // irrelevant for interactive decoding
+    is_prompt = false;  // irrelevant for interactive decoding
   } else {
     // If not interactive, sequence_length is 1 for token gen and arbitrarily large for prompt
     is_prompt = (sequence_length == total_sequence_length);
     if (!is_prompt && sequence_length != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "sequence_length shall be 1 when it is not prompt.");
+                             "sequence_length shall be 1 when it is not prompt.");
     }
   }
 

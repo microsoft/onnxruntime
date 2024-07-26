@@ -194,15 +194,6 @@ T* ConcatStateChunkGQA(const T* past,
     memcpy(p, src_past, past_chunk_length * sizeof(T));
   }
   p += past_chunk_length;
-  // if (!is_prompt) {
-  //   if (!past_present_share_buffer) {
-  //     const T* src_past = past + i * past_buff_chunk_length;
-  //     memcpy(p, src_past, past_chunk_length * sizeof(T));
-  //   }
-  //   p += past_chunk_length;
-  // }
-  // std::cout << "past_chunk_length: " << past_chunk_length << std::endl;
-  // std::cout << "new_chunk_length: " << new_chunk_length << std::endl;
 
   memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;
