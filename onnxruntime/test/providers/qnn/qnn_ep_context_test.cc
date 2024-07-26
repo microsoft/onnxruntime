@@ -279,6 +279,45 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
+TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  std::string node_name_prefix = "node_name_prefix_test";
+
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  const std::string context_binary_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
+  so.AddConfigEntry(kOrtSessionOptionEpContextNodeNamePrefix, node_name_prefix.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ToPathString(context_binary_file), model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  for (auto& node : model->MainGraph().Nodes()) {
+    if (node.OpType() == "EPContext") {
+      EXPECT_TRUE(node.Name().find(node_name_prefix) != std::string::npos);
+    }
+  }
+
+  // clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+}
+
 // Run QDQ model on HTP 3 times
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run directly loads and run from Qnn context cache model
