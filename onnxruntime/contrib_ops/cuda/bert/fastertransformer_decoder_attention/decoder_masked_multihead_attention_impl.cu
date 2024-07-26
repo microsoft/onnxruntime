@@ -183,6 +183,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
   }
 
+  // This has assumption that key and value does not have bias for cross attention when they are in BNSH format.
   if (!params.is_cross_attention) {
     Qk_vec_k k;
 
@@ -580,6 +581,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
+
+  // This has assumption that key and value does not have bias for cross attention when they are in BNSH format.
   if (params.v_bias && !params.is_cross_attention) {
     zero(v_bias);
 

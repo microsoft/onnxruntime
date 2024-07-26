@@ -554,7 +554,8 @@ Status QkvToContext(
 
   if (!parameters.past_present_share_buffer) {
     ORT_RETURN_IF_ERROR(ConcatPastToPresent(batch_size, num_heads, qk_head_size, v_head_size,
-                                            sequence_length, total_sequence_length, parameters.pass_past_in_kv,
+                                            sequence_length, total_sequence_length,
+                                            parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH,
                                             stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer

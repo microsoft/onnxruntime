@@ -95,7 +95,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       scale_,
                                                                       is_unidirectional_,
                                                                       false,  // past_present_share_buffer
-                                                                      false,  // dmmha_packing
                                                                       kMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
@@ -121,7 +120,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
-  const bool pass_key_value_as_past = (parameters.pass_past_in_kv && nullptr != key && nullptr != value);
+  const bool pass_key_value_as_past = (parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH && nullptr != key && nullptr != value);
 
 #if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
   // Exclude this case since PrepareQkv will convert the format to BNSH.
@@ -167,7 +166,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                    !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
-                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                                   (nullptr == past_key && nullptr == past_value && parameters.qkv_format != Q_K_V_BSNH_BNSH_BNSH) &&
                                    key != nullptr &&
                                    (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -190,7 +189,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
                           (value != nullptr || key == nullptr) &&
-                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                          (nullptr == past_key && nullptr == past_value && parameters.qkv_format != Q_K_V_BSNH_BNSH_BNSH) &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -280,7 +279,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   const size_t past_k_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads * parameters.head_size;
   const size_t past_v_bytes = element_size * parameters.batch_size * parameters.kv_sequence_length * parameters.num_heads * parameters.v_head_size;
-  const bool use_temp_k_v_workspace = parameters.pass_past_in_kv || use_memory_efficient_attention || use_flash_attention;
+  const bool use_temp_k_v_workspace = parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH || use_memory_efficient_attention || use_flash_attention;
   auto temp_k_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_k_bytes, context->GetComputeStream()) : nullptr;
   auto temp_v_work_space = use_temp_k_v_workspace ? GetScratchBuffer<void>(past_v_bytes, context->GetComputeStream()) : nullptr;
 
@@ -288,8 +287,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   AttentionData<CudaT> data;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = (nullptr == key || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = (nullptr == value || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.key = (nullptr == key || parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (nullptr == value || parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past_key = pass_key_value_as_past  ? reinterpret_cast<const CudaT*>(key->Data<T>())

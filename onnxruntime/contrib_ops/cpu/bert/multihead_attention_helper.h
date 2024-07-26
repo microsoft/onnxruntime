@@ -27,36 +27,40 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
-                   bool dmmha_packing,
                    AttentionType operator_type) {
   // ---------------------------------------------------------------
-  // B: batch_size; D: hidden_size; D_v: hidden_size of value;
-  // N: num_heads; H: head_size;
-  // S: q_sequence_length;
-  // P: past_sequence_length; L: kv_sequence_length; T: total_sequence_length
-  //    Note that T == P + L
+  // Notations:
+  //    B: batch_size
+  //    N: num_heads
+  //    H: head_size (V might have different head size than Q and K)
+  //    D: hidden_size = N * H
+  //    S: q_sequence_length
+  //    P: past_sequence_length
+  //    L: kv_sequence_length
+  //    T: total_sequence_length = P + L
+  //    M: max_sequence_length
   // ---------------------------------------------------------------
   // MultiHeadAttention inputs:
   // ---------------------------------------------------------------
-  //  When no packing:
+  //  Q_K_V_BSNH - no packing:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D_v)
   //     bias             (Q/K/V)   : None or (D + D + D_v)
-  //  When it is cross attention (kv cache is not used in this case):
+  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache is not used in this case):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
-  //     bias             (Q/K/V)   : None
-  //  When packed kv is used:
+  //     bias                       : None
+  //  Q_KV_BSNH_BSN2H - packed kv:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, L, N, 2, H)
-  //     value            (V)       : None
-  //     bias             (Q/K/V)   : None
-  //  When packed qkv is used (S==L in this case):
-  //     query            (Q)       : (B, S, N, 3, H)
-  //     key              (K)       : None
-  //     value            (V)       : None
+  //     key              (K/V)     : (B, L, N, 2, H)
+  //     value                      : None
+  //     bias                       : None
+  //  QKV_BSN3H - packed qkv (S==L in this case):
+  //     query            (Q/K/V)   : (B, S, N, 3, H)
+  //     key                        : None
+  //     value                      : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
   //
   //  Other inputs:
@@ -65,31 +69,31 @@ Status CheckInputs(const T* query,
   //     past_key                   : (B, N, P, H)
   //     past_value                 : (B, N, P, H)
   // ---------------------------------------------------------------
-  // DecoderMaskedMultiHeadAttention inputs (S=1):
+  // DecoderMaskedMultiHeadAttention inputs (S == 1, D == D_v):
   // ---------------------------------------------------------------
-  //  When no packing:
+  //  Q_K_V_BSNH - no packing:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
   //     value            (V)       : (B, L, D)
-  //  When it is cross attention (kv cache and relative_position_bias are not used, so L==T in this case):
+  //  Q_K_V_BSNH_BNSH_BNSH - cross attention (kv cache and relative_position_bias are not used. L == T):
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, N, L, H)
   //     value            (V)       : (B, N, L, H)
-  //  When packed kv is used (S==L in this case):
-  //     query            (Q)       : (B, S, D + D + D_v)
+  //  QKV_BS3NH - packed qkv (S == L):
+  //     query            (Q)       : (B, S, 3 * D)
   //     key              (K)       : None
   //     value            (V)       : None
   //
   //  Other inputs:
-  //     bias             (Q/K/V)   : None or (D + D + D_v)
+  //     bias             (Q/K/V)   : None or (3 * D)
   //     key_padding_mask (K/V)     : (B, T)
-  //     relative_position_bias     : (1, N, S, T)
-  //     past_key                   : (B, N, P, H)
-  //     past_value                 : (B, N, P, H)
+  //     relative_position_bias     : (1, N, S, T), or (B, N, S, T) where only 1 x N x S x T data is used in kernal.
+  //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
+  //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True, or None
   //  Remaining inputs (beam_width, cache_indirection) are not checked in the class.
   // ---------------------------------------------------------------
-  AttentionQkvFormat qkv_format;
+  AttentionQkvFormat qkv_format = UNKNOWN;
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3 && query_dims.size() != 5) {
@@ -99,6 +103,7 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
+  bool dmmha_packing = operator_type == kDecoderMaskedMultiHeadAttention && key == nullptr && value == nullptr;
   int hidden_size = (query_dims.size() == 3)
                         ? (dmmha_packing ? (static_cast<int>(query_dims[2]) / 3) : static_cast<int>(query_dims[2]))
                         : (num_heads * static_cast<int>(query_dims[4]));
@@ -173,77 +178,82 @@ Status CheckInputs(const T* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
 
-  if (key != nullptr) {
-    if (query_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' is expected to have 3 dimensions when key is given, got ",
-                             query_dims.size());
-    }
-
-    const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3 && key_dims.size() != 4 && key_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
-                             key_dims.size());
-    }
-    if (query_dims[0] != key_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'key' shall have same dim 0 (batch size)");
-    }
-
-    if (key_dims.size() == 3) {
-      if (key_dims[2] != query_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
-      }
-
-      qkv_format = Q_K_V_BSNH;
-      kv_sequence_length = static_cast<int>(key_dims[1]);
-    } else if (key_dims.size() == 5) {
-      if (static_cast<int>(key_dims[2]) != num_heads ||
-          static_cast<int>(key_dims[3]) != 2 ||
-          static_cast<int>(key_dims[4]) != head_size) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
-      }
+  if (query_dims.size() == 3) {
+    if (key == nullptr) {
+      // Packed qkv used by DecoderMaskedMultiHeadAttention. Query shape is (B, S, 3D).
       if (value != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Expect 'value' be none when 'key' has packed kv format.");
+                               "Input 'value' shall absent when 'key' is absent");
       }
 
-      qkv_format = Q_KV_BSNH_BSN2H;
-      kv_sequence_length = static_cast<int>(key_dims[1]);
-    } else {  // key_dims.size() == 4 (cross-attention with past_key)
-      if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
-        return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT,
-            "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size)");
+      if (operator_type != kMultiHeadAttention) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pack qkv of 3D input is not support in MultiHeadAttention");
       }
 
-      if (value == nullptr || value->Shape().GetDims().size() != 4) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' shall be 4D when 'key' is 4D");
+      qkv_format = QKV_BS3NH;
+    } else {  // key != nullptr
+      const auto& key_dims = key->Shape().GetDims();
+      if (query_dims[0] != key_dims[0]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'query' and 'key' shall have same dim 0 (batch size)");
       }
 
-      // Bias is supported in DecoderMaskedMultiHeadAttention only for cross attention.
-      if (operator_type == kMultiHeadAttention && bias != nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
-      }
+      if (key_dims.size() == 3) {
+        if (key_dims[2] != query_dims[2]) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
+        }
+        qkv_format = Q_K_V_BSNH;
+        kv_sequence_length = static_cast<int>(key_dims[1]);
+      } else if (key_dims.size() == 5) {
+        if (static_cast<int>(key_dims[2]) != num_heads ||
+            static_cast<int>(key_dims[3]) != 2 ||
+            static_cast<int>(key_dims[4]) != head_size) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT,
+              "Expect 'key' shape (batch_size, kv_sequence_length, num_heads, 2, head_size) for packed kv");
+        }
+        if (value != nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Expect 'value' be none when 'key' has packed kv format.");
+        }
 
-      qkv_format = UNKNOWN;
-      kv_sequence_length = static_cast<int>(key_dims[2]);
+        if (operator_type == kMultiHeadAttention && bias != nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when packed kv is used");
+        }
+
+        qkv_format = Q_KV_BSNH_BSN2H;
+        kv_sequence_length = static_cast<int>(key_dims[1]);
+      } else if (key_dims.size() == 4) {  // cross-attention
+        if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT,
+              "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size)");
+        }
+
+        if (value == nullptr || value->Shape() != key->Shape()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' and 'value' shall have same shape for cross attention");
+        }
+
+        if (past_key != nullptr || past_value != nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Input 'past_key' and 'past_value' shall be empty when 'value' is 4D");
+        }
+
+        qkv_format = Q_K_V_BSNH_BNSH_BNSH;
+        kv_sequence_length = static_cast<int>(key_dims[2]);
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
+                               key_dims.size());
+      }
     }
-  } else {  // packed QKV
-    if (query_dims.size() != 3 && query_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' is expected to have 3 or 5 dimensions when key is empty, got ",
-                             query_dims.size());
-    }
-    if (query_dims.size() == 5 &&
-        (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3)) {
+  } else {  // query_dims.size() == 5
+    if (static_cast<int>(query_dims[2]) != num_heads || static_cast<int>(query_dims[3]) != 3) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
+          "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed qkv");
     }
 
     qkv_format = QKV_BSN3H;
@@ -254,14 +264,6 @@ Status CheckInputs(const T* query,
     if (bias_dims.size() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
                              bias_dims.size());
-    }
-
-    if (value == nullptr) {
-      // Currently, bias is not allowed for packed KV. This constraint can be removed later.
-      // Here we assume that fusion tool will not include bias for packed KV.
-      if (query_dims.size() == 5 && query_dims[3] == 2) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "'bias' is not allowed for packed kv. ");
-      }
     }
   }
 
@@ -294,40 +296,13 @@ Status CheckInputs(const T* query,
     }
   }
 
-  // In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
-  bool pass_past_in_kv = false;
   int v_hidden_size = hidden_size;
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3 && value_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ",
-                             value_dims.size());
-    }
-
-    if (query_dims[0] != value_dims[0]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'query' and 'value' shall have same dim 0 (batch_size)");
-    }
-
     if (value_dims.size() == 3) {
-      if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
-      }
       v_hidden_size = static_cast<int>(value_dims[2]);
     } else {  // value_dims.size() == 4
-      if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'key' and 'value' shall have the same dim 2 (kv_sequence_length)");
-      }
-
-      if (past_key != nullptr || past_value != nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'past_key' and 'past_value' shall be empty when 'value' is 4D");
-      }
-
       v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
-      pass_past_in_kv = true;
     }
   }
 
@@ -365,7 +340,8 @@ Status CheckInputs(const T* query,
     }
   }
 
-  // TODO: ORT_RETURN_IF(qkv_format == UNKNOWN, "Unrecognized QKV format");
+  assert(qkv_format != UNKNOWN);
+
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -386,7 +362,6 @@ Status CheckInputs(const T* query,
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
-    output_parameters->pass_past_in_kv = pass_past_in_kv;
     output_parameters->qkv_format = qkv_format;
   }
 
@@ -409,7 +384,6 @@ Status CheckInputs(const T* query,
                    float scale,
                    bool is_unidirectional,
                    bool past_present_share_buffer,
-                   bool dmmha_packing,
                    AttentionType operator_type,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
@@ -418,7 +392,7 @@ Status CheckInputs(const T* query,
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
                      past_seq_len, parameters, num_heads, mask_filter_value, scale, is_unidirectional,
-                     past_present_share_buffer, dmmha_packing, operator_type);
+                     past_present_share_buffer, operator_type);
 }
 
 }  // namespace multihead_attention_helper

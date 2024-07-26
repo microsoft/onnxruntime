@@ -142,7 +142,7 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
   else if ((data.use_memory_efficient_attention || data.use_flash_attention) &&
            data.past_key != nullptr &&
            data.past_value != nullptr &&
-           parameters.pass_past_in_kv) {
+           parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
     // Transpose past_key and past_value to use memory efficient attention
 
     // past_key (BxNxSxH) => temp_k_workspace (BxSxNxH)
@@ -200,7 +200,7 @@ Status PrepareQkv_MHA_WithPast(contrib::AttentionParameters& parameters,
                               data.query, data.bias, q,
                               true, -1);
 
-    if (!parameters.pass_past_in_kv) {
+    if (parameters.qkv_format != Q_K_V_BSNH_BNSH_BNSH) {
       T* k_dest = (data.past_key == nullptr && data.present_key != nullptr) ? data.present_key : k;
       T* v_dest = (data.past_value == nullptr && data.present_value != nullptr) ? data.present_value : v;
 

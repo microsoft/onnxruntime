@@ -691,6 +691,8 @@ class FusionAttention(Fusion):
             return None
 
         # Add bias to inputs for MHA
+        # Bias for cross attention is not fully supported in DMMHA and cpu MHA kernels since they assumes
+        # no bias for key and value that are in BNSH format. Need add checks if we found such assumption is not true.
         if not self.disable_multi_head_attention_bias:
             bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, mha_node_name)
             mha_inputs.append(bias_name)

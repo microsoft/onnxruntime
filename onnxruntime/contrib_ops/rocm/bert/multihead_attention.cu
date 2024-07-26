@@ -124,7 +124,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           past_key, past_value, past_seq_len,
           &attn, num_heads_,
           mask_filter_value_, scale_, false, /*is_unidirectional_*/
-          past_present_share_buffer_, false,
+          past_present_share_buffer_,
           attn_type_,
           device_prop.maxThreadsPerBlock));
 
