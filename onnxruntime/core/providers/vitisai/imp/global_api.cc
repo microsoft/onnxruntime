@@ -446,7 +446,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
       *(opset_import->mutable_domain()) = op.first;
       opset_import->set_version(op.second);
     }
-    model_proto->set_graph(graph_proto.get());
+    std::ignore = model_proto->mutable_graph(); // create a graph
     auto& logger = logging::LoggingManager::DefaultLogger();
     auto model = Model::Create(std::move(*model_proto), path, nullptr, logger);
     return model.release();

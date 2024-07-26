@@ -430,7 +430,6 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__mutable_opset_import(ONNX_NAMESPACE::ModelProto* p, int index) = 0;
   virtual int ModelProto__opset_import_size(const ONNX_NAMESPACE::ModelProto* p) = 0;
   virtual ONNX_NAMESPACE::OperatorSetIdProto* ModelProto__add_opset_import(ONNX_NAMESPACE::ModelProto* p) = 0;
-  virtual void ModelProto__set_graph(ONNX_NAMESPACE::ModelProto* p, ONNX_NAMESPACE::GraphProto* graph_proto) = 0;
 
   // NodeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() = 0;

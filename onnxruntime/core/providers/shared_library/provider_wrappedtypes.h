@@ -192,7 +192,6 @@ struct ModelProto final {
   OperatorSetIdProto* mutable_opset_import(int index) { return g_host->ModelProto__mutable_opset_import(this, index); }
   int opset_import_size() const { return g_host->ModelProto__opset_import_size(this); }
   OperatorSetIdProto* add_opset_import() { return g_host->ModelProto__add_opset_import(this); }
-  void set_graph(GraphProto* graph) { return g_host->ModelProto__set_graph(this, graph); }
 
   ModelProto() = delete;
   ModelProto(const ModelProto&) = delete;
