@@ -38,6 +38,16 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
   std::vector<MatMulTestData<T>> test_cases;
 
   test_cases.push_back(
+      {"test with empty inputs and zero filled output",
+       {4, 0},
+       {0, 4},
+       {4, 4},
+       {0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0}});
+
+  test_cases.push_back(
       {"test padding and broadcast A > B",
        {3, 1, 1, 2},
        {2, 2, 2},
