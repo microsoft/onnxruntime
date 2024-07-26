@@ -51,7 +51,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto calculate_remainder_and_chunk_size = [&](int32_t num_outputs) {
     // note: checked in IsOpSupportedImpl that ensures the dim value at splitting axis exists
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
-    uint64_t chunk_size = narrow<int64_t>((split_dim_size + num_outputs - 1) / num_outputs);
+    uint64_t chunk_size = (split_dim_size + num_outputs - 1) / num_outputs;
     uint64_t remainder = split_dim_size % chunk_size;
     return std::make_tuple(remainder, chunk_size);
   };
