@@ -74,7 +74,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                         model_builder.AddScalarConstant(split_op->type(), "num_splits", num_outputs));
     } else {
       // note: for opset 18+ 'num_outputs' is a required attribute
-      int64_t num_outputs = narrow<int64_t>(helper.GetInt64("num_outputs").value());
+      int64_t num_outputs = helper.GetInt64("num_outputs").value();
       auto [remainder, chunk_size] = calculate_remainder_and_chunk_size(static_cast<int32_t>(num_outputs));
       if (remainder) {
         // uneven
