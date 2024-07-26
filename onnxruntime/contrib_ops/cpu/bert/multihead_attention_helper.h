@@ -91,7 +91,7 @@ Status CheckInputs(const T* query,
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
   //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True, or None
-  //  Remaining inputs (beam_width, cache_indirection) are not checked in the class.
+  //  CUDA version has extra inputs (beam_width, cache_indirection) that are not checked in the class.
   // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format = UNKNOWN;
 
@@ -166,8 +166,8 @@ Status CheckInputs(const T* query,
                              past_value_dims[3]);
     }
     past_sequence_length = static_cast<int>(past_key_dims[2]);
-    max_sequence_length = static_cast<int>(past_key_dims[2]);
     if (past_present_share_buffer) {
+      max_sequence_length = static_cast<int>(past_key_dims[2]);
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
@@ -369,7 +369,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
     output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = max_sequence_length;
+    output_parameters->max_sequence_length = past_present_share_buffer ? max_sequence_length : total_sequence_length;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
     output_parameters->v_hidden_size = v_hidden_size;
