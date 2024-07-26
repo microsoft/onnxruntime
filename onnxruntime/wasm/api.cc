@@ -235,7 +235,7 @@ void OrtFree(void* ptr) {
   }
 }
 
-OrtValue* OrtCreateTensor(int data_type, void* data, uint32_t data_length,  uint32_t* dims, uint32_t dims_length, int data_location) {
+OrtValue* OrtCreateTensor(int data_type, void* data, uint32_t data_length, uint32_t* dims, uint32_t dims_length, int data_location) {
   if (data_location != DATA_LOCATION_CPU &&
       data_location != DATA_LOCATION_CPU_PINNED &&
       data_location != DATA_LOCATION_GPU_BUFFER) {

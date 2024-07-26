@@ -69,15 +69,15 @@ void EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_me
  * @returns a session option handle. Caller must release it after use by calling OrtReleaseSessionOptions().
  */
 ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(uint32_t graph_optimization_level,
-                                                                bool enable_cpu_mem_arena,
-                                                                bool enable_mem_pattern,
-                                                                uint32_t execution_mode,
-                                                                bool enable_profiling,
-                                                                const char* profile_file_prefix,
-                                                                const char* log_id,
-                                                                uint32_t log_severity_level,
-                                                                uint32_t log_verbosity_level,
-                                                                const char* optimized_model_filepath);
+                                                                          bool enable_cpu_mem_arena,
+                                                                          bool enable_mem_pattern,
+                                                                          uint32_t execution_mode,
+                                                                          bool enable_profiling,
+                                                                          const char* profile_file_prefix,
+                                                                          const char* log_id,
+                                                                          uint32_t log_severity_level,
+                                                                          uint32_t log_verbosity_level,
+                                                                          const char* optimized_model_filepath);
 
 /**
  * append an execution provider for a session.
