@@ -1,7 +1,7 @@
-name: New Issue Labeler
+id: issueLabeler
+name: GitOps.PullRequestIssueManagement
 description: Assign label to new issues without a label
 resource: repository
-
 configuration:
   resourceManagementConfiguration:
     eventResponderTasks:
