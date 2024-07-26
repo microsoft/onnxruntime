@@ -35,7 +35,8 @@ parameters:
   values:
     - 11.8
     - 12.2
-
+    -
+stages:
 - stage: kernelDocumentation
   dependsOn: []
   jobs:

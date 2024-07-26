@@ -33,6 +33,7 @@ parameters:
   type: boolean
   default: true
 
+stages:
 - stage: dml
   dependsOn: []
   jobs:
