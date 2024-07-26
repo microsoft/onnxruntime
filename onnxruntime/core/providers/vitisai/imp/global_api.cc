@@ -452,7 +452,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
 
   the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
-    graph.SetOutputs(inputs);
+    graph.SetInputs(inputs);
   };
 
   if (!s_library_vitisaiep.vaip_get_version) {
