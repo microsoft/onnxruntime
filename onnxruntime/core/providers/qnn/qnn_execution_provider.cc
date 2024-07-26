@@ -199,6 +199,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
     context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
+
+    // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
+    // generate the QNN context model separately.
+    // It could happen that the generated EPContext node in separate graph has same node name.
+    // User can set this context_node_name_prefix for each split pieces to avoid that happens.
+    context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -613,7 +620,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
     int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-    return MakeString(QNN, "_", model_hash, "_", metadef_id);
+    return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
   };
 
   // For model with EPContext, make sure each partition only has one single EPContext node
