@@ -8,12 +8,13 @@
 #include <cassert>
 #include <functional>
 #include <vector>
+#include <filesystem>
 struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (3u)
-#define VAIP_ORT_API_MINOR (1u)
+#define VAIP_ORT_API_MAJOR (4u)
+#define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
   uint32_t magic;  // 'VAIP' or something else to make sure the following field
@@ -222,7 +223,11 @@ struct OrtApiForVaip {
       const std::vector<int16_t>& data);  // [88]
   TensorProto* (*tensor_proto_new_bf16)(
       const std::string& name, const std::vector<int64_t>& shape,
-      const std::vector<int16_t>& data);  // [89]
+      const std::vector<int16_t>& data);                                                                                       // [89]
+  const std::filesystem::path& (*get_model_path)(const Graph& graph);                                                          // [90]
+  Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);  //[91]
+  void (*graph_set_inputs)(Graph& graph,
+                           gsl::span<const NodeArg* const> inputs);  // [92]
 };
 
 #ifndef USE_VITISAI

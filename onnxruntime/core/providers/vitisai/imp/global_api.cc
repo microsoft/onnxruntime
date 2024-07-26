@@ -432,6 +432,29 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     graph.AddInitializedTensor(tensor);
   };
 
+  the_global_api.get_model_path = [](const Graph& graph) -> const std::filesystem::path& {
+    return graph.ModelPath();
+  };
+
+  the_global_api.create_empty_model = [](const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset) -> Model* {
+    auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
+    auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    for (const auto& op : opset) {
+      auto* opset_import = model_proto->add_opset_import();
+      *(opset_import->mutable_domain()) = op.first;
+      opset_import->set_version(op.second);
+    }
+    std::ignore = model_proto->mutable_graph();  // create a graph
+    auto& logger = logging::LoggingManager::DefaultLogger();
+    auto model = Model::Create(std::move(*model_proto), path, nullptr, logger);
+    return model.release();
+  };
+
+  the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
+    graph.SetInputs(inputs);
+  };
+
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
