@@ -338,6 +338,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
+  // Explicitly release the WebNN builder to free memory.
+  wnn_builder_ = emscripten::val::undefined();
   model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));

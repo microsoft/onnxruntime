@@ -24,10 +24,7 @@ class ModelBuilder {
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                const emscripten::val& context, const DataLayout preferred_layout,
                const WebnnDeviceType wnn_device_type);
-  ~ModelBuilder() {
-    // Explicitly release the WebNN builder to free memory.
-    wnn_builder_ = emscripten::val::undefined();
-  };
+  ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
 
