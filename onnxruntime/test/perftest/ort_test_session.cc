@@ -699,6 +699,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16"};
+        size_t num_gpus = 10;
+        for (size_t i = 0; i <= num_gpus; i++) {
+          ov_supported_device_types.emplace("GPU." + std::to_string(i));
+        }
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
@@ -823,10 +827,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
                        std::ios::binary | std::ios::in | std::ios::ate);
     if (file.is_open()) {
-      const std::streamsize fsize = file.tellg();
+      const std::streampos fsize = file.tellg();
       file.seekg(0, std::ios_base::beg);
       std::vector<char> model_bytes(narrow<size_t>(fsize));
-      file.read(model_bytes.data(), fsize);
+      file.read(model_bytes.data(), narrow<std::streamsize>(fsize));
       session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
     } else {
       ORT_THROW("Model file could not be opened.\n");

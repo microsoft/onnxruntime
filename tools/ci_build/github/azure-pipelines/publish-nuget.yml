@@ -9,10 +9,22 @@ resources:
         - rel-*
     branch: main
 
+parameters:
+  - name: isReleaseBuild
+    type: boolean
+    default: false
+
+variables:
+  - name: ArtifactFeed
+    ${{ if eq(parameters.isReleaseBuild, false) }}:
+      value: ort-cuda-11-nightly
+    ${{ else }}:
+      value: onnxruntime-cuda-11
+
 stages:
   - template: templates/publish-nuget-steps.yml
     parameters:
-      stage_name: 'Publish_NuGet_Packag_And_Report'
+      stage_name: 'Publish_NuGet_Package_And_Report'
       include_cpu_ep: true
       download_artifacts_steps:
         - download: build
@@ -25,7 +37,11 @@ stages:
           artifact: 'drop-signed-nuget-Training-CPU'
         - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-        - download: build
-          displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-          artifact: 'drop-signed-nuget-GPU'
-        - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+  # Publish CUDA 11 Nuget/Java pkgs to ADO feed
+  - template: stages/nuget-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)
+
+  - template: stages/java-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)
