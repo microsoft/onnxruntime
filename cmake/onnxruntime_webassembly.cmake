@@ -231,7 +231,6 @@ else()
     target_compile_options(onnxruntime_session PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(onnxruntime_framework PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(onnx_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     # target_compile_options(protoc PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(libprotobuf-lite PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
@@ -243,49 +242,64 @@ else()
     target_compile_options(onnxruntime_flatbuffers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(onnxruntime_util PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(re2 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_flags_private_handle_accessor PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_flags_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_flags_commandlineflag PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_flags_commandlineflag_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_flags_marshalling PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_flags_reflection PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_flags_config PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_flags_program_name PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_private_handle_accessor PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_commandlineflag PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_commandlineflag_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_hashtablez_sampler PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_bad_variant_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_cord PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_cordz_info PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_cord_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_cordz_functions PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_exponential_biased PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_cordz_handle PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_crc_cord_state PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_crc32c PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_crc_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_crc_cpu_detect PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_bad_optional_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_hashtablez_sampler PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_exponential_biased PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_conditions PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_check_op PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_message PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_format PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_str_format_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_log_sink_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_globals PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_sink PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_entry PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_globals PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_bad_variant_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_vlog_config_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_synchronization PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_graphcycles_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_kernel_timeout_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_stacktrace PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_time_zone PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_civil_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_graphcycles_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_bad_optional_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_fnmatch PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_examine_stack PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_symbolize PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_debugging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_malloc_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_demangle_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_demangle_rust PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_decode_rust_punycode PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_utf8_for_code_point PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_malloc_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_civil_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_time_zone PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_stacktrace PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_debugging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_strerror PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_log_internal_nullguard PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_strings PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_int128 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_strings_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(absl_int128 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_string_view PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_base PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_spinlock_wait PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
@@ -320,25 +334,25 @@ else()
   )
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
     set(SIGNATURE_CONVERSIONS "OrtRun:_ppp_p_pp,\
+OrtRunWithBinding:_pp_pp,\
 OrtGetTensorData:_ppppp,\
-OrtCreateTensor:p_pppp_,\
-OrtCreateSession:pppp,\
+OrtCreateTensor:p_p_p__,\
+OrtCreateSession:pp_p,\
 OrtReleaseSession:_p,\
-OrtGetInputOutputCount:pppp,\
-OrtCreateSessionOptions:pp__p_ppppp,\
-OrtAddSessionConfigEntry:pppp,\
+OrtGetInputOutputCount:_ppp,\
+OrtCreateSessionOptions:p_____pp__p,\
 OrtReleaseSessionOptions:_p,\
 OrtAppendExecutionProvider:ppp,\
-OrtAddSessionConfigEntry:pppp,\
-OrtGetInputName:ppp,\
-OrtGetOutputName:ppp,\
-OrtCreateRunOptions:ppp_p,\
-OrtReleaseRunOptions:pp,\
+OrtAddSessionConfigEntry:_pp,\
+OrtGetInputName:pp_,\
+OrtGetOutputName:pp_,\
+OrtCreateRunOptions:p___p,\
+OrtReleaseRunOptions:_p,\
 OrtReleaseTensor:_p,\
 OrtFree:_p,\
 OrtCreateBinding:_p,\
 OrtBindInput:_ppp,\
-OrtBindOutput:_ppp,\
+OrtBindOutput:_ppp_,\
 OrtClearBoundOutputs:_p,\
 OrtReleaseBinding:_p,\
 OrtGetLastError:_pp,\
