@@ -347,7 +347,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   Initializer scale_src(*scale_tensor_proto, graph.ModelPath());
   auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
   auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
-  std::optional<std::unique_ptr<Initializer>> zp_src_ptr;
+  std::optional<Initializer> zp_src_ptr;
   auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
   auto weight_dst_ptr = std::make_unique<Tensor>(uint8_type,
                                                  TensorShape{N, quant_num, blob_bytes},
@@ -356,11 +356,11 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   auto scale_dst_ptr = std::make_unique<Tensor>(scale_type,
                                                 TensorShape{N * quant_num},
                                                 std::make_shared<CPUAllocator>());
-  std::optional<std::string> zp_dst_name;
-  std::optional<std::unique_ptr<Tensor>> zp_dst_ptr;
+  std::string zp_dst_name;
+  std::unique_ptr<Tensor> zp_dst_ptr;
 
   if (zp_tensor_proto) {
-    zp_src_ptr = std::make_unique<Initializer>(*zp_tensor_proto, graph.ModelPath());
+    zp_src_ptr.emplace(*zp_tensor_proto, graph.ModelPath());
     zp_dst_name = graph.GenerateNodeArgName(zp_arg->Name() + "_T");
     zp_dst_ptr = std::make_unique<Tensor>(uint8_type,
                                           TensorShape{N * ((quant_num + 1) / 2)},
@@ -370,7 +370,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
     zp_dst_ptr = std::make_unique<Tensor>(uint8_type,
                                           TensorShape{N * ((quant_num + 1) / 2)},
                                           std::make_shared<CPUAllocator>());
-    memset(zp_dst_ptr.value()->MutableDataRaw(), 0, zp_dst_ptr.value()->SizeInBytes());
+    memset(zp_dst_ptr->MutableDataRaw(), 0, zp_dst_ptr->SizeInBytes());
   }
 
   if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -378,10 +378,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<float>(),
-          zp_src_ptr ? zp_src_ptr.value()->DataAsByteSpan().data() : nullptr,
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
           weight_dst_ptr->MutableData<uint8_t>(),
           scale_dst_ptr->MutableData<float>(),
-          zp_dst_ptr ? zp_dst_ptr.value()->MutableData<uint8_t>() : nullptr,
+          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -391,10 +391,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<float>(),
-          zp_src_ptr ? zp_src_ptr.value()->DataAsByteSpan().data() : nullptr,
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
           weight_dst_ptr->MutableData<uint8_t>(),
           scale_dst_ptr->MutableData<float>(),
-          zp_dst_ptr ? zp_dst_ptr.value()->MutableData<uint8_t>() : nullptr,
+          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -406,10 +406,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, true>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<MLFloat16>(),
-          zp_src_ptr ? zp_src_ptr.value()->DataAsByteSpan().data() : nullptr,
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
           weight_dst_ptr->MutableData<uint8_t>(),
           scale_dst_ptr->MutableData<MLFloat16>(),
-          zp_dst_ptr ? zp_dst_ptr.value()->MutableData<uint8_t>() : nullptr,
+          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -420,10 +420,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<MLFloat16>(),
-          zp_src_ptr ? zp_src_ptr.value()->DataAsByteSpan().data() : nullptr,
+          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
           weight_dst_ptr->MutableData<uint8_t>(),
           scale_dst_ptr->MutableData<MLFloat16>(),
-          zp_dst_ptr ? zp_dst_ptr.value()->MutableData<uint8_t>() : nullptr,
+          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -437,7 +437,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   std::optional<ONNX_NAMESPACE::TensorProto> zp_T_tp;
 
   if (zp_dst_ptr) {
-    zp_T_tp = utils::TensorToTensorProto(*zp_dst_ptr.value(), zp_dst_name.value(), true);
+    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst_ptr, zp_dst_name, true));
   }
 
   auto& input_defs = replacement_node.MutableInputDefs();
@@ -453,11 +453,11 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                     scale_dst_name);
 
   if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp.value()));
+    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp));
     replacement_node.MutableInputArgsCount().push_back(1);
-    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name.value(), std::move(zp_dst_ptr.value())).second,
+    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name, std::move(zp_dst_ptr)).second,
                       "Failed to add buffered tensor ",
-                      zp_dst_name.value());
+                      zp_dst_name);
   }
 
   return Status::OK();
