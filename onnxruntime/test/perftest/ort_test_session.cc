@@ -269,7 +269,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
         }
-      } else if (key == "qnn_saver_path" || key == "context_node_name_prefix") {
+      } else if (key == "qnn_saver_path") {
         // no validation
       } else if (key == "htp_graph_finalization_optimization_mode") {
         std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
@@ -307,7 +307,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
-'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'context_node_name_prefix'])");
+'htp_arch', 'device_id', 'enable_htp_fp16_precision'])");
       }
 
       qnn_options[key] = value;
