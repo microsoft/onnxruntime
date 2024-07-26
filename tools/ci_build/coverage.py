@@ -57,7 +57,7 @@ def main():
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
-    cmd.append("--gcov-ignore-errors=no_working_dir_found")
+    # cmd.append("--gcov-ignore-errors=no_working_dir_found")
     run_subprocess(cmd, cwd=os.path.join(cwd, "CMakeFiles"))
     run_subprocess(f"find {source_dir} -name coverage_rpt.txt".split(" "), cwd=cwd)
 
