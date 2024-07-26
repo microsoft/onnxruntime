@@ -37,7 +37,6 @@ stages:
       clean: true
       submodules: none
 
-    - template: use-android-ndk.yml
     #TODO: use a different docker file since this job doesn't need to rely on manylinux
     - template: get-docker-image-steps.yml
       parameters:

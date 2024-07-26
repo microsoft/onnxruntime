@@ -73,7 +73,6 @@ jobs:
 
   - template: set-version-number-variables-step.yml
 
-  - template: use-android-ndk.yml
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages

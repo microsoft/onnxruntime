@@ -45,7 +45,6 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - template: use-android-ndk.yml
 
   - template: install-appcenter.yml
 
