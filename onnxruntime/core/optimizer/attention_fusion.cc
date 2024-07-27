@@ -210,7 +210,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     if ((node.GetOutputEdgesCount() >= 2 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1, 17}, kOnnxDomain) &&
-        graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
+        graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.InputDefs().size() > 2) {
       // Get hidden size from layer norm bias tensor shape.
       const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
       if (!optimizer_utils::IsShapeKnownOnAllDims(layer_norm_bias, 1)) {
