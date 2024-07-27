@@ -953,7 +953,7 @@ TEST_F(QnnHTPBackendTests, TestOD) {
 
 #if 1
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "od_current_tf2onnx.onnx";
-  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  //so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
 #else
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "unet.preprocessed.quant.onnx_ctx.onnx";
 #endif

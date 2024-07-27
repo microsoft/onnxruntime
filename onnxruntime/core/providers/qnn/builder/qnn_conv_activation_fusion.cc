@@ -381,17 +381,22 @@ Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
                                   const NodeUnit* q_node_unit,
                                   const logging::Logger& logger,
                                   bool validate) {
-  std::vector<const Node*> dq_nodes;
-  dq_nodes.reserve(dq_node_units.size());
-  for (const NodeUnit* dq_node_unit : dq_node_units) {
-    dq_nodes.push_back(&dq_node_unit->GetNode());
+  const size_t num_dqs = dq_node_units.size();
+  constexpr size_t max_num_dqs = 3;
+  ORT_RETURN_IF_NOT(num_dqs == 2 || num_dqs == max_num_dqs, "QDQ Conv should have 2 or 3 DQs");
+
+  std::array<const Node*, max_num_dqs> dq_nodes_buf = {};
+  for (size_t i = 0; i < num_dqs; i++) {
+    dq_nodes_buf[i] = &dq_node_units[i]->GetNode();
   }
-  std::vector<const Node*> q_nodes = {&q_node_unit->GetNode()};
+  gsl::span<const Node*> dq_nodes(dq_nodes_buf.data(), num_dqs);
+
+  std::array<const Node*, 1> q_nodes = {&q_node_unit->GetNode()};
   const Node& target_node = conv_node_unit->GetNode();
 
   // Populate NodeUnit inputs
   std::vector<NodeUnitIODef> inputs;
-  inputs.reserve(dq_node_units.size());
+  inputs.reserve(num_dqs);
   for (const Node* dq_node : dq_nodes) {
     const auto dq_inputs = dq_node->InputDefs();
     const auto& dq_attrs = dq_node->GetAttributes();
@@ -423,6 +428,7 @@ Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
     NodeUnitIODef::QuantParam quant_param{*q_inputs[1], q_inputs.size() == 3 ? q_inputs[2] : nullptr, axis};
     outputs.push_back(NodeUnitIODef{*q_outputs[0], quant_param});
 
+    // Gather output edges out of the Q node.
     auto q_cur_edge = q_node->OutputEdgesBegin();
     auto q_end_edge = q_node->OutputEdgesEnd();
     for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
@@ -431,7 +437,7 @@ Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   }
 
   NodeUnit custom_node_unit(dq_nodes, target_node, q_nodes, NodeUnit::Type::QDQGroup,
-                            inputs, outputs, dq_nodes.size(), output_edges);
+                            inputs, outputs, num_dqs, output_edges);
   const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit.OpType());
   if (conv_op_builder == nullptr) {
     return Status::OK();

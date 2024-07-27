@@ -272,16 +272,16 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   }
 }
 
-NodeUnit::NodeUnit(std::vector<const Node*> dq_nodes, const Node& target_node,
-                   std::vector<const Node*> q_nodes, Type type,
-                   std::vector<NodeUnitIODef> inputs, std::vector<NodeUnitIODef> outputs,
+NodeUnit::NodeUnit(gsl::span<const Node*> dq_nodes, const Node& target_node,
+                   gsl::span<const Node*> q_nodes, Type type,
+                   gsl::span<NodeUnitIODef> inputs, gsl::span<NodeUnitIODef> outputs,
                    size_t input_edge_count, Node::EdgeSet output_edges)
-    : dq_nodes_(std::move(dq_nodes)),
+    : dq_nodes_(dq_nodes.begin(), dq_nodes.end()),
       target_node_(target_node),
-      q_nodes_(std::move(q_nodes)),
+      q_nodes_(q_nodes.begin(), q_nodes.end()),
       type_(type),
-      inputs_(std::move(inputs)),
-      outputs_(std::move(outputs)),
+      inputs_(inputs.begin(), inputs.end()),
+      outputs_(outputs.begin(), outputs.end()),
       input_edge_count_(input_edge_count),
       output_edges_(std::move(output_edges)) {
 }
