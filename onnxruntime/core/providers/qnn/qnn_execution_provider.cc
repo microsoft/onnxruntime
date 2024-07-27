@@ -451,15 +451,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     return {};
   }
 
-  auto add_supported_nodes = [](std::unordered_set<const Node*>& supported_nodes,
-                                const qnn::QnnNodeGroup& qnn_node_group) {
-    for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
-      for (const Node* node : node_unit->GetAllNodesInGroup()) {
-        supported_nodes.insert(node);
-      }
-    }
-  };
-
   auto log_node_support = [](const logging::Logger& logger,
                              logging::Severity log_severity,
                              logging::DataType log_data_type,
@@ -498,7 +489,11 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     }
 
     if (supported) {
-      add_supported_nodes(supported_nodes, qnn_node_group);
+      for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+        for (const Node* node : node_unit->GetAllNodesInGroup()) {
+          supported_nodes.insert(node);
+        }
+      }
     }
   }
 

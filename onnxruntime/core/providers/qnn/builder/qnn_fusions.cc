@@ -471,38 +471,6 @@ using FusionFunc = Status (*)(std::optional<QnnNodeGroup>&,
                               const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>&,
                               const logging::Logger&);
 
-#if 0
-Status TryFusions(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
-                  QnnModelWrapper& qnn_model_wrapper,
-                  const NodeUnit& starting_node,
-                  const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                  const std::unordered_set<const NodeUnit*>& handled_node_units,
-                  const logging::Logger& logger,
-                  bool validate) {
-  // Maps a starting operator type to the fusion function.
-  static std::unordered_map<std::string, FusionFunc> fusions = {
-      {"DequantizeLinear", TryHandleDequantize},
-      {"HardSigmoid", TryHandleHardSigmoidSequence},
-  };
-
-  // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
-  if (starting_node.UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
-  }
-
-  auto iter = fusions.find(starting_node.OpType());
-  if (iter != fusions.end()) {
-    fused_nodes.clear();
-
-    FusionFunc fusion_func = iter->second;
-    ORT_RETURN_IF_ERROR(fusion_func(fused_nodes, qnn_model_wrapper, starting_node, node_unit_map,
-                                    handled_node_units, logger, validate));
-  }
-
-  return Status::OK();
-}
-#endif
-
 static Status TryQnnFusions(/*out*/ std::optional<QnnNodeGroup>& fused_node_group,
                             QnnModelWrapper& qnn_model_wrapper,
                             const NodeUnit& starting_node_unit,

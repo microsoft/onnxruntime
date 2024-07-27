@@ -8,6 +8,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/framework/node_unit.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 
@@ -60,19 +61,12 @@ static const NodeUnit* GetOnlyChildOfType(const GraphViewer& graph_viewer,
   return child_node_unit;
 }
 
-static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& clip_node_unit,
-                             const NodeUnit& q_node_unit) {
-  assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QDQ::QOpName);
-  // TODO(adrianlizarraga): Implement.
-  (void)qnn_model_wrapper;
-  return true;
-}
-
-static bool CanReluBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& relu_node_unit,
-                             const NodeUnit& q_node_unit) {
-  assert(relu_node_unit.OpType() == "Relu" && q_node_unit.OpType() == QDQ::QOpName);
+static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& q_node_unit,
+                                     /*out*/ float& scale,
+                                     /*out*/ int32_t& zero_point,
+                                     /*out*/ int32_t& zp_data_type) {
+  assert(q_node_unit.OpType() == QDQ::QOpName);
   const auto& q_inputs = q_node_unit.GetNode().InputDefs();
 
   // Require an explicit zero-point input for now.
@@ -81,7 +75,6 @@ static bool CanReluBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   }
 
   std::vector<int32_t> zero_points;
-  int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
   Status status = qnn_model_wrapper.UnpackZeroPoints(q_inputs[QDQ::ZERO_POINT_ID]->Name(),
                                                      zero_points, zp_data_type);
 
@@ -89,19 +82,170 @@ static bool CanReluBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   if (!status.IsOK() || zero_points.size() != 1) {
     return false;
   }
+  zero_point = -zero_points[0];  // QNN zero-points are negated.
 
-  int32_t onnx_zero_point = -zero_points[0];  // QNN zero-points are negated.
+  std::vector<float> scales;
+  status = qnn_model_wrapper.UnpackScales(q_inputs[QDQ::SCALE_ID]->Name(), scales);
+
+  // Should only have one scale (per-tensor).
+  if (!status.IsOK() || scales.size() != 1) {
+    return false;
+  }
+
+  scale = scales[0];
+  return true;
+}
+
+static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
+                         const NodeUnit& q_node_unit,
+                         /*out*/ float& rmin,
+                         /*out*/ float& rmax) {
+  int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
+  int32_t zero_point = 0;
+  float scale = 0.0f;
+
+  if (!GetQScalarScaleZeroPoint(qnn_model_wrapper, q_node_unit, scale, zero_point, zp_data_type)) {
+    return false;
+  }
+
+  switch (zp_data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      rmin = scale * (std::numeric_limits<int8_t>::lowest() - zero_point);
+      rmax = scale * (std::numeric_limits<int8_t>::max() - zero_point);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+      rmin = scale * (std::numeric_limits<uint8_t>::lowest() - zero_point);
+      rmax = scale * (std::numeric_limits<uint8_t>::max() - zero_point);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      rmin = scale * (std::numeric_limits<int16_t>::lowest() - zero_point);
+      rmax = scale * (std::numeric_limits<int16_t>::max() - zero_point);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      rmin = scale * (std::numeric_limits<uint16_t>::lowest() - zero_point);
+      rmax = scale * (std::numeric_limits<uint16_t>::max() - zero_point);
+      break;
+    }
+    default:
+      return false;
+  }
+
+  return true;
+}
+
+static bool GetClipMinMax(const QnnModelWrapper& qnn_model_wrapper,
+                          const NodeUnit& clip_node_unit,
+                          /*out*/ float& clip_min,
+                          /*out*/ float& clip_max) {
+  clip_min = std::numeric_limits<float>::lowest();
+  clip_max = std::numeric_limits<float>::max();
+
+  // Clip's min and max are attributes before opset 11.
+  if (clip_node_unit.GetNode().SinceVersion() < 11) {
+    NodeAttrHelper attr_helper(clip_node_unit);
+    std::optional<float> min_opt = attr_helper.GetFloat("min");
+    std::optional<float> max_opt = attr_helper.GetFloat("max");
+
+    if (min_opt.has_value()) {
+      clip_min = min_opt.value();
+    }
+
+    if (max_opt.has_value()) {
+      clip_max = max_opt.value();
+    }
+
+    return true;
+  }
+
+  // After opset 11, min and max are inputs.
+  const auto& inputs = clip_node_unit.Inputs();
+  const size_t num_inputs = inputs.size();
+  auto get_min_or_max = [&qnn_model_wrapper](const NodeUnitIODef& input, /*out*/ float& result) -> bool {
+    TensorInfo input_info = {};
+    std::vector<uint8_t> raw_bytes;
+    if (Status status = qnn_model_wrapper.GetTensorInfo(input, input_info); !status.IsOK()) {
+      return false;
+    }
+    if (!input_info.is_initializer) {
+      return false;
+    }
+    if (Status status = qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, raw_bytes);
+        !status.IsOK()) {
+      return false;
+    }
+    if (input_info.qnn_data_type != QNN_DATATYPE_FLOAT_32) {
+      return false;
+    }
+    result = static_cast<float>(*reinterpret_cast<const float*>(raw_bytes.data()));
+    return true;
+  };
+
+  if (num_inputs > 1 && inputs[1].node_arg.Exists()) {
+    if (!get_min_or_max(inputs[1], clip_min)) {
+      return false;
+    }
+  }
+
+  if (num_inputs > 2 && inputs[2].node_arg.Exists()) {
+    if (!get_min_or_max(inputs[2], clip_max)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& clip_node_unit,
+                             const NodeUnit& q_node_unit) {
+  assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QDQ::QOpName);
+  float rmin = 0.0f;
+  float rmax = 0.0f;
+
+  if (!GetQRminRmax(qnn_model_wrapper, q_node_unit, rmin, rmax)) {
+    return false;
+  }
+
+  float clip_min = std::numeric_limits<float>::lowest();
+  float clip_max = std::numeric_limits<float>::max();
+
+  if (!GetClipMinMax(qnn_model_wrapper, clip_node_unit, clip_min, clip_max)) {
+    return false;
+  }
+
+  constexpr float epsilon = std::numeric_limits<float>::epsilon();
+  if ((epsilon < clip_min - rmin) || (epsilon < rmax - clip_max)) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool CanReluBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& relu_node_unit,
+                             const NodeUnit& q_node_unit) {
+  assert(relu_node_unit.OpType() == "Relu" && q_node_unit.OpType() == QDQ::QOpName);
+  int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
+  int32_t zero_point = 0;
+  float scale = 0.0f;
+
+  if (!GetQScalarScaleZeroPoint(qnn_model_wrapper, q_node_unit, scale, zero_point, zp_data_type)) {
+    return false;
+  }
 
   // Relu is redundant if the zero-point is set to the smallest quantized value.
   switch (zp_data_type) {
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_INT8:
-      return onnx_zero_point == static_cast<int32_t>(std::numeric_limits<int8_t>::lowest());
+      return zero_point == static_cast<int32_t>(std::numeric_limits<int8_t>::lowest());
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UINT8:
-      return onnx_zero_point == static_cast<int32_t>(std::numeric_limits<uint8_t>::lowest());
+      return zero_point == static_cast<int32_t>(std::numeric_limits<uint8_t>::lowest());
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_INT16:
-      return onnx_zero_point == static_cast<int32_t>(std::numeric_limits<int16_t>::lowest());
+      return zero_point == static_cast<int32_t>(std::numeric_limits<int16_t>::lowest());
     case ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UINT16:
-      return onnx_zero_point == static_cast<int32_t>(std::numeric_limits<uint16_t>::lowest());
+      return zero_point == static_cast<int32_t>(std::numeric_limits<uint16_t>::lowest());
     default:
       return false;
   }
