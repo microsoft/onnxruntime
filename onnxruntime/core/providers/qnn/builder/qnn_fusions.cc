@@ -308,12 +308,12 @@ const NodeUnit* QnnNodeGroup::GetTargetNodeUnit(const logging::Logger& logger) c
  * \param do_op_validation True if should call QNN operator validation APIs.
  * \return An onnxruntime::Status
  */
-static Status TryDQQFusion(std::optional<QnnNodeGroup>& qnn_node_group,
-                           QnnModelWrapper& qnn_model_wrapper,
-                           const NodeUnit& dq_node_unit,
-                           const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                           const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
-                           const logging::Logger& logger) {
+static std::optional<QnnNodeGroup> TryDQQFusion(
+    QnnModelWrapper& qnn_model_wrapper,
+    const NodeUnit& dq_node_unit,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger) {
   // Expect that this function is called with a standalone DQ.
   assert(dq_node_unit.OpType() == QDQ::DQOpName && dq_node_unit.UnitType() == NodeUnit::Type::SingleNode);
 
@@ -322,27 +322,33 @@ static Status TryDQQFusion(std::optional<QnnNodeGroup>& qnn_node_group,
 
   // DQ must have a single child (1 output edge) and must not produce a graph output.
   if (dq_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(dq_node)) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   const Node& q_node = dq_node.OutputEdgesBegin()->GetNode();
   if (q_node.OpType() != QDQ::QOpName) {
-    return Status::OK();
+    return std::nullopt;
+  }
+
+  if (graph_viewer.GetNode(q_node.Index()) == nullptr) {
+    return std::nullopt;  // Node is not in this GraphViewer
   }
 
   const auto q_node_unit_it = node_to_node_unit.find(&q_node);
-  ORT_RETURN_IF(q_node_unit_it == node_to_node_unit.end(), "Node does not have a corresponding NodeUnit");
+  if (q_node_unit_it == node_to_node_unit.end()) {
+    return std::nullopt;
+  }
   const NodeUnit* q_node_unit = q_node_unit_it->second;
 
   // child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (q_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   // Check if child node has already been handled. Should not be the case if this
   // fusion function has been called in topological order, but check to be safe.
   if (node_unit_to_qnn_node_group.count(q_node_unit) != 0) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
@@ -351,11 +357,14 @@ static Status TryDQQFusion(std::optional<QnnNodeGroup>& qnn_node_group,
 
   // DQ and Q must have equal scale type and different zp type.
   if (!QDQ::IsDQQConversion(dq_node, q_node, get_const_initializer, graph_viewer.ModelPath())) {
-    return Status::OK();
+    return std::nullopt;
   }
 
-  QNN_RETURN_OK_IF_ERROR(QnnDQQFusionAdd(qnn_model_wrapper, dq_node_unit, *q_node_unit, logger, /*validate*/ true),
-                         logger);
+  if (Status status = QnnDQQFusionAdd(qnn_model_wrapper, dq_node_unit, *q_node_unit,
+                                      logger, /*validate*/ true);
+      !status.IsOK()) {
+    return std::nullopt;
+  }
 
   // Validation passed, so create a QnnNodeGroup.
   LOGS(logger, VERBOSE) << " Will use QNN Convert via fusion. dq_node name: [" << dq_node.Name()
@@ -364,12 +373,12 @@ static Status TryDQQFusion(std::optional<QnnNodeGroup>& qnn_node_group,
                         << "] q_node optype: [" << q_node_unit->OpType()
                         << "]";
 
-  qnn_node_group = QnnNodeGroup{};
+  std::optional<QnnNodeGroup> qnn_node_group = QnnNodeGroup{};
   qnn_node_group->type_ = QnnNodeGroup::Type::DQQFusion;
   qnn_node_group->node_units_.push_back(&dq_node_unit);
   qnn_node_group->node_units_.push_back(q_node_unit);
 
-  return Status::OK();
+  return qnn_node_group;
 }
 
 /**
@@ -386,16 +395,16 @@ static Status TryDQQFusion(std::optional<QnnNodeGroup>& qnn_node_group,
  * \param do_op_validation True if should call QNN operator validation APIs.
  * \return A Status indicating a potential failure.
  */
-static Status TryHardSigmoidMulFusion(std::optional<QnnNodeGroup>& qnn_node_group,
-                                      QnnModelWrapper& qnn_model_wrapper,
-                                      const NodeUnit& hardsigmoid_node_unit,
-                                      const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                                      const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
-                                      const logging::Logger& logger) {
+static std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
+    QnnModelWrapper& qnn_model_wrapper,
+    const NodeUnit& hardsigmoid_node_unit,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger) {
   // Looking for a standalone HardSigmoid to start the sequence.
   if (hardsigmoid_node_unit.OpType() != "HardSigmoid" ||
       hardsigmoid_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
@@ -408,7 +417,7 @@ static Status TryHardSigmoidMulFusion(std::optional<QnnNodeGroup>& qnn_node_grou
 
   // Check for explicit values of alpha and beta.
   if (std::abs(alpha - req_alpha) > alpha_eps || std::abs(beta - req_beta) > beta_eps) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
@@ -416,27 +425,33 @@ static Status TryHardSigmoidMulFusion(std::optional<QnnNodeGroup>& qnn_node_grou
 
   // HardSigmoid must have a single child (1 output edge) and must not produce a graph output.
   if (hs_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(hs_node)) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   const Node& mul_node = hs_node.OutputEdgesBegin()->GetNode();
   if (mul_node.OpType() != "Mul") {
-    return Status::OK();
+    return std::nullopt;
+  }
+
+  if (graph_viewer.GetNode(mul_node.Index()) == nullptr) {
+    return std::nullopt;  // Node is not in this GraphViewer
   }
 
   const auto mul_node_unit_it = node_to_node_unit.find(&mul_node);
-  ORT_RETURN_IF(mul_node_unit_it == node_to_node_unit.end(), "Mul Node does not have a corresponding NodeUnit");
+  if (mul_node_unit_it == node_to_node_unit.end()) {
+    return std::nullopt;
+  }
   const NodeUnit* mul_node_unit = mul_node_unit_it->second;
 
   // Check if Mul node has already been handled. Should not be the case if this
   // fusion function has been called in topological order, but check to be safe.
   if (node_unit_to_qnn_node_group.count(mul_node_unit) != 0) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   // Mul child must not already be part of a QDQ NodeUnit (i.e., be standalone).
   if (mul_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   // Input to HardSigmoid must also be the other input to the Mul.
@@ -445,38 +460,40 @@ static Status TryHardSigmoidMulFusion(std::optional<QnnNodeGroup>& qnn_node_grou
                                mul_node.InputDefs()[1]->Name() == hs_input_name;
 
   if (!same_root_input) {
-    return Status::OK();
+    return std::nullopt;
   }
 
-  QNN_RETURN_OK_IF_ERROR(QnnHardSigmoidMulFusionAdd(qnn_model_wrapper, hardsigmoid_node_unit, *mul_node_unit,
-                                                    logger, /*validate*/ true),
-                         logger);
+  if (Status status = QnnHardSigmoidMulFusionAdd(qnn_model_wrapper, hardsigmoid_node_unit, *mul_node_unit,
+                                                 logger, /*validate*/ true);
+      !status.IsOK()) {
+    return std::nullopt;
+  }
 
   // Validation passed, so create a QnnNodeGroup. Any errors are now passed back to the caller.
   LOGS(logger, VERBOSE) << "Will use QNN HardSwish via fusion. HardSigmoid name: [" << hardsigmoid_node_unit.Name()
                         << "] Mul name: [" << mul_node_unit->Name() << "]";
 
-  qnn_node_group = QnnNodeGroup{};
+  std::optional<QnnNodeGroup> qnn_node_group = QnnNodeGroup{};
   qnn_node_group->type_ = QnnNodeGroup::Type::HardSigmoidMulFusion;
   qnn_node_group->node_units_.push_back(&hardsigmoid_node_unit);
   qnn_node_group->node_units_.push_back(mul_node_unit);
 
-  return Status::OK();
+  return qnn_node_group;
 }
 
-using FusionFunc = Status (*)(std::optional<QnnNodeGroup>&,
-                              QnnModelWrapper&,
-                              const NodeUnit&,
-                              const std::unordered_map<const Node*, const NodeUnit*>&,
-                              const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>&,
-                              const logging::Logger&);
+using FusionFunc = std::optional<QnnNodeGroup> (*)(
+    QnnModelWrapper&,
+    const NodeUnit&,
+    const std::unordered_map<const Node*, const NodeUnit*>&,
+    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>&,
+    const logging::Logger&);
 
-static Status TryQnnFusions(/*out*/ std::optional<QnnNodeGroup>& fused_node_group,
-                            QnnModelWrapper& qnn_model_wrapper,
-                            const NodeUnit& starting_node_unit,
-                            const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                            const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
-                            const logging::Logger& logger) {
+static std::optional<QnnNodeGroup> TryQnnFusions(
+    QnnModelWrapper& qnn_model_wrapper,
+    const NodeUnit& starting_node_unit,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger) {
   // Maps a starting operator type to the fusion function.
   static std::unordered_map<std::string, FusionFunc> fusions = {
       {"DequantizeLinear", TryDQQFusion},
@@ -487,16 +504,16 @@ static Status TryQnnFusions(/*out*/ std::optional<QnnNodeGroup>& fused_node_grou
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return Status::OK();
+    return std::nullopt;
   }
 
   auto iter = fusions.find(starting_node_unit.OpType());
   if (iter != fusions.end()) {
     FusionFunc fusion_func = iter->second;
-    ORT_RETURN_IF_ERROR(fusion_func(fused_node_group, qnn_model_wrapper, starting_node_unit, node_to_node_unit,
-                                    node_unit_to_qnn_node_group, logger));
+    return fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
+                       node_unit_to_qnn_node_group, logger);
   }
-  return Status::OK();
+  return std::nullopt;
 }
 
 Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
@@ -538,9 +555,9 @@ Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
         continue;  // Already handled this node unit
       }
 
-      std::optional<QnnNodeGroup> fused_node_group;
-      ORT_RETURN_IF_ERROR(TryQnnFusions(fused_node_group, qnn_model_wrapper, *node_unit,
-                                        node_to_node_unit, node_unit_to_qnn_node_group, logger));
+      std::optional<QnnNodeGroup> fused_node_group = TryQnnFusions(qnn_model_wrapper, *node_unit,
+                                                                   node_to_node_unit, node_unit_to_qnn_node_group,
+                                                                   logger);
 
       if (fused_node_group.has_value()) {
         const QnnNodeGroup::IndexType index = tmp_qnn_node_groups.size();

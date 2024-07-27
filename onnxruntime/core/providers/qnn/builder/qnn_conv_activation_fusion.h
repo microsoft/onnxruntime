@@ -23,11 +23,11 @@ Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
                                   const logging::Logger& logger,
                                   bool validate = false);
 
-Status TryConvActivationFusion(/*out*/ std::optional<QnnNodeGroup>& qnn_node_group,
-                               QnnModelWrapper& qnn_model_wrapper,
-                               const NodeUnit& conv_node_unit,
-                               const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                               const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
-                               const logging::Logger& logger);
+std::optional<QnnNodeGroup> TryConvActivationFusion(
+    QnnModelWrapper& qnn_model_wrapper,
+    const NodeUnit& conv_node_unit,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger);
 }  // namespace qnn
 }  // namespace onnxruntime
