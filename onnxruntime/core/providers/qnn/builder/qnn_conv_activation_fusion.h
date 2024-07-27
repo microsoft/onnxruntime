@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "core/framework/node_unit.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/qnn_fusions.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -21,12 +23,11 @@ Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
                                   const logging::Logger& logger,
                                   bool validate = false);
 
-Status TryConvActivationFusion(/*out*/ std::vector<const NodeUnit*>& fused_nodes,
+Status TryConvActivationFusion(/*out*/ std::optional<QnnNodeGroup>& qnn_node_group,
                                QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& conv_node_unit,
-                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                               const std::unordered_set<const NodeUnit*>& handled_node_units,
-                               const logging::Logger& logger,
-                               bool do_op_validation);
+                               const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                               const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+                               const logging::Logger& logger);
 }  // namespace qnn
 }  // namespace onnxruntime

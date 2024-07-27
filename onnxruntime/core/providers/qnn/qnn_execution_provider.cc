@@ -405,27 +405,6 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 #endif
 }
 
-bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           const logging::Logger& logger) const {
-  const std::string& op_type = node_unit.OpType();
-  bool supported = false;
-  const auto* op_builder = qnn::GetOpBuilder(op_type);
-  if (op_builder == nullptr) {
-    LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
-                          << node_unit.OpType() << " node `" << node_unit.Name()
-                          << "` will not be assigned to QNN EP.";
-  } else {
-    auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                            node_unit, logger);
-    if (Status::OK() != status) {
-      LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
-                            << "` is not supported: " << status.ErrorMessage();
-    }
-    supported = (Status::OK() == status);
-  }
-  return supported;
-}
-
 std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -462,68 +441,65 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  std::unordered_set<const NodeUnit*> handled_node_units;
-  handled_node_units.reserve(node_unit_size);
+  std::vector<qnn::QnnNodeGroup> qnn_node_groups;
+  qnn_node_groups.reserve(node_unit_size);
 
-  auto add_supported_nodes = [](std::unordered_set<const Node*>& supported_nodes, const NodeUnit* node_unit) {
-    for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
-      supported_nodes.insert(node_in_group);
+  if (Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper,
+                                            node_unit_map, node_unit_size, logger);
+      !status.IsOK()) {
+    LOGS(logger, ERROR) << status.ErrorMessage();
+    return {};
+  }
+
+  auto add_supported_nodes = [](std::unordered_set<const Node*>& supported_nodes,
+                                const qnn::QnnNodeGroup& qnn_node_group) {
+    for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+      for (const Node* node : node_unit->GetAllNodesInGroup()) {
+        supported_nodes.insert(node);
+      }
     }
   };
 
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
-
-    // Get the node_unit associated with the node. Note that the node may not be the node_unit's target node.
-    const NodeUnit* node_unit = node_unit_map.at(node);
-
-    // Visiting 'nodes' in topological order does not guarantee that 'node_units' are
-    // also visited in topological order. Skip this node if it is not the node_unit's target node
-    // to ensure 'node_units' are visited in topological order.
-    if (node != &node_unit->GetNode()) {
-      continue;
+  auto log_node_support = [](const logging::Logger& logger,
+                             logging::Severity log_severity,
+                             logging::DataType log_data_type,
+                             const onnxruntime::CodeLocation& call_site,
+                             const qnn::QnnNodeGroup& qnn_node_group,
+                             bool supported) {
+    if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
+      return;
     }
 
-    if (handled_node_units.count(node_unit) != 0) {
-      continue;  // Already handled this node unit
-    }
-
-    // Try to see if this node unit can be fused.
-    std::vector<const NodeUnit*> fused_nodes;
-    Status fusion_status = TryFusions(fused_nodes, qnn_model_wrapper, *node_unit, node_unit_map,
-                                      handled_node_units, logger, true /*do_op_validation*/);
-
-    if (!fusion_status.IsOK()) {
-      LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
-      handled_node_units.insert(node_unit);
-      continue;
-    }
-
-    if (!fused_nodes.empty()) {
-      for (auto fused_node_unit : fused_nodes) {
-        handled_node_units.insert(fused_node_unit);
-        add_supported_nodes(supported_nodes, fused_node_unit);
+    std::ostringstream oss;
+    oss << "[QNN EP] " << (supported ? "Supports " : "Does NOT support ") << "the following nodes as part of a "
+        << qnn::QnnNodeGroup::TypeToString(qnn_node_group.type_) << " group:" << std::endl;
+    for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+      for (const Node* node : node_unit->GetAllNodesInGroup()) {
+        oss << "\tOperator type: " << node->OpType()
+            << " Node name: " << node->Name()
+            << " Node index: " << node->Index() << std::endl;
       }
-      continue;
     }
 
-    // Couldn't fuse the node unit. See if it is supported by itself.
-    const bool supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
-    LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node->Index()
-                          << "] name: [" << node->Name()
-                          << "] Operator type: [" << node->OpType()
-                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                          << "] index: [" << node_unit->Index()
-                          << "] name: [" << node_unit->Name()
-                          << "]";
+    logging::Capture(logger, log_severity, logging::Category::onnxruntime,
+                     log_data_type, call_site)
+            .Stream()
+        << oss.str();
+  };
+
+  for (const qnn::QnnNodeGroup& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group.IsSupported(qnn_model_wrapper, logger);
+    const bool supported = status.IsOK();
+
+    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_data_type = logging::DataType::SYSTEM;
+    if (logger.OutputIsEnabled(log_severity, log_data_type)) {
+      log_node_support(logger, log_severity, log_data_type, ORT_WHERE, qnn_node_group, supported);
+    }
 
     if (supported) {
-      add_supported_nodes(supported_nodes, node_unit);
+      add_supported_nodes(supported_nodes, qnn_node_group);
     }
-
-    handled_node_units.insert(node_unit);
   }
 
   return supported_nodes;

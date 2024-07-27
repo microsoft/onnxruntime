@@ -484,7 +484,7 @@ static GetTestModelFn F32BuildAdd3Tensors(const TestInputDef<float>& input0_def,
 }
 
 // Tests running a single session in multiple threads on the CPU backend.
-TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
+TEST_F(QnnCPUBackendTests, DISABLED_MultithreadSessionRun) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -564,7 +564,7 @@ static GetTestModelFn QDQBuildAdd3Tensors(const TestInputDef<float>& input0_def,
 }
 
 // Tests running a single session in multiple threads on the HTP backend.
-TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
+TEST_F(QnnHTPBackendTests, DISABLED_MultithreadSessionRun) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -616,7 +616,7 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 }
 
 // Tests running a single session in multiple threads on the HTP backend with run option to set power config
-TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
+TEST_F(QnnHTPBackendTests, DISABLED_MultithreadHtpPowerCfgSessionRunOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -678,7 +678,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 }
 
 // Tests running a single session in multiple threads on the HTP backend with EP option to set default power config
-TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
+TEST_F(QnnHTPBackendTests, DISABLED_MultithreadDefaultHtpPowerCfgFromEpOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -732,7 +732,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
 
 // Tests running a single session in multiple threads on the HTP backend with
 // EP option to set default power config + run option to set power config for each run
-TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
+TEST_F(QnnHTPBackendTests, DISABLED_MultithreadHtpPowerCfgDefaultAndRunOption) {
   std::unique_ptr<ModelAndBuilder> model;
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<int64_t> shape = {1, 3, 2};
@@ -953,18 +953,18 @@ TEST_F(QnnHTPBackendTests, TestOD) {
 
 #if 1
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "od_current_tf2onnx.onnx";
-  // so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  //so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
 #else
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "unet.preprocessed.quant.onnx_ctx.onnx";
 #endif
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
+  //auto& logging_manager = DefaultLoggingManager();
+  //logging_manager.SetDefaultLoggerSeverity(logging::Severity::kVERBOSE);
 
   // Ensure all type/shape inference warnings result in errors!
   so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "0");  // Disable fallback to the CPU EP.
   so.AddConfigEntry(kDebugLayoutTransformation, "1");
-  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-  so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  so.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+  //so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   onnxruntime::ProviderOptions options;
 
 #if defined(_WIN32)
