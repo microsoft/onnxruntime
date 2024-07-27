@@ -44,7 +44,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
 void VitisAIExecutionProvider::CreateKernelRegistry() {
   for (const auto& domain : get_domains_vitisaiep()) {
     for (const auto* op : domain->custom_ops_) {
-      vitisai_optypes_.insert(op->GetName(op));
+      vitisai_optypes_.insert(domain->domain_ + ":" + op->GetName(op));
     }
   }
 }

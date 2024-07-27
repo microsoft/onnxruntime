@@ -173,7 +173,7 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
       auto def_builder = KernelDefBuilder::Create();
       def_builder->SetName(op->GetName(op));
       def_builder->SetDomain(domain->domain_.c_str());
-      def_builder->SinceVersion(1);
+      def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
       if (op->version > 12) {
         auto input_count = op->GetInputTypeCount(op);
         for (auto i = 0u; i < input_count; i++) {
@@ -183,7 +183,7 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
       def_builder->Provider(onnxruntime::kVitisAIExecutionProvider);
       KernelCreateFn kernel_create_fn =
           [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        // out = std::make_unique<MyCustomOpKernel>(info, *op);
+        out = std::make_unique<MyCustomOpKernel>(info, *op);
         return Status::OK();
       };
       std::ignore = s_kernel_registry_vitisaiep->Register(KernelCreateInfo(def_builder->Build(), kernel_create_fn));
