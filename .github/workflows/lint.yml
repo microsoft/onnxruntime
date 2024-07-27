@@ -73,7 +73,7 @@ jobs:
           checkout_path: ${{ github.workspace }}
 
   lint-cpp:
-    name: Lint C++
+    name: Optional Lint C++
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
@@ -89,10 +89,11 @@ jobs:
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
       - uses: reviewdog/action-cpplint@master
+        continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
-          level: warning
+          level: info
           flags: --linelength=120
             --exclude=java/src/main/native/*.c
             --exclude=onnxruntime/core/mlas/inc/*

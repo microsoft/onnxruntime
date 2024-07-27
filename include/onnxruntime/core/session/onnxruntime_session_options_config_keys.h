@@ -265,6 +265,10 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "1": dump the EP context into the Onnx model. (default).
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
+// Specify the EPContext node name prefix to make it unique
+// in case user need to merge/connect multiple EPContext nodes in one model
+static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]

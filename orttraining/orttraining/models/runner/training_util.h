@@ -98,7 +98,7 @@ class RandomDataSet : public DataSet {
       : DataSet(tensor_names),
         num_samples_(num_samples),
         tensor_shapes_(tensor_shapes),
-        tensor_types_(tensor_types){};
+        tensor_types_(tensor_types) {};
 
   virtual ~RandomDataSet() {}
 
@@ -189,7 +189,7 @@ class LossScaler {
         min_loss_scale_(min_loss_scale),
         max_loss_scale_(max_loss_scale),
         loss_scale_(loss_scale),
-        stable_steps_(0){};
+        stable_steps_(0) {};
 
   std::string GetLossScaleInputName() const { return loss_scale_input_name_; }
 

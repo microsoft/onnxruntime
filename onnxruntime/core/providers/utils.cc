@@ -24,7 +24,7 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
 }
 #endif
 
-bool IsScalingByAFactorOfN(int64_t n, float scale) {
+bool ReciprocalIsAFactorOfN(int64_t n, float scale) {
   bool is_factor = false;
   if (scale > 0.f && scale < 1.f) {
     const double factor = 1.0 / scale;
