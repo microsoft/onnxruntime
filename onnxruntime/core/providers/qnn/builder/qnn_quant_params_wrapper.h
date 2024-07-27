@@ -3,6 +3,7 @@
 
 #pragma once
 #include <memory>
+#include <vector>
 #include "QnnTypes.h"
 #include "core/common/common.h"
 #include <gsl/gsl>
@@ -25,6 +26,9 @@ class QnnQuantParamsWrapper {
 
   // Construct a per-tensor quantization param (SCALE_OFFSET)
   QnnQuantParamsWrapper(float scale, int32_t offset);
+
+  // Construct a per-channel quantization param.
+  QnnQuantParamsWrapper(gsl::span<const float> scales, gsl::span<const int32_t> offsets, int32_t axis, bool is_int4);
 
   Qnn_QuantizeParams_t& Get() { return params_; }
   const Qnn_QuantizeParams_t& Get() const { return params_; }
@@ -53,6 +57,9 @@ class QnnQuantParamsWrapper {
            (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET ||
             (params_.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET));
   }
+
+  // Get a copy of scales. Works for both per-tensor and per-channel.
+  Status GetScales(/*out*/ std::vector<float>& scales) const;
 
   // Handle transposing of a per-channel quantized tensor. The quantization parameter's axis
   // must be transposed using the inverse permutation of the Transpose.

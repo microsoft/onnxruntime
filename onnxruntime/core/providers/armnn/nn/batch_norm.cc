@@ -89,7 +89,7 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     armnn::TensorInfo outputTensorInfo(outputShape, armnn::DataType::Float32);
     layer->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, BatchNorm::run->GetDeviceSpec());
 
     if (optNet == nullptr) {

@@ -60,10 +60,9 @@ using createIOpBuildItemFunc = std::function<std::unique_ptr<IOpBuilder>()>;
 using OpBuildItemType = std::map<std::string, std::unique_ptr<IOpBuilder>>;
 
 static const std::map<std::string, createIOpBuildItemFunc> reg = {
-#define REGISTER_OP_BUILDER(ONNX_NODE_TYPE, BUILDER_TYPE)           \
-  {                                                                 \
-    ONNX_NODE_TYPE, [] { return std::make_unique<BUILDER_TYPE>(); } \
-  }
+#define REGISTER_OP_BUILDER(ONNX_NODE_TYPE, BUILDER_TYPE) \
+  {                                                       \
+      ONNX_NODE_TYPE, [] { return std::make_unique<BUILDER_TYPE>(); }}
 
     REGISTER_OP_BUILDER("Add", AddOpBuilder),
     REGISTER_OP_BUILDER("Sub", SubOpBuilder),

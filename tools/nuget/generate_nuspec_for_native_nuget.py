@@ -67,7 +67,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                         and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux"
                     ):
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/win-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x86_64", "arm64"]:
             if child.name == get_package_name("osx", cpu_arch, ep, is_training_package):
@@ -79,7 +79,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
                     if child_file.is_file() and child_file.suffix == ".dylib" and not is_versioned_dylib:
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/osx-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/osx-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep, is_training_package):
@@ -97,7 +97,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                         and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows"
                     ):
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/linux-{cpu_arch}/native"/>'
                         )
 
         if child.name == "onnxruntime-android" or child.name == "onnxruntime-training-android":
@@ -219,7 +219,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.14.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.0"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")

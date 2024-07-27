@@ -61,7 +61,7 @@ stages:
           ${{ if eq(parameters.CudaVersion, '12.2') }}:
             DockerBuildArgs: "
             --build-arg BASEIMAGE=nvidia/cuda:12.2.2-devel-ubuntu20.04
-            --build-arg TRT_VERSION=10.0.1.6-1+cuda12.4
+            --build-arg TRT_VERSION=10.2.0.19-1+cuda12.5
             --build-arg BUILD_UID=$( id -u )
             "
           ${{ else }}:

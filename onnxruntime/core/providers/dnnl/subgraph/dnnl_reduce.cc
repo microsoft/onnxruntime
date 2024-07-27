@@ -135,16 +135,16 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
    * shape reduction. For this reason we have code paths that are taken if the source dimensions and
    * destination dimensions are equal that will not call the reduction op.
    *
-   * "ReduceLogSum" is equivelent to Log(ReduceSum(input))
+   * "ReduceLogSum" is equivalent to Log(ReduceSum(input))
    *   - if the reduction op is called then the eltwise_log post op will added to the reduction primitive.
    *   - if the reduction op is not called then the eltwise_log primitive is added as its own primitive
    *   - NOTE "ReduceLogSum" follows the code flow of "All other reduce ops" with the exception of the added
    *          post op and an extra check if src_dims == dest_dims.
-   * "ReduceLogSumExp" is equivelent to Log(ReduceSum(Exp(input)))
+   * "ReduceLogSumExp" is equivalent to Log(ReduceSum(Exp(input)))
    *   - if the reduction op is called then the eltwise_exp primitive is added before the reduction op
    *     the eletwise_log post op will be added to the reduction primitive
    *   - if the reduction op is not called then the input is not modified since Log(Exp(input) == input
-   * "ReduceSumSquare" is equivelent to ReduceSum(Square(input))
+   * "ReduceSumSquare" is equivalent to ReduceSum(Square(input))
    *   - the eltwise_square primitive is added before the reduction op
    *   - if the source and destination dimensions are not equal the reduction op is called
    * All other reduce ops
@@ -298,7 +298,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     dnnl::memory squeeze_mem = dnnl::memory(squeeze_md, dnnl_engine, nullptr);
     // if the src and dst dims are equal then we will have a valid data handle here.
     // Otherwise we must get the data handle at runtime using the AddReshape function.
-    // reading the data handle directy is more efficent if is it possible.
+    // reading the data handle directly is more efficient if is it possible.
     if (!src_and_dst_dims_equal) {
       squeeze_mem.set_data_handle(reduce_dst_mem.get_data_handle());
     } else {

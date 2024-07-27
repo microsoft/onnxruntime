@@ -22,9 +22,9 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM
-static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
-  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
+  return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {

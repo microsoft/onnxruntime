@@ -5,6 +5,7 @@
 #include "ort_test_session.h"
 #include <algorithm>
 #include <limits>
+#include <fstream>
 #include <set>
 #include <list>
 #include <type_traits>
@@ -698,6 +699,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
                                                          "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
                                                          "GPU.0_FP16", "GPU.1_FP16"};
+        size_t num_gpus = 10;
+        for (size_t i = 0; i <= num_gpus; i++) {
+          ov_supported_device_types.emplace("GPU." + std::to_string(i));
+        }
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
@@ -816,8 +821,21 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   }
 
-  session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
-
+  if (!performance_test_config.model_info.load_via_path) {
+    session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+  } else {
+    std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
+                       std::ios::binary | std::ios::in | std::ios::ate);
+    if (file.is_open()) {
+      const std::streampos fsize = file.tellg();
+      file.seekg(0, std::ios_base::beg);
+      std::vector<char> model_bytes(narrow<size_t>(fsize));
+      file.read(model_bytes.data(), narrow<std::streamsize>(fsize));
+      session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
+    } else {
+      ORT_THROW("Model file could not be opened.\n");
+    }
+  }
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
@@ -927,7 +945,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1 if not overriden
+      // free dimensions are treated as 1 if not overridden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

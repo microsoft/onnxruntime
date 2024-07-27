@@ -466,7 +466,7 @@ std::string RetrieveEPContextCache(
   fs::path ep_ctx_fs_path(ep_ctx_model_loc);
   // Attr "ep_cache_context" stores a relative path.
   ep_ctx_fs_path.replace_filename(fs::path(ep_ctx_cache));
-  // TODO: Validaion of the file location to make sure security is met.
+  // TODO: Validation of the file location to make sure security is met.
   if (!fs::exists(ep_ctx_fs_path) || !fs::is_regular_file(ep_ctx_fs_path)) {
     ORT_THROW("File for EP context cache is missing");
   }
