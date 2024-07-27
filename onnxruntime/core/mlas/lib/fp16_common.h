@@ -70,7 +70,7 @@ MlasLoadPartialFloat16x4(const _mlas_fp16_* Buffer, size_t len)
 {
     MLAS_FLOAT16X4 Vector = MlasZeroFloat16x4();
     if ((len & 1) != 0) {
-        Vector = vld1_lane_u16(Buffer + (len - 1), vreinterpret_u16_f16(Vector), 0);
+        Vector = vreinterpret_f16_u16(vld1_lane_u16(Buffer + (len - 1), vreinterpret_u16_f16(Vector), 0));
     }
     if ((len & 2) != 0) {
         Vector = vreinterpret_f16_f32(vdup_lane_f32(vreinterpret_f32_f16(Vector), 0));
