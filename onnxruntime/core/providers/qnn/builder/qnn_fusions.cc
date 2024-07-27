@@ -155,7 +155,6 @@ Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& lo
       Status status = QnnConvActivationFusionAdd(qmw,
                                                  dq_node_units,
                                                  conv_node_unit,
-                                                 activation_node_unit,
                                                  q_node_unit,
                                                  logger,
                                                  /*validate*/ true);
@@ -225,7 +224,6 @@ Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logg
       const bool has_bias_dq = num_node_units == 6;
       std::vector<const NodeUnit*> dq_node_units = {node_units_[0], node_units_[1]};
       const NodeUnit* conv_node_unit = node_units_[num_node_units - 3];
-      const NodeUnit* activation_node_unit = node_units_[num_node_units - 2];
       const NodeUnit* q_node_unit = node_units_[num_node_units - 1];
 
       if (has_bias_dq) {
@@ -234,7 +232,6 @@ Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logg
       return QnnConvActivationFusionAdd(qmw,
                                         dq_node_units,
                                         conv_node_unit,
-                                        activation_node_unit,
                                         q_node_unit,
                                         logger,
                                         /*validate*/ false);

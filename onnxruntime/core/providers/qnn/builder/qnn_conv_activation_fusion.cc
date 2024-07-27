@@ -378,19 +378,60 @@ static bool IsValidQDQConv(gsl::span<const NodeUnit*> dq_node_units,
 Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
                                   gsl::span<const NodeUnit*> dq_node_units,
                                   const NodeUnit* conv_node_unit,
-                                  const NodeUnit* activation_node_unit,
                                   const NodeUnit* q_node_unit,
                                   const logging::Logger& logger,
                                   bool validate) {
-  QDQ::NodeGroup custom_node_group;
-  custom_node_group.dq_nodes.reserve(dq_node_units.size());
-  custom_node_group.q_nodes = std::vector<NodeIndex>{q_node_unit->Index()};
-  custom_node_group.target_node = conv_node_unit->Index();
-  auto get_node_idx = [](const NodeUnit* n) { return n->Index(); };
-  std::transform(dq_node_units.begin(), dq_node_units.end(), std::back_inserter(custom_node_group.dq_nodes),
-                 get_node_idx);
+  std::vector<const Node*> dq_nodes;
+  dq_nodes.reserve(dq_node_units.size());
+  for (const NodeUnit* dq_node_unit : dq_node_units) {
+    dq_nodes.push_back(&dq_node_unit->GetNode());
+  }
+  std::vector<const Node*> q_nodes = {&q_node_unit->GetNode()};
+  const Node& target_node = conv_node_unit->GetNode();
 
-  NodeUnit custom_node_unit(qnn_model_wrapper.GetGraphViewer(), custom_node_group, activation_node_unit->GetNode());
+  // Populate NodeUnit inputs
+  std::vector<NodeUnitIODef> inputs;
+  inputs.reserve(dq_node_units.size());
+  for (const Node* dq_node : dq_nodes) {
+    const auto dq_inputs = dq_node->InputDefs();
+    const auto& dq_attrs = dq_node->GetAttributes();
+
+    std::optional<int64_t> axis;
+    if (auto entry = dq_attrs.find("axis"); entry != dq_attrs.end()) {
+      axis = entry->second.i();
+    }
+
+    // quantization scale and zp are always the input[1, 2]
+    NodeUnitIODef::QuantParam quant_param{*dq_inputs[1], dq_inputs.size() == 3 ? dq_inputs[2] : nullptr, axis};
+    inputs.push_back(NodeUnitIODef{*dq_inputs[0], quant_param});
+  }
+
+  // Populate NodeUnit outputs and output edges
+  std::vector<NodeUnitIODef> outputs;
+  Node::EdgeSet output_edges;
+  for (const Node* q_node : q_nodes) {
+    const auto q_inputs = q_node->InputDefs();
+    const auto& q_attrs = q_node->GetAttributes();
+    const auto q_outputs = q_node->OutputDefs();
+
+    std::optional<int64_t> axis;
+    if (auto entry = q_attrs.find("axis"); entry != q_attrs.end()) {
+      axis = entry->second.i();
+    }
+
+    // quantization scale and zp are always the input[1, 2]
+    NodeUnitIODef::QuantParam quant_param{*q_inputs[1], q_inputs.size() == 3 ? q_inputs[2] : nullptr, axis};
+    outputs.push_back(NodeUnitIODef{*q_outputs[0], quant_param});
+
+    auto q_cur_edge = q_node->OutputEdgesBegin();
+    auto q_end_edge = q_node->OutputEdgesEnd();
+    for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
+      output_edges.insert(Node::EdgeEnd{q_cur_edge->GetNode(), 0, q_cur_edge->GetDstArgIndex()});
+    }
+  }
+
+  NodeUnit custom_node_unit(dq_nodes, target_node, q_nodes, NodeUnit::Type::QDQGroup,
+                            inputs, outputs, dq_nodes.size(), output_edges);
   const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit.OpType());
   if (conv_op_builder == nullptr) {
     return Status::OK();
@@ -463,7 +504,6 @@ std::optional<QnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_w
   if (Status status = QnnConvActivationFusionAdd(tmp_model_wrapper,
                                                  dq_node_units,
                                                  &conv_node_unit,
-                                                 activation_node_unit,
                                                  q_node_unit,
                                                  logger,
                                                  /*validate*/ true);

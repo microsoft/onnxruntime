@@ -18,7 +18,6 @@ namespace qnn {
 Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
                                   gsl::span<const NodeUnit*> dq_node_units,
                                   const NodeUnit* conv_node_unit,
-                                  const NodeUnit* activation_node_unit,
                                   const NodeUnit* q_node_unit,
                                   const logging::Logger& logger,
                                   bool validate = false);

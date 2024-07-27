@@ -272,41 +272,18 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   }
 }
 
-NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group,
-                   const Node& output_activation_node)
-    : dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
-      target_node_(*graph_viewer.GetNode(node_group.target_node)),
-      q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
-      type_(Type::QDQGroup),
-      inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
-      outputs_{GetQDQIODefs(output_activation_node, node_group, false /* is_input */)} {
-  input_edge_count_ = std::accumulate(dq_nodes_.cbegin(), dq_nodes_.cend(), size_t(0),
-                                      [](size_t acc, const Node* node) { return acc + node->GetInputEdgesCount(); });
-
-  // add edges for inputs that are not from DQ nodes. there is one edge to each DQ node.
-  // other inputs could come from initializers or graph inputs (no edges) or other nodes (edge).
-  input_edge_count_ += target_node_.GetInputEdgesCount() - dq_nodes_.size();
-
-  // create output edges. each target node output either goes to Q node/s or non-Q node/s.
-  // ValidateNodeGroupQDQNodes ensures this.
-  auto cur_edge = output_activation_node.OutputEdgesBegin();
-  auto end_edge = output_activation_node.OutputEdgesEnd();
-  for (; cur_edge != end_edge; ++cur_edge) {
-    const Node& node = cur_edge->GetNode();
-
-    // if node is in q_nodes we hide the Q node.
-    if (std::find(q_nodes_.cbegin(), q_nodes_.cend(), &node) != q_nodes_.cend()) {
-      auto src_idx = cur_edge->GetSrcArgIndex();
-      auto q_cur_edge = node.OutputEdgesBegin();
-      auto q_end_edge = node.OutputEdgesEnd();
-      for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
-        output_edges_.insert(Node::EdgeEnd{q_cur_edge->GetNode(), src_idx, q_cur_edge->GetDstArgIndex()});
-      }
-    } else {
-      // non-Q node, or Q node that isn't in the QDQ node group (unexpected but may be possible). add as-is.
-      output_edges_.insert(*cur_edge);
-    }
-  }
+NodeUnit::NodeUnit(std::vector<const Node*> dq_nodes, const Node& target_node,
+                   std::vector<const Node*> q_nodes, Type type,
+                   std::vector<NodeUnitIODef> inputs, std::vector<NodeUnitIODef> outputs,
+                   size_t input_edge_count, Node::EdgeSet output_edges)
+    : dq_nodes_(std::move(dq_nodes)),
+      target_node_(target_node),
+      q_nodes_(std::move(q_nodes)),
+      type_(type),
+      inputs_(std::move(inputs)),
+      outputs_(std::move(outputs)),
+      input_edge_count_(input_edge_count),
+      output_edges_(std::move(output_edges)) {
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

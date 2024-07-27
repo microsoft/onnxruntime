@@ -68,8 +68,10 @@ class NodeUnit {
  public:
   explicit NodeUnit(const Node& node);
   explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
-  explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group,
-                    const Node& output_activation_node);
+  NodeUnit(std::vector<const Node*> dq_nodes, const Node& target_node,
+           std::vector<const Node*> q_nodes, Type type,
+           std::vector<NodeUnitIODef> inputs, std::vector<NodeUnitIODef> outputs,
+           size_t input_edge_count, Node::EdgeSet output_edges);
 
   Type UnitType() const noexcept { return type_; }
 
