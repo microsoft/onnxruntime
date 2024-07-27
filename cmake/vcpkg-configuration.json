@@ -9,9 +9,10 @@
             "repository": "https://github.com/luncliff/vcpkg-registry",
             "kind": "git",
             "packages": [
+                "abseil",
                 "onnx"
             ],
-            "baseline": "d8758aed30032ab7b6988fd42faf0657d49a2880"
+            "baseline": "8f14a82699eb749ea5c03b40c644810b703357cd"
         }
     ]
 }
