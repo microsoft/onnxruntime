@@ -229,10 +229,8 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
-static bool CanReluBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& relu_node_unit,
-                             const NodeUnit& q_node_unit) {
-  assert(relu_node_unit.OpType() == "Relu" && q_node_unit.OpType() == QDQ::QOpName);
+static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& q_node_unit) {
+  assert(q_node_unit.OpType() == QDQ::QOpName);
   int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
   int32_t zero_point = 0;
   float scale = 0.0f;
@@ -262,7 +260,7 @@ static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   const std::string& activation_type = activation_node_unit.OpType();
 
   if (activation_type == "Relu") {
-    return CanReluBeRemoved(qnn_model_wrapper, activation_node_unit, q_node_unit);
+    return CanQRelaceRelu(qnn_model_wrapper, q_node_unit);
   }
 
   if (activation_type == "Clip") {
@@ -495,30 +493,6 @@ std::optional<QnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_w
     return std::nullopt;
   }
 
-  // Create a temporary QnnModelWrapper for validation only. We need to be sure that this fusion will work before
-  // modifying the actual QnnModelWrapper. This allows us to revert to the traditional OpBuilder workflow if this
-  // fusion doesn't work out.
-  QnnModelWrapper tmp_model_wrapper(graph_viewer,
-                                    logger,
-                                    qnn_model_wrapper.GetQnnInterface(),
-                                    qnn_model_wrapper.GetQnnBackendHandle(),
-                                    qnn_model_wrapper.GetInputIndexMap(),
-                                    qnn_model_wrapper.GetOutputIndexMap(),
-                                    qnn_model_wrapper.GetInitializerLookup(),
-                                    qnn_model_wrapper.GetQnnBackendType());
-
-  if (Status status = QnnConvActivationFusionAdd(tmp_model_wrapper,
-                                                 dq_node_units,
-                                                 &conv_node_unit,
-                                                 q_node_unit,
-                                                 logger,
-                                                 /*validate*/ true);
-      !status.IsOK()) {
-    return std::nullopt;
-  }
-
-  // Validation passed, so create a QnnNodeGroup.
-  // If we encounter an error, we return it directly to caller.
   LOGS(logger, VERBOSE) << "Will use Conv + Activation via fusion. conv_node name: [" << conv_node.Name()
                         << "] activation_node optype: [" << activation_node.OpType()
                         << "] activation_node name: [" << activation_node.Name()
