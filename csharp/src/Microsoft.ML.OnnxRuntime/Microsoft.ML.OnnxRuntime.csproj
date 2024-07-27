@@ -23,12 +23,49 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
-                            '$(IncludeMobileTargets)' == 'true'">
+                              '$(IncludeMobileTargets)' == 'true'">
     <MobileTargets>net8.0-android</MobileTargets>
   </PropertyGroup>
 
   <PropertyGroup>
     <TargetFrameworks>$(BaseTargets);$(MobileTargets)</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RootNamespace>Microsoft.ML.OnnxRuntime</RootNamespace>
+    <AssemblyName>Microsoft.ML.OnnxRuntime</AssemblyName>
+
+    <!-- Ignore any passed in value unless this is a release build. -->
+    <PackageVersion Condition="'$(IsReleaseBuild)' != 'true'"></PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == '' And '$(Configuration)' == 'Debug'">1.0.0</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == '' ">0.0.0</PackageVersion>
+
+    <!-- Set the attributes for the managed dll -->
+    <!-- https://learn.microsoft.com/en-us/dotnet/standard/assembly/set-attributes-project-file -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>Microsoft.ML.OnnxRuntime C# Bindings</AssemblyTitle>
+    <Company>Microsoft</Company>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <Description>This package contains ONNX Runtime for .Net platforms</Description>
+
+    <!-- NOTE: this is also used as the default for AssemblyVersion and FileVersion -->
+    <Version>$(PackageVersion)</Version>
+
+    <!-- Set the attributes for a nuget package -->
+    <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
+    <!--- The parameter OrtPackageId is only used for some conditional logic below -->
+    <Authors>Microsoft</Authors>
+    <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
+    <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
+    <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageIcon>ORT_icon_for_light_bg.png</PackageIcon>
+    <PackageReleaseNotes>
+      Release Def:
+        Branch: $(BUILD_SOURCEBRANCH)
+        Commit: $(BUILD_SOURCEVERSION)
+        Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
+    </PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -43,8 +80,6 @@
     <OnnxRuntimeCsharpRoot>$(OnnxRuntimeRoot)\csharp</OnnxRuntimeCsharpRoot>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
 
-    <RootNamespace>Microsoft.ML.OnnxRuntime</RootNamespace>
-    <AssemblyName>Microsoft.ML.OnnxRuntime</AssemblyName>
     <EnableDefaultItems>false</EnableDefaultItems>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <DebugType>portable</DebugType>
@@ -54,27 +89,8 @@
     on their device is not built for training, an exception will be thrown with the following message -
     "Training is disabled in the current build. Please build onnxruntime from source with the build flags
     enable_training_apis. "-->
-   <EnableTrainingApis Condition="'$(EnableTrainingApis)' == ''">true</EnableTrainingApis>
+    <EnableTrainingApis Condition="'$(EnableTrainingApis)' == ''">true</EnableTrainingApis>
 
-    <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
-    <!--- The parameter OrtPackageId is only used for some conditional logic below -->
-    <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
-    <Authors>Microsoft</Authors>
-    <PackageVersion Condition=" '$(PackageVersion)' == '' And '$(Configuration)' == 'Debug' ">1.0.0</PackageVersion>
-    <PackageVersion Condition=" '$(PackageVersion)' == '' ">0.0.0</PackageVersion>
-    <Version>$(PackageVersion)</Version>
-    <Description>This package contains ONNX Runtime for .Net platforms</Description>
-    <PackageTags>ONNX;ONNX Runtime;Machine Learning</PackageTags>
-    <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <PackageIcon>ORT_icon_for_light_bg.png</PackageIcon>
-    <PackageReleaseNotes>
-      Release Def:
-        Branch: $(BUILD_SOURCEBRANCH)
-        Commit: $(BUILD_SOURCEVERSION)
-        Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(BUILD_BUILDID)
-    </PackageReleaseNotes>
     <!-- sourcelink flags -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
@@ -82,7 +98,6 @@
     <!--EmbedUntrackedSources>true</EmbedUntrackedSources-->
 
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
 
@@ -156,10 +171,6 @@
   <PropertyGroup Condition="$([MSBuild]::GetTargetFrameworkIdentifier('$(TargetFramework)'))=='.NETCoreApp' AND
                             $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))==''">
     <OrtConstants>$(OrtConstants);__ENABLE_COREML__</OrtConstants>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(IsXamarinTarget)'=='true'">
-    <OrtConstants>$(OrtConstants);__XAMARIN__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup>
