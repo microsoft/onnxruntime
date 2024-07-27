@@ -714,7 +714,31 @@ TEST(ConvFp16Test, Conv2D_group) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
-TEST(ConvFp16Test, Depthwise2D_Bias) {
+TEST(ConvFp16Test, Depthwise2D_Bias_Group1_Issue18992) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f)};
+  vector<int64_t> X_shape = {1, 1, 1, 1};
+  vector<MLFloat16> W = {MLFloat16(0.5f)};
+  vector<int64_t> W_shape = {1, 1, 1, 1};
+  vector<MLFloat16> B = {MLFloat16(0.5f)};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 1, 1, 1};
+  auto expected_vals = {MLFloat16(1.0f)};
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvFp16Test, Depthwise2D_Bias_Group2) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
@@ -752,11 +776,11 @@ TEST(ConvFp16Test, Depthwise2D_Bias) {
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
-TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
+TEST(ConvFp16Test, Depthwise2D_Bias_Group15) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
-      13,                           // group
+      15,                           // group
       vector<int64_t>{2, 2},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
@@ -815,8 +839,15 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
       // C = 12
       MLFloat16(48.0f), MLFloat16(49.0f),
       MLFloat16(50.0f), MLFloat16(51.0f),
-  };
-  vector<int64_t> X_shape = {1, 13, 2, 2};
+
+      // C = 13
+      MLFloat16(52.0f), MLFloat16(53.0f),
+      MLFloat16(54.0f), MLFloat16(55.0f),
+
+      // C = 14
+      MLFloat16(56.0f), MLFloat16(57.0f),
+      MLFloat16(58.0f), MLFloat16(59.0f)};
+  vector<int64_t> X_shape = {1, 15, 2, 2};
   vector<MLFloat16> W = {
       // M = 0
       MLFloat16(0.0f), MLFloat16(1.0f),
@@ -869,8 +900,15 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
       // M = 12
       MLFloat16(48.0f), MLFloat16(49.0f),
       MLFloat16(50.0f), MLFloat16(51.0f),
-  };
-  vector<int64_t> W_shape = {13, 1, 2, 2};
+
+      // M = 13
+      MLFloat16(52.0f), MLFloat16(53.0f),
+      MLFloat16(54.0f), MLFloat16(55.0f),
+
+      // M = 14
+      MLFloat16(56.0f), MLFloat16(57.0f),
+      MLFloat16(58.0f), MLFloat16(59.0f)};
+  vector<int64_t> W_shape = {15, 1, 2, 2};
   vector<MLFloat16> B = {
       MLFloat16(1.0f),
       MLFloat16(2.0f),
@@ -885,9 +923,10 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
       MLFloat16(11.0f),
       MLFloat16(12.0f),
       MLFloat16(13.0f),
-  };
-  vector<int64_t> B_shape = {13};
-  vector<int64_t> Y_shape = {1, 13, 1, 1};
+      MLFloat16(14.0f),
+      MLFloat16(15.0f)};
+  vector<int64_t> B_shape = {15};
+  vector<int64_t> Y_shape = {1, 15, 1, 1};
   auto expected_vals = {
       MLFloat16(15.0f),  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 1.0
       MLFloat16(128.0f),
@@ -901,12 +940,12 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Complex) {
       MLFloat16(5640.0f),
       MLFloat16(6905.0f),
       MLFloat16(8298.0f),
-      MLFloat16(9819.0f),  // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 13.0
+      MLFloat16(9819.0f),   // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 13.0
+      MLFloat16(11468.0f),  // 52.0*52.0 + 53.0*53.0 + 54.0*54.0 + 55.0*55.0 + 14.0
+      MLFloat16(13245.0f)   // 56.0*56.0 + 57.0*57.0 + 58.0*58.0 + 59.0*59.0 + 15.0
   };
 
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
-
-  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 

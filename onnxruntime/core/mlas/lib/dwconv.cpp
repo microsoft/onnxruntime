@@ -72,7 +72,8 @@ MlasConvDepthwiseKernel(
         }
 
         if (c > 0) {
-            MLAS_FLOAT16X4 Accumulator = Bias == nullptr ? MlasZeroFloat16x4() : MlasLoadFloat16x4(&Bias[ChannelOffset]);
+            MLAS_FLOAT16X4 Accumulator =
+                Bias == nullptr ? MlasZeroFloat16x4() : MlasLoadPartialFloat16x4(&Bias[ChannelOffset], c);
             size_t ChannelKernelOffset = ChannelOffset;
 
             for (size_t k = 0; k < KernelSize; k++) {
