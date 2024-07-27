@@ -13,15 +13,6 @@
 #include "core/framework/node_unit.h"
 #include "core/util/qmath.h"
 
-#define QNN_RETURN_OK_IF_ERROR(expr, logger)             \
-  do {                                                   \
-    auto _status = (expr);                               \
-    if ((!_status.IsOK())) {                             \
-      LOGS((logger), VERBOSE) << _status.ErrorMessage(); \
-      return Status::OK();                               \
-    }                                                    \
-  } while (0)
-
 namespace onnxruntime {
 namespace qnn {
 class QnnOpConfigWrapper;
