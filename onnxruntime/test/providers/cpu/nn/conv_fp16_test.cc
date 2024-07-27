@@ -910,39 +910,39 @@ TEST(ConvFp16Test, Depthwise2D_Bias_Group15) {
       MLFloat16(58.0f), MLFloat16(59.0f)};
   vector<int64_t> W_shape = {15, 1, 2, 2};
   vector<MLFloat16> B = {
-      MLFloat16(1.0f),
-      MLFloat16(2.0f),
-      MLFloat16(3.0f),
-      MLFloat16(4.0f),
-      MLFloat16(5.0f),
-      MLFloat16(6.0f),
-      MLFloat16(7.0f),
-      MLFloat16(8.0f),
-      MLFloat16(9.0f),
-      MLFloat16(10.0f),
-      MLFloat16(11.0f),
-      MLFloat16(12.0f),
-      MLFloat16(13.0f),
-      MLFloat16(14.0f),
-      MLFloat16(15.0f)};
+      MLFloat16(101.0f),
+      MLFloat16(102.0f),
+      MLFloat16(103.0f),
+      MLFloat16(104.0f),
+      MLFloat16(105.0f),
+      MLFloat16(106.0f),
+      MLFloat16(107.0f),
+      MLFloat16(108.0f),
+      MLFloat16(109.0f),
+      MLFloat16(110.0f),
+      MLFloat16(111.0f),
+      MLFloat16(112.0f),
+      MLFloat16(113.0f),
+      MLFloat16(114.0f),
+      MLFloat16(115.0f)};
   vector<int64_t> B_shape = {15};
   vector<int64_t> Y_shape = {1, 15, 1, 1};
   auto expected_vals = {
-      MLFloat16(15.0f),  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 1.0
-      MLFloat16(128.0f),
-      MLFloat16(369.0f),
-      MLFloat16(738.0f),
-      MLFloat16(1235.0f),
-      MLFloat16(1860.0f),
-      MLFloat16(2613.0f),  // 24.0*24.0 + 25.0*25.0 + 26.0*26.0 + 27.0*27.0 + 7.0
-      MLFloat16(3494.0f),
-      MLFloat16(4503.0f),
-      MLFloat16(5640.0f),
-      MLFloat16(6905.0f),
-      MLFloat16(8298.0f),
-      MLFloat16(9819.0f),   // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 13.0
-      MLFloat16(11468.0f),  // 52.0*52.0 + 53.0*53.0 + 54.0*54.0 + 55.0*55.0 + 14.0
-      MLFloat16(13245.0f)   // 56.0*56.0 + 57.0*57.0 + 58.0*58.0 + 59.0*59.0 + 15.0
+      MLFloat16(115.0f),  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 101.0
+      MLFloat16(228.0f),
+      MLFloat16(469.0f),
+      MLFloat16(838.0f),
+      MLFloat16(1335.0f),
+      MLFloat16(1960.0f),
+      MLFloat16(2713.0f),  // 24.0*24.0 + 25.0*25.0 + 26.0*26.0 + 27.0*27.0 + 107.0
+      MLFloat16(3594.0f),
+      MLFloat16(4603.0f),
+      MLFloat16(5740.0f),
+      MLFloat16(7005.0f),
+      MLFloat16(8398.0f),
+      MLFloat16(9919.0f),   // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 113.0
+      MLFloat16(11568.0f),  // 52.0*52.0 + 53.0*53.0 + 54.0*54.0 + 55.0*55.0 + 114.0
+      MLFloat16(13345.0f)   // 56.0*56.0 + 57.0*57.0 + 58.0*58.0 + 59.0*59.0 + 115.0
   };
 
   TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
