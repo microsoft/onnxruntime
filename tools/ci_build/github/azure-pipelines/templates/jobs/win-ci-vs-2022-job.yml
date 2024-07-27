@@ -22,10 +22,6 @@ parameters:
   type: boolean
   default: false
 
-- name: isTraining
-  type: boolean
-  default: false
-
 - name: EnablePython
   type: boolean
   default: true
@@ -34,9 +30,6 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
-
-- name: ORT_EP_NAME
-  type: string
 
 - name: MachinePool
   type: string

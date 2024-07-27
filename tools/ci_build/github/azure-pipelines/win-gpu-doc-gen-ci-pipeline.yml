@@ -56,6 +56,5 @@ stages:
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: false
         GenerateDocumentation: true
-        ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10

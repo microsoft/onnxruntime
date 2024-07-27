@@ -211,7 +211,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
         OnnxruntimeTestGpuDeviceId: 1
@@ -231,7 +230,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        ORT_EP_NAME: TRT
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
         OnnxruntimeTestGpuDeviceId: 1
@@ -249,8 +247,6 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -269,7 +265,6 @@ stages:
       job_name_suffix: x64_no_memory_profiling
       RunOnnxRuntimeTests: false
       isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -288,7 +283,6 @@ stages:
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
       isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -307,7 +301,6 @@ stages:
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
       isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -326,7 +319,6 @@ stages:
       job_name_suffix: x64_neural_speed
       RunOnnxRuntimeTests: true
       isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
