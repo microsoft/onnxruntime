@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -18,11 +19,9 @@ class IQnnNodeGroup {
   virtual ~IQnnNodeGroup() = default;
   virtual Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const = 0;
   virtual Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const = 0;
-  virtual std::vector<const NodeUnit*> GetNodeUnits() const = 0;
+  virtual gsl::span<const NodeUnit* const> GetNodeUnits() const = 0;
   virtual const NodeUnit* GetTargetNodeUnit() const = 0;
   virtual std::string_view Type() const = 0;
-
-  size_t index_ = 0;
 };
 
 Status GetQnnNodeGroups(/*out*/ std::vector<std::unique_ptr<IQnnNodeGroup>>& qnn_node_groups,

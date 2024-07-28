@@ -43,13 +43,12 @@ class QnnNodeGroup : public IQnnNodeGroup {
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
   Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  std::vector<const NodeUnit*> GetNodeUnits() const override;
+  gsl::span<const NodeUnit* const> GetNodeUnits() const override;
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "DQQFusion"; }
 
  private:
-  const NodeUnit& dq_node_unit_;
-  const NodeUnit& q_node_unit_;
+  std::array<const NodeUnit*, 2> node_units_;
 };
 
 }  // namespace dq_q_fusion

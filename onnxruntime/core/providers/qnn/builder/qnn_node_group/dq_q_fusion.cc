@@ -101,23 +101,23 @@ std::unique_ptr<IQnnNodeGroup> TryDQQFusion(
 
 namespace dq_q_fusion {
 QnnNodeGroup::QnnNodeGroup(const NodeUnit& dq_node_unit, const NodeUnit& q_node_unit)
-    : dq_node_unit_(dq_node_unit), q_node_unit_(q_node_unit) {
+    : node_units_{&dq_node_unit, &q_node_unit} {
 }
 
 Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return QnnDQQFusionAdd(qmw, dq_node_unit_, q_node_unit_, logger, /*validate*/ true);
+  return QnnDQQFusionAdd(qmw, *node_units_[0], *node_units_[1], logger, /*validate*/ true);
 }
 
 Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return QnnDQQFusionAdd(qmw, dq_node_unit_, q_node_unit_, logger, /*validate*/ false);
+  return QnnDQQFusionAdd(qmw, *node_units_[0], *node_units_[1], logger, /*validate*/ false);
 }
 
-std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
-  return std::vector<const NodeUnit*>{&dq_node_unit_, &q_node_unit_};
+gsl::span<const NodeUnit* const> QnnNodeGroup::GetNodeUnits() const {
+  return node_units_;
 }
 
 const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
-  return &dq_node_unit_;
+  return node_units_[0];
 }
 
 }  // namespace dq_q_fusion

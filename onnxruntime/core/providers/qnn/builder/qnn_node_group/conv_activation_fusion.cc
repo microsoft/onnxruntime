@@ -332,6 +332,7 @@ static Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   const size_t num_dqs = dq_node_units.size();
   constexpr size_t max_num_dqs = 3;
   ORT_RETURN_IF_NOT(num_dqs == 2 || num_dqs == max_num_dqs, "QDQ Conv should have 2 or 3 DQs");
+  ORT_RETURN_IF_NOT(conv_node_unit->OpType() == "Conv" && q_node_unit->OpType() == "QuantizeLinear");
 
   std::array<const Node*, max_num_dqs> dq_nodes_buf = {};
   for (size_t i = 0; i < num_dqs; i++) {
@@ -447,64 +448,66 @@ std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_mode
     return nullptr;
   }
 
-  return std::make_unique<conv_act_fusion::QnnNodeGroup>(dq_node_units, conv_node_unit,
-                                                         *activation_node_unit, *q_node_unit);
+  return std::make_unique<conv_act_fusion::QnnNodeGroup>(*dq_node_units[0],
+                                                         *dq_node_units[1],
+                                                         dq_node_units.size() == 3 ? dq_node_units[2] : nullptr,
+                                                         conv_node_unit,
+                                                         *activation_node_unit,
+                                                         *q_node_unit);
 }
 
 namespace conv_act_fusion {
-QnnNodeGroup::QnnNodeGroup(gsl::span<const NodeUnit*> dq_node_units,
+QnnNodeGroup::QnnNodeGroup(const NodeUnit& dq_node_unit_0,
+                           const NodeUnit& dq_node_unit_1,
+                           const NodeUnit* dq_node_unit_2,
                            const NodeUnit& conv_node_unit,
                            const NodeUnit& activation_node_unit,
                            const NodeUnit& q_node_unit)
-    : dq_node_units_{},
-      conv_node_unit_(conv_node_unit),
-      activation_node_unit_(activation_node_unit),
-      q_node_unit_(q_node_unit) {
-  assert(dq_node_units.size() <= dq_node_units_.size());
-  std::copy(dq_node_units.begin(), dq_node_units.end(), dq_node_units_.data());
+    : node_units_{} {
+  size_t i = 0;
+  node_units_[i++] = &dq_node_unit_0;
+  node_units_[i++] = &dq_node_unit_1;
+  if (dq_node_unit_2 != nullptr) {
+    node_units_[i++] = dq_node_unit_2;
+  }
+  node_units_[i++] = &conv_node_unit;
+  node_units_[i++] = &activation_node_unit;
+  node_units_[i++] = &q_node_unit;
+  assert((!dq_node_unit_2 && i == 5) || (dq_node_unit_2 && i == 6));
 }
 
 Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
-  gsl::span<const NodeUnit* const> dq_node_units(dq_node_units_.data(), num_dqs);
+  const size_t num_dqs = node_units_.back() != nullptr ? 3 : 2;
+  gsl::span<const NodeUnit* const> dq_node_units(node_units_.data(), num_dqs);
 
   return QnnConvActivationFusionAdd(qmw,
                                     dq_node_units,
-                                    &conv_node_unit_,
-                                    &q_node_unit_,
+                                    node_units_[num_dqs],      // Conv
+                                    node_units_[num_dqs + 2],  // Q
                                     logger,
                                     /*validate*/ true);
 }
 
 Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
-  gsl::span<const NodeUnit* const> dq_node_units(dq_node_units_.data(), num_dqs);
+  const size_t num_dqs = node_units_.back() != nullptr ? 3 : 2;
+  gsl::span<const NodeUnit* const> dq_node_units(node_units_.data(), num_dqs);
 
   return QnnConvActivationFusionAdd(qmw,
                                     dq_node_units,
-                                    &conv_node_unit_,
-                                    &q_node_unit_,
+                                    node_units_[num_dqs],      // Conv
+                                    node_units_[num_dqs + 2],  // Q
                                     logger,
                                     /*validate*/ false);
 }
 
-std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
-  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
-
-  std::vector<const NodeUnit*> node_units;
-  node_units.reserve(6);
-  for (size_t i = 0; i < num_dqs; i++) {
-    node_units.push_back(dq_node_units_[i]);
-  }
-  node_units.push_back(&conv_node_unit_);
-  node_units.push_back(&activation_node_unit_);
-  node_units.push_back(&q_node_unit_);
-
-  return node_units;
+gsl::span<const NodeUnit* const> QnnNodeGroup::GetNodeUnits() const {
+  const size_t num_node_units = node_units_.back() != nullptr ? 6 : 5;
+  return gsl::make_span<const NodeUnit* const>(node_units_.data(), num_node_units);
 }
 
 const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
-  return &conv_node_unit_;
+  const size_t conv_index = node_units_.back() != nullptr ? 3 : 2;
+  return node_units_[conv_index];
 }
 
 }  // namespace conv_act_fusion

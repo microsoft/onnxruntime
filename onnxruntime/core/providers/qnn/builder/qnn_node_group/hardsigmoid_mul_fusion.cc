@@ -116,23 +116,23 @@ std::unique_ptr<IQnnNodeGroup> TryHardSigmoidMulFusion(
 namespace hs_mul_fusion {
 
 QnnNodeGroup::QnnNodeGroup(const NodeUnit& hardsigmoid_node_unit, const NodeUnit& mul_node_unit)
-    : hardsigmoid_node_unit_(hardsigmoid_node_unit), mul_node_unit_(mul_node_unit) {
+    : node_units_{&hardsigmoid_node_unit, &mul_node_unit} {
 }
 
 Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return QnnHardSigmoidMulFusionAdd(qmw, hardsigmoid_node_unit_, mul_node_unit_, logger, /*validate*/ true);
+  return QnnHardSigmoidMulFusionAdd(qmw, *node_units_[0], *node_units_[1], logger, /*validate*/ true);
 }
 
 Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  return QnnHardSigmoidMulFusionAdd(qmw, hardsigmoid_node_unit_, mul_node_unit_, logger, /*validate*/ false);
+  return QnnHardSigmoidMulFusionAdd(qmw, *node_units_[0], *node_units_[1], logger, /*validate*/ false);
 }
 
-std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
-  return std::vector<const NodeUnit*>{&hardsigmoid_node_unit_, &mul_node_unit_};
+gsl::span<const NodeUnit* const> QnnNodeGroup::GetNodeUnits() const {
+  return node_units_;
 }
 
 const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
-  return &hardsigmoid_node_unit_;
+  return node_units_[0];
 }
 
 }  // namespace hs_mul_fusion

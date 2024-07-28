@@ -272,9 +272,9 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   }
 }
 
-NodeUnit::NodeUnit(gsl::span<const Node*> dq_nodes, const Node& target_node,
-                   gsl::span<const Node*> q_nodes, Type type,
-                   gsl::span<NodeUnitIODef> inputs, gsl::span<NodeUnitIODef> outputs,
+NodeUnit::NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node,
+                   gsl::span<const Node* const> q_nodes, Type type,
+                   gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
                    size_t input_edge_count, Node::EdgeSet output_edges)
     : dq_nodes_(dq_nodes.begin(), dq_nodes.end()),
       target_node_(target_node),

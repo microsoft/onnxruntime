@@ -27,7 +27,9 @@ namespace conv_act_fusion {
 
 class QnnNodeGroup : public IQnnNodeGroup {
  public:
-  QnnNodeGroup(gsl::span<const NodeUnit*> dq_node_units,
+  QnnNodeGroup(const NodeUnit& dq_node_unit_0,
+               const NodeUnit& dq_node_unit_1,
+               const NodeUnit* dq_node_unit_2,
                const NodeUnit& conv_node_unit,
                const NodeUnit& activation_node_unit,
                const NodeUnit& q_node_unit);
@@ -35,15 +37,12 @@ class QnnNodeGroup : public IQnnNodeGroup {
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
   Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
-  std::vector<const NodeUnit*> GetNodeUnits() const override;
+  gsl::span<const NodeUnit* const> GetNodeUnits() const override;
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "ConvActivationFusion"; }
 
  private:
-  std::array<const NodeUnit*, 3> dq_node_units_;  // Last DQ is nullptr if bias is missing.
-  const NodeUnit& conv_node_unit_;
-  const NodeUnit& activation_node_unit_;
-  const NodeUnit& q_node_unit_;
+  std::array<const NodeUnit*, 6> node_units_;  // Last elem is nullptr if bias DQ is missing.
 };
 
 }  // namespace conv_act_fusion
