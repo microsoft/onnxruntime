@@ -7,7 +7,7 @@
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"

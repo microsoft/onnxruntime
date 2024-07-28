@@ -10,17 +10,10 @@
 
 #include "core/framework/node_unit.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 
 namespace onnxruntime {
 namespace qnn {
-
-Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
-                                  gsl::span<const NodeUnit*> dq_node_units,
-                                  const NodeUnit* conv_node_unit,
-                                  const NodeUnit* q_node_unit,
-                                  const logging::Logger& logger,
-                                  bool validate = false);
 
 std::optional<QnnNodeGroup> TryConvActivationFusion(
     QnnModelWrapper& qnn_model_wrapper,
@@ -28,5 +21,13 @@ std::optional<QnnNodeGroup> TryConvActivationFusion(
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
     const logging::Logger& logger);
+
+namespace conv_act_fusion {
+
+Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
+Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
+// const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group);
+const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
+}  // namespace conv_act_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

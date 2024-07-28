@@ -16,7 +16,6 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
