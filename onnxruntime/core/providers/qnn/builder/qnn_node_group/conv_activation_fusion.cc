@@ -246,7 +246,7 @@ static std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, co
 static std::vector<const NodeUnit*> GetConvDQs(
     const GraphViewer& graph_viewer,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const Node& conv_node) {
   assert(conv_node.OpType() == "Conv" || conv_node.OpType() == "ConvTranspose");
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, conv_node, /*find_dq_nodes*/ true);
@@ -324,7 +324,7 @@ static bool IsValidQDQConv(gsl::span<const NodeUnit*> dq_node_units,
 }
 
 static Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
-                                         gsl::span<const NodeUnit*> dq_node_units,
+                                         gsl::span<const NodeUnit* const> dq_node_units,
                                          const NodeUnit* conv_node_unit,
                                          const NodeUnit* q_node_unit,
                                          const logging::Logger& logger,
@@ -398,14 +398,19 @@ static Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, custom_node_unit, logger, validate);
 }
 
-std::optional<QnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_wrapper,
-                                                    const NodeUnit& conv_node_unit,
-                                                    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                                                    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
-                                                    const logging::Logger& logger) {
+std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_wrapper,
+                                                       const NodeUnit& conv_node_unit,
+                                                       const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+                                                       const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+                                                       const logging::Logger& logger) {
+  ORT_UNUSED_PARAMETER(logger);
   // Expect that this function is called with a standalone Conv or ConvTranspose.
-  assert((conv_node_unit.OpType() == "Conv" || conv_node_unit.OpType() == "ConvTranspose") &&
-         conv_node_unit.UnitType() == NodeUnit::Type::SingleNode);
+  const auto& conv_type = conv_node_unit.OpType();
+
+  if ((conv_type != "Conv" && conv_type != "ConvTranspose") ||
+      (conv_node_unit.UnitType() != NodeUnit::Type::SingleNode)) {
+    return nullptr;
+  }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
 
@@ -414,7 +419,7 @@ std::optional<QnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_w
   const NodeUnit* activation_node_unit = GetOnlyChildOfType(graph_viewer, conv_node_unit, activation_op_types,
                                                             node_to_node_unit, node_unit_to_qnn_node_group);
   if (activation_node_unit == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // Relu/Clip must have a single Q child.
@@ -423,107 +428,85 @@ std::optional<QnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_w
                                                    node_to_node_unit, node_unit_to_qnn_node_group);
 
   if (q_node_unit == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // Check if Clip/Relu can be removed because the Q node provides an equivalent effect.
   if (!CanActivationBeRemoved(qnn_model_wrapper, *activation_node_unit, *q_node_unit)) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // Create a QDQ node group with DQ* -> Conv -> Q
   const Node& conv_node = conv_node_unit.GetNode();
-  const Node& activation_node = activation_node_unit->GetNode();
   std::vector<const NodeUnit*> dq_node_units = GetConvDQs(graph_viewer,
                                                           node_to_node_unit,
                                                           node_unit_to_qnn_node_group,
                                                           conv_node);
 
   if (!IsValidQDQConv(dq_node_units, q_node_unit)) {
-    return std::nullopt;
+    return nullptr;
   }
 
-  LOGS(logger, VERBOSE) << "Will use Conv + Activation via fusion. conv_node name: [" << conv_node.Name()
-                        << "] activation_node optype: [" << activation_node.OpType()
-                        << "] activation_node name: [" << activation_node.Name()
-                        << "]";
-
-  std::optional<QnnNodeGroup> qnn_node_group = QnnNodeGroup{};
-  qnn_node_group->type_ = QnnNodeGroup::Type::ConvActivationFusion;
-  qnn_node_group->node_units_ = std::move(dq_node_units);
-  qnn_node_group->node_units_.push_back(&conv_node_unit);
-  qnn_node_group->node_units_.push_back(activation_node_unit);
-  qnn_node_group->node_units_.push_back(q_node_unit);
-
-  return qnn_node_group;
+  return std::make_unique<conv_act_fusion::QnnNodeGroup>(dq_node_units, conv_node_unit,
+                                                         *activation_node_unit, *q_node_unit);
 }
 
 namespace conv_act_fusion {
-
-Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  const size_t num_node_units = qnn_node_group.node_units_.size();
-  ORT_RETURN_IF_NOT((num_node_units == 5 || num_node_units == 6), "");
-
-  const bool has_bias_dq = num_node_units == 6;
-  std::vector<const NodeUnit*> dq_node_units = {qnn_node_group.node_units_[0], qnn_node_group.node_units_[1]};
-  const NodeUnit* conv_node_unit = qnn_node_group.node_units_[num_node_units - 3];
-  const NodeUnit* activation_node_unit = qnn_node_group.node_units_[num_node_units - 2];
-  const NodeUnit* q_node_unit = qnn_node_group.node_units_[num_node_units - 1];
-
-  if (has_bias_dq) {
-    dq_node_units.push_back(qnn_node_group.node_units_[2]);
-  }
-  Status status = QnnConvActivationFusionAdd(qmw,
-                                             dq_node_units,
-                                             conv_node_unit,
-                                             q_node_unit,
-                                             logger,
-                                             /*validate*/ true);
-
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << conv_node_unit->OpType() << "/" << activation_node_unit->OpType()
-                        << " fusion is not supported, but should be according to initial validation."
-                        << " Node names: " << conv_node_unit->Name() << ", " << activation_node_unit->Name()
-                        << " Error: " << status.ErrorMessage();
-  }
-
-  return status;
+QnnNodeGroup::QnnNodeGroup(gsl::span<const NodeUnit*> dq_node_units,
+                           const NodeUnit& conv_node_unit,
+                           const NodeUnit& activation_node_unit,
+                           const NodeUnit& q_node_unit)
+    : dq_node_units_{},
+      conv_node_unit_(conv_node_unit),
+      activation_node_unit_(activation_node_unit),
+      q_node_unit_(q_node_unit) {
+  assert(dq_node_units.size() <= dq_node_units_.size());
+  std::copy(dq_node_units.begin(), dq_node_units.end(), dq_node_units_.data());
 }
 
-Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  const size_t num_node_units = qnn_node_group.node_units_.size();
-  ORT_RETURN_IF_NOT((num_node_units == 5 || num_node_units == 6), "");
+Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
+  gsl::span<const NodeUnit* const> dq_node_units(dq_node_units_.data(), num_dqs);
 
-  const bool has_bias_dq = num_node_units == 6;
-  std::vector<const NodeUnit*> dq_node_units = {qnn_node_group.node_units_[0], qnn_node_group.node_units_[1]};
-  const NodeUnit* conv_node_unit = qnn_node_group.node_units_[num_node_units - 3];
-  const NodeUnit* q_node_unit = qnn_node_group.node_units_[num_node_units - 1];
-
-  if (has_bias_dq) {
-    dq_node_units.push_back(qnn_node_group.node_units_[2]);
-  }
   return QnnConvActivationFusionAdd(qmw,
                                     dq_node_units,
-                                    conv_node_unit,
-                                    q_node_unit,
+                                    &conv_node_unit_,
+                                    &q_node_unit_,
+                                    logger,
+                                    /*validate*/ true);
+}
+
+Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
+  gsl::span<const NodeUnit* const> dq_node_units(dq_node_units_.data(), num_dqs);
+
+  return QnnConvActivationFusionAdd(qmw,
+                                    dq_node_units,
+                                    &conv_node_unit_,
+                                    &q_node_unit_,
                                     logger,
                                     /*validate*/ false);
 }
 
-#if 0
-const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group) {
-  return qnn_node_group.node_units_;
-}
-#endif
+std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
+  const size_t num_dqs = dq_node_units_.back() != nullptr ? 3 : 2;
 
-const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
-  const size_t num_node_units = qnn_node_group.node_units_.size();
-  if (!(num_node_units == 5 || num_node_units == 6)) {
-    return nullptr;
+  std::vector<const NodeUnit*> node_units;
+  node_units.reserve(6);
+  for (size_t i = 0; i < num_dqs; i++) {
+    node_units.push_back(dq_node_units_[i]);
   }
-  return qnn_node_group.node_units_[num_node_units - 3];
+  node_units.push_back(&conv_node_unit_);
+  node_units.push_back(&activation_node_unit_);
+  node_units.push_back(&q_node_unit_);
+
+  return node_units;
 }
+
+const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
+  return &conv_node_unit_;
+}
+
 }  // namespace conv_act_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

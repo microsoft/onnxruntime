@@ -59,16 +59,16 @@ static Status QnnHardSigmoidMulFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
+std::unique_ptr<IQnnNodeGroup> TryHardSigmoidMulFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& hardsigmoid_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
   // Looking for a standalone HardSigmoid to start the sequence.
   if (hardsigmoid_node_unit.OpType() != "HardSigmoid" ||
       hardsigmoid_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return std::nullopt;
+    return nullptr;
   }
 
   NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
@@ -81,7 +81,7 @@ std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
 
   // Check for explicit values of alpha and beta.
   if (std::abs(alpha - req_alpha) > alpha_eps || std::abs(beta - req_beta) > beta_eps) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // HardSigmoid must have a single Mul child (1 output edge) and must not produce a graph output.
@@ -91,7 +91,7 @@ std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
                                                      node_to_node_unit, node_unit_to_qnn_node_group);
 
   if (mul_node_unit == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // Input to HardSigmoid must also be the other input to the Mul.
@@ -101,67 +101,38 @@ std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
                                mul_node.InputDefs()[1]->Name() == hs_input_name;
 
   if (!same_root_input) {
-    return std::nullopt;
+    return nullptr;
   }
 
   if (Status status = QnnHardSigmoidMulFusionAdd(qnn_model_wrapper, hardsigmoid_node_unit, *mul_node_unit,
                                                  logger, /*validate*/ true);
       !status.IsOK()) {
-    return std::nullopt;
+    return nullptr;
   }
 
-  // Validation passed, so create a QnnNodeGroup. Any errors are now passed back to the caller.
-  LOGS(logger, VERBOSE) << "Will use QNN HardSwish via fusion. HardSigmoid name: [" << hardsigmoid_node_unit.Name()
-                        << "] Mul name: [" << mul_node_unit->Name() << "]";
-
-  std::optional<QnnNodeGroup> qnn_node_group = QnnNodeGroup{};
-  qnn_node_group->type_ = QnnNodeGroup::Type::HardSigmoidMulFusion;
-  qnn_node_group->node_units_.push_back(&hardsigmoid_node_unit);
-  qnn_node_group->node_units_.push_back(mul_node_unit);
-
-  return qnn_node_group;
+  return std::make_unique<hs_mul_fusion::QnnNodeGroup>(hardsigmoid_node_unit, *mul_node_unit);
 }
 
 namespace hs_mul_fusion {
 
-Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 2, "Expected 2 NodeUnits for HardSimoid -> Mul fusion");
-  const NodeUnit* hardsigmoid_node_unit = qnn_node_group.node_units_[0];
-  const NodeUnit* mul_node_unit = qnn_node_group.node_units_[1];
-  ORT_RETURN_IF_NOT(hardsigmoid_node_unit != nullptr && mul_node_unit != nullptr, "");
-  Status status = QnnHardSigmoidMulFusionAdd(qmw, *hardsigmoid_node_unit, *mul_node_unit, logger,
-                                             /*validate*/ true);
-
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "(HardSigmoid -> Mul) into QNN HardSwish fusion is not supported, "
-                        << "but should be according to initial validation. "
-                        << "Node names: " << hardsigmoid_node_unit->Name() << ", " << mul_node_unit->Name()
-                        << " Error: " << status.ErrorMessage();
-  }
-
-  return status;
+QnnNodeGroup::QnnNodeGroup(const NodeUnit& hardsigmoid_node_unit, const NodeUnit& mul_node_unit)
+    : hardsigmoid_node_unit_(hardsigmoid_node_unit), mul_node_unit_(mul_node_unit) {
 }
 
-Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 2, "Expected 2 NodeUnits for HardSimoid -> Mul fusion");
-  const NodeUnit* hardsigmoid_node_unit = qnn_node_group.node_units_[0];
-  const NodeUnit* mul_node_unit = qnn_node_group.node_units_[1];
-  ORT_RETURN_IF_NOT(hardsigmoid_node_unit != nullptr && mul_node_unit != nullptr, "");
-  return QnnHardSigmoidMulFusionAdd(qmw, *hardsigmoid_node_unit, *mul_node_unit, logger, /*validate*/ false);
+Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return QnnHardSigmoidMulFusionAdd(qmw, hardsigmoid_node_unit_, mul_node_unit_, logger, /*validate*/ true);
 }
 
-#if 0
-const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group) {
-  return qnn_node_group.node_units_;
+Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return QnnHardSigmoidMulFusionAdd(qmw, hardsigmoid_node_unit_, mul_node_unit_, logger, /*validate*/ false);
 }
-#endif
 
-const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
-  if (qnn_node_group.node_units_.size() != 2) {
-    return nullptr;
-  }
-  return qnn_node_group.node_units_[0];
+std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
+  return std::vector<const NodeUnit*>{&hardsigmoid_node_unit_, &mul_node_unit_};
+}
+
+const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
+  return &hardsigmoid_node_unit_;
 }
 
 }  // namespace hs_mul_fusion

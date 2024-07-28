@@ -19,6 +19,7 @@
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/framework/run_options.h"
@@ -440,7 +441,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  std::vector<qnn::QnnNodeGroup> qnn_node_groups;
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
 
   if (Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper,
@@ -454,7 +455,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                              logging::Severity log_severity,
                              logging::DataType log_data_type,
                              const onnxruntime::CodeLocation& call_site,
-                             const qnn::QnnNodeGroup& qnn_node_group,
+                             const qnn::IQnnNodeGroup& qnn_node_group,
                              bool supported) {
     if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
       return;
@@ -462,7 +463,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
 
     std::ostringstream oss;
     oss << "[QNN EP] " << (supported ? "Supports " : "Does NOT support ") << "the following nodes as part of a "
-        << qnn::QnnNodeGroup::TypeToString(qnn_node_group.type_) << " group:" << std::endl;
+        << qnn_node_group.Type() << " group:" << std::endl;
     for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
       for (const Node* node : node_unit->GetAllNodesInGroup()) {
         oss << "\tOperator type: " << node->OpType()
@@ -477,18 +478,18 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
         << oss.str();
   };
 
-  for (const qnn::QnnNodeGroup& qnn_node_group : qnn_node_groups) {
-    Status status = qnn_node_group.IsSupported(qnn_model_wrapper, logger);
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
     constexpr auto log_severity = logging::Severity::kVERBOSE;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-      log_node_support(logger, log_severity, log_data_type, ORT_WHERE, qnn_node_group, supported);
+      log_node_support(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, supported);
     }
 
     if (supported) {
-      for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+      for (const NodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
         for (const Node* node : node_unit->GetAllNodesInGroup()) {
           supported_nodes.insert(node);
         }

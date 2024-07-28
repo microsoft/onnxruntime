@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <tuple>
+#include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "core/framework/node_unit.h"
@@ -14,30 +13,19 @@
 namespace onnxruntime {
 namespace qnn {
 
-struct QnnNodeGroup {
-  using IndexType = size_t;
-  enum class Type : uint8_t {
-    Undefined = 0,
-    NodeUnit,
-    ConvActivationFusion,
-    DQQFusion,
-    HardSigmoidMulFusion,
-    COUNT,
-  };
+class IQnnNodeGroup {
+ public:
+  virtual ~IQnnNodeGroup() = default;
+  virtual Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const = 0;
+  virtual Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const = 0;
+  virtual std::vector<const NodeUnit*> GetNodeUnits() const = 0;
+  virtual const NodeUnit* GetTargetNodeUnit() const = 0;
+  virtual std::string_view Type() const = 0;
 
-  static std::string_view TypeToString(QnnNodeGroup::Type type);
-
-  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const;
-  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const;
-  const std::vector<const NodeUnit*>& GetNodeUnits() const { return node_units_; }
-  const NodeUnit* GetTargetNodeUnit(const logging::Logger& logger) const;
-
-  QnnNodeGroup::Type type_ = QnnNodeGroup::Type::Undefined;
-  IndexType index_ = 0;
-  std::vector<const NodeUnit*> node_units_;
+  size_t index_ = 0;
 };
 
-Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
+Status GetQnnNodeGroups(/*out*/ std::vector<std::unique_ptr<IQnnNodeGroup>>& qnn_node_groups,
                         QnnModelWrapper& qnn_model_wrapper,
                         const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
                         size_t num_node_units,

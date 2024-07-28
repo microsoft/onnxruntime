@@ -17,7 +17,7 @@ const NodeUnit* GetOnlyChildOfType(const GraphViewer& graph_viewer,
                                    const NodeUnit& parent_node_unit,
                                    gsl::span<const std::string_view> child_op_types,
                                    const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                   const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group);
+                                   const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group);
 
 }  // namespace qnn
 }  // namespace onnxruntime

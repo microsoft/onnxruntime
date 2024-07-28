@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <optional>
+#include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "core/framework/node_unit.h"
@@ -29,19 +28,31 @@ namespace qnn {
  * \param do_op_validation True if should call QNN operator validation APIs.
  * \return A Status indicating a potential failure.
  */
-std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
+std::unique_ptr<IQnnNodeGroup> TryHardSigmoidMulFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& hardsigmoid_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger);
 
 namespace hs_mul_fusion {
 
-Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
-Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
-// const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group);
-const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
+class QnnNodeGroup : public IQnnNodeGroup {
+ public:
+  QnnNodeGroup(const NodeUnit& hardsigmoid_node_unit, const NodeUnit& mul_node_unit);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeGroup);
+
+  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
+  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
+  std::vector<const NodeUnit*> GetNodeUnits() const override;
+  const NodeUnit* GetTargetNodeUnit() const override;
+  std::string_view Type() const override { return "HardSigmoidMulFusion"; }
+
+ private:
+  const NodeUnit& hardsigmoid_node_unit_;
+  const NodeUnit& mul_node_unit_;
+};
+
 }  // namespace hs_mul_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

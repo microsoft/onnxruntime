@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include <optional>
+#include <array>
+#include <gsl/gsl>
+#include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "core/framework/node_unit.h"
@@ -15,19 +16,36 @@
 namespace onnxruntime {
 namespace qnn {
 
-std::optional<QnnNodeGroup> TryConvActivationFusion(
+std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& conv_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger);
 
 namespace conv_act_fusion {
 
-Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
-Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
-// const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group);
-const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger);
+class QnnNodeGroup : public IQnnNodeGroup {
+ public:
+  QnnNodeGroup(gsl::span<const NodeUnit*> dq_node_units,
+               const NodeUnit& conv_node_unit,
+               const NodeUnit& activation_node_unit,
+               const NodeUnit& q_node_unit);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeGroup);
+
+  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
+  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
+  std::vector<const NodeUnit*> GetNodeUnits() const override;
+  const NodeUnit* GetTargetNodeUnit() const override;
+  std::string_view Type() const override { return "ConvActivationFusion"; }
+
+ private:
+  std::array<const NodeUnit*, 3> dq_node_units_;  // Last DQ is nullptr if bias is missing.
+  const NodeUnit& conv_node_unit_;
+  const NodeUnit& activation_node_unit_;
+  const NodeUnit& q_node_unit_;
+};
+
 }  // namespace conv_act_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

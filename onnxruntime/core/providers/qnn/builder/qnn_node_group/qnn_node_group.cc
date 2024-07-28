@@ -4,10 +4,9 @@
 #include "core/providers/qnn/builder/qnn_node_group.h"
 
 #include <limits>
-#include <optional>
+#include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "core/graph/graph_utils.h"
@@ -23,123 +22,51 @@
 namespace onnxruntime {
 namespace qnn {
 
-std::string_view QnnNodeGroup::TypeToString(QnnNodeGroup::Type type) {
-  static std::array<std::string_view, static_cast<size_t>(QnnNodeGroup::Type::COUNT)> type_names = {
-      "Undefined",
-      "NodeUnit",
-      "ConvActivationFusion",
-      "DQQFusion",
-      "HardSigmoidMulFusion",
-  };
+class QnnNodeUnitWrapper : public IQnnNodeGroup {
+ public:
+  QnnNodeUnitWrapper(const NodeUnit& node_unit) : node_unit_(node_unit) {}
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeUnitWrapper);
 
-  return type_names[static_cast<size_t>(type)];
-}
+  Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override {
+    const std::string& op_type = node_unit_.OpType();
+    const auto* op_builder = qnn::GetOpBuilder(op_type);
+    ORT_RETURN_IF_NOT(op_builder != nullptr, "Operators of type `", op_type,
+                      "` are not supported by QNN EP.", op_type, " node `",
+                      node_unit_.Name(), "` will not be assigned to QNN EP.");
 
-Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  using Func = Status (*)(
-      QnnModelWrapper&,
-      const QnnNodeGroup&,
-      const logging::Logger&);
+    return op_builder->IsOpSupported(qmw, node_unit_, logger);
+  }
 
-  static std::array<Func, static_cast<size_t>(QnnNodeGroup::Type::COUNT)> funcs = {
-      [](QnnModelWrapper&, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) -> Status {
-        std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(qnn_node_group.type_),
-                                           " in QnnNodeGroup::IsSupported()");
-        LOGS(logger, ERROR) << error_msg;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_msg);
-      },
-      [](QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) -> Status {
-        ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 1 && qnn_node_group.node_units_[0] != nullptr, "");
-        const NodeUnit& node_unit = *qnn_node_group.node_units_[0];
-        const std::string& op_type = node_unit.OpType();
-        const auto* op_builder = qnn::GetOpBuilder(op_type);
+  Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override {
+    const std::string& op_type = node_unit_.OpType();
+    const auto* op_builder = qnn::GetOpBuilder(op_type);
+    ORT_RETURN_IF_NOT(op_builder != nullptr, "[QNN EP]: Missing OpBuilder for OpType ", op_type);
+    return op_builder->AddToModelBuilder(qmw, node_unit_, logger, /*do_op_validation*/ false);
+  }
 
-        if (op_builder == nullptr) {
-          std::string err_msg = MakeString("Operators of type `", op_type,
-                                           "` are not supported by QNN EP.", op_type, " node `",
-                                           node_unit.Name(), "` will not be assigned to QNN EP.");
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err_msg);
-        }
+  std::vector<const NodeUnit*> GetNodeUnits() const override {
+    return std::vector<const NodeUnit*>{&node_unit_};
+  }
 
-        Status status = op_builder->IsOpSupported(qmw, *qnn_node_group.node_units_[0], logger);
-        if (!status.IsOK()) {
-          LOGS(logger, WARNING) << op_type << " node `" << node_unit.Name()
-                                << "` is not supported: " << status.ErrorMessage();
-        }
+  const NodeUnit* GetTargetNodeUnit() const override { return &node_unit_; }
+  std::string_view Type() const override { return "NodeUnitWrapper"; }
 
-        return status;
-      },
-      conv_act_fusion::IsSupported,
-      dq_q_fusion::IsSupported,
-      hs_mul_fusion::IsSupported,
-  };
+ private:
+  const NodeUnit& node_unit_;
+};
 
-  return funcs[static_cast<size_t>(type_)](qmw, *this, logger);
-}
-
-Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  using Func = Status (*)(
-      QnnModelWrapper&,
-      const QnnNodeGroup&,
-      const logging::Logger&);
-
-  static std::array<Func, static_cast<size_t>(QnnNodeGroup::Type::COUNT)> funcs = {
-      [](QnnModelWrapper&, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) -> Status {
-        std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(qnn_node_group.type_),
-                                           " in QnnNodeGroup::AddToModelBuilder()");
-        LOGS(logger, ERROR) << error_msg;
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_msg);
-      },
-      [](QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) -> Status {
-        ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 1 && qnn_node_group.node_units_[0] != nullptr, "");
-        const auto* op_builder = qnn::GetOpBuilder(qnn_node_group.node_units_[0]->OpType());
-        ORT_RETURN_IF_NOT(op_builder != nullptr, "[QNN EP]: Missing OpBuilder for OpType ", qnn_node_group.node_units_[0]->OpType());
-        return op_builder->AddToModelBuilder(qmw, *qnn_node_group.node_units_[0], logger, /*do_op_validation*/ false);
-      },
-      conv_act_fusion::AddToModelBuilder,
-      dq_q_fusion::AddToModelBuilder,
-      hs_mul_fusion::AddToModelBuilder,
-  };
-
-  return funcs[static_cast<size_t>(type_)](qmw, *this, logger);
-}
-
-const NodeUnit* QnnNodeGroup::GetTargetNodeUnit(const logging::Logger& logger) const {
-  using Func = const NodeUnit* (*)(const QnnNodeGroup&, const logging::Logger&);
-
-  static std::array<Func, static_cast<size_t>(QnnNodeGroup::Type::COUNT)> funcs = {
-      [](const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) -> const NodeUnit* {
-        std::string error_msg = MakeString("Unhandled QnnNodeGroup::Type ", TypeToString(qnn_node_group.type_),
-                                           " in QnnNodeGroup::AddToModelBuilder()");
-        LOGS(logger, ERROR) << error_msg;
-        return nullptr;
-      },
-      [](const QnnNodeGroup& qnn_node_group, const logging::Logger&) -> const NodeUnit* {
-        if (qnn_node_group.node_units_.size() != 1) {
-          return nullptr;
-        }
-        return qnn_node_group.node_units_[0];
-      },
-      conv_act_fusion::GetTargetNodeUnit,
-      dq_q_fusion::GetTargetNodeUnit,
-      hs_mul_fusion::GetTargetNodeUnit,
-  };
-
-  return funcs[static_cast<size_t>(type_)](*this, logger);
-}
-
-using FusionFunc = std::optional<QnnNodeGroup> (*)(
+using FusionFunc = std::unique_ptr<IQnnNodeGroup> (*)(
     QnnModelWrapper&,
     const NodeUnit&,
     const std::unordered_map<const Node*, const NodeUnit*>&,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>&,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>&,
     const logging::Logger&);
 
-static std::optional<QnnNodeGroup> TryQnnFusions(
+static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& starting_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
   // Maps a starting operator type to the fusion function.
   static std::unordered_map<std::string, FusionFunc> fusions = {
@@ -151,7 +78,7 @@ static std::optional<QnnNodeGroup> TryQnnFusions(
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return std::nullopt;
+    return nullptr;
   }
 
   auto iter = fusions.find(starting_node_unit.OpType());
@@ -160,10 +87,10 @@ static std::optional<QnnNodeGroup> TryQnnFusions(
     return fusion_func(qnn_model_wrapper, starting_node_unit, node_to_node_unit,
                        node_unit_to_qnn_node_group, logger);
   }
-  return std::nullopt;
+  return nullptr;
 }
 
-Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
+Status GetQnnNodeGroups(/*out*/ std::vector<std::unique_ptr<IQnnNodeGroup>>& qnn_node_groups,
                         QnnModelWrapper& qnn_model_wrapper,
                         const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
                         const size_t num_node_units,
@@ -171,14 +98,14 @@ Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
   const std::vector<NodeIndex> sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::vector<QnnNodeGroup::IndexType> sorted_qnn_node_group_indices;
+  std::vector<size_t> sorted_qnn_node_group_indices;
   sorted_qnn_node_group_indices.reserve(num_node_units);
 
-  std::vector<QnnNodeGroup> tmp_qnn_node_groups;
+  std::vector<std::unique_ptr<IQnnNodeGroup>> tmp_qnn_node_groups;
   tmp_qnn_node_groups.reserve(num_node_units);
 
   {
-    std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType> node_unit_to_qnn_node_group;
+    std::unordered_map<const NodeUnit*, const IQnnNodeGroup*> node_unit_to_qnn_node_group;
     std::vector<gsl::not_null<const NodeUnit*>> sorted_node_units;
     sorted_node_units.reserve(num_node_units);
 
@@ -202,20 +129,20 @@ Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
         continue;  // Already handled this node unit
       }
 
-      std::optional<QnnNodeGroup> fused_node_group = TryQnnFusions(qnn_model_wrapper, *node_unit,
-                                                                   node_to_node_unit, node_unit_to_qnn_node_group,
-                                                                   logger);
+      std::unique_ptr<IQnnNodeGroup> fused_node_group = TryQnnFusions(qnn_model_wrapper, *node_unit,
+                                                                      node_to_node_unit, node_unit_to_qnn_node_group,
+                                                                      logger);
 
-      if (fused_node_group.has_value()) {
-        const QnnNodeGroup::IndexType index = tmp_qnn_node_groups.size();
+      if (fused_node_group) {
+        const size_t index = tmp_qnn_node_groups.size();
         fused_node_group->index_ = index;
 
         for (const NodeUnit* fused_node_unit : fused_node_group->GetNodeUnits()) {
           assert(fused_node_unit != nullptr);
-          node_unit_to_qnn_node_group.insert({fused_node_unit, index});
+          node_unit_to_qnn_node_group.insert({fused_node_unit, fused_node_group.get()});
         }
 
-        tmp_qnn_node_groups.push_back(std::move(*fused_node_group));
+        tmp_qnn_node_groups.push_back(std::move(fused_node_group));
       }
     }
 
@@ -224,22 +151,19 @@ Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
       const auto it = node_unit_to_qnn_node_group.find(node_unit);
       if (it != node_unit_to_qnn_node_group.end()) {
         // Already handled this NodeUnit.
-        const QnnNodeGroup& qnn_node_group = tmp_qnn_node_groups[it->second];
-        if (node_unit == qnn_node_group.GetTargetNodeUnit(logger)) {
-          sorted_qnn_node_group_indices.push_back(qnn_node_group.index_);
+        gsl::not_null<const IQnnNodeGroup*> qnn_node_group = it->second;
+        if (node_unit == qnn_node_group->GetTargetNodeUnit()) {
+          sorted_qnn_node_group_indices.push_back(qnn_node_group->index_);
         }
         continue;
       }
 
-      const QnnNodeGroup::IndexType index = tmp_qnn_node_groups.size();
-      QnnNodeGroup fused_node_group = {};
-      fused_node_group.type_ = QnnNodeGroup::Type::NodeUnit;
-      fused_node_group.index_ = index;
-      fused_node_group.node_units_.resize(1);
-      fused_node_group.node_units_[0] = node_unit;
+      const size_t index = tmp_qnn_node_groups.size();
+      auto fused_node_group = std::make_unique<QnnNodeUnitWrapper>(*node_unit);
+      fused_node_group->index_ = index;
       tmp_qnn_node_groups.push_back(std::move(fused_node_group));
 
-      node_unit_to_qnn_node_group.insert({node_unit, index});
+      node_unit_to_qnn_node_group.insert({node_unit, fused_node_group.get()});
       sorted_qnn_node_group_indices.push_back(index);
     }
 
@@ -251,8 +175,8 @@ Status GetQnnNodeGroups(/*out*/ std::vector<QnnNodeGroup>& qnn_node_groups,
   qnn_node_groups.reserve(tmp_qnn_node_groups.size());
   for (auto index : sorted_qnn_node_group_indices) {
     assert(index < tmp_qnn_node_groups.size());
-    QnnNodeGroup qnn_node_group = std::move(tmp_qnn_node_groups[index]);
-    qnn_node_group.index_ = qnn_node_groups.size();
+    std::unique_ptr<IQnnNodeGroup> qnn_node_group = std::move(tmp_qnn_node_groups[index]);
+    qnn_node_group->index_ = qnn_node_groups.size();
     qnn_node_groups.push_back(std::move(qnn_node_group));
   }
 

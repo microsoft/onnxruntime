@@ -56,15 +56,15 @@ static Status QnnDQQFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-std::optional<QnnNodeGroup> TryDQQFusion(
+std::unique_ptr<IQnnNodeGroup> TryDQQFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& dq_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
   // Expect that this function is called with a standalone DQ.
   if (dq_node_unit.OpType() != "DequantizeLinear" || dq_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
-    return std::nullopt;
+    return nullptr;
   }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
@@ -76,7 +76,7 @@ std::optional<QnnNodeGroup> TryDQQFusion(
                                                    node_to_node_unit, node_unit_to_qnn_node_group);
 
   if (q_node_unit == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
@@ -85,69 +85,39 @@ std::optional<QnnNodeGroup> TryDQQFusion(
 
   // DQ and Q must have equal scale type and different zp type.
   if (!QDQ::IsDQQConversion(dq_node, q_node_unit->GetNode(), get_const_initializer, graph_viewer.ModelPath())) {
-    return std::nullopt;
+    return nullptr;
   }
 
   if (Status status = QnnDQQFusionAdd(qnn_model_wrapper, dq_node_unit, *q_node_unit,
                                       logger, /*validate*/ true);
       !status.IsOK()) {
-    return std::nullopt;
+    return nullptr;
   }
 
-  // Validation passed, so create a QnnNodeGroup.
-  LOGS(logger, VERBOSE) << " Will use QNN Convert via fusion. dq_node name: [" << dq_node.Name()
-                        << "] dq_node optype: [" << dq_node.OpType()
-                        << "] q_node name: [" << q_node_unit->Name()
-                        << "] q_node optype: [" << q_node_unit->OpType()
-                        << "]";
-
-  std::optional<QnnNodeGroup> qnn_node_group = QnnNodeGroup{};
-  qnn_node_group->type_ = QnnNodeGroup::Type::DQQFusion;
-  qnn_node_group->node_units_.push_back(&dq_node_unit);
-  qnn_node_group->node_units_.push_back(q_node_unit);
-
+  std::unique_ptr<IQnnNodeGroup> qnn_node_group = std::make_unique<dq_q_fusion::QnnNodeGroup>(dq_node_unit,
+                                                                                              *q_node_unit);
   return qnn_node_group;
 }
 
 namespace dq_q_fusion {
-
-Status IsSupported(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 2, "Expected 2 NodeUnits for DQ -> Q fusion");
-  const NodeUnit* dq_node_unit = qnn_node_group.node_units_[0];
-  const NodeUnit* q_node_unit = qnn_node_group.node_units_[1];
-  ORT_RETURN_IF_NOT(dq_node_unit != nullptr && q_node_unit != nullptr, "");
-  Status status = QnnDQQFusionAdd(qmw, *dq_node_unit, *q_node_unit, logger, /*validate*/ true);
-
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "(DQ -> Q) into QNN Convert fusion is not supported, "
-                        << "but should be according to initial validation. "
-                        << "Node names: " << dq_node_unit->Name() << ", " << q_node_unit->Name()
-                        << " Error: " << status.ErrorMessage();
-  }
-
-  return status;
+QnnNodeGroup::QnnNodeGroup(const NodeUnit& dq_node_unit, const NodeUnit& q_node_unit)
+    : dq_node_unit_(dq_node_unit), q_node_unit_(q_node_unit) {
 }
 
-Status AddToModelBuilder(QnnModelWrapper& qmw, const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_RETURN_IF_NOT(qnn_node_group.node_units_.size() == 2, "Expected 2 NodeUnits for DQ -> Q fusion");
-  const NodeUnit* dq_node_unit = qnn_node_group.node_units_[0];
-  const NodeUnit* q_node_unit = qnn_node_group.node_units_[1];
-  ORT_RETURN_IF_NOT(dq_node_unit != nullptr && q_node_unit != nullptr, "");
-  return QnnDQQFusionAdd(qmw, *dq_node_unit, *q_node_unit, logger, /*validate*/ false);
+Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return QnnDQQFusionAdd(qmw, dq_node_unit_, q_node_unit_, logger, /*validate*/ true);
 }
 
-#if 0
-const std::vector<const NodeUnit*>& GetNodeUnits(const QnnNodeGroup& qnn_node_group) {
-  return qnn_node_group.node_units_;
+Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+  return QnnDQQFusionAdd(qmw, dq_node_unit_, q_node_unit_, logger, /*validate*/ false);
 }
-#endif
 
-const NodeUnit* GetTargetNodeUnit(const QnnNodeGroup& qnn_node_group, const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
-  if (qnn_node_group.node_units_.size() != 2) {
-    return nullptr;
-  }
-  return qnn_node_group.node_units_[0];
+std::vector<const NodeUnit*> QnnNodeGroup::GetNodeUnits() const {
+  return std::vector<const NodeUnit*>{&dq_node_unit_, &q_node_unit_};
+}
+
+const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
+  return &dq_node_unit_;
 }
 
 }  // namespace dq_q_fusion

@@ -117,14 +117,14 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
 
-  std::vector<qnn::QnnNodeGroup> qnn_node_groups;
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_holder.size());
 
   ORT_RETURN_IF_ERROR(qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map,
                                             node_unit_holder.size(), logger_));
 
-  for (const qnn::QnnNodeGroup& qnn_node_group : qnn_node_groups) {
-    Status status = qnn_node_group.AddToModelBuilder(qnn_model_wrapper, logger_);
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group->AddToModelBuilder(qnn_model_wrapper, logger_);
 
     if (!status.IsOK()) {
       LOGS(logger_, ERROR) << "[QNN EP] Failed to add supported node to QNN graph during EP's compile call: "
