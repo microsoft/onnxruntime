@@ -11,6 +11,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_node_group/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -62,39 +63,19 @@ std::optional<QnnNodeGroup> TryDQQFusion(
     const std::unordered_map<const NodeUnit*, QnnNodeGroup::IndexType>& node_unit_to_qnn_node_group,
     const logging::Logger& logger) {
   // Expect that this function is called with a standalone DQ.
-  assert(dq_node_unit.OpType() == QDQ::DQOpName && dq_node_unit.UnitType() == NodeUnit::Type::SingleNode);
+  if (dq_node_unit.OpType() != "DequantizeLinear" || dq_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
+    return std::nullopt;
+  }
 
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
   const Node& dq_node = dq_node_unit.GetNode();
 
-  // DQ must have a single child (1 output edge) and must not produce a graph output.
-  if (dq_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(dq_node)) {
-    return std::nullopt;
-  }
+  // DQ must have a single Q child (1 output edge) and must not produce a graph output.
+  const std::array<std::string_view, 1> child_types = {"QuantizeLinear"};
+  const NodeUnit* q_node_unit = GetOnlyChildOfType(graph_viewer, dq_node_unit, child_types,
+                                                   node_to_node_unit, node_unit_to_qnn_node_group);
 
-  const Node& q_node = dq_node.OutputEdgesBegin()->GetNode();
-  if (q_node.OpType() != QDQ::QOpName) {
-    return std::nullopt;
-  }
-
-  if (graph_viewer.GetNode(q_node.Index()) == nullptr) {
-    return std::nullopt;  // Node is not in this GraphViewer
-  }
-
-  const auto q_node_unit_it = node_to_node_unit.find(&q_node);
-  if (q_node_unit_it == node_to_node_unit.end()) {
-    return std::nullopt;
-  }
-  const NodeUnit* q_node_unit = q_node_unit_it->second;
-
-  // child must not already be part of a QDQ NodeUnit (i.e., be standalone).
-  if (q_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-    return std::nullopt;
-  }
-
-  // Check if child node has already been handled. Should not be the case if this
-  // fusion function has been called in topological order, but check to be safe.
-  if (node_unit_to_qnn_node_group.count(q_node_unit) != 0) {
+  if (q_node_unit == nullptr) {
     return std::nullopt;
   }
 
@@ -103,7 +84,7 @@ std::optional<QnnNodeGroup> TryDQQFusion(
   };
 
   // DQ and Q must have equal scale type and different zp type.
-  if (!QDQ::IsDQQConversion(dq_node, q_node, get_const_initializer, graph_viewer.ModelPath())) {
+  if (!QDQ::IsDQQConversion(dq_node, q_node_unit->GetNode(), get_const_initializer, graph_viewer.ModelPath())) {
     return std::nullopt;
   }
 

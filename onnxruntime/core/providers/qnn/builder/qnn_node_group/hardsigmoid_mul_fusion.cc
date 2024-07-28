@@ -11,6 +11,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_node_group/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -83,41 +84,18 @@ std::optional<QnnNodeGroup> TryHardSigmoidMulFusion(
     return std::nullopt;
   }
 
+  // HardSigmoid must have a single Mul child (1 output edge) and must not produce a graph output.
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
-  const Node& hs_node = hardsigmoid_node_unit.GetNode();
+  const std::array<std::string_view, 1> child_types = {"Mul"};
+  const NodeUnit* mul_node_unit = GetOnlyChildOfType(graph_viewer, hardsigmoid_node_unit, child_types,
+                                                     node_to_node_unit, node_unit_to_qnn_node_group);
 
-  // HardSigmoid must have a single child (1 output edge) and must not produce a graph output.
-  if (hs_node.GetOutputEdgesCount() != 1 || graph_viewer.NodeProducesGraphOutput(hs_node)) {
-    return std::nullopt;
-  }
-
-  const Node& mul_node = hs_node.OutputEdgesBegin()->GetNode();
-  if (mul_node.OpType() != "Mul") {
-    return std::nullopt;
-  }
-
-  if (graph_viewer.GetNode(mul_node.Index()) == nullptr) {
-    return std::nullopt;  // Node is not in this GraphViewer
-  }
-
-  const auto mul_node_unit_it = node_to_node_unit.find(&mul_node);
-  if (mul_node_unit_it == node_to_node_unit.end()) {
-    return std::nullopt;
-  }
-  const NodeUnit* mul_node_unit = mul_node_unit_it->second;
-
-  // Check if Mul node has already been handled. Should not be the case if this
-  // fusion function has been called in topological order, but check to be safe.
-  if (node_unit_to_qnn_node_group.count(mul_node_unit) != 0) {
-    return std::nullopt;
-  }
-
-  // Mul child must not already be part of a QDQ NodeUnit (i.e., be standalone).
-  if (mul_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
+  if (mul_node_unit == nullptr) {
     return std::nullopt;
   }
 
   // Input to HardSigmoid must also be the other input to the Mul.
+  const Node& mul_node = mul_node_unit->GetNode();
   auto& hs_input_name = hardsigmoid_node_unit.Inputs()[0].node_arg.Name();
   const bool same_root_input = mul_node.InputDefs()[0]->Name() == hs_input_name ||
                                mul_node.InputDefs()[1]->Name() == hs_input_name;
