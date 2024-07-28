@@ -729,7 +729,8 @@ struct Min_8::ComputeImpl {
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();
@@ -756,9 +757,11 @@ static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
         EigenVectorArrayMap<Eigen::half> output_vec_map(output, num_elements);
 
         if (is_min) {
-          output_vec_map = input_1_vec_map.template min<Eigen::PropagateNaN>(static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
+          output_vec_map = input_1_vec_map.template min<Eigen::PropagateNaN>(
+              static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
         } else {
-          output_vec_map = input_1_vec_map.template max<Eigen::PropagateNaN>(static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
+          output_vec_map = input_1_vec_map.template max<Eigen::PropagateNaN>(
+              static_cast<Eigen::half>(per_iter_bh.ScalarInput0<MLFloat16>()));
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -771,9 +774,11 @@ static Status MinMaxMLFloat16(const OpKernel& inst, OpKernelContext* context) {
         EigenVectorArrayMap<Eigen::half> output_vec_map(output, num_elements);
 
         if (is_min) {
-          output_vec_map = input_0_vec_map.template min<Eigen::PropagateNaN>(static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
+          output_vec_map = input_0_vec_map.template min<Eigen::PropagateNaN>(
+              static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
         } else {
-          output_vec_map = input_0_vec_map.template max<Eigen::PropagateNaN>(static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
+          output_vec_map = input_0_vec_map.template max<Eigen::PropagateNaN>(
+              static_cast<Eigen::half>(per_iter_bh.ScalarInput1<MLFloat16>()));
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -851,7 +856,8 @@ struct Max_8::ComputeImpl {
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();

@@ -1752,7 +1752,7 @@ TEST(MathOpTest, Min_12_MLFloat16_Nan) {
                                           -0.5f, 0.0f, -2.0f,
                                           0.5f, 0.0f, 2.0f}));
   test.AddInput<MLFloat16>("data_1", {3, 1},
-                       MakeMLFloat16({0.0f, -1.0f, 1.0f}));
+                           MakeMLFloat16({0.0f, -1.0f, 1.0f}));
   test.AddOutput<MLFloat16>("min", {3, 3},
                             MakeMLFloat16({std::numeric_limits<float>::quiet_NaN(),
                                            std::numeric_limits<float>::quiet_NaN(),
@@ -2093,7 +2093,7 @@ TEST(MathOpTest, Max_12_MLFloat16_Nan) {
                                           std::numeric_limits<float>::quiet_NaN(),
                                           std::numeric_limits<float>::quiet_NaN(),
                                           -0.5f, 0.0f, -2.0f,
-                                           0.5f, 0.0f, 2.0f}));
+                                          0.5f, 0.0f, 2.0f}));
   test.AddInput<MLFloat16>("data_1", {3, 1},
                            MakeMLFloat16({0.0f, -1.0f, 1.0f}));
   test.AddOutput<MLFloat16>("max", {3, 3},
