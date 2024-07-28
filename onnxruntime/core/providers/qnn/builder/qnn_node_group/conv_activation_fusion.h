@@ -10,30 +10,22 @@
 #include <vector>
 
 #include "core/framework/node_unit.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
 
 namespace onnxruntime {
 namespace qnn {
 
-std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(
-    QnnModelWrapper& qnn_model_wrapper,
-    const NodeUnit& conv_node_unit,
-    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-    const logging::Logger& logger);
+class QnnModelWrapper;
 
-namespace conv_act_fusion {
-
-class QnnNodeGroup : public IQnnNodeGroup {
+class ConvActivationFusion : public IQnnNodeGroup {
  public:
-  QnnNodeGroup(const NodeUnit& dq_node_unit_0,
-               const NodeUnit& dq_node_unit_1,
-               const NodeUnit* dq_node_unit_2,
-               const NodeUnit& conv_node_unit,
-               const NodeUnit& activation_node_unit,
-               const NodeUnit& q_node_unit);
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeGroup);
+  ConvActivationFusion(const NodeUnit& dq_node_unit_0,
+                       const NodeUnit& dq_node_unit_1,
+                       const NodeUnit* dq_node_unit_2,
+                       const NodeUnit& conv_node_unit,
+                       const NodeUnit& activation_node_unit,
+                       const NodeUnit& q_node_unit);
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ConvActivationFusion);
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
   Status AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const override;
@@ -41,10 +33,16 @@ class QnnNodeGroup : public IQnnNodeGroup {
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "ConvActivationFusion"; }
 
+  static std::unique_ptr<IQnnNodeGroup> TryFusion(
+      QnnModelWrapper& qnn_model_wrapper,
+      const NodeUnit& conv_node_unit,
+      const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+      const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+      const logging::Logger& logger);
+
  private:
   std::array<const NodeUnit*, 6> node_units_;  // Last elem is nullptr if bias DQ is missing.
 };
 
-}  // namespace conv_act_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

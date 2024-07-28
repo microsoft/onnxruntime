@@ -6,12 +6,12 @@
 #include <limits>
 #include <optional>
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/framework/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -21,16 +21,16 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
                                      /*out*/ float& scale,
                                      /*out*/ int32_t& zero_point,
                                      /*out*/ int32_t& zp_data_type) {
-  assert(q_node_unit.OpType() == QDQ::QOpName);
+  assert(q_node_unit.OpType() == QUANTIZE_LINEAR);
   const auto& q_inputs = q_node_unit.GetNode().InputDefs();
 
   // Require an explicit zero-point input for now.
-  if (q_inputs.size() != 3 || !q_inputs[QDQ::ZERO_POINT_ID]->Exists()) {
+  if (q_inputs.size() != 3 || !q_inputs[QDQ_ZERO_POINT_INPUT_IDX]->Exists()) {
     return false;
   }
 
   std::vector<int32_t> zero_points;
-  Status status = qnn_model_wrapper.UnpackZeroPoints(q_inputs[QDQ::ZERO_POINT_ID]->Name(),
+  Status status = qnn_model_wrapper.UnpackZeroPoints(q_inputs[QDQ_ZERO_POINT_INPUT_IDX]->Name(),
                                                      zero_points, zp_data_type);
 
   // Should only have one zero-point (per-tensor).
@@ -40,7 +40,7 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
   zero_point = -zero_points[0];  // QNN zero-points are negated.
 
   std::vector<float> scales;
-  status = qnn_model_wrapper.UnpackScales(q_inputs[QDQ::SCALE_ID]->Name(), scales);
+  status = qnn_model_wrapper.UnpackScales(q_inputs[QDQ_SCALE_INPUT_IDX]->Name(), scales);
 
   // Should only have one scale (per-tensor).
   if (!status.IsOK() || scales.size() != 1) {
@@ -91,72 +91,11 @@ static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
-static bool GetClipMinMax(const QnnModelWrapper& qnn_model_wrapper,
-                          const NodeUnit& clip_node_unit,
-                          /*out*/ float& clip_min,
-                          /*out*/ float& clip_max) {
-  clip_min = std::numeric_limits<float>::lowest();
-  clip_max = std::numeric_limits<float>::max();
-
-  // Clip's min and max are attributes before opset 11.
-  if (clip_node_unit.GetNode().SinceVersion() < 11) {
-    NodeAttrHelper attr_helper(clip_node_unit);
-    std::optional<float> min_opt = attr_helper.GetFloat("min");
-    std::optional<float> max_opt = attr_helper.GetFloat("max");
-
-    if (min_opt.has_value()) {
-      clip_min = min_opt.value();
-    }
-
-    if (max_opt.has_value()) {
-      clip_max = max_opt.value();
-    }
-
-    return true;
-  }
-
-  // After opset 11, min and max are inputs.
-  const auto& inputs = clip_node_unit.Inputs();
-  const size_t num_inputs = inputs.size();
-  auto get_min_or_max = [&qnn_model_wrapper](const NodeUnitIODef& input, /*out*/ float& result) -> bool {
-    TensorInfo input_info = {};
-    std::vector<uint8_t> raw_bytes;
-    if (Status status = qnn_model_wrapper.GetTensorInfo(input, input_info); !status.IsOK()) {
-      return false;
-    }
-    if (!input_info.is_initializer) {
-      return false;
-    }
-    if (Status status = qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, raw_bytes);
-        !status.IsOK()) {
-      return false;
-    }
-    if (input_info.qnn_data_type != QNN_DATATYPE_FLOAT_32) {
-      return false;
-    }
-    result = static_cast<float>(*reinterpret_cast<const float*>(raw_bytes.data()));
-    return true;
-  };
-
-  if (num_inputs > 1 && inputs[1].node_arg.Exists()) {
-    if (!get_min_or_max(inputs[1], clip_min)) {
-      return false;
-    }
-  }
-
-  if (num_inputs > 2 && inputs[2].node_arg.Exists()) {
-    if (!get_min_or_max(inputs[2], clip_max)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& clip_node_unit,
-                             const NodeUnit& q_node_unit) {
-  assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QDQ::QOpName);
+                             const NodeUnit& q_node_unit,
+                             const logging::Logger& logger) {
+  assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QUANTIZE_LINEAR);
   float rmin = 0.0f;
   float rmax = 0.0f;
 
@@ -167,7 +106,8 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   float clip_min = std::numeric_limits<float>::lowest();
   float clip_max = std::numeric_limits<float>::max();
 
-  if (!GetClipMinMax(qnn_model_wrapper, clip_node_unit, clip_min, clip_max)) {
+  if (!onnxruntime::GetClipMinMax(qnn_model_wrapper.GetGraphViewer(), clip_node_unit.GetNode(),
+                                  clip_min, clip_max, logger)) {
     return false;
   }
 
@@ -180,7 +120,7 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
 }
 
 static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& q_node_unit) {
-  assert(q_node_unit.OpType() == QDQ::QOpName);
+  assert(q_node_unit.OpType() == QUANTIZE_LINEAR);
   int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
   int32_t zero_point = 0;
   float scale = 0.0f;
@@ -206,7 +146,8 @@ static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeU
 
 static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& activation_node_unit,
-                                   const NodeUnit& q_node_unit) {
+                                   const NodeUnit& q_node_unit,
+                                   const logging::Logger& logger) {
   const std::string& activation_type = activation_node_unit.OpType();
 
   if (activation_type == "Relu") {
@@ -214,91 +155,94 @@ static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   }
 
   if (activation_type == "Clip") {
-    return CanClipBeRemoved(qnn_model_wrapper, activation_node_unit, q_node_unit);
+    return CanClipBeRemoved(qnn_model_wrapper, activation_node_unit, q_node_unit, logger);
   }
 
   return false;
 }
 
-// adjust for an optional input/output that has an entry but does not exist
-static int NumActualValues(const Node& node, bool input) {
-  const auto& defs = input ? node.InputDefs() : node.OutputDefs();
-  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(),
-                                             [](const NodeArg* def) { return def && def->Exists(); }));
-}
-
-static std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Node& node, bool find_dq_nodes) {
-  // First get all the upstream (DQ) or downstream (Q) nodes
-  std::vector<const Node*> nodes =
-      find_dq_nodes ? graph_utils::FindParentsByType(node, QDQ::DQOpName)
-                    : graph_utils::FindChildrenByType(node, QDQ::QOpName);
+static std::vector<const Node*> FindParentDQNodes(const GraphViewer& graph_viewer, const Node& node) {
+  // Get all parent DQ nodes sorted by destination argument index.
+  std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(DEQUANTIZE_LINEAR) == 0) {
+      parents[it->GetDstArgIndex()] = &(it->GetNode());
+    }
+  }
 
   // Remove all the nodes which are not in the graph_viewer
-  nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
-                             [&graph_viewer](const Node* _node) {
-                               return _node == nullptr || graph_viewer.GetNode(_node->Index()) == nullptr;
-                             }),
-              nodes.end());
+  parents.erase(std::remove_if(parents.begin(), parents.end(),
+                               [&graph_viewer](const Node* _node) {
+                                 return _node == nullptr || graph_viewer.GetNode(_node->Index()) == nullptr;
+                               }),
+                parents.end());
 
-  return nodes;
+  return parents;
 }
 
-static std::vector<const NodeUnit*> GetConvDQs(
+static bool GetConvDQs(
     const GraphViewer& graph_viewer,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-    const Node& conv_node) {
-  assert(conv_node.OpType() == "Conv" || conv_node.OpType() == "ConvTranspose");
-  std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, conv_node, /*find_dq_nodes*/ true);
-  int num_dq_inputs = NumActualValues(conv_node, /*input*/ true);
-
-  // Within a QDQ node group, a target node input is the only consumer of each DQ.
-  if (num_dq_inputs != static_cast<int>(dq_nodes.size())) {
-    return {};
+    const Node& conv_node,
+    /*out*/ std::array<const NodeUnit*, 3>& dq_node_units) {
+  if (conv_node.OpType() != "Conv" && conv_node.OpType() != "ConvTranspose") {
+    return false;
   }
 
-  std::vector<const NodeUnit*> dq_node_units;
-  for (const auto* dq_node : dq_nodes) {
-    if (graph_viewer.NodeProducesGraphOutput(*dq_node)) {
-      return {};
+  // Count number of inputs to Conv node.
+  const auto& conv_inputs = conv_node.InputDefs();
+  const size_t num_conv_inputs = std::count_if(conv_inputs.cbegin(), conv_inputs.cend(),
+                                               [](const NodeArg* input) { return input && input->Exists(); });
+
+  // Get the Conv's parent DQ nodes.
+  std::vector<const Node*> dq_nodes = FindParentDQNodes(graph_viewer, conv_node);
+  const size_t num_dqs = dq_nodes.size();
+
+  // Within a QDQ node group, a target node input is the only consumer of each DQ.
+  if ((num_conv_inputs != num_dqs) || (num_dqs > dq_node_units.size())) {
+    return false;
+  }
+
+  dq_node_units.fill(nullptr);
+  for (size_t i = 0; i < num_dqs; i++) {
+    const Node* dq_node = dq_nodes[i];
+
+    // DQ must not produce a graph output.
+    if (!dq_node || graph_viewer.NodeProducesGraphOutput(*dq_node)) {
+      return false;
     }
 
+    // Conv should be the only consumer of a parent DQ.
     const bool dq_has_single_output_edge_to_target =
         dq_node->GetOutputEdgesCount() == 1 &&
         dq_node->OutputEdgesBegin()->GetNode().Index() == conv_node.Index();
     if (!dq_has_single_output_edge_to_target) {
-      return {};
+      return false;
     }
 
+    // DQ node must be part of a "standalone" NodeUnit.
     const auto it = node_to_node_unit.find(dq_node);
     if (it == node_to_node_unit.end()) {
-      return {};
+      return false;
     }
-
     const NodeUnit* dq_node_unit = it->second;
-
     if (!dq_node_unit || node_unit_to_qnn_node_group.count(dq_node_unit) != 0) {
-      return {};
+      return false;
     }
-
     if (dq_node_unit->UnitType() != NodeUnit::Type::SingleNode) {
-      return {};
+      return false;
     }
 
-    dq_node_units.push_back(dq_node_unit);
+    dq_node_units[i] = dq_node_unit;
   }
 
-  return dq_node_units;
+  return true;
 }
 
-static bool IsValidQDQConv(gsl::span<const NodeUnit*> dq_node_units,
-                           gsl::not_null<const NodeUnit*> q_node_unit) {
-  assert(q_node_unit->OpType() == QDQ::QOpName);
-  const size_t num_dqs = dq_node_units.size();
-  if (num_dqs != 2 && num_dqs != 3) {
-    return false;
-  }
-
+static bool CheckQDQConvDataTypes(std::array<const NodeUnit*, 3>& dq_node_units,
+                                  gsl::not_null<const NodeUnit*> q_node_unit) {
+  assert(q_node_unit->OpType() == QUANTIZE_LINEAR);
   // input and output types need to be same
   int32_t dt_input = dq_node_units[0]->GetNode().InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_weight = dq_node_units[1]->GetNode().InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -313,7 +257,7 @@ static bool IsValidQDQConv(gsl::span<const NodeUnit*> dq_node_units,
     }
   }
 
-  if (num_dqs == 3) {  // has bias
+  if (dq_node_units[2] != nullptr) {  // has bias
     int32_t dt_bias = dq_node_units[2]->GetNode().InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
       return false;
@@ -323,12 +267,16 @@ static bool IsValidQDQConv(gsl::span<const NodeUnit*> dq_node_units,
   return true;
 }
 
-static Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
-                                         gsl::span<const NodeUnit* const> dq_node_units,
-                                         const NodeUnit* conv_node_unit,
-                                         const NodeUnit* q_node_unit,
-                                         const logging::Logger& logger,
-                                         bool validate) {
+#define ValidateOnQnn(qnn_model_wrapper, dq_node_units, conv_node_unit, q_node_unit, logger) \
+  CreateOrValidateOnQnn((qnn_model_wrapper), (dq_node_units), (conv_node_unit), (q_node_unit), (logger), true)
+#define CreateOnQnn(qnn_model_wrapper, dq_node_units, conv_node_unit, q_node_unit, logger) \
+  CreateOrValidateOnQnn((qnn_model_wrapper), (dq_node_units), (conv_node_unit), (q_node_unit), (logger), false)
+static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
+                                    gsl::span<const NodeUnit* const> dq_node_units,
+                                    const NodeUnit* conv_node_unit,
+                                    const NodeUnit* q_node_unit,
+                                    const logging::Logger& logger,
+                                    bool validate) {
   const size_t num_dqs = dq_node_units.size();
   constexpr size_t max_num_dqs = 3;
   ORT_RETURN_IF_NOT(num_dqs == 2 || num_dqs == max_num_dqs, "QDQ Conv should have 2 or 3 DQs");
@@ -399,12 +347,12 @@ static Status QnnConvActivationFusionAdd(QnnModelWrapper& qnn_model_wrapper,
   return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, custom_node_unit, logger, validate);
 }
 
-std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_model_wrapper,
-                                                       const NodeUnit& conv_node_unit,
-                                                       const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
-                                                       const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-                                                       const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
+std::unique_ptr<IQnnNodeGroup> ConvActivationFusion::TryFusion(
+    QnnModelWrapper& qnn_model_wrapper,
+    const NodeUnit& conv_node_unit,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
+    const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
+    const logging::Logger& logger) {
   // Expect that this function is called with a standalone Conv or ConvTranspose.
   const auto& conv_type = conv_node_unit.OpType();
 
@@ -424,7 +372,7 @@ std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_mode
   }
 
   // Relu/Clip must have a single Q child.
-  const std::array<std::string_view, 1> q_op_types = {QDQ::QOpName};
+  const std::array<std::string_view, 1> q_op_types = {QUANTIZE_LINEAR};
   const NodeUnit* q_node_unit = GetOnlyChildOfType(graph_viewer, *activation_node_unit, q_op_types,
                                                    node_to_node_unit, node_unit_to_qnn_node_group);
 
@@ -433,36 +381,38 @@ std::unique_ptr<IQnnNodeGroup> TryConvActivationFusion(QnnModelWrapper& qnn_mode
   }
 
   // Check if Clip/Relu can be removed because the Q node provides an equivalent effect.
-  if (!CanActivationBeRemoved(qnn_model_wrapper, *activation_node_unit, *q_node_unit)) {
+  if (!CanActivationBeRemoved(qnn_model_wrapper, *activation_node_unit, *q_node_unit, logger)) {
     return nullptr;
   }
 
   // Create a QDQ node group with DQ* -> Conv -> Q
   const Node& conv_node = conv_node_unit.GetNode();
-  std::vector<const NodeUnit*> dq_node_units = GetConvDQs(graph_viewer,
-                                                          node_to_node_unit,
-                                                          node_unit_to_qnn_node_group,
-                                                          conv_node);
-
-  if (!IsValidQDQConv(dq_node_units, q_node_unit)) {
+  std::array<const NodeUnit*, 3> dq_node_units = {};
+  if (!GetConvDQs(graph_viewer,
+                  node_to_node_unit,
+                  node_unit_to_qnn_node_group,
+                  conv_node, dq_node_units)) {
     return nullptr;
   }
 
-  return std::make_unique<conv_act_fusion::QnnNodeGroup>(*dq_node_units[0],
-                                                         *dq_node_units[1],
-                                                         dq_node_units.size() == 3 ? dq_node_units[2] : nullptr,
-                                                         conv_node_unit,
-                                                         *activation_node_unit,
-                                                         *q_node_unit);
+  if (!CheckQDQConvDataTypes(dq_node_units, q_node_unit)) {
+    return nullptr;
+  }
+
+  return std::make_unique<ConvActivationFusion>(*dq_node_units[0],
+                                                *dq_node_units[1],
+                                                dq_node_units[2],
+                                                conv_node_unit,
+                                                *activation_node_unit,
+                                                *q_node_unit);
 }
 
-namespace conv_act_fusion {
-QnnNodeGroup::QnnNodeGroup(const NodeUnit& dq_node_unit_0,
-                           const NodeUnit& dq_node_unit_1,
-                           const NodeUnit* dq_node_unit_2,
-                           const NodeUnit& conv_node_unit,
-                           const NodeUnit& activation_node_unit,
-                           const NodeUnit& q_node_unit)
+ConvActivationFusion::ConvActivationFusion(const NodeUnit& dq_node_unit_0,
+                                           const NodeUnit& dq_node_unit_1,
+                                           const NodeUnit* dq_node_unit_2,
+                                           const NodeUnit& conv_node_unit,
+                                           const NodeUnit& activation_node_unit,
+                                           const NodeUnit& q_node_unit)
     : node_units_{} {
   size_t i = 0;
   node_units_[i++] = &dq_node_unit_0;
@@ -476,40 +426,35 @@ QnnNodeGroup::QnnNodeGroup(const NodeUnit& dq_node_unit_0,
   assert((!dq_node_unit_2 && i == 5) || (dq_node_unit_2 && i == 6));
 }
 
-Status QnnNodeGroup::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+Status ConvActivationFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
   const size_t num_dqs = node_units_.back() != nullptr ? 3 : 2;
   gsl::span<const NodeUnit* const> dq_node_units(node_units_.data(), num_dqs);
 
-  return QnnConvActivationFusionAdd(qmw,
-                                    dq_node_units,
-                                    node_units_[num_dqs],      // Conv
-                                    node_units_[num_dqs + 2],  // Q
-                                    logger,
-                                    /*validate*/ true);
+  return ValidateOnQnn(qmw, dq_node_units,
+                       node_units_[num_dqs],      // Conv
+                       node_units_[num_dqs + 2],  // Q
+                       logger);
 }
 
-Status QnnNodeGroup::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
+Status ConvActivationFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
   const size_t num_dqs = node_units_.back() != nullptr ? 3 : 2;
   gsl::span<const NodeUnit* const> dq_node_units(node_units_.data(), num_dqs);
 
-  return QnnConvActivationFusionAdd(qmw,
-                                    dq_node_units,
-                                    node_units_[num_dqs],      // Conv
-                                    node_units_[num_dqs + 2],  // Q
-                                    logger,
-                                    /*validate*/ false);
+  return CreateOnQnn(qmw, dq_node_units,
+                     node_units_[num_dqs],      // Conv
+                     node_units_[num_dqs + 2],  // Q
+                     logger);
 }
 
-gsl::span<const NodeUnit* const> QnnNodeGroup::GetNodeUnits() const {
+gsl::span<const NodeUnit* const> ConvActivationFusion::GetNodeUnits() const {
   const size_t num_node_units = node_units_.back() != nullptr ? 6 : 5;
   return gsl::make_span<const NodeUnit* const>(node_units_.data(), num_node_units);
 }
 
-const NodeUnit* QnnNodeGroup::GetTargetNodeUnit() const {
+const NodeUnit* ConvActivationFusion::GetTargetNodeUnit() const {
   const size_t conv_index = node_units_.back() != nullptr ? 3 : 2;
   return node_units_[conv_index];
 }
 
-}  // namespace conv_act_fusion
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -11,7 +11,6 @@
 #include <utility>
 #include <vector>
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/framework/node_unit.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -50,7 +49,7 @@ class QnnNodeUnitWrapper : public IQnnNodeGroup {
   }
 
   const NodeUnit* GetTargetNodeUnit() const override { return node_unit_; }
-  std::string_view Type() const override { return "NodeUnitWrapper"; }
+  std::string_view Type() const override { return "NodeUnit"; }
 
  private:
   const NodeUnit* node_unit_;
@@ -71,10 +70,10 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
     const logging::Logger& logger) {
   // Maps a starting operator type to the fusion function.
   static std::unordered_map<std::string, FusionFunc> fusions = {
-      {"DequantizeLinear", TryDQQFusion},
-      {"HardSigmoid", TryHardSigmoidMulFusion},
-      {"Conv", TryConvActivationFusion},
-      {"ConvTranspose", TryConvActivationFusion},
+      {"DequantizeLinear", DQQFusion::TryFusion},
+      {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
+      {"Conv", ConvActivationFusion::TryFusion},
+      {"ConvTranspose", ConvActivationFusion::TryFusion},
   };
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).

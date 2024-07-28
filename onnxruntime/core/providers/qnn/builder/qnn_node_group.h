@@ -8,11 +8,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/logging/logging.h"
 #include "core/framework/node_unit.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 
 namespace onnxruntime {
 namespace qnn {
+
+class QnnModelWrapper;
 
 class IQnnNodeGroup {
  public:

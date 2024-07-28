@@ -405,6 +405,37 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 #endif
 }
 
+// Logs information about the supported/unsupported nodes.
+static void LogNodeSupport(const logging::Logger& logger,
+                           logging::Severity log_severity,
+                           logging::DataType log_data_type,
+                           const onnxruntime::CodeLocation& call_site,
+                           const qnn::IQnnNodeGroup& qnn_node_group,
+                           Status support_status) {
+  if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
+    return;
+  }
+
+  std::ostringstream oss;
+  oss << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for nodes ("
+      << qnn_node_group.Type() << "):" << std::endl;
+  for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+    for (const Node* node : node_unit->GetAllNodesInGroup()) {
+      oss << "\tOperator type: " << node->OpType()
+          << " Node name: " << node->Name()
+          << " Node index: " << node->Index() << std::endl;
+    }
+  }
+  if (!support_status.IsOK()) {
+    oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
+  }
+
+  logging::Capture(logger, log_severity, logging::Category::onnxruntime,
+                   log_data_type, call_site)
+          .Stream()
+      << oss.str();
+}
+
 std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -451,33 +482,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     return {};
   }
 
-  auto log_node_support = [](const logging::Logger& logger,
-                             logging::Severity log_severity,
-                             logging::DataType log_data_type,
-                             const onnxruntime::CodeLocation& call_site,
-                             const qnn::IQnnNodeGroup& qnn_node_group,
-                             bool supported) {
-    if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
-      return;
-    }
-
-    std::ostringstream oss;
-    oss << "[QNN EP] " << (supported ? "Supports " : "Does NOT support ") << "the following nodes as part of a "
-        << qnn_node_group.Type() << " group:" << std::endl;
-    for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
-      for (const Node* node : node_unit->GetAllNodesInGroup()) {
-        oss << "\tOperator type: " << node->OpType()
-            << " Node name: " << node->Name()
-            << " Node index: " << node->Index() << std::endl;
-      }
-    }
-
-    logging::Capture(logger, log_severity, logging::Category::onnxruntime,
-                     log_data_type, call_site)
-            .Stream()
-        << oss.str();
-  };
-
   for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
@@ -485,7 +489,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     constexpr auto log_severity = logging::Severity::kVERBOSE;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
-      log_node_support(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, supported);
+      LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
     }
 
     if (supported) {
