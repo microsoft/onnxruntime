@@ -44,7 +44,7 @@ public:
 
         // At this point, we have manipulated input/output shapes and strides and
         // we do not care about actual input shapes present in the model (.onnx file).
-        // Create the TensorDesc with the manipulated input shapes becuase we don't want incorrect
+        // Create the TensorDesc with the manipulated input shapes because we don't want incorrect
         // broadcasting to be happen inside TensorDesc constructor.
         std::vector<std::optional<uint32_t>> inputIndices = { 0, 1, std::nullopt };
         gsl::span<const uint32_t> inputShapes[2] = {sizesA, sizesB};

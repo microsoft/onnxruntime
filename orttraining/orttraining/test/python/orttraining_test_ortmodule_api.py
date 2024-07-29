@@ -264,7 +264,7 @@ class UnusedBeginParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super().__init__()
 
-        # fc1 is an unused initializer (which is in the begining of initializer list)
+        # fc1 is an unused initializer (which is in the beginning of initializer list)
         # which will be dropped after export
         self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
@@ -3976,9 +3976,9 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.relu(out)
             return out
 
-    assert type(bool_argument) is bool  # noqa: E721
-    assert type(int_argument) is int  # noqa: E721
-    assert type(float_argument) is float  # noqa: E721
+    assert type(bool_argument) is bool
+    assert type(int_argument) is int
+    assert type(float_argument) is float
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -4014,8 +4014,8 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
                 out = self.relu(out)
             return out
 
-    assert type(bool_arguments[0]) is bool  # noqa: E721
-    assert type(bool_arguments[1]) is bool  # noqa: E721
+    assert type(bool_arguments[0]) is bool
+    assert type(bool_arguments[1]) is bool
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -5501,7 +5501,7 @@ def test_random_states_unchanged_for_ortmodule():
             return x[: self.dim, :]
 
     def random_state_equal(a, b):
-        assert type(a) == type(b)
+        assert type(a) is type(b)
         if isinstance(a, tuple):
             assert len(a) == len(b)
             return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])
@@ -6953,3 +6953,74 @@ def test_layerwise_recompute_pythonop_determinstic():
     else:
         if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
             del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) < Version("2.3.0"),
+    reason="torch.nn.attention module was introduced in PyTorch 2.3.0",
+)
+def test_aten_attention():
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    class _NeuralNetAttention(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, q, k, v, attn_mask=None):
+            with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+                return torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask)
+
+    def gen_inputs(device, dtype):
+        return [
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+        ]
+
+    def run_step(model, inputs, attn_mask=None):
+        prediction = model(*inputs, attn_mask)
+        prediction.sum().backward()
+        return prediction
+
+    device = "cuda"
+
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1"  # TESTING WITHOUT ATTN_MASK
+
+    pt_model = _NeuralNetAttention().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = gen_inputs(device=device, dtype=torch.float32)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input[0].grad, pt_input[0].grad)
+    _test_helpers.assert_values_are_close(ort_input[1].grad, pt_input[1].grad)
+    _test_helpers.assert_values_are_close(ort_input[2].grad, pt_input[2].grad)
+
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    mem_eff_attn_nodes = 0
+    for node in onnx_nodes:
+        if "ATen" in node.name:
+            for attr in node.attribute:
+                if b"_scaled_dot_product_efficient_attention" in attr.s:
+                    mem_eff_attn_nodes += 1
+
+    assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
+
+    del os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"]

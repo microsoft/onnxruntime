@@ -1258,7 +1258,7 @@ static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_vi
   std::unique_ptr<api::NodeRef> producer_node = graph.GetNodeProducingOutput(input);
 
   if (producer_node != nullptr) {
-    // this handles cancelling out a Transpose or Squeeze added to a shared initializer that was updated
+    // this handles canceling out a Transpose or Squeeze added to a shared initializer that was updated
     // by TransposeInputImpl Case 1 or UnqueezeInput Case 1.
     //   - if a shared initializer is not broadcast, we have <updated initializer> -> Transpose -> DQ
     //   - if a shared initializer is broadcast, we have <updated initializer> -> Transpose -> Squeeze -> DQ and need
@@ -1992,7 +1992,7 @@ static bool HandleTile(HandlerArgs& args) {
 
 constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
-// Helper to remove cancelling Transpose -> Transpose or
+// Helper to remove canceling Transpose -> Transpose or
 // Transpose -> Reshape nodes.
 static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
   // Input to 1st transpose

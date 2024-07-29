@@ -54,7 +54,7 @@ java {
 	targetCompatibility = JavaVersion.VERSION_1_8
 }
 
-// This jar tasks serves as a CMAKE signalling
+// This jar tasks serves as a CMAKE signaling
 // mechanism. The jar will be overwritten by allJar task
 jar {
 }

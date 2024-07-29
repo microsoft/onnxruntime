@@ -130,11 +130,36 @@ void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
                        std::string_view input_name, std::string_view value_name);
 
 /// <summary>
+/// Add a variadic input argument to a MILSpec::Operation
+/// </summary>
+/// <param name="op">Operation to update.</param>
+/// <param name="input name">The input name defined by the spec for the operation. </param>
+/// <param name="value_names">The input value names.</param>
+void AddOperationVariadicInput(COREML_SPEC::MILSpec::Operation& op, std::string_view input_name,
+                               const std::vector<std::string_view>& value_names);
+
+/// Add an output to a MILSpec::Operation for an intermediate operation when the implementation is composed of
+/// multiple MLProgram operations. In this case we don't have a NodeArg for the output.
+/// </summary>
+/// <param name="op">Operation to update.</param>
+/// <param name="output_name">Name of the intermediate output. Create using ModelBuilder::GetUniqueName.</param>
+/// <param name="element_type">onnx::TensorProto_DataType element type of the output.
+///   int32_t as that is what TensorShapeProto uses to store the value.</param>
+/// <param name="shape">Shape of the output if known.</param>
+void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
+                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape);
+
+/// <summary>
 /// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
+/// <param name="override_element_type">
+///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
+///   the original ONNX node has type int64.
+/// </param>
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type = std::nullopt);
 
 /// <summary>
 /// Add pad_type and pad values.
