@@ -61,27 +61,32 @@ public:
     node_compute_funcs.reserve(count);
     for (size_t i = 0; i < count; i++) {
         NodeComputeInfo compute_info;
-        compute_info.create_state_func = [&](ComputeContext* context, void** state) {
-            if (node_compute_info_[0]->CreateFunctionStateFunc) {
+        compute_info.create_state_func = [&, i](ComputeContext* context, void** state) {
+            if (node_compute_info_[i]->CreateFunctionStateFunc) {
                 OrtComputeContext occ;
                 occ.AllocateFunc = context->allocate_func;
                 occ.DestroyFunc = context->release_func;
                 occ.allocator_handle = context->allocator_handle;
                 occ.node_name = context->node_name;
-                return node_compute_info_[0]->CreateFunctionStateFunc(&occ, state);  // TODO(leca): reinterpret_cast<OrtComputeContext*>(context)?
+                return node_compute_info_[i]->CreateFunctionStateFunc(&occ, state);  // TODO(leca): reinterpret_cast<OrtComputeContext*>(context)?
             }
             return 0;
         };
-        compute_info.compute_func = [&](void* state, const OrtApi* api, OrtKernelContext* context) {
-            return ToStatus(node_compute_info_[0]->ComputeFunc(state, api, context));
+        compute_info.compute_func = [&, i](void* state, const OrtApi* api, OrtKernelContext* context) {
+            return ToStatus(node_compute_info_[i]->ComputeFunc(state, api, context));
         };
-        compute_info.release_state_func = [&](void* state) {
-            if (node_compute_info_[0]->DestroyFunctionStateFunc) {
-                node_compute_info_[0]->DestroyFunctionStateFunc(state);
+        compute_info.release_state_func = [&, i](void* state) {
+            if (node_compute_info_[i]->DestroyFunctionStateFunc) {
+                node_compute_info_[i]->DestroyFunctionStateFunc(state);
             }
         };
         node_compute_funcs.push_back(compute_info);
     }
+
+/*    node_compute_funcs.resize(count);
+    NodeComputeInfo*
+    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, reinterpret_cast<>(&node_compute_funcs.data()));
+*/
     return Status::OK();
   }
 private:
