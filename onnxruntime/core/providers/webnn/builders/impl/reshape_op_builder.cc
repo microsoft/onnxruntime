@@ -58,8 +58,13 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::transform(target_shape.cbegin(), target_shape.cend(),
                  std::back_inserter(new_shape),
                  [](int64_t dim) -> uint32_t { return SafeInt<int32_t>(dim); });
+
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("reshape",
-                                                                            input, emscripten::val::array(new_shape));
+                                                                            input,
+                                                                            emscripten::val::array(new_shape),
+                                                                            options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
