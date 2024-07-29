@@ -192,6 +192,10 @@ struct OpenVINO_Provider : Provider {
     }
 
     if (provider_options_map.find("num_of_threads") != provider_options_map.end()) {
+      if (!std::all_of(provider_options_map.at("num_of_threads").begin(),
+                       provider_options_map.at("num_of_threads").end(), ::isdigit)) {
+        ORT_THROW("[ERROR] [OpenVINO-EP] Number of threads should be a number. \n");
+      }
       num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
       if (num_of_threads <= 0) {
         num_of_threads = 1;
@@ -307,7 +311,7 @@ struct OpenVINO_Provider : Provider {
           auto parent_path = file_path.parent_path();
           if (!std::filesystem::is_directory(parent_path) &&
               !std::filesystem::create_directory(parent_path)) {
-            ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " +file_path.parent_path().generic_string()+ " \n");
+            ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
           }
           cache_dir = ep_context_file_path_.c_str();
         } else {
