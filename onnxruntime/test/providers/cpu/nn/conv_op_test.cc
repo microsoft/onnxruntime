@@ -647,6 +647,46 @@ TEST(ConvTest, Conv2D_group) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Conv2D_Bias_Group2_Feature4) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {
+      0.0f, 1.0f,
+      2.0f, 3.0f,
+
+      4.0f, 5.0f,
+      6.0f, 7.0f};
+  vector<int64_t> X_shape = {1, 2, 2, 2};
+  vector<float> W = {1.0f, 2.0f, 3.0f, 4.0f};
+  vector<int64_t> W_shape = {4, 1, 1, 1};
+  vector<float> B = {-1.0f,-2.0f, -3.0f, -4.0f};
+  vector<int64_t> B_shape = {4};
+  vector<int64_t> Y_shape = {1, 4, 2, 2};
+  auto expected_vals = {
+      -1.0f, 0.0f,
+      1.0f, 2.0f,
+
+      -2.0f, 0.0f,
+      2.0f, 4.0f,
+
+      9.0f, 12.0f,
+      15.0f, 18.0f,
+
+      12.0f, 16.0f,
+      20.0f, 24.0f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvTest, Depthwise2D_Bias_Group1_Issue18992) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad

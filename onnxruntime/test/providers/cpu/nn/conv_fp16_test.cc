@@ -714,6 +714,46 @@ TEST(ConvFp16Test, Conv2D_group) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvFp16Test, Conv2D_Bias_Group2_Feature4) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {
+      MLFloat16(0.0f), MLFloat16(1.0f),
+      MLFloat16(2.0f), MLFloat16(3.0f),
+
+      MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f)};
+  vector<int64_t> X_shape = {1, 2, 2, 2};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f)};
+  vector<int64_t> W_shape = {4, 1, 1, 1};
+  vector<MLFloat16> B = {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f), MLFloat16(-4.0f)};
+  vector<int64_t> B_shape = {4};
+  vector<int64_t> Y_shape = {1, 4, 2, 2};
+  auto expected_vals = {
+      MLFloat16(-1.0f), MLFloat16(0.0f),
+      MLFloat16(1.0f), MLFloat16(2.0f),
+
+      MLFloat16(-2.0f), MLFloat16(0.0f),
+      MLFloat16(2.0f), MLFloat16(4.0f),
+
+      MLFloat16(9.0f), MLFloat16(12.0f),
+      MLFloat16(15.0f), MLFloat16(18.0f),
+
+      MLFloat16(12.0f), MLFloat16(16.0f),
+      MLFloat16(20.0f), MLFloat16(24.0f)};
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvFp16Test, Depthwise2D_Bias_Group1_Issue18992) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
