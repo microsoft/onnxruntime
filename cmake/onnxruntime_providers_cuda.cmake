@@ -289,8 +289,10 @@
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
-  file(GLOB ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS CONFIGURE_DEPENDS
-        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/*.h"
+  # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
+  set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_resource.h"
       )
   set_target_properties(onnxruntime_providers_cuda PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
