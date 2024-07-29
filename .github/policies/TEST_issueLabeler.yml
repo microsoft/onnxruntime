@@ -83,10 +83,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\bcore-?ml\b/i'
+                      pattern: '/\bcore\s*ml\b/i'
                       isRegEx: True
                   - bodyContains:
-                      pattern: '/\bcore-?ml\b/i'
+                      pattern: '/\bcore\s*ml\b/i'
                       isRegEx: True
             then:
               - addLabel:
@@ -156,10 +156,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\brockchip\b/i'
+                      pattern: '/\brockchip(?:npu)?\b/i'
                       isRegEx: True
                   - bodyContains:
-                      pattern: '/\brockchip\b/i'
+                      pattern: '/\brockchip(?:npu)?\b/i'
                       isRegEx: True
             then:
               - addLabel:
@@ -251,17 +251,6 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
-                      isRegEx: True
-                  - bodyContains:
-                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
-                      isRegEx: True
-            then:
-              - addLabel:
-                  label: platform:jetson
-          - if:
-              - or:
-                  - titleContains:
                       pattern: '/(\bdot\s*net\b|\bnuget\b|\.net\b)/i'
                       isRegEx: True
                   - bodyContains:
@@ -273,10 +262,21 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
                       isRegEx: True
                   - bodyContains:
-                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bcore-?ml\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
+                      isRegEx: True
+            then:
+              - addLabel:
+                  label: platform:jetson
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
+                      isRegEx: True
+                  - bodyContains:
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
                       isRegEx: True
             then:
               - addLabel:
@@ -284,10 +284,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b|\btransformers\.js\b)/i'
                       isRegEx: True
                   - bodyContains:
-                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b|\btransformers\.js\b)/i'
                       isRegEx: True
             then:
               - addLabel:
@@ -302,10 +302,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bhugging-?\s*face\b)/i'
+                      pattern: '/\btransformers(?!\.js)\b/i'
                       isRegEx: True
                   - bodyContains:
-                      pattern: '/(\bhugging-?\s*face\b)/i'
+                      pattern: '/\btransformers(?!\.js)\b/i'
                       isRegEx: True
             then:
               - addLabel:
