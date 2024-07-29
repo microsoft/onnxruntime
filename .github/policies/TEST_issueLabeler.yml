@@ -1,5 +1,5 @@
 name: Issue Triage
-description: Assign label to issues
+description: Assign label to issues 
 resource: repository
 
 configuration:
@@ -16,8 +16,7 @@ configuration:
         then:
           - if:
               - bodyContains:
-                  pattern: '/(\bc\s*sharp\b|\bc#)/i'
-                  isRegEx: true
+                  pattern: 'CUDA'
             then:
               - addLabel:
-                  label: api:CSharp
+                  label: ep:CUDA
