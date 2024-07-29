@@ -280,7 +280,9 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   const size_t num_dqs = dq_node_units.size();
   constexpr size_t max_num_dqs = 3;
   ORT_RETURN_IF_NOT(num_dqs == 2 || num_dqs == max_num_dqs, "QDQ Conv should have 2 or 3 DQs");
-  ORT_RETURN_IF_NOT(conv_node_unit->OpType() == "Conv" && q_node_unit->OpType() == "QuantizeLinear");
+  ORT_RETURN_IF_NOT(conv_node_unit->OpType() == "Conv" && q_node_unit->OpType() == QUANTIZE_LINEAR,
+                    "Expected Conv/ConvTranspose and QuantizeLinear but got ", conv_node_unit->OpType(), " and ",
+                    q_node_unit->OpType());
 
   std::array<const Node*, max_num_dqs> dq_nodes_buf = {};
   for (size_t i = 0; i < num_dqs; i++) {
