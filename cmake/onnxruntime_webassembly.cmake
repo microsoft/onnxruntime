@@ -168,11 +168,9 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    if (NOT onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-      set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
-      message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
-      set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
-    endif()
+    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
@@ -333,20 +331,20 @@ else()
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
   if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    set(SIGNATURE_CONVERSIONS "OrtRun:_ppp_p_pp,\
-OrtRunWithBinding:_pp_pp,\
+    set(SIGNATURE_CONVERSIONS "OrtRun:_pppppppp,\
+OrtRunWithBinding:_ppppp,\
 OrtGetTensorData:_ppppp,\
-OrtCreateTensor:p_p_p__,\
-OrtCreateSession:pp_p,\
+OrtCreateTensor:p_pppp_,\
+OrtCreateSession:pppp,\
 OrtReleaseSession:_p,\
 OrtGetInputOutputCount:_ppp,\
-OrtCreateSessionOptions:p_____pp__p,\
+OrtCreateSessionOptions:pp__p_ppppp,\
 OrtReleaseSessionOptions:_p,\
-OrtAppendExecutionProvider:ppp,\
-OrtAddSessionConfigEntry:_pp,\
-OrtGetInputName:pp_,\
-OrtGetOutputName:pp_,\
-OrtCreateRunOptions:p___p,\
+OrtAppendExecutionProvider:_pp,\
+OrtAddSessionConfigEntry:_ppp,\
+OrtGetInputName:ppp,\
+OrtGetOutputName:ppp,\
+OrtCreateRunOptions:ppp_p,\
 OrtReleaseRunOptions:_p,\
 OrtReleaseTensor:_p,\
 OrtFree:_p,\

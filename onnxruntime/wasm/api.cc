@@ -356,7 +356,7 @@ int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** 
     *data = p_tensor_raw_data;
   }
 
-  *data_type = static_cast<int>(type);
+  *data_type = static_cast<size_t>(type);
   *dims_length = dims_len;
   *dims = UNREGISTER_AUTO_RELEASE(p_dims);
   return ORT_OK;
