@@ -32,20 +32,16 @@ class HardSigmoidMulFusion : public IQnnNodeGroup {
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "HardSigmoidMulFusion"; }
 
-  /**
-   * Tries to fuse the sequence `x * HardSigmoid<alpha=1/6, beta=0.5>(x)` into a single HardSwish(x) operator.
-   * Should be called in a topologically ordered iteration of node units.
-   *
-   * \param fused_nodes Output list of node units that were fused. Remains empty if fusion was not applied.
-   * \param qnn_model_wrapper The QNN model that is being built.
-   * \param starting_node The node unit that could potentially start the sequence.
-   * \param node_unit_map Maps a node to its node unit.
-   * \param handled_node_units Set of node units that have already been processed. Fusion will not fuse nodes
-   *                           in this set.
-   * \param logger The logger.
-   * \param do_op_validation True if should call QNN operator validation APIs.
-   * \return A Status indicating a potential failure.
-   */
+  /// <summary>
+  /// Traverses graph to check if the given starting NodeUnit is part of a valid HardSigmoid -> Mul sequence.
+  /// If so, returns a IQnnNodeGroup that contains the HardSigmoid and Mul NodeUnits.
+  /// </summary>
+  /// <param name="qnn_model_wrapper">Used for validation and traverse/query the graph</param>
+  /// <param name="hardsigmoid_node_unit">HardSigmoid node unit that could start the sequence</param>
+  /// <param name="node_to_node_unit">Maps a Node to a NodeUnit.</param>
+  /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit to a IQnnNodeGroup.</param>
+  /// <param name="logger"></param>
+  /// <returns>A valid IQnnNodeGroup on success or an empty std::unique_ptr otherwise</returns>
   static std::unique_ptr<IQnnNodeGroup> TryFusion(
       QnnModelWrapper& qnn_model_wrapper,
       const NodeUnit& hardsigmoid_node_unit,
