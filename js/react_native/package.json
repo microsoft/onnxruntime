@@ -77,7 +77,7 @@
   },
   "dependencies": {
     "@expo/config-plugins": "^7.2.4",
-    "@react-native-community/cli": "^14.0.0",
+    "@react-native-community/cli": "^13.6.5",
     "buffer": "^6.0.3",
     "onnxruntime-common": "file:../common"
   },
