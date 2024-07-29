@@ -178,9 +178,9 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' shall be 4D when 'key' is 4D");
       }
 
-      if (bias != nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
-      }
+      // if (bias != nullptr) {
+      //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when 'key' is 4D");
+      // }
 
       qkv_format = UNKNOWN;
       kv_sequence_length = static_cast<int>(key_dims[2]);

@@ -592,11 +592,13 @@ Status QkvToContext(
 
   // Q, K and V are ready now
   if (data.fused_cross_attention_kernel != nullptr) {
+    // std::cout << "FusedTrtCrossAttention" << std::endl;
     return FusedTrtCrossAttention(stream, parameters, data);
   }
 
   // Run TRT fused attention.
   if (nullptr != fused_runner) {
+    // std::cout << "FusedTrtSelfAttention" << std::endl;
     return FusedTrtSelfAttention(stream, parameters, data);
   }
 
@@ -606,16 +608,19 @@ Status QkvToContext(
 
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
+    // std::cout << "FlashAttention" << std::endl;
     return FlashAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
+    // std::cout << "EfficientAttention" << std::endl;
     return EfficientAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
+  // std::cout << "UnfusedAttention" << std::endl;
   return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale);
 }
 

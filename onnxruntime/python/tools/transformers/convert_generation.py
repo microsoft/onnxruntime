@@ -1272,6 +1272,172 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
+def replace_mha_with_dmmha(model: OnnxModel):
+    # Modify total_sequence_length = past_sequence_length + curr_sequence_length subgraph to calculate 
+    # past_sequence_length from a new `past_sequence_length` input of size 1D and type int32 instead of
+    # from `past_key_self_0` since DecoderMaskedMultiHeadAttention (DMMHA) uses buffer sharing and 
+    # `past_key_self_0.shape[2] = max_sequence_length` instead of `past_key_self_0.shape[2] = past_sequence_length`
+    # when buffer sharing is enabled
+    #
+    # Before:
+    #
+    #   input_ids      past_key_self_0
+    #       |                 |
+    #     Shape             Shape
+    #       |                 |
+    #     Gather            Gather
+    #     (idx=1)           (idx=2)
+    #       |                 |    \
+    #       +--------+--------+    Unsqueeze
+    #                |
+    #               Add
+    #
+    # After:
+    #
+    #   input_ids    past_sequence_length (1D)
+    #       |                 |
+    #     Shape            Squeeze
+    #       |                 |
+    #     Gather             Cast
+    #     (idx=1)           (int64)
+    #       |                 |    \
+    #       +--------+--------+    Unsqueeze
+    #                |
+    #               Add
+
+    node = list(filter(lambda n: n.op_type == "LayerNormalization", model.model.graph.node))[0]
+
+    base_path = model.match_parent_path(
+        node,
+        ["Add", "Slice"],
+        [0, 1],
+    )
+    if base_path is None:
+        return
+
+    left_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Add", "Gather", "Shape"],
+        [2, 0, 0, 0],
+    )
+    right_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Gather", "Shape"],
+        [1, 0, 0],
+    )
+    if left_path is None or right_path is None or left_path[-2:] != right_path[-2:]:
+        return
+
+    # Remove `past_key_self_0 --> Shape --> Gather` connection
+    constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]
+    model.model.graph.node.remove(left_path[-2])
+    model.model.graph.node.remove(left_path[-1])
+    model.model.graph.node.remove(constant_node)
+
+    # Add `past_sequence_length`, `beam_width`, and `cache_indirection` as model inputs
+    past_seq_len_input_name = "past_sequence_length"
+    beam_width = "beam_width"
+    cache_indirection = "cache_indirection"
+
+    model.model.graph.input.extend(
+        [
+            onnx.helper.make_tensor_value_info(past_seq_len_input_name, TensorProto.INT32, shape=[1]),
+            onnx.helper.make_tensor_value_info(beam_width, TensorProto.INT32, shape=[1]),
+            onnx.helper.make_tensor_value_info(
+                cache_indirection, TensorProto.INT32, shape=["batch_size", "beam_width", "max_sequence_length"]
+            ),
+        ]
+    )
+
+    # Add `past_sequence_length --> Squeeze --> Cast` connection
+    past_seq_len_int32 = "past_seq_len_int32"
+    past_seq_len_int64 = "past_seq_len_int64"
+
+    squeeze_node = onnx.helper.make_node(
+        "Squeeze",
+        inputs=[past_seq_len_input_name],
+        outputs=[past_seq_len_int32],
+        name=model.create_node_name("Squeeze"),
+    )
+    squeeze_output = onnx.helper.make_tensor_value_info(past_seq_len_int32, TensorProto.INT32, shape=[])
+    cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=[past_seq_len_int32],
+        outputs=[past_seq_len_int64],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT64,
+    )
+    cast_output = onnx.helper.make_tensor_value_info(past_seq_len_int64, TensorProto.INT64, shape=[])
+
+    model.model.graph.value_info.extend([squeeze_output, cast_output])
+
+    # Add `past_seq_len_int64` as an input name to existing nodes
+    # for node in model.model.graph.node:
+    #     if node.name == left_path[1].name:
+    #         node.input[0] = past_seq_len_int64
+    #     elif node.name == right_path[0].name:
+    #         node.input[0] = past_seq_len_int64
+    left_path[1].input[0] = past_seq_len_int64
+    right_path[0].input[0] = past_seq_len_int64
+
+    # Add new nodes to graph
+    model.model.graph.node.extend([squeeze_node, cast_node])
+
+    # Replace all `MultiHeadAttention` nodes with `DecoderMaskedMultiHeadAttention` nodes
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for idx, node in enumerate(mha_nodes):
+        # Get `num_heads` attribute from MHA
+        num_heads = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads = att.i
+                break
+
+        # Make Q*K outputs for cross-attention layers, which happen every alternative layer
+        qk_output_name = f"output_cross_qk_{idx // 2}"
+        qk_output = onnx.helper.make_tensor_value_info(qk_output_name, TensorProto.FLOAT, shape=["batch_size", num_heads, 1, "encode_sequence_length / 2"])
+        if idx % 2 == 1:
+            model.model.graph.output.append(qk_output)
+
+        # Make DMMHA node
+        dmmha_node = onnx.helper.make_node(
+            "DecoderMaskedMultiHeadAttention",
+            inputs=[
+                node.input[0],  # query
+                node.input[1],  # key
+                node.input[2],  # value
+                "",  # mask_index
+                "",  # relative_position_bias
+                node.input[6] if len(node.input) > 4 else "",  # past_key
+                node.input[7] if len(node.input) > 4 else "",  # past_value
+                past_seq_len_input_name,  # past_sequence_length
+                beam_width,  # beam_width
+                cache_indirection,  # cache_indirection
+                node.input[3],  # bias
+            ],
+            outputs=[
+                node.output[0],  # output
+                node.output[1] if len(node.input) > 4 else "",  # present_key
+                node.output[2] if len(node.input) > 4 else "",  # present_value
+                qk_output_name if idx % 2 == 1 else "",  # output_cross_qk
+            ],
+            name=node.name.replace("MultiHeadAttention", "DecoderMaskedMultiHeadAttention"),
+            domain="com.microsoft",
+            num_heads=num_heads,
+            output_qk=(idx % 2),
+            past_present_share_buffer=1,
+        )
+        if idx % 2 == 0:
+            # Remove empty string for output_cross_qk, which happens every alternative layer
+            dmmha_node.output.remove("")
+
+        model.model.graph.node.remove(node)
+        model.model.graph.node.extend([dmmha_node])
+
+    model.topological_sort()
+    return model
+
+
 def replace_mha_with_gqa(
     model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = -1
 ):
