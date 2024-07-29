@@ -66,8 +66,12 @@ Status CreateFakeOptimizerCheckpointStateOnCPU(
   return Status::OK();
 }
 
-void RunInferenceSession(const Environment& env, const PathString& inference_model_path) {
+void RunInferenceSession(const Environment& env, const PathString& inference_model_path, const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto inference_session = std::make_unique<onnxruntime::InferenceSession>(onnxruntime::SessionOptions(), env);
+
+  for (const std::shared_ptr<IExecutionProvider>& p_exec_provider : providers) {
+    ASSERT_STATUS_OK(inference_session->RegisterExecutionProvider(p_exec_provider));
+  }
   ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
   ASSERT_STATUS_OK(inference_session->Initialize());
 
@@ -135,7 +139,7 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
   ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
 
-  RunInferenceSession(*env, inference_model_path);
+  RunInferenceSession(*env, inference_model_path, providers);
 }
 
 void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
@@ -183,7 +187,7 @@ void TestModuleExportWithExternalData(const std::vector<std::shared_ptr<IExecuti
   ASSERT_LT(std::filesystem::file_size(inference_model_path), 2000);
   ASSERT_GT(std::filesystem::file_size(external_data_for_inference_model), 1500000);
 
-  RunInferenceSession(*env, ToPathString(inference_model_path));
+  RunInferenceSession(*env, ToPathString(inference_model_path), providers);
 }
 }  // namespace
 
