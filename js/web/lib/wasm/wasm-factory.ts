@@ -108,6 +108,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const mjsPathOverride = (mjsPathOverrideFlag as URL)?.href ?? mjsPathOverrideFlag;
   const wasmPathOverrideFlag = (wasmPaths as Env.WasmFilePaths)?.wasm;
   const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
+  const wasmBinaryOverride = flags.wasmBinary;
 
   const [objectUrl, ortWasmFactory] = (await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1));
 
@@ -135,7 +136,12 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       numThreads,
     };
 
-    if (wasmPathOverride || wasmPrefixOverride) {
+    if (wasmBinaryOverride) {
+      /**
+       * Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
+       */
+      config.wasmBinary = wasmBinaryOverride;
+    } else if (wasmPathOverride || wasmPrefixOverride) {
       /**
        * A callback function to locate the WebAssembly file. The function should return the full path of the file.
        *
