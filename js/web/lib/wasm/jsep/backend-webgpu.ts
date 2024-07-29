@@ -206,33 +206,38 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
+  async initialize(env: Env, adapter: GPUAdapter, device?: GPUDevice): Promise<void> {
     this.env = env;
-    const requiredFeatures: GPUFeatureName[] = [];
-    const deviceDescriptor: GPUDeviceDescriptor = {
-      requiredLimits: {
-        maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
-        maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
-        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-        maxBufferSize: adapter.limits.maxBufferSize,
-        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
-        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
-        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
-        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
-      },
-      requiredFeatures,
-    };
+    if (device) {
+      // use the provided device object if available
+      this.device = device;
+    } else {
+      const requiredFeatures: GPUFeatureName[] = [];
+      const deviceDescriptor: GPUDeviceDescriptor = {
+        requiredLimits: {
+          maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+          maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+          maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+          maxBufferSize: adapter.limits.maxBufferSize,
+          maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+          maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+          maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+          maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+        },
+        requiredFeatures,
+      };
 
-    if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
-      requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
-    } else if (adapter.features.has('timestamp-query')) {
-      requiredFeatures.push('timestamp-query');
-    }
-    if (adapter.features.has('shader-f16')) {
-      requiredFeatures.push('shader-f16');
-    }
+      if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
+        requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
+      } else if (adapter.features.has('timestamp-query')) {
+        requiredFeatures.push('timestamp-query');
+      }
+      if (adapter.features.has('shader-f16')) {
+        requiredFeatures.push('shader-f16');
+      }
 
-    this.device = await adapter.requestDevice(deviceDescriptor);
+      this.device = await adapter.requestDevice(deviceDescriptor);
+    }
     this.adapterInfo = new AdapterInfoImpl(adapter.info || await adapter.requestAdapterInfo());
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);

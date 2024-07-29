@@ -188,7 +188,11 @@ export declare namespace Env {
      * Set or get the adapter for WebGPU.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
-     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     * used as the GPU adapter for the underlying WebGPU backend to create GPU device, and for querying the adapter
+     * information. If this property is set, the `powerPreference` and `forceFallbackAdapter` properties will be
+     * ignored.
+     *
+     * The value of this property cannot be changed after the first WebGPU inference session is created.
      *
      * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
      * value will be the GPU adapter that created by the underlying WebGPU backend.
@@ -200,16 +204,23 @@ export declare namespace Env {
      */
     adapter: unknown;
     /**
-     * Get the device for WebGPU.
+     * Set or get the device for WebGPU.
      *
-     * This property is only available after the first WebGPU inference session is created.
+     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
+     * used to initialize the underlying WebGPU backend. It is required to set {@link env.webgpu.adapter} also, if this
+     * property is set.
+     *
+     * The value of this property cannot be changed after the first WebGPU inference session is created.
+     *
+     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
+     * value will be the GPU device that created by the underlying WebGPU backend.
      *
      * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
      * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
      *
      * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
-    readonly device: unknown;
+    device: unknown;
     /**
      * Set or get whether validate input content.
      *

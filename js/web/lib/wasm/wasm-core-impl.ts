@@ -99,8 +99,12 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
         throw new Error('WebGPU is not supported in current environment');
       }
 
-      let adapter = env.webgpu.adapter as GPUAdapter | null;
+      const device = env.webgpu.device as GPUDevice | undefined;
+      let adapter = env.webgpu.adapter as GPUAdapter | null | undefined;
       if (!adapter) {
+        if (device) {
+          throw new Error('`env.webgpu.device` is set but `env.webgpu.adapter` is omitted.');
+        }
         // if adapter is not set, request a new adapter.
         const powerPreference = env.webgpu.powerPreference;
         if (powerPreference !== undefined && powerPreference !== 'low-power' &&
@@ -125,7 +129,7 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
         }
       }
 
-      await initJsep('webgpu', getInstance(), env, adapter);
+      await initJsep('webgpu', getInstance(), env, adapter, device);
     }
     if (epName === 'webnn') {
       // perform WebNN availability check
