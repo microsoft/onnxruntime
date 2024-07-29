@@ -128,6 +128,13 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 #endif
     }
   }
+  if (global_context_.export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+    auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph,
+                                                                                          logger);
+    if ((!status.IsOK())) {
+      ORT_THROW(status);
+    }
+  }
 }
 
 // Call EPContext model exporter here if the provider option for exporting
@@ -158,7 +165,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
       if (dot == std::string::npos) return graph_name;
       return graph_name.substr(0, dot);
     }();
-    graph_name = graph_name + "-ov_" + GetGlobalContext().device_type + "_blob.onnx";
+    graph_name = graph_name + "_ctx.onnx";
   }
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
