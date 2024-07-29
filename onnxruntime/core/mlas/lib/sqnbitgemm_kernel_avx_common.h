@@ -611,7 +611,7 @@ FoldAccumulators(const __m256& acc0, const __m256& acc1, const __m256& acc2, con
     return acc_y;
 }
 
-static inline float
+static MLAS_FORCEINLINE float
 hsum_float_8(const __m256 x)
 {
     __m128 res = _mm256_extractf128_ps(x, 1);
@@ -621,19 +621,6 @@ hsum_float_8(const __m256 x)
     return _mm_cvtss_f32(res);
 }
 
-static inline float
-hsum_float_16(const __m512 x)
-{
-    __m256 hi = _mm512_extractf32x8_ps(x, 1);
-    __m256 lo = _mm512_castps512_ps256(x);
-    hi = _mm256_add_ps(hi, lo);
-    __m128 hi128 = _mm256_extractf128_ps(hi, 1);
-    __m128 lo128 = _mm256_castps256_ps128(hi);
-    hi128 = _mm_add_ps(hi128, lo128);
-    hi128 = _mm_add_ps(hi128, _mm_movehl_ps(hi128, hi128));
-    hi128 = _mm_add_ss(hi128, _mm_movehdup_ps(hi128));
-    return _mm_cvtss_f32(hi128);
-}
 /**
  * @brief Horizontally sum 4 vectors and store
  *        the results in the returned vector

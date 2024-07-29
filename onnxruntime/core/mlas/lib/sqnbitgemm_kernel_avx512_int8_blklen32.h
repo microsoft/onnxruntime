@@ -14,6 +14,17 @@ h_add_512(__m512 a)
     return _mm256_add_ps(_mm512_castps512_ps256(a), _mm512_extractf32x8_ps(a, 1));
 }
 
+static MLAS_FORCEINLINE float
+hsum_float_16(const __m512 x)
+{
+    __m256 hi = h_add_512(x);
+    __m128 hi128 = _mm256_extractf128_ps(hi, 1);
+    __m128 lo128 = _mm256_castps256_ps128(hi);
+    hi128 = _mm_add_ps(hi128, lo128);
+    hi128 = _mm_add_ps(hi128, _mm_movehl_ps(hi128, hi128));
+    hi128 = _mm_add_ss(hi128, _mm_movehdup_ps(hi128));
+    return _mm_cvtss_f32(hi128);
+}
 
 static MLAS_FORCEINLINE void
 load_4blk_4b_packed_blklen32(const std::byte* QuantBDataPtr, __m512i& bv0_64_epi8, __m512i& bv1_64_epi8)
