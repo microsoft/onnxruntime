@@ -23,22 +23,23 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
         use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)),
         allocator_(info.GetAllocator(OrtMemType::OrtMemTypeDefault)) {
-          std::vector<float> quant_float(256);
-          for (int i = 0; i < 256; i ++)
-          {
-            quant_float[i] = Float8e4m3ToFloat32(i);
-          }
-          std_quant_ = ComputeStandardDeviation(quant_float);
+          if (use_fp8_) {
+            std::vector<float> quant_float(256);
+            for (int i = 0; i < 256; i ++) {
+              quant_float[i] = Float8e4m3ToFloat32(i);
+            }
+            std_quant_ = ComputeStandardDeviation(quant_float);
 
-          std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
-          if (activation == "NONE") {
-            epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
-          } else if (activation == "RELU") {
-            epilogue_ = CUBLASLT_EPILOGUE_RELU;
-          } else if (activation == "GELU") {
-            epilogue_ = CUBLASLT_EPILOGUE_GELU;
-          } else {
-            ORT_THROW("Unexpected value for activation: '", activation, "'.");
+            std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
+            if (activation == "NONE") {
+              epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
+            } else if (activation == "RELU") {
+              epilogue_ = CUBLASLT_EPILOGUE_RELU;
+            } else if (activation == "GELU") {
+              epilogue_ = CUBLASLT_EPILOGUE_GELU;
+            } else {
+              ORT_THROW("Unexpected value for activation: '", activation, "'.");
+            }
           }
         }
 

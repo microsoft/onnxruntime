@@ -310,10 +310,18 @@ float MatMul<T>::ComputeStandardDeviation(const std::vector<float>& v) const
 template <typename T>
 float MatMul<T>::ComputeScale(const Tensor* tensor) const
 {
+  const T* p_input = tensor->Data<T>();
+  const TensorShape& shape = tensor->Shape();
+  auto size = shape.Size();
+
   // TODO is there a way to sort without making a copy? Is sorting necessary?
-  gsl::span<const float> coef_span = tensor->DataAsSpan<float>();
-  std::vector<float> coef(coef_span.size());
-  std::copy(coef_span.begin(), coef_span.end(), coef.begin());
+  std::vector<float> coef;
+  coef.reserve(size);
+  for (int64_t i = 0; i < size; i ++)
+  {
+    // TODO fix
+    coef.push_back(float(p_input[i]));
+  }
   std::sort(coef.begin(), coef.end());
 
   const auto coef_count = coef.size();
