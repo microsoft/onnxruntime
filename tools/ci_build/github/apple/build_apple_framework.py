@@ -113,8 +113,12 @@ def _build_for_apple_sysroot(
 
         # create the symbolic link
         pathlib.Path(os.path.join(framework_dir, "Versions", "Current")).symlink_to("A", target_is_directory=True)
-        pathlib.Path(os.path.join(framework_dir, "Headers")).symlink_to("Versions/Current/Headers")
-        pathlib.Path(os.path.join(framework_dir, "Resources")).symlink_to("Versions/Current/Resources")
+        pathlib.Path(os.path.join(framework_dir, "Headers")).symlink_to(
+            "Versions/Current/Headers", target_is_directory=True
+        )
+        pathlib.Path(os.path.join(framework_dir, "Resources")).symlink_to(
+            "Versions/Current/Resources", target_is_directory=True
+        )
         pathlib.Path(os.path.join(framework_dir, "onnxruntime")).symlink_to("Versions/Current/onnxruntime")
 
     else:
