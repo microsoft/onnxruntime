@@ -82,6 +82,7 @@ QDQRegistry = {
     "Where": QDQWhere,
     "InstanceNormalization": QDQNormalization,
     "LayerNormalization": QDQNormalization,
+    "BatchNormalization": QDQNormalization,
 }
 
 
