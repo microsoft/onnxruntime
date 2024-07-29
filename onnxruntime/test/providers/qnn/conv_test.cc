@@ -18,7 +18,6 @@ namespace test {
 // Information for activation node placed between the Conv and Q.
 struct OutputActivationInfo {
   std::string op_type;  // Relu or Clip
-  std::vector<ONNX_NAMESPACE::AttributeProto> attrs;
   std::vector<float> const_inputs;
 };
 
@@ -69,10 +68,7 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
       for (auto val : output_activation->const_inputs) {
         activation_inputs.push_back(builder.MakeScalarInitializer(val));
       }
-      Node& activation_node = builder.AddNode(output_activation->op_type, activation_inputs, {output});
-      for (const auto& attr : output_activation->attrs) {
-        activation_node.AddAttributeProto(attr);
-      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {output});
     }
   };
 }
@@ -174,10 +170,7 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
       for (auto val : output_activation->const_inputs) {
         activation_inputs.push_back(builder.MakeScalarInitializer(val));
       }
-      Node& activation_node = builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
-      for (const auto& attr : output_activation->attrs) {
-        activation_node.AddAttributeProto(attr);
-      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
     }
 
     AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, q_input, output_qparams[0].scale,
@@ -293,10 +286,7 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(
       for (auto val : output_activation->const_inputs) {
         activation_inputs.push_back(builder.MakeScalarInitializer(val));
       }
-      Node& activation_node = builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
-      for (const auto& attr : output_activation->attrs) {
-        activation_node.AddAttributeProto(attr);
-      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
     }
 
     AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, q_input, output_qparams[0].scale,
@@ -866,7 +856,8 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
                                      relu_info);
 
   // DQs -> Conv (w/ bias) -> Clip -> Q
-  OutputActivationInfo clip_info = {"Clip", {}, {0.0f, 6.0f}};
+  // Opset 6 Clip uses attributes for min/max
+  OutputActivationInfo clip_info = {"Clip", {0.0f, 2.0f}};
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      input_def,
                                      weight_def,
@@ -878,12 +869,12 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
-                                     21,     // opset
+                                     19,     // opset
                                      QDQTolerance(),
                                      clip_info);
 
   // DQs -> Conv (NO bias) -> Clip -> Q
-  OutputActivationInfo clip_info_2 = {"Clip", {}, {-6.0f, 6.0f}};
+  OutputActivationInfo clip_info_2 = {"Clip", {-6.0f, 6.0f}};
   RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
                                       input_def,
                                       weight_def,
@@ -933,7 +924,7 @@ TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
                                              relu_info);
 
   // DQs -> Conv (w/ bias) -> Clip -> Q
-  OutputActivationInfo clip_info = {"Clip", {}, {0.0f, 6.0f}};
+  OutputActivationInfo clip_info = {"Clip", {0.0f, 6.0f}};
   RunHTPConvOpPerChannelTest<int8_t, int8_t>("Conv",
                                              input_def,
                                              weight_def,

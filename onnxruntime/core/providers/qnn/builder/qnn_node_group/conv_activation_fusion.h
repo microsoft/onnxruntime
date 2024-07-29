@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <array>
 #include <gsl/gsl>
+#include <array>
 #include <memory>
 #include <unordered_map>
 #include <vector>

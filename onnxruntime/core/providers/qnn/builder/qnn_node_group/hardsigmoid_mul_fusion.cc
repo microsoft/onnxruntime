@@ -1,10 +1,11 @@
 #include "core/providers/qnn/builder/qnn_node_group/hardsigmoid_mul_fusion.h"
 
+#include <gsl/gsl>
 #include <algorithm>
 #include <cassert>
-#include <gsl/gsl>
 #include <limits>
 #include <optional>
+#include <utility>
 #include "core/graph/graph_utils.h"
 #include "core/framework/node_unit.h"
 #include "core/providers/shared/utils/utils.h"

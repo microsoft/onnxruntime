@@ -28,7 +28,7 @@ namespace qnn {
 /// </summary>
 class QnnNodeUnitWrapper : public IQnnNodeGroup {
  public:
-  QnnNodeUnitWrapper(const NodeUnit& node_unit) : node_unit_(&node_unit) {}
+  explicit QnnNodeUnitWrapper(const NodeUnit& node_unit) : node_unit_(&node_unit) {}
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(QnnNodeUnitWrapper);
 
   Status IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const override {

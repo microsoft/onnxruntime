@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "node_unit.h"
+#include <utility>
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {

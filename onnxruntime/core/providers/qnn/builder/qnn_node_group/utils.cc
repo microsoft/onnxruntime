@@ -15,7 +15,7 @@ const NodeUnit* GetOnlyChildOfType(const GraphViewer& graph_viewer,
                                    const NodeUnit& parent_node_unit,
                                    gsl::span<const std::string_view> child_op_types,
                                    const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                   const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group) {
+                                   const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& qnn_node_group_map) {
   const Node& parent_node = parent_node_unit.GetNode();
 
   // Parent must have a single child (1 output edge) and must not produce a graph output.
@@ -50,7 +50,7 @@ const NodeUnit* GetOnlyChildOfType(const GraphViewer& graph_viewer,
 
   // Check if child node has already been handled. Should not be the case if the calling
   // fusion function has been called in topological order, but check to be safe.
-  if (node_unit_to_qnn_node_group.count(child_node_unit) != 0) {
+  if (qnn_node_group_map.count(child_node_unit) != 0) {
     return nullptr;
   }
 

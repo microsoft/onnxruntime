@@ -1,10 +1,11 @@
 #include "core/providers/qnn/builder/qnn_node_group/conv_activation_fusion.h"
 
+#include <gsl/gsl>
 #include <algorithm>
 #include <cassert>
-#include <gsl/gsl>
 #include <limits>
 #include <optional>
+#include <string>
 #include "core/graph/graph_utils.h"
 #include "core/framework/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
@@ -111,6 +112,9 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
     return false;
   }
 
+  // The clip range must entirely overlap the quantization range (quantization can be smaller).
+  // Clip range:   [------------------]
+  // Quant range:    [-------------]
   constexpr float epsilon = std::numeric_limits<float>::epsilon();
   if ((epsilon < clip_min - rmin) || (epsilon < rmax - clip_max)) {
     return false;
