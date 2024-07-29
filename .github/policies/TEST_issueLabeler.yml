@@ -25,3 +25,14 @@ configuration:
             then:
               - addLabel:
                   label: api:CSharp
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bjava\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bjava\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: api:Java
