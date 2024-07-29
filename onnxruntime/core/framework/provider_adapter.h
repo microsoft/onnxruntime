@@ -23,19 +23,19 @@ public:
         for (size_t j = 0; j < indexed_subgraph[i]->node_index_len; j++) sb->nodes.push_back((indexed_subgraph[i]->node_index)[j]);
         if (indexed_subgraph[i]->meta_def != nullptr) {
             std::unique_ptr<IndexedSubGraph::MetaDef> meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-            meta_def->name = indexed_subgraph[i]->meta_def->name;
-            meta_def->doc_string = indexed_subgraph[i]->meta_def->doc_string;
-            meta_def->domain = indexed_subgraph[i]->meta_def->domain;
+            meta_def->name = indexed_subgraph[i]->meta_def->name ? indexed_subgraph[i]->meta_def->name : "";
+            meta_def->doc_string = indexed_subgraph[i]->meta_def->doc_string ? indexed_subgraph[i]->meta_def->doc_string : "";
+            meta_def->domain = indexed_subgraph[i]->meta_def->domain ? indexed_subgraph[i]->meta_def->domain : "";
             meta_def->since_version = indexed_subgraph[i]->meta_def->since_version;
 
             meta_def->inputs.reserve(indexed_subgraph[i]->meta_def->input_len);
-            for (int j = 0; j < indexed_subgraph[i]->meta_def->input_len; j++) meta_def->inputs.push_back(indexed_subgraph[i]->meta_def->inputs[j]);
+            for (size_t j = 0; j < indexed_subgraph[i]->meta_def->input_len; j++) meta_def->inputs.push_back(indexed_subgraph[i]->meta_def->inputs[j]);
 
             meta_def->outputs.reserve(indexed_subgraph[i]->meta_def->output_len);
-            for (int j = 0; j < indexed_subgraph[i]->meta_def->output_len; j++) meta_def->outputs.push_back(indexed_subgraph[i]->meta_def->outputs[j]);
+            for (size_t j = 0; j < indexed_subgraph[i]->meta_def->output_len; j++) meta_def->outputs.push_back(indexed_subgraph[i]->meta_def->outputs[j]);
 
             meta_def->constant_initializers.reserve(indexed_subgraph[i]->meta_def->initializer_len);
-            for (int j = 0; j < indexed_subgraph[i]->meta_def->initializer_len; j++) meta_def->constant_initializers.push_back(indexed_subgraph[i]->meta_def->constant_initializers[j]);
+            for (size_t j = 0; j < indexed_subgraph[i]->meta_def->initializer_len; j++) meta_def->constant_initializers.push_back(indexed_subgraph[i]->meta_def->constant_initializers[j]);
 
             sb->SetMetaDef(std::move(meta_def));
         }
@@ -55,25 +55,30 @@ public:
       ortNodes.push_back(reinterpret_cast<const OrtNode*>(&fused_node));
     }
     size_t count = fused_nodes_and_graphs.size();
-    OrtNodeComputeInfo** node_compute_info = new OrtNodeComputeInfo* [count];
-    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, &node_compute_info);
+    node_compute_info_ = new OrtNodeComputeInfo* [count];
+    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, &node_compute_info_);
 
     node_compute_funcs.reserve(count);
     for (size_t i = 0; i < count; i++) {
         NodeComputeInfo compute_info;
         compute_info.create_state_func = [&](ComputeContext* context, void** state) {
-            OrtComputeContext occ;
-            occ.AllocateFunc = context->allocate_func;
-            occ.DestroyFunc = context->release_func;
-            occ.allocator_handle = context->allocator_handle;
-            occ.node_name = context->node_name;
-            return node_compute_info[i]->CreateFunctionStateFunc(&occ, state);  // TODO(leca): reinterpret_cast<OrtComputeContext*>(context)?
+            if (node_compute_info_[0]->CreateFunctionStateFunc) {
+                OrtComputeContext occ;
+                occ.AllocateFunc = context->allocate_func;
+                occ.DestroyFunc = context->release_func;
+                occ.allocator_handle = context->allocator_handle;
+                occ.node_name = context->node_name;
+                return node_compute_info_[0]->CreateFunctionStateFunc(&occ, state);  // TODO(leca): reinterpret_cast<OrtComputeContext*>(context)?
+            }
+            return 0;
         };
         compute_info.compute_func = [&](void* state, const OrtApi* api, OrtKernelContext* context) {
-            return ToStatus(node_compute_info[i]->ComputeFunc(state, api, context));
+            return ToStatus(node_compute_info_[0]->ComputeFunc(state, api, context));
         };
         compute_info.release_state_func = [&](void* state) {
-            node_compute_info[i]->DestroyFunctionStateFunc(state);
+            if (node_compute_info_[0]->DestroyFunctionStateFunc) {
+                node_compute_info_[0]->DestroyFunctionStateFunc(state);
+            }
         };
         node_compute_funcs.push_back(compute_info);
     }
@@ -81,5 +86,6 @@ public:
   }
 private:
   OrtExecutionProvider* ep_impl_;
+  OrtNodeComputeInfo** node_compute_info_;
 };
 }

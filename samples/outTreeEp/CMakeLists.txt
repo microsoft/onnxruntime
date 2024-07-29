@@ -1,6 +1,6 @@
 # usage:
 # cd build/
-# cmake -S ../ -B ./
+# cmake -S ../ -B ./ -DCMAKE_BUILD_TYPE=Debug
 # cmake --build ./
 cmake_minimum_required(VERSION 3.26)
 project(outTreeEp VERSION 1.0)

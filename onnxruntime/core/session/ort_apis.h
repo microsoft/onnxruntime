@@ -528,4 +528,20 @@ ORT_API_STATUS_IMPL(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* l
 
 ORT_API_STATUS_IMPL(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
+
+ORT_API_STATUS_IMPL(OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type);
+
+ORT_API_STATUS_IMPL(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* input_size);
+
+ORT_API_STATUS_IMPL(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name);
+
+ORT_API_STATUS_IMPL(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size);
+
+ORT_API_STATUS_IMPL(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name);
 }  // namespace OrtApis

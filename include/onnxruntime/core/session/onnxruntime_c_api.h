@@ -699,11 +699,11 @@ typedef struct OrtMetaDef {
   int since_version;
 
   const char** inputs;
-  int input_len;
+  size_t input_len;
   const char** outputs;
-  int output_len;
+  size_t output_len;
   const char** constant_initializers;
-  int initializer_len;
+  size_t initializer_len;
 
   const char* doc_string;
 } OrtMetaDef;
@@ -4718,7 +4718,23 @@ struct OrtApi {
 
   ORT_API2_STATUS(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name,
                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
-};
+
+  ORT_API2_STATUS(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret);
+
+  ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
+
+  ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
+
+  ORT_API2_STATUS(OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type);
+
+  ORT_API2_STATUS(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* input_size);
+
+  ORT_API2_STATUS(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name);
+
+  ORT_API2_STATUS(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size);
+
+  ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name);
+};  // struct OrtApi
 
 /*
  * Steps to use a custom op:
@@ -4877,22 +4893,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOpt
  * \param device_id CUDA device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
-
-ORT_API(bool, OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope);
-
-ORT_API(const size_t*, OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, size_t* len);
-
-ORT_API(const OrtNode*, OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index);
-
-ORT_API(const char*, OrtNode_GetOpType, const OrtNode* node);
-
-ORT_API(size_t, OrtNode_GetInputSize, const OrtNode* node);
-
-ORT_API(const char*, OrtNode_GetIthInputName, const OrtNode* node, size_t i);
-
-ORT_API(size_t, OrtNode_GetOutputSize, const OrtNode* node);
-
-ORT_API(const char*, OrtNode_GetIthOutputName, const OrtNode* node, size_t i);
 
 #ifdef __cplusplus
 }

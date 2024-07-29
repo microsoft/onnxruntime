@@ -2378,6 +2378,58 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtS
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *ret = graph_viewer->IsConstantInitializer(name, check_outer_scope);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder();
+  *len = nodes.size();
+  *nodes_index_in_topological_order = nodes.data();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *node = reinterpret_cast<const OrtNode*>(graph_viewer->GetNode(node_index));
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *op_type = n->OpType().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* input_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *input_size = n->InputDefs().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  assert(i < n->InputDefs().size());
+  *ith_input_name = n->InputDefs()[i]->Name().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *output_size = n->OutputDefs().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  assert(i < n->OutputDefs().size());
+  *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  return nullptr;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2758,6 +2810,15 @@ static constexpr OrtApi ort_api_1_to_19 = {
 
     &OrtApis::RegisterOrtExecutionProviderLibrary,
     &OrtApis::SessionOptionsAppendOrtExecutionProvider,
+
+    &OrtApis::OrtGraph_IsConstantInitializer,
+    &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
+    &OrtApis::OrtGraph_GetOrtNode,
+    &OrtApis::OrtNode_GetOpType,
+    &OrtApis::OrtNode_GetInputSize,
+    &OrtApis::OrtNode_GetIthInputName,
+    &OrtApis::OrtNode_GetOutputSize,
+    &OrtApis::OrtNode_GetIthOutputName,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -2830,47 +2891,3 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
-
-ORT_API(bool, OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  return graph_viewer->IsConstantInitializer(name, check_outer_scope);
-}
-
-ORT_API(const size_t*, OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, size_t* len) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder();
-  *len = nodes.size();
-  return nodes.data();
-}
-
-ORT_API(const OrtNode*, OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  return reinterpret_cast<const OrtNode*>(graph_viewer->GetNode(node_index));
-}
-
-ORT_API(const char*, OrtNode_GetOpType, const OrtNode* node) {
-  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
-  return n->OpType().c_str();
-}
-
-ORT_API(size_t, OrtNode_GetInputSize, const OrtNode* node) {
-  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
-  return n->InputDefs().size();
-}
-
-ORT_API(const char*, OrtNode_GetIthInputName, const OrtNode* node, size_t i) {
-  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
-  assert(i < n->InputDefs().size());
-  return n->InputDefs()[i]->Name().c_str();
-}
-
-ORT_API(size_t, OrtNode_GetOutputSize, const OrtNode* node) {
-  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
-  return n->OutputDefs().size();
-}
-
-ORT_API(const char*, OrtNode_GetIthOutputName, const OrtNode* node, size_t i) {
-  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
-  assert(i < n->OutputDefs().size());
-  return n->OutputDefs()[i]->Name().c_str();
-}
