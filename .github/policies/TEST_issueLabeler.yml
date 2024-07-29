@@ -1,12 +1,11 @@
 name: Issue Triage
-description: Assign label to new issues without a label
+description: Assign label to issues
 resource: repository
 
 configuration:
   resourceManagementConfiguration:
     eventResponderTasks:
-      - description: Apply labels to issues when they are created
-        if:
+      - if:
           - payloadType: Issues
           - and:
               - isOpen
@@ -16,13 +15,9 @@ configuration:
                     - isLabeled
         then:
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
-                      isRegEx: true
-                  - bodyContains:
-                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
-                      isRegEx: true
+              - bodyContains:
+                  pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                  isRegEx: true
             then:
               - addLabel:
                   label: api:CSharp
