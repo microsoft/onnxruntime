@@ -100,15 +100,15 @@ void OrtGetLastError(int* error_code, const char** error_message) {
   *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
 }
 
-OrtSessionOptions* OrtCreateSessionOptions(uint32_t graph_optimization_level,
+OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            bool enable_cpu_mem_arena,
                                            bool enable_mem_pattern,
-                                           uint32_t execution_mode,
+                                           size_t execution_mode,
                                            bool enable_profiling,
                                            const char* /*profile_file_prefix*/,
                                            const char* log_id,
-                                           uint32_t log_severity_level,
-                                           uint32_t log_verbosity_level,
+                                           size_t log_severity_level,
+                                           size_t log_verbosity_level,
                                            const char* optimized_model_filepath) {
   OrtSessionOptions* session_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateSessionOptions, &session_options);
@@ -182,7 +182,7 @@ void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
   Ort::GetApi().ReleaseSessionOptions(session_options);
 }
 
-OrtSession* OrtCreateSession(void* data, uint32_t data_length, OrtSessionOptions* session_options) {
+OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
 #if defined(__EMSCRIPTEN_PTHREADS__)
   RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);
 #else
@@ -201,17 +201,13 @@ void OrtReleaseSession(OrtSession* session) {
   Ort::GetApi().ReleaseSession(session);
 }
 
-int OrtGetInputOutputCount(OrtSession* session, uint32_t* input_count, uint32_t* output_count) {
-  size_t input_count_tmp = 0;
-  size_t output_count_tmp = 0;
-  RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, &input_count_tmp);
-  RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputCount, session, &output_count_tmp);
-  *input_count = static_cast<uint32_t>(input_count_tmp);
-  *output_count = static_cast<uint32_t>(output_count_tmp);
+int OrtGetInputOutputCount(OrtSession* session, size_t* input_count, size_t* output_count) {
+  RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, input_count);
+  RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputCount, session, output_count);
   return ORT_OK;
 }
 
-char* OrtGetInputName(OrtSession* session, uint32_t index) {
+char* OrtGetInputName(OrtSession* session, size_t index) {
   OrtAllocator* allocator = nullptr;
   RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
@@ -221,7 +217,7 @@ char* OrtGetInputName(OrtSession* session, uint32_t index) {
              : nullptr;
 }
 
-char* OrtGetOutputName(OrtSession* session, uint32_t index) {
+char* OrtGetOutputName(OrtSession* session, size_t index) {
   OrtAllocator* allocator = nullptr;
   RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
@@ -238,7 +234,7 @@ void OrtFree(void* ptr) {
   }
 }
 
-OrtValue* OrtCreateTensor(int data_type, void* data, uint32_t data_length, uint32_t* dims, uint32_t dims_length, int data_location) {
+OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location) {
   if (data_location != DATA_LOCATION_CPU &&
       data_location != DATA_LOCATION_CPU_PINNED &&
       data_location != DATA_LOCATION_GPU_BUFFER) {
@@ -286,7 +282,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, uint32_t data_length, uint3
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, uint32_t* data_type, void** data, uint32_t** dims, uint32_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length) {
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
@@ -304,8 +300,8 @@ int OrtGetTensorData(OrtValue* tensor, uint32_t* data_type, void** data, uint32_
   OrtAllocator* allocator = nullptr;
   RETURN_ERROR_CODE_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
-  uint32_t* p_dims = reinterpret_cast<uint32_t*>(allocator->Alloc(allocator, sizeof(uint32_t) * dims_len));
-  REGISTER_AUTO_RELEASE_BUFFER(uint32_t, p_dims, allocator);
+  size_t* p_dims = reinterpret_cast<size_t*>(allocator->Alloc(allocator, sizeof(size_t) * dims_len));
+  REGISTER_AUTO_RELEASE_BUFFER(size_t, p_dims, allocator);
 
   ONNXTensorElementDataType type;
   RETURN_ERROR_CODE_IF_ERROR(GetTensorElementType, info, &type);
@@ -313,7 +309,7 @@ int OrtGetTensorData(OrtValue* tensor, uint32_t* data_type, void** data, uint32_
   std::vector<int64_t> shape(dims_len, 0);
   RETURN_ERROR_CODE_IF_ERROR(GetDimensions, info, shape.data(), shape.size());
   for (size_t i = 0; i < dims_len; i++) {
-    p_dims[i] = static_cast<uint32_t>(shape[i]);
+    p_dims[i] = static_cast<size_t>(shape[i]);
   }
 
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
@@ -366,8 +362,8 @@ void OrtReleaseTensor(OrtValue* tensor) {
   Ort::GetApi().ReleaseValue(tensor);
 }
 
-OrtRunOptions* OrtCreateRunOptions(uint32_t log_severity_level,
-                                   uint32_t log_verbosity_level,
+OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
+                                   size_t log_verbosity_level,
                                    bool terminate,
                                    const char* tag) {
   OrtRunOptions* run_options = nullptr;
@@ -451,7 +447,7 @@ void OrtReleaseBinding(OrtIoBinding* io_binding) {
 
 int OrtRunWithBinding(OrtSession* session,
                       OrtIoBinding* io_binding,
-                      uint32_t output_count,
+                      size_t output_count,
                       OrtValue** outputs,
                       OrtRunOptions* run_options) {
   RETURN_ERROR_CODE_IF_ERROR(RunWithBinding, session, run_options, io_binding);
@@ -477,8 +473,8 @@ int OrtRunWithBinding(OrtSession* session,
 }
 
 int OrtRun(OrtSession* session,
-           const char** input_names, const ort_tensor_handle_t* inputs, uint32_t input_count,
-           const char** output_names, uint32_t output_count, ort_tensor_handle_t* outputs,
+           const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
+           const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
   return CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
 }
@@ -508,7 +504,7 @@ char* OrtEndProfiling(ort_session_handle_t session) {
   } while (false)
 
 ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint_data_buffer,
-                                                                                uint32_t checkpoint_size) {
+                                                                                size_t checkpoint_size) {
   OrtCheckpointState* checkpoint_state = nullptr;
   return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint_data_buffer,
                                 checkpoint_size, &checkpoint_state) == ORT_OK)
@@ -523,11 +519,11 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_h
 ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
                                                                             ort_training_checkpoint_handle_t training_checkpoint_state_handle,
                                                                             void* train_model,
-                                                                            uint32_t train_size,
+                                                                            size_t train_size,
                                                                             void* eval_model,
-                                                                            uint32_t eval_size,
+                                                                            size_t eval_size,
                                                                             void* optimizer_model,
-                                                                            uint32_t optimizer_size) {
+                                                                            size_t optimizer_size) {
   OrtTrainingSession* training_session = nullptr;
   return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options,
                                 training_checkpoint_state_handle, train_model, train_size,
@@ -543,9 +539,9 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingRunTrainStep(ort_training_session_handle_t training_handle,
                                                  ort_tensor_handle_t* inputs,
-                                                 uint32_t input_count,
+                                                 size_t input_count,
                                                  ort_tensor_handle_t* outputs,
-                                                 uint32_t output_count,
+                                                 size_t output_count,
                                                  ort_run_options_handle_t options) {
   return CHECK_TRAINING_STATUS(TrainStep, training_handle, options, input_count, inputs, output_count, outputs);
 }
@@ -557,37 +553,37 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t 
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
                                              ort_tensor_handle_t* inputs,
-                                             uint32_t input_count,
+                                             size_t input_count,
                                              ort_tensor_handle_t* outputs,
-                                             uint32_t output_count,
+                                             size_t output_count,
                                              ort_run_options_handle_t options) {
   return CHECK_TRAINING_STATUS(EvalStep, training_handle,
                                options, input_count, inputs, output_count, outputs);
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
-                                                      uint32_t* param_size,
+                                                      size_t* param_size,
                                                       bool trainable_only) {
   return CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only);
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
                                                            ort_tensor_handle_t parameters_buffer,
-                                                           uint32_t parameter_count,
+                                                           size_t parameter_count,
                                                            bool trainable_only) {
   return CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle, parameters_buffer, trainable_only);
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersFromBuffer(ort_training_session_handle_t training_handle,
                                                              ort_tensor_handle_t parameters_buffer,
-                                                             uint32_t parameter_count,
+                                                             size_t parameter_count,
                                                              bool trainable_only) {
   return CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle, parameters_buffer, trainable_only);
 }
 
 int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_session_handle_t training_handle,
-                                                             uint32_t* input_count,
-                                                             uint32_t* output_count,
+                                                             size_t* input_count,
+                                                             size_t* output_count,
                                                              bool isEvalModel) {
   if (isEvalModel) {
     RETURN_TRAINING_ERROR_CODE_IF_ERROR(TrainingSessionGetEvalModelInputCount, training_handle, input_count);
@@ -601,7 +597,7 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputCount(ort_training_sessio
 }
 
 char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_session_handle_t training_handle,
-                                                              uint32_t index,
+                                                              size_t index,
                                                               bool isInput,
                                                               bool isEvalModel) {
   OrtAllocator* allocator = nullptr;
