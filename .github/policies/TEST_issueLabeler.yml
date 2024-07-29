@@ -5,14 +5,7 @@ resource: repository
 configuration:
   resourceManagementConfiguration:
     eventResponderTasks:
-      - description: >-
-          Search for issue where -
-          * Issue is open
-          * Issue is not assigned to someone
-          * Issue is not labeled
-
-          Then -
-          * Apply relevant label(s) using RegEx
+      - description: Apply labels to issues when they are created
         if:
           - payloadType: Issues
           - and:
