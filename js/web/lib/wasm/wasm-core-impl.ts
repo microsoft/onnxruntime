@@ -189,7 +189,8 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
     if (errorCode !== 0) {
       checkLastError('Can\'t get session input/output count.');
     }
-    return [wasm.getValue(dataOffset, '*'), wasm.getValue(dataOffset + ptrSize, '*')];
+    const type = ptrSize === 4 ? 'i32' : 'i64';
+    return [Number(wasm.getValue(dataOffset, type)), Number(wasm.getValue(dataOffset + ptrSize, type))];
   } finally {
     wasm.stackRestore(stack);
   }
@@ -467,7 +468,7 @@ export const prepareInputOutputTensor =
       const stack = wasm.stackSave();
       const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
       try {
-        dims.forEach((d, index) => wasm.setValue(dimsOffset + (index * ptrSize), d, 'i32'));
+        dims.forEach((d, index) => wasm.setValue(dimsOffset + (index * ptrSize), d, ptrSize === 4 ? 'i32' : 'i64'));
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), rawData, dataByteLength, dimsOffset, dims.length,
             dataLocationStringToEnum(location));
@@ -600,7 +601,7 @@ export const run = async(
     const output: TensorMetadata[] = [];
 
     for (let i = 0; i < outputCount; i++) {
-      const tensor = wasm.getValue(outputValuesOffset + i * ptrSize, '*');
+      const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
       if (tensor === outputTensorHandles[i]) {
         // output tensor is pre-allocated. no need to copy data.
         output.push(outputTensors[i]!);
@@ -620,14 +621,14 @@ export const run = async(
         if (errorCode !== 0) {
           checkLastError(`Can't access output tensor data on index ${i}.`);
         }
-
-        const dataType = wasm.getValue(tensorDataOffset, '*');
+        const valueType = ptrSize === 4 ? 'i32' : 'i64';
+        const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
         dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
         const dimsOffset = wasm.getValue(tensorDataOffset + ptrSize * 2, '*');
-        const dimsLength = wasm.getValue(tensorDataOffset + ptrSize * 3, '*');
+        const dimsLength = Number(wasm.getValue(tensorDataOffset + ptrSize * 3, valueType));
         const dims = [];
         for (let i = 0; i < dimsLength; i++) {
-          dims.push(wasm.getValue(dimsOffset + i * ptrSize, '*'));
+          dims.push(Number(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
         }
         wasm._OrtFree(dimsOffset);
 

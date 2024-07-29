@@ -72,21 +72,22 @@ class ComputeContextImpl implements ComputeContext {
 
     // extract context data
     const ptrSize = module.PTR_SIZE;
-    let dataIndex = module.PTR_SIZE === 8 ? (contextDataOffset / 2 ** 3) : (contextDataOffset >> 2);
-    this.opKernelContext = module.getValue(ptrSize * dataIndex++, 'i32');
-    const inputCount = module.getValue(ptrSize * dataIndex++, 'i32');
-    this.outputCount = module.getValue(ptrSize * dataIndex++, 'i32');
-    this.customDataOffset = module.getValue(ptrSize * dataIndex++, 'i32');
-    this.customDataSize = module.getValue(ptrSize * dataIndex++, 'i32');
+    let dataIndex = module.PTR_SIZE === 4 ? (contextDataOffset >> 2) : (contextDataOffset / 2 ** 3);
+    const type = ptrSize === 4 ? 'i32' : 'i64';
+    this.opKernelContext = Number(module.getValue(ptrSize * dataIndex++, type));
+    const inputCount = Number(module.getValue(ptrSize * dataIndex++, type));
+    this.outputCount = Number(module.getValue(ptrSize * dataIndex++, type));
+    this.customDataOffset = Number(module.getValue(ptrSize * dataIndex++, '*'));
+    this.customDataSize = Number(module.getValue(ptrSize * dataIndex++, type));
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = module.getValue(ptrSize * dataIndex++, 'i32');
+      const dataType = module.getValue(ptrSize * dataIndex++, type);
       const data = module.getValue(ptrSize * dataIndex++, '*');
-      const dim = module.getValue(ptrSize * dataIndex++, 'i32');
+      const dim = module.getValue(ptrSize * dataIndex++, type);
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(module.getValue(ptrSize * dataIndex++, 'i32'));
+        dims.push(module.getValue(ptrSize * dataIndex++, type));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -129,10 +130,11 @@ class ComputeContextImpl implements ComputeContext {
     const stack = this.module.stackSave();
     try {
       const ptrSize = this.module.PTR_SIZE;
+      const type = ptrSize === 4 ? 'i32' : 'i64';
       const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
-      this.module.setValue(data, dims.length, 'i32');
+      this.module.setValue(data, dims.length, type);
       for (let i = 0; i < dims.length; i++) {
-        this.module.setValue(data + ptrSize * (i + 1), dims[i], 'i32');
+        this.module.setValue(data + ptrSize * (i + 1), dims[i], type);
       }
       return this.module._JsepOutput!(this.opKernelContext, index, data);
     } catch (e) {

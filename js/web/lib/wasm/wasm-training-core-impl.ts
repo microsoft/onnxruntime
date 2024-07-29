@@ -68,7 +68,8 @@ const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolea
       const errorCode =
           wasm._OrtTrainingGetModelInputOutputCount(trainingSessionId, dataOffset, dataOffset + ptrSize, isEvalModel);
       ifErrCodeCheckLastError(errorCode, 'Can\'t get session input/output count.');
-      return [wasm.getValue(dataOffset, 'i32'), wasm.getValue(dataOffset + ptrSize, 'i32')];
+      const valueType = ptrSize === 4 ? 'i32' : 'i64';
+      return [Number(wasm.getValue(dataOffset, valueType)), Number(wasm.getValue(dataOffset + ptrSize, valueType))];
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -212,14 +213,14 @@ const moveOutputToTensorMetadataArr =
           const errorCode = wasm._OrtGetTensorData(
               tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
           ifErrCodeCheckLastError(errorCode, `Can't access output tensor data on index ${i}.`);
-
-          const dataType = wasm.getValue(tensorDataOffset, '*');
+          const valueType = ptrSize === 4 ? 'i32' : 'i64';
+          const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
           dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
           const dimsOffset = wasm.getValue(tensorDataOffset + 2 * ptrSize, '*');
-          const dimsLength = wasm.getValue(tensorDataOffset + 3 * ptrSize, '*');
+          const dimsLength = Number(wasm.getValue(tensorDataOffset + 3 * ptrSize, valueType));
           const dims = [];
           for (let i = 0; i < dimsLength; i++) {
-            dims.push(wasm.getValue(dimsOffset + i * ptrSize, '*'));
+            Number(dims.push(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
           }
           wasm._OrtFree(dimsOffset);
 

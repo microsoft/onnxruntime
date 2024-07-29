@@ -55,7 +55,7 @@ export const checkLastError = (message: string): void => {
     const ptrSize = wasm.PTR_SIZE;
     const paramsOffset = wasm.stackAlloc(2 * ptrSize);
     wasm._OrtGetLastError(paramsOffset, paramsOffset + ptrSize);
-    const errorCode = wasm.getValue(paramsOffset, 'i32');
+    const errorCode = Number(wasm.getValue(paramsOffset, ptrSize === 4 ? 'i32' : 'i64'));
     const errorMessagePointer = wasm.getValue(paramsOffset + ptrSize, '*');
     const errorMessage = errorMessagePointer ? wasm.UTF8ToString(errorMessagePointer) : '';
     throw new Error(`${message} ERROR_CODE: ${errorCode}, ERROR_MESSAGE: ${errorMessage}`);
