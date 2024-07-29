@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -60,8 +61,9 @@ TEST(CApiTest, model_from_array) {
   create_session(so);
 
 #ifdef USE_CUDA
-  // test with CUDA provider when using onnxruntime as dll
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(so, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  so.AppendExecutionProvider_CUDA_V2(*options);
   create_session(so);
 #endif
 }
