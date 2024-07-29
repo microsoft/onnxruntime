@@ -87,7 +87,7 @@ class TestStaticQuantizationResNet(unittest.TestCase):
                     # * uint8([128, 128, ..., 127, ...]) if per_channel is True
                     # QLinearConv : zero point of per-channel filter must be same.
                     # That's why the quantization forces a symmetric quantization into INT8.
-                    # zero_point is guaranted to be zero whatever the channel is.
+                    # zero_point is guaranteed to be zero whatever the channel is.
 
                     with open(qdq_file, "rb") as f:
                         onx = onnx.load(f)

@@ -284,10 +284,12 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
  private:
   static bool UnsafeCast(DataType src_type, DataType dst_type, const Node& node) {
     // This is not a complete cast optimisation pass, and is more conservative than it could be.
-    // For instance, certain integral -> floating point casts could be optimised but this is left to an explicit cast optimisation pass.
+    // For instance, certain integral -> floating point casts could be optimized but
+    // this is left to an explicit cast optimisation pass.
 
     // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransformer.
-    // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
+    // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and
+    // downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
     auto src_type_group = GetTypeGroup(src_type);
     auto dst_type_group = GetTypeGroup(dst_type);
     if (Unknown == src_type_group || Unknown == dst_type_group) {

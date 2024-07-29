@@ -47,7 +47,7 @@ void ConstructStrings(void* p_data, int64_t elements);
 
 /// <summary>
 /// Destroy std::string objects in the contiquous chunk of memory
-/// by explicitely invoking ~string();
+/// by explicitly invoking ~string();
 /// </summary>
 /// <param name="p_data"></param>
 /// <param name="elements"></param>

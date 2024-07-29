@@ -192,7 +192,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     T2* w_new,
     T3* g_new,
     T_MIXED_PRECISION_FP* w_mixed_precision_new) {
-  // Confidence coefficeint of this update.
+  // Confidence coefficient of this update.
   const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ? T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
 
   // Compute delta using the saved update direction.

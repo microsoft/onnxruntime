@@ -265,8 +265,17 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "1": dump the EP context into the Onnx model. (default).
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
+// Specify the EPContext node name prefix to make it unique
+// in case user need to merge/connect multiple EPContext nodes in one model
+static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
+
+// When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
+// Refer to MatMulNBits op schema for more details.
+// If not provided, default is 4.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";

@@ -68,8 +68,9 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
+            set -e -x
             echo "Java Version"
-            java --version
+            java -version
             mkdir test
             pushd test
             jar xf '$(Build.BinariesDirectory)/final-jar/testing.jar'

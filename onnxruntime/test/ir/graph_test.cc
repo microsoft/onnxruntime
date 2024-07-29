@@ -464,7 +464,7 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 
 // Tests the case where function op and function body ops belong to different domains.
 // Tests that such a model can be loaded successfully, function body initialization is
-// successful and domain and verison mapping for each node is successful (by verifying
+// successful and domain and version mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -481,7 +481,7 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
 
-      // We delay the funciton instantiate untill partition the graph
+      // We delay the function instantiate until partition the graph
       // this check is no longer valid anymore.
       /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;

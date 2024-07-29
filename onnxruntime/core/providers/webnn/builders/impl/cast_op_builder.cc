@@ -69,8 +69,11 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                              node.Name(), " type: ", to_type);
   }
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   emscripten::val output =
-      model_builder.GetBuilder().call<emscripten::val>("cast", input, emscripten::val(operand_type));
+      model_builder.GetBuilder().call<emscripten::val>("cast", input, emscripten::val(operand_type), options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

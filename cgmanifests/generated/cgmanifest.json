@@ -116,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "344117638c8ff7e239044fd0fa7085839fc03021",
+          "commitHash": "a6ad7fbbdc2e14fab82bb8a6d27760d700198cbf",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -136,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "530d5c8c84abd2a46f38583ee817743c9b3a42b4",
+          "commitHash": "e39786088138f2749d64e9e90e0f9902daa77c40",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -256,7 +256,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3e9dfa2866941655c56877882565e7577de6fc7b",
+          "commitHash": "941f45bcb51457884fa1afd6e24a67377d70f75c",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "pybind11"
@@ -266,7 +266,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "959002f82d7962a473d8bf301845f2af720e0aa4",
+          "commitHash": "ca678952a9a8eaa6de112d154e8e104b22f9ab3f",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
@@ -276,7 +276,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "2b354c6ad0d0479dcff68dab23fb0d1143a482c2",
+          "commitHash": "6dcd83d60f7944926bfd308cc13979fc53dd69ca",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"

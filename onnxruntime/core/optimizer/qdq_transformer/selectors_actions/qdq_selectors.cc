@@ -414,6 +414,91 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 }
 
+bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                      const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes) const {
+  // Should not have any Q nodes
+  if (!q_nodes.empty()) {
+    return false;
+  }
+
+  const auto& graph = graph_viewer.GetGraph();
+
+  // MatMul has only 1 DQ input and the DQ must have 1 output edge and not be a graph output
+  if (dq_nodes.size() != 1 || !optimizer_utils::CheckOutputEdges(graph, *dq_nodes[0], 1)) {
+    return false;
+  }
+
+  // DQ must be MatMul's the second input
+  if (node.InputDefs()[1] != dq_nodes[0]->OutputDefs()[0]) {
+    return false;
+  }
+
+  // DQ weight/zero points types are int4/uint4, scales/output types are float or float16
+  const auto* weight_arg = dq_nodes[0]->InputDefs()[0];
+  const auto* scale_arg = dq_nodes[0]->InputDefs()[1];
+  const auto* zero_point_arg = dq_nodes[0]->InputDefs().size() == 3 ? dq_nodes[0]->InputDefs()[2] : nullptr;
+  int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_scales = scale_arg->TypeAsProto()->tensor_type().elem_type();
+  if (dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
+      dt_scales != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
+
+  if (!Is4BitIntType(dt_weight)) {
+    return false;
+  }
+
+  // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
+  const auto& dq_attrs = dq_nodes[0]->GetAttributes();
+  if (const auto a_iter = dq_attrs.find("axis");
+      a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
+    return false;
+  }
+
+  const auto a_iter = dq_attrs.find("block_size");
+  if (a_iter == dq_attrs.end()) {
+    return false;
+  }
+
+  auto block_size = a_iter->second.i();
+  if (block_size < 16 || ((block_size - 1) & block_size)) {
+    return false;
+  }
+
+  // weight, scale and zero points (if exists) must be constants
+  const auto* weight_tensor_proto = graph.GetConstantInitializer(weight_arg->Name(), true);
+  const auto* scale_tensor_proto = graph.GetConstantInitializer(scale_arg->Name(), true);
+  const auto* zp_tensor_proto = zero_point_arg ? graph.GetConstantInitializer(zero_point_arg->Name(), true) : nullptr;
+
+  if (!weight_tensor_proto || !scale_tensor_proto) {
+    return false;
+  }
+
+  if (zero_point_arg && !zp_tensor_proto) {
+    return false;
+  }
+
+  // weight, scale and zero points (if exists) must have the rank 2
+  if (weight_tensor_proto->dims_size() != 2 ||
+      scale_tensor_proto->dims_size() != 2 ||
+      (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
+    return false;
+  }
+
+  // check weight, scale and zero points (if exists) shapes
+  if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
+      weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
+      (zp_tensor_proto &&
+       (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
+        zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
+    return false;
+  }
+
+  return true;
+}
+
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
                                   const std::vector<const Node*>& dq_nodes,
@@ -547,7 +632,7 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                 const Node& node,
                                                 const std::vector<const Node*>& dq_nodes,
                                                 const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 3)) {
     return false;
   }
 

@@ -15,7 +15,7 @@ class JsCPUAllocator : public CPUAllocator {
       : CPUAllocator(
             OrtMemoryInfo("JsCPUAllocator", OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                          0, OrtMemTypeCPU)){};
+                          0, OrtMemTypeCPU)) {};
 };
 
 class JsCustomAllocator : public IAllocator {

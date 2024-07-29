@@ -41,7 +41,7 @@ struct MakeDType {
 
 /// <summary>
 /// The function creates a numpy array that points to
-/// data stored within the corresponing tensor. Parent object
+/// data stored within the corresponding tensor. Parent object
 /// holds a reference to the object that owns the data so it
 /// does not disappear.
 /// </summary>
@@ -396,9 +396,8 @@ void addSparseTensorMethods(pybind11::module& m) {
       })
       // pybind apparently has a bug with returning enums from def_property_readonly or methods
       // returning a method object instead of the enumeration value
-      // so we are using def_property and throw on a potential modificaiton
-      .def_property(
-          "format", [](const PySparseTensor* py_tensor) -> OrtSparseFormat {
+      // so we are using def_property and throw on a potential modification
+      .def_property("format", [](const PySparseTensor* py_tensor) -> OrtSparseFormat {
         const SparseTensor& tensor = py_tensor->Instance();
         auto retval = OrtSparseFormat::ORT_SPARSE_UNDEFINED;
         switch (tensor.Format()) {

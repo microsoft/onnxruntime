@@ -88,8 +88,6 @@ It is required to ensure we do not break up a QDQ node unit during partitioning.
 @param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.
 @param is_node_supported_fn Callback to check whether a node is supported.
 @param on_group_closed_fn Callback to indicate a completed partition node group.
-@param debug_output Print diagnostic output about the partitions and reasons for partition breaks.
-                    No-op in a release build.
 @return The partition node groups.
 */
 std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
@@ -98,12 +96,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const OnGroupClosedFn& on_group_closed_fn,
     const std::string& execution_provider_type,
     const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-    bool debug_output,
     bool support_parallel_graph = false) {
-#ifdef NDEBUG
-  ORT_UNUSED_PARAMETER(debug_output);
-#endif
-
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
   /*
@@ -219,12 +212,10 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   auto close_group = [&]() {
     if (!supported_group.empty()) {
 #ifndef NDEBUG
-      if (debug_output) {
-        LOGS_DEFAULT(VERBOSE) << "New partition node group.\n"
-                              << "Unsupported nodes on group border: "
-                              << NodeGroupDebugString(nodes_to_process_with_next_group, true) << "\n"
-                              << "Nodes in group: " << NodeGroupDebugString(supported_group);
-      }
+      LOGS_DEFAULT(VERBOSE) << "New partition node group.\n"
+                            << "Unsupported nodes on group border: "
+                            << NodeGroupDebugString(nodes_to_process_with_next_group, true) << "\n"
+                            << "Nodes in group: " << NodeGroupDebugString(supported_group);
 #endif
 
       // if no on_group_closed_fn callback was given, keep the partition
@@ -236,7 +227,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       }
 #ifndef NDEBUG
       else {
-        LOGS_DEFAULT_IF(debug_output, VERBOSE) << "Discarded partition node group.";
+        LOGS_DEFAULT(VERBOSE) << "Discarded partition node group.";
       }
 #endif
 
@@ -372,7 +363,8 @@ InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewe
 std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& graph_viewer,
                                                          const std::vector<const Node*>& group,
                                                          const GenerateMetadefNameFn& generate_metadef_name,
-                                                         const std::string& execution_provider_name) {
+                                                         const std::string& execution_provider_name,
+                                                         bool drop_constant_initializers) {
   std::unordered_set<const Node*> node_set;
   node_set.reserve(group.size());
   node_set.insert(group.cbegin(), group.cend());
@@ -435,6 +427,10 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
 
   for (const auto& input : ordered_subgraph_inputs) {
+    if (drop_constant_initializers && graph_viewer.IsConstantInitializer(input->Name(), true)) {
+      continue;
+    }
+
     meta_def->inputs.push_back(input->Name());
   }
 
@@ -455,14 +451,13 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool debug_output,
-                          bool support_parallel_graph) {
+                          bool drop_constant_initializers,
+                          bool support_parallel_graph)) {
   const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
                                                          is_node_supported_fn,
                                                          on_partition_closed_fn,
                                                          execution_provider_type,
                                                          node_unit_map,
-                                                         debug_output,
                                                          support_parallel_graph);
 
   std::vector<std::unique_ptr<ComputeCapability>> partitions{};
@@ -473,7 +468,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       std::back_inserter(partitions),
       [&](const auto& supported_partition) {
         return MakeComputeCapability(graph_viewer, supported_partition, generate_metadef_name_fn,
-                                     execution_provider_name);
+                                     execution_provider_name, drop_constant_initializers);
       });
 
   return partitions;
@@ -487,7 +482,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool debug_output,
+                          bool drop_constant_initializers,
                           bool support_parallel_graph) {
   const auto excluded_nodes = CreateExcludedNodeSet(graph_viewer, stop_ops);
   const bool check_excluded_nodes = !excluded_nodes.empty();
@@ -503,7 +498,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       execution_provider_name,
       execution_provider_type,
       node_unit_map,
-      debug_output,
+      drop_constant_initializers,
       support_parallel_graph);
 }
 

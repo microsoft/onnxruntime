@@ -7,15 +7,11 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.23.0.240531
+  default: 2.24.0.240626
 
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-
-- name: NUMPY_VERSION
-  type: string
-  default: '1.26.4'
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -70,7 +66,7 @@ jobs:
           scriptSource: inline
           script: |
             import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', 'numpy==${{parameters.NUMPY_VERSION}}'])
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel'])
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
 
@@ -93,7 +89,6 @@ jobs:
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
             --parallel --update
-            --numpy_version ${{ parameters.NUMPY_VERSION }}
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -121,7 +116,7 @@ jobs:
         displayName: 'Build wheel'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=qnn'
+          arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
       - task: CopyFiles@2

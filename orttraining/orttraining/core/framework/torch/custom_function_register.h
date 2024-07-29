@@ -102,7 +102,7 @@ class OrtTorchFunctionPool final {
   void UnRegisterFunctions();
 
  private:
-  OrtTorchFunctionPool(){};
+  OrtTorchFunctionPool() {};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
   void UnRegisterGlobalFunctions();

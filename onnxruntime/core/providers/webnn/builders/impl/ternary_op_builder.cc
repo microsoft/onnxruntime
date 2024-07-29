@@ -32,9 +32,11 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val input2 = model_builder.GetOperand(node.InputDefs()[2]->Name());
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
   if (op_type == "Where") {
-    output = model_builder.GetBuilder().call<emscripten::val>("where", input0, input1, input2);
+    output = model_builder.GetBuilder().call<emscripten::val>("where", input0, input1, input2, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "TernaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);

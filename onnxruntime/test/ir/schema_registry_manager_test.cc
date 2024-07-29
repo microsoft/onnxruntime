@@ -89,7 +89,7 @@ TEST(SchemaRegistryManager, OpsetRegTest) {
   // registry2 has:(op1,domain1,version2)
   ASSERT_TRUE(registry2->GetSchema("Op1", 1, "Domain1") == nullptr);
   ASSERT_TRUE(registry2->GetSchema("Op1", 2, "Domain1") != nullptr);
-  // Fail because this registery doesn't have the information of opset3
+  // Fail because this registry doesn't have the information of opset3
   ASSERT_TRUE(registry2->GetSchema("Op1", 3, "Domain1") == nullptr);
 
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry3 = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
@@ -126,7 +126,7 @@ TEST(SchemaRegistryManager, OpsetRegTest) {
   // Note that "Op5" has SinceVersion equal to 1, but a V1 operator set was already registered
   // without this operator.  This would normally be invalid, and the registry with the missing
   // operator could trigger the operator lookup to fail.  Version 1 is a special case to allow
-  // for experimental operators, and is accomplished by not reducing the targetted version to
+  // for experimental operators, and is accomplished by not reducing the targeted version to
   // zero in OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory.
   // TODO - Consider making the registration algorithm robust to this invalid usage in general
   ASSERT_TRUE(manager.GetSchema("Op5", 5, "Domain1")->since_version() == 1);
