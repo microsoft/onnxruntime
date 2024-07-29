@@ -3,11 +3,11 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2024.0.0
+ARG OPENVINO_VERSION=2024.2.0
 
 
 # Build stage
-FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS builder
+FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION} AS builder
 
 ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
@@ -34,20 +34,18 @@ RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /
 RUN apt update; apt install dpkg-dev
 RUN mkdir /sources
 WORKDIR /sources
-RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg6.0 libhogweed5 libnettle7
+RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi libapt-pkg6.0 libhogweed6 libnettle8
 WORKDIR /
 RUN tar cvf GPL_sources.tar.gz /sources
 
 # Deploy stage
-FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION}
+FROM openvino/ubuntu22_runtime:${OPENVINO_VERSION}
 
 ENV DEBIAN_FRONTEND noninteractive
 USER root
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
 COPY --from=builder /GPL_sources.tar.gz ./
 RUN python3 -m pip install ./*.whl && rm ./*.whl
-RUN apt update; apt install -y unattended-upgrades && \
-    unattended-upgrade
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
