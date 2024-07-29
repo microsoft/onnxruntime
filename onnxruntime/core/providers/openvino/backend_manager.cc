@@ -28,9 +28,8 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
                                const logging::Logger& logger,
-                               EPCtxHandler& ctx_handle) {
+                               EPCtxHandler& ep_ctx_handle_) {
   global_context_ = global_context;
-  ep_ctx_handle_ = ctx_handle;
 
   openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
                           std::to_string(global_context_.OpenVINO_Version.at(1));
@@ -105,7 +104,11 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
-      if (device_type.find("NPU") != std::string::npos) {
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      ORT_THROW(ex.what());
+#else
+      if (device_type.find("NPU") != std::string::npos &&
+          !GetGlobalContext().disable_cpu_fallback) {
         LOGS_DEFAULT(WARNING) << ex.what();
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
@@ -122,6 +125,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
       } else {
         ORT_THROW(ex.what());
       }
+#endif
     }
   }
 }
@@ -142,13 +146,20 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
 
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  auto graph_name = global_context_.onnx_model_path_name;
-  // Remove extension so we can append suffix to form the complete name of output graph
-  graph_name = [&]() {
-    size_t dot = graph_name.find_last_of(".");
-    if (dot == std::string::npos) return graph_name;
-    return graph_name.substr(0, dot);
-  }();
+  std::string graph_name = "";
+  // Epctx file path from SO is mapped to cache_dir variable for OVEP for readability
+  if (global_context_.cache_dir != "") {
+    graph_name = global_context_.cache_dir;
+  } else {
+    graph_name = global_context_.onnx_model_path_name;
+    // Remove extension so we can append suffix to form the complete name of output graph
+    graph_name = [&]() {
+      size_t dot = graph_name.find_last_of(".");
+      if (dot == std::string::npos) return graph_name;
+      return graph_name.substr(0, dot);
+    }();
+    graph_name = graph_name + "-ov_" + GetGlobalContext().device_type + "_blob.onnx";
+  }
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
@@ -157,9 +168,19 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     model_blob_str = model_blob_stream.str();
     ORT_ENFORCE(model_blob_str.size() != 0);
   } else {
-    std::ofstream f(graph_name + ".blob", std::ios::out | std::ios::trunc | std::ios::binary);
-    compiled_model.export_model(f);
-    model_blob_str = graph_name + ".blob";
+    // Remove extension so we can append suffix to form the complete name of output graph
+    auto blob_name = [&]() {
+      size_t dot = graph_name.find_last_of(".");
+      if (dot == std::string::npos) return graph_name;
+      return graph_name.substr(0, dot);
+    }();
+    std::ofstream blob_file(blob_name + ".blob",
+                            std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!blob_file) {
+      ORT_THROW("Unable to open file for epctx model dump.");
+    }
+    compiled_model.export_model(blob_file);
+    model_blob_str = blob_name + ".blob";
   }
 
   ORT_RETURN_IF_ERROR(ep_ctx_handle_.ExportEPCtxModel(graph_body_viewer,
@@ -167,8 +188,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
                                                       model_blob_str,
-                                                      openvino_sdk_version_,
-                                                      GetGlobalContext().device_type));
+                                                      openvino_sdk_version_));
 
   return Status::OK();
 }
@@ -243,7 +263,7 @@ static void DumpOpenVINOEPModel(std::string onnx_model_path_name,
                                 ONNX_NAMESPACE::ModelProto* model_proto,
                                 const onnxruntime::Node& fused_node) {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name;
+    auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : std::move(onnx_model_path_name);
 #ifdef _WIN32
     size_t slash = model_name.find_last_of("\\");
 #else
@@ -419,7 +439,13 @@ void BackendManager::Compute(OrtKernelContext* context) {
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
       } catch (const OnnxRuntimeException& ex) {
-        if (GetGlobalContext().device_type.find("NPU") != std::string::npos) {
+        // Build option disables fallback to CPU on compilation failures with NPU.
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU.";
+        ORT_THROW(ex.what());
+#else
+        if (GetGlobalContext().device_type.find("NPU") != std::string::npos &&
+            !GetGlobalContext().disable_cpu_fallback) {
           LOGS_DEFAULT(WARNING) << ex.what();
           LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                                 << "Falling back to OV CPU for execution";
@@ -434,7 +460,10 @@ void BackendManager::Compute(OrtKernelContext* context) {
           } catch (std::string const& msg) {
             ORT_THROW(msg);
           }
+        } else {
+          ORT_THROW(ex.what());
         }
+#endif
       }
       backend_map_.insert({key, dynamic_backend});
     } else {

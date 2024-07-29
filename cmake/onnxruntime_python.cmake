@@ -97,8 +97,12 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
-if(onnxruntime_USE_CUDA AND onnxruntime_CUDNN_HOME)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+if(onnxruntime_USE_CUDA)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    # cudnn_home is optional for Window when cuda and cudnn are installed in the same directory.
+    if(onnxruntime_CUDNN_HOME)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -563,6 +567,9 @@ add_custom_command(
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${REPO_ROOT}/requirements.txt
+      $<TARGET_FILE_DIR:${build_output_target}>
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/ThirdPartyNotices.txt
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -663,6 +670,15 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (onnxruntime_BUILD_SHARED_LIB)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
 
 if (onnxruntime_USE_OPENVINO)
   add_custom_command(

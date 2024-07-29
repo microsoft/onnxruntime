@@ -58,7 +58,7 @@ for opset_version in [16, 20]:
                     onnx_align_corners = 1 if align_corners else 0
 
                     test_name = f"test_grid_sample_{opset_version}_{ndim}D_{mode}_{padding_mode}_{'align_corners' if align_corners else 'no_align_corners'}"
-                    print(f"TEST(GridsampleTest, {test_name}) {{")
+                    print(f"TEST(GridSampleTest, {test_name}) {{")
                     print(f'OpTester test("GridSample", {opset_version});')
                     print(f'std::string mode = "{onnx_mode}";')
                     print(f'std::string padding_mode = "{padding_mode}";')

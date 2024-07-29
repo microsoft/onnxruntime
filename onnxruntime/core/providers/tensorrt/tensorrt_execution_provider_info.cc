@@ -54,6 +54,8 @@ constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
 constexpr const char* kEpContextFilePath = "trt_ep_context_file_path";
 constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
 constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
+constexpr const char* kONNXBytestream = "trt_onnx_bytestream";
+constexpr const char* kONNXBytestreamSize = "trt_onnx_bytestream_size";
 
 }  // namespace provider_option_names
 }  // namespace tensorrt
@@ -61,6 +63,7 @@ constexpr const char* kEngineHwCompatible = "trt_engine_hw_compatible";
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
+  void* onnx_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -122,10 +125,20 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineHwCompatible, info.engine_hw_compatible)
+          .AddValueParser(
+              tensorrt::provider_option_names::kONNXBytestream,
+              [&onnx_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                onnx_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(tensorrt::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
+  info.onnx_bytestream = onnx_bytestream;
   return info;
 }
 
@@ -173,6 +186,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kEpContextFilePath, MakeStringWithClassicLocale(info.ep_context_file_path)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.ep_context_embed_mode)},
       {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.engine_hw_compatible)},
+      {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
+      {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
   };
   return options;
 }
@@ -234,6 +249,8 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
       {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
       {tensorrt::provider_option_names::kEngineHwCompatible, MakeStringWithClassicLocale(info.trt_engine_hw_compatible)},
+      {tensorrt::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.trt_onnx_bytestream))},
+      {tensorrt::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.trt_onnx_bytestream_size)},
   };
   return options;
 }
@@ -336,5 +353,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
   trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
   trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
+  trt_provider_options_v2.trt_onnx_bytestream = internal_options.onnx_bytestream;
+  trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
 }
 }  // namespace onnxruntime

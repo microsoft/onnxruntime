@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -108,6 +108,7 @@ struct NodeProto;
 struct SparseTensorProto;
 struct StringStringEntryProto;
 struct StringStringEntryProtos;  // RepeatedPtrField
+struct OperatorSetIdProto;
 struct TensorProto;
 struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
@@ -120,6 +121,7 @@ struct TypeProto_Sequence;
 struct TypeProto;
 struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
+struct FunctionProto;
 struct InferenceContext;
 class GraphInferencer;
 using InferenceFunction = std::function<void(InferenceContext&)>;
@@ -146,6 +148,7 @@ struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
+enum class IndexedSubGraph_SourceOfSchema : uint8_t;
 struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;

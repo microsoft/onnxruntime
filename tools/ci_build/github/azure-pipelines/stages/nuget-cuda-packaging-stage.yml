@@ -76,9 +76,9 @@ stages:
           displayName: 'Create models link'
 
         - task: NuGetToolInstaller@0
-          displayName: Use Nuget 6.2.1
+          displayName: Use Nuget 6.10.x
           inputs:
-            versionSpec: 6.2.1
+            versionSpec: 6.10.x
 
         - task: PowerShell@2
           displayName: Install MAUI workloads

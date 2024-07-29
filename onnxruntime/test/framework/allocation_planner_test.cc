@@ -1288,7 +1288,7 @@ TEST_F(PlannerTest, MultiStream) {
 
   CreatePlan({}, false);
 
-  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA separately";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
@@ -1855,7 +1855,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
   ASSERT_TRUE(status.IsOK());
-  ASSERT_TRUE(model.Save(model, "./simplified_ssd.onnx").IsOK());
+  ASSERT_TRUE(model.Save(model, ORT_TSTR("./simplified_ssd.onnx")).IsOK());
 
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
@@ -1883,7 +1883,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
       reuse_pairs.erase(reused);
     }  // if
-  }    // for
+  }  // for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 

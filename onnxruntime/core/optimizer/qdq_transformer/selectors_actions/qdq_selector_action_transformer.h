@@ -5,6 +5,7 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 
@@ -21,7 +22,10 @@ Transformer that fuses QDQ and fp32 ops into quantized ops.
 */
 class QDQSelectorActionTransformer : public SelectorActionTransformer {
  public:
-  QDQSelectorActionTransformer(bool is_int8_allowed, const SatApplyContextVariant& apply_context = {});
+  QDQSelectorActionTransformer(bool is_int8_allowed,
+                               const SatApplyContextVariant& apply_context = {},
+                               int64_t qdq_matmulnbits_accuracy_level = 4,
+                               concurrency::ThreadPool* intra_op_thread_pool = nullptr);
 };
 
 }  // namespace onnxruntime

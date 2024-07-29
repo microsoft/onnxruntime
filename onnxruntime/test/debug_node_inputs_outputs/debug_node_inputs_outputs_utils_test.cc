@@ -27,7 +27,7 @@ void VerifyTensorProtoFileData(const PathString& tensor_proto_path, gsl::span<co
 
   std::vector<T> actual_data{};
   actual_data.resize(expected_data.size());
-  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), actual_data.size()));
+  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, tensor_proto_path, actual_data.data(), actual_data.size()));
 
   ASSERT_EQ(gsl::span<const T>(actual_data), expected_data);
 }
@@ -48,7 +48,7 @@ void VerifyTensorProtoFileDataInt4(const PathString& tensor_proto_path,
 
   std::vector<Int4x2Base<Signed>> actual_data{};
   actual_data.resize(expected_data.size());
-  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, Path{}, actual_data.data(), num_elems));
+  ASSERT_STATUS_OK(utils::UnpackTensor(tensor_proto, tensor_proto_path, actual_data.data(), num_elems));
 
   ASSERT_EQ(actual_data.size(), expected_data.size());
 

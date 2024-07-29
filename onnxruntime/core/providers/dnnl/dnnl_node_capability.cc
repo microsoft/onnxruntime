@@ -431,7 +431,7 @@ bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node, con
     }
   }
 
-  // if shape nullptr, not enough information to reject it. attempt to run it (no gaurantee)
+  // if shape nullptr, not enough information to reject it. attempt to run it (no guarantee)
   if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
     return true;
   }
@@ -465,7 +465,7 @@ bool DnnlSumNodeCapability::Supported(const Node* node, const GraphViewer& graph
 }
 
 // OneDNN version of Sum does not support Numpy style broadcasting.
-// If the dimentions of all inputs do not match return false
+// If the dimensions of all inputs do not match return false
 bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
   // find first non-null shape
@@ -615,7 +615,7 @@ bool DnnlReshapeNodeCapability::Supported(const Node* node, const GraphViewer& g
 }
 bool DnnlReshapeNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
-  // We can not reshape a one dimentional tensor to a scalar output
+  // We can not reshape a one dimensional tensor to a scalar output
   if (node_inputs[1]->Shape() != nullptr &&
       node_inputs[1]->Shape()->dim_size() == 1 &&
       node_inputs[1]->Shape()->dim(0).dim_value() == 0) {

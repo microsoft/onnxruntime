@@ -880,9 +880,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformer_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) const {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-endian machines");
-
+common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& filepath) const {
   // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
   // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
   // what the total flatbuffers serialized size will be.
@@ -920,7 +918,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
     uint8_t* buf = builder.GetBufferPointer();
     int size = builder.GetSize();
     file.write(reinterpret_cast<const char*>(buf), size);
-    ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(filepath));
+    ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(filepath.native()));
   }
 
   return Status::OK();
@@ -1272,8 +1270,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       // for the result of the first step in layout transformation
       debug_graph_fn = [counter = 1, this](const Graph& graph) mutable {
         if (graph.GraphProtoSyncNeeded()) {
-          ORT_THROW_IF_ERROR(
-              Model::Save(*model_, "post_layout_transform_step_" + std::to_string(counter) + ".onnx"));
+          std::basic_ostringstream<ORTCHAR_T> modelpath;
+          modelpath << ORT_TSTR("post_layout_transform_step_") << counter << ORT_TSTR(".onnx");
+          ORT_THROW_IF_ERROR(Model::Save(*model_, modelpath.str()));
         }
 
         // counter is used to denote the step, so increment regardless of whether we wrote out the model in this step.
@@ -1389,8 +1388,6 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-  static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
-
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
@@ -1606,13 +1603,19 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // a compiling EP (e.g. CoreML) may copy initializers to its own memory. run the cleanup of unused initializers
+  // so that they can be freed.
+  ORT_RETURN_IF_ERROR(graph.RemovedUnusedInitializersOrtFormat());
+#endif
   return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
-    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
+    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep,
+    concurrency::ThreadPool* intra_op_thread_pool) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
@@ -1620,7 +1623,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
         static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
-        optimizers_to_disable);
+        optimizers_to_disable, intra_op_thread_pool);
 
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
@@ -2008,7 +2011,8 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, cpu_ep));
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
+                                                  cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -2828,7 +2832,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
     }
   }
 
-  // returns a list of initializers that can be overriden.
+  // returns a list of initializers that can be overridden.
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOverridableInitializers());
 }
 
@@ -3170,7 +3174,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
 
         if (use_full_build_optimizations) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
-                                                       optimizers_to_disable_);
+                                                       optimizers_to_disable_,
+                                                       GetIntraOpThreadPoolToUse());
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
@@ -3179,7 +3184,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
-                                                                      optimizers_to_disable_);
+                                                                      optimizers_to_disable_,
+                                                                      GetIntraOpThreadPoolToUse());
         }
       }();
 

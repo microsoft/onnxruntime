@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -35,7 +35,7 @@ enum class BroadcastIndexType : int32_t {
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() {};
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
