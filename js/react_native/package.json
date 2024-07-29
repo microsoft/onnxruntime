@@ -24,7 +24,7 @@
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
     "react": "^18.1.0",
-    "react-native": "^0.74.2",
+    "react-native": "^0.74.0",
     "react-native-builder-bob": "^0.18.2"
   },
   "peerDependencies": {
@@ -77,7 +77,6 @@
   },
   "dependencies": {
     "@expo/config-plugins": "^7.2.4",
-    "@react-native-community/cli": "^13.6.5",
     "buffer": "^6.0.3",
     "onnxruntime-common": "file:../common"
   },
