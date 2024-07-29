@@ -47,3 +47,14 @@ configuration:
             then:
               - addLabel:
                   label: api:JavaScript
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bacl\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bacl\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:ACL
