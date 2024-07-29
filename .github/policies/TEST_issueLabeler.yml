@@ -1,0 +1,35 @@
+name: Issue Triage
+description: Assign label to new issues without a label
+resource: repository
+
+configuration:
+  resourceManagementConfiguration:
+    eventResponderTasks:
+      - description: >-
+          Search for issue where -
+          * Issue is open
+          * Issue is not assigned to someone
+          * Issue is not labeled
+
+          Then -
+          * Apply relevant label(s) using RegEx
+        if:
+          - payloadType: Issues
+          - and:
+              - isOpen
+              - not:
+                  and:
+                    - isAssignedToSomeone
+                    - isLabeled
+        then:
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                      isRegEx: true
+                  - bodyContains:
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                      isRegEx: true
+            then:
+              - addLabel:
+                  label: api:CSharp
