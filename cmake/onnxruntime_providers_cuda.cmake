@@ -289,8 +289,13 @@
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
-
+  file(GLOB ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS CONFIGURE_DEPENDS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/*.h"
+      )
+  set_target_properties(onnxruntime_providers_cuda PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_cuda
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
