@@ -16,6 +16,11 @@ namespace qnn {
 
 class QnnModelWrapper;
 
+/// <summary>
+/// Represents a fusion of a DQ -> Q sequence that converts from one quantization type (e.g., uint8_t) to
+/// another (e.g., uint16_t). This is translated into a QNN Convert operator, which is much faster than individual
+/// ops. The DQ and Q are standalone NodeUnits that are not part of a QDQ node unit.
+/// </summary>
 class DQQFusion : public IQnnNodeGroup {
  public:
   DQQFusion(const NodeUnit& dq_node_unit, const NodeUnit& q_node_unit);
@@ -27,18 +32,16 @@ class DQQFusion : public IQnnNodeGroup {
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "DQQFusion"; }
 
-  /**
-   * Tries to merge a DQ -> Q sequence into a QNN Convert operator. The DQ -> Q must be converting from
-   * one quantization type (e.g., uint8_t) to another (e.g., uint16_t).
-   *
-   * \param fused_nodes Output list of node units that were fused. Remains empty if fusion is not applied.
-   * \param qnn_model_wrapper The QNN model that is being built.
-   * \param dq_node_unit The DQ node unit.
-   * \param q_node_unit The Q node unit.
-   * \param logger The logger.
-   * \param do_op_validation True if should call QNN operator validation APIs.
-   * \return An onnxruntime::Status
-   */
+  /// <summary>
+  /// Traverses graph to check if the given starting NodeUnit is part of a valid DQ -> Q sequence.
+  /// If so, returns a IQnnNodeGroup that contains the DQ and Q NodeUnits.
+  /// </summary>
+  /// <param name="qnn_model_wrapper">Used for validation and traverse/query the graph</param>
+  /// <param name="dq_node_unit">DQ node unit that could start the DQ -> Q sequence</param>
+  /// <param name="node_to_node_unit">Maps a Node to a NodeUnit.</param>
+  /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit to a IQnnNodeGroup.</param>
+  /// <param name="logger"></param>
+  /// <returns>A valid IQnnNodeGroup on success or an empty std::unique_ptr otherwise</returns>
   static std::unique_ptr<IQnnNodeGroup> TryFusion(
       QnnModelWrapper& qnn_model_wrapper,
       const NodeUnit& dq_node_unit,

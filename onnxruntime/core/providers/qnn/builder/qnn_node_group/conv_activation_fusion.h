@@ -17,6 +17,11 @@ namespace qnn {
 
 class QnnModelWrapper;
 
+/// <summary>
+/// Represents a fusion of a DQ* -> Conv -> Relu/Clip -> Q sequence where the Relu (or Clip) is redundant
+/// due to the quantization effects of the Q. This sequence is translated to a quantized QNN Conv.
+/// All contained NodeUnits are of type SingleNode since they are not a part of an existing QDQ node unit.
+/// </summary>
 class ConvActivationFusion : public IQnnNodeGroup {
  public:
   ConvActivationFusion(const NodeUnit& dq_node_unit_0,
@@ -33,6 +38,16 @@ class ConvActivationFusion : public IQnnNodeGroup {
   const NodeUnit* GetTargetNodeUnit() const override;
   std::string_view Type() const override { return "ConvActivationFusion"; }
 
+  /// <summary>
+  /// Traverses graph to check if the given NodeUnit is part of a valid DQ* -> Conv -> Relu/Clip -> Q sequence.
+  /// If so, returns a IQnnNodeGroup that contains the constituent NodeUnits.
+  /// </summary>
+  /// <param name="qnn_model_wrapper">Used for validation and to traverse/query the graph</param>
+  /// <param name="conv_node_unit">Conv node unit (type SingleNode) that be part of the sequence.</param>
+  /// <param name="node_to_node_unit">Maps a Node to a NodeUnit.</param>
+  /// <param name="node_unit_to_qnn_node_group">Maps a NodeUnit to a IQnnNodeGroup.</param>
+  /// <param name="logger"></param>
+  /// <returns>A valid IQnnNodeGroup on success or an empty std::unique_ptr otherwise</returns>
   static std::unique_ptr<IQnnNodeGroup> TryFusion(
       QnnModelWrapper& qnn_model_wrapper,
       const NodeUnit& conv_node_unit,
@@ -41,7 +56,7 @@ class ConvActivationFusion : public IQnnNodeGroup {
       const logging::Logger& logger);
 
  private:
-  std::array<const NodeUnit*, 6> node_units_;  // Last elem is nullptr if bias DQ is missing.
+  std::array<const NodeUnit*, 6> node_units_;  // Last elem is nullptr if the optional bias DQ is missing.
 };
 
 }  // namespace qnn

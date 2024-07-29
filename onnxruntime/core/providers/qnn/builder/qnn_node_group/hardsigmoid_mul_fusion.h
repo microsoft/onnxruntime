@@ -16,6 +16,11 @@ namespace qnn {
 
 class QnnModelWrapper;
 
+/// <summary>
+/// Represents a fusion of a HardSigmoid -> Mul sequence that computes `x * HardSigmoid<alpha=1/6, beta=0.5>(x)`.
+/// This is translated into a QNN HardSwish operator.
+/// The contained NodeUnits are of type SingleNode since they are not a part of a QDQ node unit.
+/// </summary>
 class HardSigmoidMulFusion : public IQnnNodeGroup {
  public:
   HardSigmoidMulFusion(const NodeUnit& hardsigmoid_node_unit, const NodeUnit& mul_node_unit);
