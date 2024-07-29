@@ -582,6 +582,7 @@ function Install-Protobuf {
     # Run cmake to generate Visual Studio sln file
     [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF",   "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
     $cmake_args += $cmake_extra_args
+    Write-Host "protobuf cmake flags: $cmake_args"
 
     &$cmake_path $cmake_args
     if ($lastExitCode -ne 0) {
