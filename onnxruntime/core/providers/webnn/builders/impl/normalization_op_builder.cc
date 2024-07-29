@@ -42,6 +42,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   const auto rank = input_shape.size();
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   std::vector<int64_t> scale_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
@@ -116,7 +117,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         new_shape.erase(insertion_point, insertion_point + excess_rank);
         *insertion_point = sum;
       }
-      input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+      emscripten::val reshape_input_options = emscripten::val::object();
+      reshape_input_options.set("label", node.Name() + "_reshape_input");
+      input = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input,
+                                                               emscripten::val::array(new_shape),
+                                                               reshape_input_options);
     }
 
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
@@ -126,8 +132,12 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
       std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
-      output = model_builder.GetBuilder().call<emscripten::val>(
-          "reshape", output, emscripten::val::array(output_shape));
+      emscripten::val reshape_output_options = emscripten::val::object();
+      reshape_output_options.set("label", node.Name() + "reshape_output");
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(output_shape),
+                                                                reshape_output_options);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
