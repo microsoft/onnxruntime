@@ -30,6 +30,10 @@ export const getActivationSnippet =
               baseType}(uniforms.beta)));`;
         case 'LeakyRelu':
           return `value = select(${baseType}(uniforms.alpha) * value, value, value >= ${valueType}(0.0));`;
+        case 'Tanh':
+          return `let e2x = exp(-2.0 * abs(value));
+              value = sign(value) * (1.0 - e2x) / (1.0 + e2x);
+        `;
         case '':
           return '';
         // TODO: adding other activations that can be fused.
