@@ -452,7 +452,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
                           bool drop_constant_initializers,
-                          bool support_parallel_graph)) {
+                          bool support_parallel_graph) {
   const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
                                                          is_node_supported_fn,
                                                          on_partition_closed_fn,
