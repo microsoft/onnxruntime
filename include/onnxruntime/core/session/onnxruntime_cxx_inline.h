@@ -1998,9 +1998,10 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
   }
 }
 
-inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
+inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape, ONNXTensorElementDataType type) {
   OrtTensorTypeAndShapeInfo* info = {};
   ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetTensorElementType(info, type));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 

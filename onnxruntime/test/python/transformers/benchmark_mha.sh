@@ -1,14 +1,40 @@
-echo "flash attention v2"
-ORT_DISABLE_FLASH_ATTENTION=0  ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV=0 python benchmark_mha.py | tee result.txt
+#!/bin/sh
 
-echo "==="
-echo "TensorRT attention kernels - cross attention (when kv_seq_len <= 128) or fused attention (when seq_len <= 384) or flash attention (seq_len > 384)"
-ORT_DISABLE_FLASH_ATTENTION=1  python benchmark_mha.py | tee -a result.txt
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 
-echo "==="
-echo "Memory Efficient attention"
-ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 ORT_DISABLE_FUSED_ATTENTION=1 ORT_DISABLE_FUSED_CROSS_ATTENTION=1 python benchmark_mha.py | tee -a result.txt
+echo "Benchmark Scaled Dot Product Attention (SDPA) performance on GPU:"
 
-echo "==="
-echo "Unfused Attention (some configurations might fail)"
-ORT_DISABLE_FLASH_ATTENTION=1 ORT_DISABLE_TRT_FLASH_ATTENTION=1 ORT_DISABLE_FUSED_ATTENTION=1 ORT_DISABLE_FUSED_CROSS_ATTENTION=1 ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=1 python benchmark_mha.py | tee -a result.txt
+export CUDA_VISIBLE_DEVICES=0
+python benchmark_mha.py --use_gpu
+python benchmark_mha.py --use_gpu --use_cuda_graph
+python benchmark_mha.py --use_gpu --torch
+
+cat benchmark_mha_gpu_*.csv > mha_gpu_benchmark_results.csv
+
+echo "Benchmark performance on CPU with number of threads:"
+MKL_DYNAMIC=FALSE OMP_NUM_THREADS=1 python benchmark_mha.py --torch
+MKL_DYNAMIC=FALSE OMP_NUM_THREADS=2 python benchmark_mha.py --torch
+MKL_DYNAMIC=FALSE OMP_NUM_THREADS=4 python benchmark_mha.py --torch
+MKL_DYNAMIC=FALSE OMP_NUM_THREADS=8 python benchmark_mha.py --torch
+
+python benchmark_mha.py --intra_op_num_threads 1
+python benchmark_mha.py --intra_op_num_threads 2
+python benchmark_mha.py --intra_op_num_threads 4
+python benchmark_mha.py --intra_op_num_threads 8
+
+
+echo "Benchmark performance on CPU with default threads settings:"
+python benchmark_mha.py
+ORT_DISABLE_FLASH_ATTENTION=1 python benchmark_mha.py
+python benchmark_mha.py --torch
+
+python benchmark_mha.py --causal
+python benchmark_mha.py --torch --causal
+
+# Pytorch SDPA does not support causal attention with past state, we only test ORT here.
+python benchmark_mha.py --causal --has_past
+
+cat benchmark_mha_cpu_*.csv > mha_cpu_benchmark_results.csv
