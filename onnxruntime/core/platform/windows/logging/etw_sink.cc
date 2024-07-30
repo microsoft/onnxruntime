@@ -137,13 +137,14 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 EtwRegistrationManager::~EtwRegistrationManager() {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.clear();
-  if (initialized_ || initializing_) {
+  if (initialization_status_ == InitializationStatus::Intialized ||
+      initialization_status_ == InitializationStatus::Initializing) {
     std::lock_guard<OrtMutex> init_lock(init_mutex_);
-      assert(!initializing_);
-      if (initialized_) {
-        ::TraceLoggingUnregister(etw_provider_handle);
-        initialized_ = false;
-      }
+    assert(initialization_status_ != InitializationStatus::Initializing);
+    if (initialization_status_ == InitializationStatus::Intialized) {
+      ::TraceLoggingUnregister(etw_provider_handle);
+      initialization_status_ = InitializationStatus::NotInitialized;
+    }
   }
 }
 
@@ -151,29 +152,27 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() try {
-  if (!initialized_ && !initializing_) {
+  if (initialization_status_ == InitializationStatus::NoitIntialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
-    if (!initialized_ && !initializing_) {  // Double-check locking pattern
-      initializing_ = true;
+    if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
+      initialization_status_ == InitializationStatus::Initializing;
       etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
       if (FAILED(etw_status_)) {
         ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
       }
-      initialized_ = true;
-      initializing_ = false;
+      initialization_status_ == InitializationStatus::Initialized;
     }
   }
 } catch (...)
 {
-  initialized_ = false;
-  initializing_ = false;
+  initialization_status_ == InitializationStatus::Failed;
   throw;
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                              ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                              PVOID CallbackContext) {
-  if (!initialized_) {
+  if (initialization_status_ != InitializationStatus::Initialized) {
     // Drop messages until manager is fully initialized.
     return;
   }
