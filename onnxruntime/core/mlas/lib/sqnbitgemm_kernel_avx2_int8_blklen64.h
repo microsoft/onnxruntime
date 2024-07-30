@@ -26,7 +26,7 @@ accumulate_blklen64_r2c1blk1_avx2(
     __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);  // 0, 1,...30, 31
     __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32, 33,...62, 63
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         __m256i sum_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av00_32_epi8);
         sum_8_epi32 = _mm256_dpbusds_avx_epi32(sum_8_epi32, bv1_32_epi8, av01_32_epi8);
@@ -71,7 +71,7 @@ accumulate_blklen64_r2c1blk1_avx2(
         __m256 scale_a1_ps = _mm256_broadcast_ss(scale_a1);
 
         acc1 = _mm256_fmadd_ps(sum_ps, _mm256_mul_ps(scale_a1_ps, scale_b_ps), acc1);
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
@@ -93,7 +93,7 @@ accumulate_blklen64_r1c1blk1_avx2(
     __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);                          // 0, 1,...30, 31
     __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32, 33,...62, 63
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         __m256i sum_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av00_32_epi8);
         sum_8_epi32 = _mm256_dpbusds_avx_epi32(sum_8_epi32, bv1_32_epi8, av01_32_epi8);
