@@ -325,9 +325,12 @@ common::Status SaveInitializedTensors(
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Tensor* p_tensor = buffered_tensors.find(name) != buffered_tensors.end()
-                             ? buffered_tensors[name].release()
-                             : nullptr;
+      Tensor* p_tensor = nullptr;
+      if (auto iter = buffered_tensors.find(name);
+          iter != buffered_tensors.end()) {
+        p_tensor = iter->second.release();
+        buffered_tensors.erase(iter);
+      }
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
                                          default_cpu_alloc, ort_value, data_transfer_mgr,
