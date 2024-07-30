@@ -2337,10 +2337,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GraphViewer_IsConstantInitializer, _In_ const OrtGraphViewer* graph_viewer, _In_ const char* name,
+ORT_API_STATUS_IMPL(OrtApis::GraphViewer_IsConstantInitializer, _In_ const OrtGraphViewer* ort_graph_viewer, _In_ const char* name,
                   _In_ bool check_outer_scope, _Out_ bool* out) {
   API_IMPL_BEGIN
-  const onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const onnxruntime::GraphViewer*>(graph_viewer);
+  const onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const onnxruntime::GraphViewer*>(ort_graph_viewer);
   *out = graph_viewer->IsConstantInitializer(std::string(name), check_outer_scope);
   return nullptr;
   API_IMPL_END
