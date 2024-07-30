@@ -164,7 +164,7 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
 // This shall be in sync with the following function PrepareQkv_MHA_Cross.
 template <typename T>
 bool NoQkvWorkspace_MHA_Cross(AttentionData<T>& data) {
-  // In PrepareQkv_MHA_Cross, query, key and value are passed as Q, K and V for the following conditions.
+  // query, key and value are passed as Q, K and V for the following conditions.
   return (data.use_memory_efficient_attention || data.use_flash_attention) && (data.bias == nullptr);
 }
 
@@ -179,6 +179,7 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
   // present_key and present_value can be supported in theory, although we do not allow the senario for now.
   assert(data.past_key == nullptr);
   assert(data.past_value == nullptr);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_Cross(data));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -224,11 +225,9 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
   return Status::OK();
 }
 
-// Return true if the workspace is not needed for Q, K, V inputs, false otherwise.
-// This shall be in sync with the following function PrepareQkv_MHA_NoPast.
 template <typename T>
 bool NoQkvWorkspace_MHA_NoPast(AttentionData<T>& data) {
-  // In PrepareQkv_MHA_NoPast, query, key and value are passed as Q, K and V for the following conditions.
+  // query, key and value are passed as Q, K and V for the following conditions.
   return (data.use_memory_efficient_attention || data.use_flash_attention) && data.bias == nullptr;
 }
 
@@ -247,6 +246,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
   assert(data.present_key == nullptr);
   assert(data.present_value == nullptr);
   assert(!parameters.is_unidirectional);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_NoPast(data));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -260,7 +260,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
     assert(data.relative_position_bias == nullptr);
     assert(data.mask_index == nullptr);
     assert(parameters.hidden_size == parameters.v_hidden_size);
-    assert(data.has_qkv_workspace);
 
     // For fused cross attention, besides adding bias, K and V needed to be packed:
     //   Key (BxSxNxH), Value (BxSxNxH) => Q (BxSxNxH), K (BxSxNx2xH)
@@ -277,7 +276,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
     assert(data.relative_position_bias == nullptr);
 
     if (data.bias != nullptr) {
-      assert(data.has_qkv_workspace);
       LaunchAddBias(stream, max_threads_per_block,
                     batch_size, sequence_length, kv_sequence_length,
                     num_heads, qk_head_size, v_head_size,
@@ -294,7 +292,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
   else if (data.fused_runner != nullptr) {
     assert(qk_head_size == v_head_size);
     assert(data.relative_position_bias == nullptr);
-    assert(data.has_qkv_workspace);
 
     // Query (BxSxNxH), Key (BxSxNxH), Value (BxSxNxH) => Q: BxSxNx(H + H + H)
     LaunchAddBiasTransposeTrt(
@@ -305,7 +302,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
 
     data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
   } else {  // unfused kernel
-    assert(data.has_qkv_workspace);
     // Query (BxSxNxH) => Q (BxNxSxH)
     constexpr int format = 0;
     LaunchAddBiasTranspose<T>(
@@ -334,7 +330,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
   return Status::OK();
 }
 
-// This shall be in sync with the following function PrepareQkv_MHA_WithPast_NoBias.
 template <typename T>
 constexpr bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& /*data*/) {
   return false;
@@ -357,7 +352,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
   assert(data.present_value != nullptr);
   assert(data.past_key == nullptr && data.past_value == nullptr ||
          data.past_key != nullptr && data.past_value != nullptr);
-  assert(data.has_qkv_workspace);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_WithPast_NoBias(data));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -399,7 +394,6 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
   return Status::OK();
 }
 
-// This shall be in sync with the following function PrepareQkv_MHA_WithPast_NoBias.
 template <typename T>
 constexpr bool NoQkvWorkspace_MHA_WithPast_Bias(AttentionData<T>& /*data*/) {
   return false;
@@ -420,7 +414,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   assert(data.present_value != nullptr);
   assert(data.past_key == nullptr && data.past_value == nullptr ||
          data.past_key != nullptr && data.past_value != nullptr);
-  assert(data.has_qkv_workspace);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_WithPast_Bias(data));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -484,9 +478,9 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   return Status::OK();
 }
 
-// This shall be in sync with the following function PrepareQkv_MHA_PackedQKV.
 template <typename T>
 bool NoQkvWorkspace_MHA_PackedQKV(AttentionData<T>& data) {
+  // query, key and value are passed as Q, K and V for the following conditions.
   return nullptr != data.fused_runner && data.bias == nullptr;
 }
 
@@ -503,8 +497,8 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   assert(data.present_value == nullptr);
   assert(parameters.head_size == parameters.v_head_size);
   assert(data.fused_cross_attention_kernel == nullptr);
-  assert(data.has_qkv_workspace);
   assert(!parameters.is_unidirectional);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_PackedQKV(data));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -572,6 +566,7 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
   assert(data.present_value == nullptr);
   assert(parameters.head_size == parameters.v_head_size);
   assert(data.fused_runner == nullptr);
+  assert(data.has_qkv_workspace == !NoQkvWorkspace_MHA_PackedKV(data));
 
   const int batch_size = parameters.batch_size;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -580,7 +575,6 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
   const int v_head_size = parameters.v_head_size;
 
   if (data.use_memory_efficient_attention || data.use_flash_attention) {
-    assert(data.has_qkv_workspace);
     // Note that there is no bias so we need not output query to q.
     data.q = const_cast<T*>(data.query);
     // Unpack kv to BSNH.
@@ -598,7 +592,6 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
     data.k = const_cast<T*>(data.key);
     data.v = nullptr;
   } else {  // unfused kernel
-    assert(data.has_qkv_workspace);
     // Transpose q from BSNH to BNSH. Note that there is no bias.
     ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(batch_size, parameters.sequence_length, num_heads, qk_head_size,
                                                data.query, data.q, stream, max_threads_per_block));
