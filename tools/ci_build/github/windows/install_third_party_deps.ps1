@@ -48,8 +48,7 @@ if($build_config -eq 'Release'){
 }
 
 # cmake args that applies to every 3rd-party library
-[string[]]$cmake_extra_args="`"-DCMAKE_C_FLAGS=$compile_flags`"", "--compile-no-warning-as-error", "--fresh", "-Wno-dev"
-
+[string[]]$cmake_extra_args= "--compile-no-warning-as-error", "--fresh", "-Wno-dev"
 
 if($cpu_arch -eq 'x86'){
   $cmake_extra_args +=  "-A", "Win32", "-T", "host=x64"
@@ -70,7 +69,7 @@ if($cpu_arch -eq 'x86'){
 
 Write-Host $compile_flags
 
-$cmake_extra_args += "-DCMAKE_CXX_STANDARD=17", "`"-DCMAKE_CXX_FLAGS=$compile_flags /EHsc`""
+$cmake_extra_args += "-DCMAKE_CXX_STANDARD=17", "`"-DCMAKE_C_FLAGS=$compile_flags`"", "`"-DCMAKE_CXX_FLAGS=$compile_flags /EHsc`""
 
 if ($use_cache) {
   if ($build_config -eq 'RelWithDebInfo') {
