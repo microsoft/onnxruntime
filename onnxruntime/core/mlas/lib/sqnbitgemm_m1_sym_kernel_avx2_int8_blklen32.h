@@ -24,7 +24,7 @@ accumulate_blklen32_r1c1blk1_zp_avx2(
 
     bv_32_epi8 = _mm256_sub_epi8(bv_32_epi8, _mm256_set1_epi8(get_zp<HasZeroPoint>(true, QuantBZeroPointPtr)));
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         const __m256i sum_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_sign_epi8(bv_32_epi8, bv_32_epi8), _mm256_sign_epi8(av_32_epi8, bv_32_epi8));
         const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
@@ -36,7 +36,7 @@ accumulate_blklen32_r1c1blk1_zp_avx2(
         const __m256i sum_8_epi32 = _mm256_madd_epi16(one_16_epi16, dot_16_epi16);
         const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
         acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
@@ -58,7 +58,7 @@ accumulate_blklen32_r1c1blk2_zp_avx2(
     __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);                        // 0~31
     __m256i bv1_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bv_packed, 4), low_mask);  // 32~63
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         {
             bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, _mm256_set1_epi8(get_zp<true>(true, QuantBZeroPointPtr)));
@@ -98,7 +98,7 @@ accumulate_blklen32_r1c1blk2_zp_avx2(
             const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
             acc0 = _mm256_fmadd_ps(sum_ps, scale, acc0);
         }
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
@@ -130,7 +130,7 @@ accumulate_blklen32_r1c1blk2_zp_is_8_avx2(
     bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, bzp8);
     bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, bzp8);
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         __m256i dot0_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_sign_epi8(bv0_32_epi8, bv0_32_epi8), _mm256_sign_epi8(av0_32_epi8, bv0_32_epi8));
         __m256i dot1_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_sign_epi8(bv1_32_epi8, bv1_32_epi8), _mm256_sign_epi8(av1_32_epi8, bv1_32_epi8));
@@ -161,7 +161,7 @@ accumulate_blklen32_r1c1blk2_zp_is_8_avx2(
         );
 
         acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
@@ -189,7 +189,7 @@ accumulate_blklen32_r1c1blk2_zp_is_8_no_bc_avx2(
     bv0_32_epi8 = _mm256_sub_epi8(bv0_32_epi8, bzp8);
     bv1_32_epi8 = _mm256_sub_epi8(bv1_32_epi8, bzp8);
 
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (vnni) {
         {
             __m256i sum_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_sign_epi8(bv0_32_epi8, bv0_32_epi8), _mm256_sign_epi8(av0_32_epi8, bv0_32_epi8));
@@ -221,7 +221,7 @@ accumulate_blklen32_r1c1blk2_zp_is_8_no_bc_avx2(
             const __m256 scale = _mm256_mul_ps(_mm256_set1_ps(*(scale_b + 1)), scale_a1_8_ps);
             acc0 = _mm256_fmadd_ps(sum_ps, scale, acc0);
         }
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
