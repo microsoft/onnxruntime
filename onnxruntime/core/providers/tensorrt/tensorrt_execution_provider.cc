@@ -3672,6 +3672,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
       }
       trt_engine = trt_state->engine->get();
+      // Check before using trt_engine
+      if (trt_engine == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Invalid TensorRT engine, please rebuild.");
+      }
       if (trt_state->engine_cache_enable) {
         // Serialize engine profile
         SerializeProfileV2(profile_cache_path, shape_ranges);
