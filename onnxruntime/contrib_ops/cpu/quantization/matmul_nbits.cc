@@ -210,7 +210,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else   // defined(ORT_NEURAL_SPEED)
+#else  // defined(ORT_NEURAL_SPEED)
   const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
   if (input_idx == InputIndex::B) {
     if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
