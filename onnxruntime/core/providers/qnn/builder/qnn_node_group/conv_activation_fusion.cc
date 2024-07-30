@@ -17,6 +17,7 @@
 namespace onnxruntime {
 namespace qnn {
 
+// Gets the scale, zero-point, and zero-point type for a QuantizeLinear node that uses per-tensor quantization.
 static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& q_node_unit,
                                      /*out*/ float& scale,
@@ -52,6 +53,7 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
+// Computes the floating point range (rmin, rmax) from a QuantizeLinear node's scale/zero-point.
 static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
                          const NodeUnit& q_node_unit,
                          /*out*/ float& rmin,
@@ -92,6 +94,7 @@ static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
+// Returns true if the Clip in the sequence (Clip -> Q) can be removed because it is made redundant by the Q.
 static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& clip_node_unit,
                              const NodeUnit& q_node_unit,
@@ -123,6 +126,7 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   return true;
 }
 
+// Returns true if the Relu in the sequence (Relu -> Q) can be removed because it is made redundant by the Q.
 static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& q_node_unit) {
   assert(q_node_unit.OpType() == QUANTIZE_LINEAR);
   int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
@@ -148,6 +152,7 @@ static bool CanQRelaceRelu(const QnnModelWrapper& qnn_model_wrapper, const NodeU
   }
 }
 
+// Returns true if the Clip/Relu in the sequence (Clip/Relu -> Q) can be removed because it is made redundant by the Q.
 static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& activation_node_unit,
                                    const NodeUnit& q_node_unit,
@@ -165,6 +170,7 @@ static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   return false;
 }
 
+// Returns the parent DQ nodes for a given node.
 static std::vector<const Node*> FindParentDQNodes(const GraphViewer& graph_viewer, const Node& node) {
   // Get all parent DQ nodes sorted by destination argument index.
   std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
@@ -184,6 +190,8 @@ static std::vector<const Node*> FindParentDQNodes(const GraphViewer& graph_viewe
   return parents;
 }
 
+// Gets the parent DQ nodes for the given Conv node. This fuction checks that the DQs are not a part of
+// any other NodeUnit and that every Conv input comes from a parent DQ.
 static bool GetConvDQs(
     const GraphViewer& graph_viewer,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
@@ -244,6 +252,7 @@ static bool GetConvDQs(
   return true;
 }
 
+// Checks that the input and output data types are valid for a QDQ Conv.
 static bool CheckQDQConvDataTypes(std::array<const NodeUnit*, 3>& dq_node_units,
                                   gsl::not_null<const NodeUnit*> q_node_unit) {
   assert(q_node_unit->OpType() == QUANTIZE_LINEAR);
@@ -271,6 +280,9 @@ static bool CheckQDQConvDataTypes(std::array<const NodeUnit*, 3>& dq_node_units,
   return true;
 }
 
+// Utility function to either validate or create a quantized QNN Conv node. The function creates a temporary
+// custom NodeUnit that excludes the Clip/Relu because it is redundant. This custom NodeUnit is passed to our
+// existing Conv OpBuilder for creation or validation via QNN APIs.
 #define ValidateOnQnn(qnn_model_wrapper, dq_node_units, conv_node_unit, q_node_unit, logger) \
   CreateOrValidateOnQnn((qnn_model_wrapper), (dq_node_units), (conv_node_unit), (q_node_unit), (logger), true)
 #define CreateOnQnn(qnn_model_wrapper, dq_node_units, conv_node_unit, q_node_unit, logger) \
@@ -353,6 +365,8 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, custom_node_unit, logger, validate);
 }
 
+// Traverses graph to check if the given NodeUnit is part of a valid DQ* -> Conv -> Relu/Clip -> Q sequence.
+// If so, returns a IQnnNodeGroup that contains the constituent NodeUnits.
 std::unique_ptr<IQnnNodeGroup> ConvActivationFusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper,
     const NodeUnit& conv_node_unit,
