@@ -245,7 +245,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                     for head_size in head_sizes:
                         for format in formats:
                             for causal in [True, False]:
-                                for has_past_input in [True]:  # TODO(tianleiwu): [True, False]:
+                                for has_past_input in [True, False]:
                                     for has_bias in get_bias_support(format):
                                         sequence_length = 1 if has_past_input else past_sequence_length
                                         past_seq_len = past_sequence_length if has_past_input else 0
@@ -277,7 +277,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
             head_size = head_sizes[i % len(head_sizes)]
             for causal in [True, False]:
                 for format in formats:
-                    for has_past_input in [True]:  # TODO(tianleiwu): [True, False]:
+                    for has_past_input in [True, False]:
                         for has_bias in get_bias_support(format):
                             sequence_length = 1 if has_past_input else past_sequence_length
                             past_seq_len = past_sequence_length if has_past_input else 0

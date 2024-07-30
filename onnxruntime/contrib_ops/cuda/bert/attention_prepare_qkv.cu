@@ -174,10 +174,11 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
                             AttentionData<T>& data,
                             cudaStream_t stream,
                             int max_threads_per_block) {
-  // past_key or past_value is not supported for cross attention; but present_key and present_value are supported.
   assert(parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
-  ORT_ENFORCE(data.past_key == nullptr);
-  ORT_ENFORCE(data.past_value == nullptr);
+  // past_key or past_value is not supported for cross attention
+  // present_key and present_value can be supported in theory, although we do not allow the senario for now.
+  assert(data.past_key == nullptr);
+  assert(data.past_value == nullptr);
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -223,10 +224,120 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
   return Status::OK();
 }
 
+// Return true if the workspace is not needed for Q, K, V inputs, false otherwise.
+// This shall be in sync with the following function PrepareQkv_MHA_NoPast.
+template <typename T>
+bool NoQkvWorkspace_MHA_NoPast(AttentionData<T>& data) {
+  // In PrepareQkv_MHA_NoPast, query, key and value are passed as Q, K and V for the following conditions.
+  return (data.use_memory_efficient_attention || data.use_flash_attention) && data.bias == nullptr;
+}
+
+// For MultiHeadAttention without past state, with Q, K and V inputs
+template <typename T>
+Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
+                             AttentionData<T>& data,
+                             cudaStream_t stream,
+                             int max_threads_per_block) {
+  assert(parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+  assert(data.query != nullptr);
+  assert(data.key != nullptr);
+  assert(data.value != nullptr);
+  assert(data.past_key == nullptr);
+  assert(data.past_value == nullptr);
+  assert(data.present_key == nullptr);
+  assert(data.present_value == nullptr);
+  assert(!parameters.is_unidirectional);
+
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int kv_sequence_length = parameters.kv_sequence_length;
+  const int num_heads = parameters.num_heads;
+  const int qk_head_size = parameters.head_size;
+  const int v_head_size = parameters.v_head_size;
+
+  if (data.fused_cross_attention_kernel != nullptr) {
+    assert(qk_head_size == v_head_size);
+    assert(data.relative_position_bias == nullptr);
+    assert(data.mask_index == nullptr);
+    assert(parameters.hidden_size == parameters.v_hidden_size);
+    assert(data.has_qkv_workspace);
+
+    // For fused cross attention, besides adding bias, K and V needed to be packed:
+    //   Key (BxSxNxH), Value (BxSxNxH) => Q (BxSxNxH), K (BxSxNx2xH)
+    LaunchAddBiasTransposeTrt(
+        stream, max_threads_per_block,
+        batch_size, sequence_length,
+        num_heads, qk_head_size,
+        data.bias, data.query, data.key, data.value, data.q, true, kv_sequence_length);
+
+    data.qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
+  }
+#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
+  else if (data.use_memory_efficient_attention || data.use_flash_attention) {
+    assert(data.relative_position_bias == nullptr);
+
+    if (data.bias != nullptr) {
+      assert(data.has_qkv_workspace);
+      LaunchAddBias(stream, max_threads_per_block,
+                    batch_size, sequence_length, kv_sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.bias, data.query, data.key, data.value, data.q, data.k, data.v);
+    } else {
+      data.q = const_cast<T*>(data.query);
+      data.k = const_cast<T*>(data.key);
+      data.v = const_cast<T*>(data.value);
+    }
+
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+  }
+#endif
+  else if (data.fused_runner != nullptr) {
+    assert(qk_head_size == v_head_size);
+    assert(data.relative_position_bias == nullptr);
+    assert(data.has_qkv_workspace);
+
+    // Query (BxSxNxH), Key (BxSxNxH), Value (BxSxNxH) => Q: BxSxNx(H + H + H)
+    LaunchAddBiasTransposeTrt(
+        stream, max_threads_per_block,
+        batch_size, sequence_length,
+        num_heads, qk_head_size,
+        data.bias, data.query, data.key, data.value, data.q, false, kv_sequence_length);
+
+    data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
+  } else {  // unfused kernel
+    assert(data.has_qkv_workspace);
+    // Query (BxSxNxH) => Q (BxNxSxH)
+    constexpr int format = 0;
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, sequence_length, num_heads, qk_head_size,
+        data.query, data.bias, data.q,
+        true, -1);
+
+    // Key (BxLxNxH) => K (BxNxLxH)
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, qk_head_size,
+        data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, data.k,
+        true, -1);
+
+    // Value (BxLxNxH_v) => K (BxNxLxH_v)
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, v_head_size,
+        data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, data.v,
+        true, -1);
+
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+  }
+
+  return Status::OK();
+}
+
 // This shall be in sync with the following function PrepareQkv_MHA_WithPast_NoBias.
 template <typename T>
-bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& data) {
-  return (data.use_memory_efficient_attention || data.use_flash_attention) && (data.past_key == nullptr);
+constexpr bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& /*data*/) {
+  return false;
 }
 
 // For MultiHeadAttention with kv cache (past or present), but no bias
@@ -246,6 +357,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
   assert(data.present_value != nullptr);
   assert(data.past_key == nullptr && data.past_value == nullptr ||
          data.past_key != nullptr && data.past_value != nullptr);
+  assert(data.has_qkv_workspace);
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -254,37 +366,27 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  if (data.past_key == nullptr /*&& data.present_key != nullptr*/) {
+  // When there is no past state and there is present state, we output K and V directly to present state.
+  if (data.past_key == nullptr && data.present_key != nullptr) {
     data.k = data.present_key;
     data.v = data.present_value;
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  // When there is no past_key/past_value and there is present_key/present_value
   if (data.use_memory_efficient_attention || data.use_flash_attention) {
-    if (data.past_key == nullptr /*&& data.present_key != nullptr*/) {
-      // This does not qkv workspace. May save some memory.
-      data.q = const_cast<T*>(data.query);
-      data.k = const_cast<T*>(data.key);
-      data.v = const_cast<T*>(data.value);
-      data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-    } else {
-      assert(data.has_qkv_workspace);
-      // Query (BxSxNxH)
-      data.q = const_cast<T*>(data.query);
+    // Use oiginal Query (BSNH) since there is no bias.
+    data.q = const_cast<T*>(data.query);
 
-      // Key (BxLxNxH) => K (BxNxLxH)
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                                         max_threads_per_block, false, data.key, data.k));
-      // Value (BxLxNxH) => V (BxNxLxH)
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                                         max_threads_per_block, false, data.value, data.v));
-      data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
-    }
+    // Key (BxLxNxH) => K (BxNxLxH)
+    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                                       max_threads_per_block, false, data.key, data.k));
+    // Value (BxLxNxH) => V (BxNxLxH)
+    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                                       max_threads_per_block, false, data.value, data.v));
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else
 #endif
   {  // unfused kernel
-    assert(data.has_qkv_workspace);
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, data.query, data.q));
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
@@ -318,6 +420,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   assert(data.present_value != nullptr);
   assert(data.past_key == nullptr && data.past_value == nullptr ||
          data.past_key != nullptr && data.past_value != nullptr);
+  assert(data.has_qkv_workspace);
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -326,48 +429,32 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
+  // When there is no past state and there is present state, we output K and V directly to present state.
+  if (data.past_key == nullptr && data.present_key != nullptr) {
+    data.k = data.present_key;
+    data.v = data.present_value;
+  }
+
 #if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  // When there is no past_key/past_value and there is present_key/present_value
   if (data.use_memory_efficient_attention || data.use_flash_attention) {
-    assert(data.has_qkv_workspace);
+    // Query(BxSxNxH) + Bias_Q => Q (BxSxNxH)
+    LaunchAddBias(stream, max_threads_per_block, batch_size, sequence_length, num_heads, qk_head_size,
+                  data.bias, data.query, data.q);
 
-    if (data.past_key == nullptr /*&& data.present_key != nullptr*/) {
-      data.k = data.present_key;
-      data.v = data.present_value;
-    }
+    // Key (BxLxNxH) + Bias_K => K (BxNxLxH)
+    constexpr int format = 0;
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, qk_head_size,
+        data.key, data.bias + num_heads * qk_head_size, data.k, true, -1);
 
-    if (data.present_key == nullptr) {
-      // Add bias: query => q, key => present_key, value => present_value
-      LaunchAddBias(stream, max_threads_per_block,
-                    batch_size, sequence_length, kv_sequence_length,
-                    num_heads, qk_head_size, v_head_size,
-                    data.bias, data.query, data.key, data.value, data.q, data.k, data.v);
+    // Key (BxLxNxH) + Bias_K => K (BxNxLxH)
+    LaunchAddBiasTranspose<T>(
+        stream, 1, format, max_threads_per_block,
+        batch_size, kv_sequence_length, num_heads, v_head_size,
+        data.value, data.bias + 2 * num_heads * qk_head_size, data.v, true, -1);
 
-      data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-    } else {
-      // Add bias for Query
-      if (data.bias != nullptr) {
-        LaunchAddBias(stream, max_threads_per_block, batch_size, sequence_length, num_heads, qk_head_size,
-                      data.bias, data.query, data.q);
-      } else {
-        data.q = const_cast<T*>(data.query);
-      }
-
-      // Key (BxLxNxH) + Bias_K => K (BxNxLxH)
-      constexpr int format = 0;
-      LaunchAddBiasTranspose<T>(
-          stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, qk_head_size,
-          data.key, data.bias + num_heads * qk_head_size, data.k, true, -1);
-
-      // Key (BxLxNxH) + Bias_K => K (BxNxLxH)
-      LaunchAddBiasTranspose<T>(
-          stream, 1, format, max_threads_per_block,
-          batch_size, kv_sequence_length, num_heads, v_head_size,
-          data.value, data.bias + 2 * num_heads * qk_head_size, data.v, true, -1);
-
-      data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
-    }
+    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
   } else
 #endif
   {  // unfused kernel
@@ -378,12 +465,6 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
                               batch_size, sequence_length, num_heads, qk_head_size,
                               data.query, data.bias, data.q,
                               true, -1);
-
-    if (data.past_key == nullptr && data.present_key != nullptr) {
-      assert(data.past_value == nullptr && data.present_value != nullptr);
-      data.k = data.present_key;
-      data.v = data.present_value;
-    }
 
     // Key (BxLxNxH) => K (BxNxLxH)
     LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
@@ -405,8 +486,8 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
 
 // This shall be in sync with the following function PrepareQkv_MHA_PackedQKV.
 template <typename T>
-constexpr bool NoQkvWorkspace_MHA_PackedQKV(AttentionData<T>& /*data*/) {
-  return false;
+bool NoQkvWorkspace_MHA_PackedQKV(AttentionData<T>& data) {
+  return nullptr != data.fused_runner && data.bias == nullptr;
 }
 
 // For MultiHeadAttention without past state, with packed QKV inputs
@@ -422,6 +503,8 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   assert(data.present_value == nullptr);
   assert(parameters.head_size == parameters.v_head_size);
   assert(data.fused_cross_attention_kernel == nullptr);
+  assert(data.has_qkv_workspace);
+  assert(!parameters.is_unidirectional);
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -429,13 +512,8 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  void* fused_runner = data.fused_runner;
-
-  bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
-
   if (data.use_memory_efficient_attention || data.use_flash_attention) {
     // unpack qkv to BSNH.
-    assert(data.has_qkv_workspace);
     constexpr int format = 4;
     T* qkv_add_bias = nullptr;
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
@@ -443,9 +521,12 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                            data.query, data.bias, data.q,
                            true, v_head_size, qkv_add_bias, 3);
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  } else if (use_fused_kernel) {
-    if (data.bias != nullptr) {
-      assert(data.has_qkv_workspace);
+  } else if (nullptr != data.fused_runner) {
+    if (data.bias == nullptr) {
+      // When there is no bias, we can directly use the original packed QKV input.
+      // Need revisit this when we add support for causal.
+      data.q = const_cast<T*>(data.query);
+    } else {  // data.bias != nullptr
       AddBiasTransposePacked<T>(
           data.query, data.key, data.value, data.bias, data.q,
           batch_size, sequence_length,
@@ -454,10 +535,10 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
           nullptr, batch_size * sequence_length,
           stream);
     }
+
     data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
   } else {  // unfused kernel
     // unpack qkv to BNSH
-    assert(data.has_qkv_workspace);
     constexpr int format = 5;
     T* qkv_add_bias = nullptr;
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
@@ -530,114 +611,6 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
                            batch_size, kv_sequence_length, num_heads, qk_head_size,
                            data.key, kv_bias, data.k,
                            true, v_head_size, qkv_add_bias, 2);
-    data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-  }
-
-  return Status::OK();
-}
-
-// This shall be in sync with the following function PrepareQkv_MHA_NoPast.
-template <typename T>
-bool NoQkvWorkspace_MHA_NoPast(AttentionData<T>& data) {
-  return (data.use_memory_efficient_attention || data.use_flash_attention) && data.bias == nullptr;
-}
-
-// For MultiHeadAttention without past state, with Q, K and V inputs
-template <typename T>
-Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
-                             AttentionData<T>& data,
-                             cudaStream_t stream,
-                             int max_threads_per_block) {
-  assert(parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-  assert(data.query != nullptr);
-  assert(data.key != nullptr);
-  assert(data.value != nullptr);
-  assert(!parameters.is_unidirectional);
-
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  const int kv_sequence_length = parameters.kv_sequence_length;
-  const int num_heads = parameters.num_heads;
-  const int qk_head_size = parameters.head_size;
-  const int v_head_size = parameters.v_head_size;
-
-  if (data.fused_cross_attention_kernel != nullptr) {
-    assert(qk_head_size == v_head_size);
-    assert(data.past_key == nullptr);
-    assert(data.present_key == nullptr);
-    assert(data.relative_position_bias == nullptr);
-    assert(data.mask_index == nullptr);
-    assert(parameters.hidden_size == parameters.v_hidden_size);
-    assert(data.has_qkv_workspace);
-
-    // For fused cross attention, besides adding bias, K and V needed to be packed:
-    //   Key (BxSxNxH), Value (BxSxNxH) => Q (BxSxNxH), K (BxSxNx2xH)
-    LaunchAddBiasTransposeTrt(
-        stream, max_threads_per_block,
-        batch_size, sequence_length,
-        num_heads, qk_head_size,
-        data.bias, data.query, data.key, data.value, data.q, true, kv_sequence_length);
-
-    data.qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
-  }
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  else if (data.use_memory_efficient_attention || data.use_flash_attention) {
-    assert(data.relative_position_bias == nullptr);
-
-    if (data.bias != nullptr) {
-      assert(data.has_qkv_workspace);
-      LaunchAddBias(stream, max_threads_per_block,
-                    batch_size, sequence_length, kv_sequence_length,
-                    num_heads, qk_head_size, v_head_size,
-                    data.bias, data.query, data.key, data.value, data.q, data.k, data.v);
-    } else {
-      data.q = const_cast<T*>(data.query);
-      data.k = const_cast<T*>(data.key);
-      data.v = const_cast<T*>(data.value);
-    }
-
-    data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  }
-#endif
-  else if (data.fused_runner != nullptr) {
-    assert(qk_head_size == v_head_size);
-    assert(data.relative_position_bias == nullptr);
-    assert(data.past_key == nullptr);
-    assert(data.present_key == nullptr);
-    assert(data.has_qkv_workspace);
-
-    // Query (BxSxNxH), Key (BxSxNxH), Value (BxSxNxH) => Q: BxSxNx(H + H + H)
-    LaunchAddBiasTransposeTrt(
-        stream, max_threads_per_block,
-        batch_size, sequence_length,
-        num_heads, qk_head_size,
-        data.bias, data.query, data.key, data.value, data.q, false, kv_sequence_length);
-
-    data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
-  } else {  // unfused kernel
-    assert(data.has_qkv_workspace);
-    // Query (BxSxNxH) => Q (BxNxSxH)
-    constexpr int format = 0;
-    LaunchAddBiasTranspose<T>(
-        stream, 1, format, max_threads_per_block,
-        batch_size, sequence_length, num_heads, qk_head_size,
-        data.query, data.bias, data.q,
-        true, -1);
-
-    // Key (BxLxNxH) => K (BxNxLxH)
-    LaunchAddBiasTranspose<T>(
-        stream, 1, format, max_threads_per_block,
-        batch_size, kv_sequence_length, num_heads, qk_head_size,
-        data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, data.k,
-        true, -1);
-
-    // Value (BxLxNxH_v) => K (BxNxLxH_v)
-    LaunchAddBiasTranspose<T>(
-        stream, 1, format, max_threads_per_block,
-        batch_size, kv_sequence_length, num_heads, v_head_size,
-        data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, data.v,
-        true, -1);
-
     data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   }
 
