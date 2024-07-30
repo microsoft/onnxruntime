@@ -21,15 +21,16 @@ jobs:
         --volume $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly:/requirements_torch_nightly \
         ptebic.azurecr.io/internal/aifx/acpt/nightly-ubuntu-cuda-torch-dev \
         bash -c "\
-        COMMIT_ID=\$(python3 -c \"import onnxruntime; print(onnxruntime.get_build_info().split('git-commit-id=')[1].split(',')[0])\") && \
-        echo 'Retrieved ONNX Runtime Commit ID: \$COMMIT_ID' && \
-        git branch && \
-        git checkout \$COMMIT_ID && \
         python3 -m pip install -r /requirements_torch_nightly/requirements.txt && \
         python3 -m pip install cerberus flatbuffers h5py 'numpy>=1.16.6' onnx packaging protobuf sympy 'setuptools>=41.4.0' && \
         pip install --pre -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training && \
         pip install torch-ort && \
         python -m torch_ort.configure && \
+        COMMIT_ID=\$(python3 -c \"import onnxruntime; print(onnxruntime.get_build_info().split('git-commit-id=')[1].split(',')[0])\") && \
+        echo 'Retrieved ONNX Runtime Commit ID: \$COMMIT_ID' && \
+        cd /onnxruntime_src && \
+        git branch && \
+        git checkout \$COMMIT_ID && \
         ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py && \
         ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py"
     displayName: 'Run ORTModule Tests'
