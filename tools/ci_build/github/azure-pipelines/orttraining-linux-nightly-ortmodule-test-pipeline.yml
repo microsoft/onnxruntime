@@ -26,11 +26,6 @@ jobs:
         pip install --pre -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training && \
         pip install torch-ort && \
         python -m torch_ort.configure && \
-        COMMIT_ID=\$(python3 -c \"import onnxruntime; print(onnxruntime.get_build_info().split('git-commit-id=')[1].split(',')[0])\") && \
-        echo 'Retrieved ONNX Runtime Commit ID: \$COMMIT_ID' && \
-        cd /onnxruntime_src && \
-        git branch && \
-        git checkout \$COMMIT_ID && \
         ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py && \
         ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py"
     displayName: 'Run ORTModule Tests'
