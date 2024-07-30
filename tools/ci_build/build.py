@@ -65,7 +65,7 @@ def _check_python_version():
 def _str_to_bool(s):
     """Convert string to bool (in argparse context)."""
     if s.lower() not in ["true", "false"]:
-        raise ValueError("Need bool; got %r" % s)
+        raise ValueError(f"Need bool; got {s!r}")
     return {"true": True, "false": False}[s.lower()]
 
 
@@ -806,7 +806,7 @@ def resolve_executable_path(command_or_path):
 def get_linux_distro():
     try:
         with open("/etc/os-release") as f:
-            dist_info = dict(line.strip().split("=", 1) for line in f.readlines())
+            dist_info = dict(line.strip().split("=", 1) for line in f)
         return dist_info.get("NAME", "").strip('"'), dist_info.get("VERSION", "").strip('"')
     except (OSError, ValueError):
         return "", ""
@@ -1236,7 +1236,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
-        cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
+        cmake_args += [f"-DLLVM_DIR={args.llvm_path}"]
 
     if args.use_cuda and not is_windows():
         nvml_stub_path = cuda_home + "/lib64/stubs"
@@ -1452,7 +1452,7 @@ def generate_build_tree(
     if args.enable_lazy_tensor:
         import torch
 
-        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     if args.use_azure:
@@ -1582,7 +1582,7 @@ def generate_build_tree(
                         else:
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
-                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
+                        cudaflags.append(f'-Xcompiler="{cuda_compile_flags_str}"')
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
@@ -1650,16 +1650,16 @@ def generate_build_tree(
         temp_cmake_args = cmake_args.copy()
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
-                "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
-                "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
+                "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
+                "-DCMAKE_CXX_FLAGS={}".format(" ".join(cxxflags)),
             ]
         if cudaflags is not None and len(cudaflags) != 0:
-            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
-                "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
-                "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
-                "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_EXE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
+                "-DCMAKE_MODULE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
+                "-DCMAKE_SHARED_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
             ]
         run_subprocess(
             [

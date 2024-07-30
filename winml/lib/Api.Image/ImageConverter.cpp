@@ -50,7 +50,8 @@ ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(
   ComPtr<ID3D11Fence> fence;
   UINT comPtrSize = static_cast<UINT>(sizeof(fence.GetAddressOf()));
 
-  if (FAILED(pD3D11Device->GetPrivateData(device_cache.GetFenceGuid(), &comPtrSize, fence.GetAddressOf())) || fence.Get() == nullptr) {
+  if (FAILED(pD3D11Device->GetPrivateData(device_cache.GetFenceGuid(), &comPtrSize, fence.GetAddressOf())) ||
+      fence.Get() == nullptr) {
     // There's no fence on the device, so create a new one
     ComPtr<ID3D11Device5> spD3D11Device5;
     WINML_THROW_IF_FAILED(pD3D11Device->QueryInterface(IID_PPV_ARGS(&spD3D11Device5)));

@@ -279,7 +279,7 @@ Status QnnBackendManager::InitializeQnnLog() {
     }
   }
 
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend");
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -320,7 +320,7 @@ Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
     }
   }
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend");
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -330,8 +330,8 @@ Status QnnBackendManager::InitializeBackend() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend");
+  Qnn_ErrorHandle_t result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error: ", QnnErrorHandleToString(result));
 
   backend_initialized_ = true;
   return Status::OK();
@@ -406,9 +406,9 @@ Status QnnBackendManager::CreateDevice() {
 
   LOGS_DEFAULT(INFO) << "Create device.";
   if (nullptr != qnn_interface_.deviceCreate) {
-    auto result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
+    Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
     if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result));
     }
   }
   device_created_ = true;
@@ -422,9 +422,9 @@ Status QnnBackendManager::ReleaseDevice() {
   }
 
   if (nullptr != qnn_interface_.deviceFree) {
-    auto result = qnn_interface_.deviceFree(device_handle_);
+    Qnn_ErrorHandle_t result = qnn_interface_.deviceFree(device_handle_);
     if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", result);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", QnnErrorHandleToString(result));
     }
   }
 
@@ -451,8 +451,8 @@ Status QnnBackendManager::InitializeProfiling() {
   } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
   }
-  auto result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile!");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
 
   return Status::OK();
 }
@@ -525,13 +525,13 @@ Status QnnBackendManager::CreateContext() {
   const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
 
   Qnn_ContextHandle_t context = nullptr;
-  auto result = qnn_interface_.contextCreate(backend_handle_,
-                                             device_handle_,
-                                             context_configs,
-                                             &context);
+  Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
+                                                          device_handle_,
+                                                          context_configs,
+                                                          &context);
   contexts_.push_back(context);
 
-  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
 
   context_created_ = true;
   return Status::OK();
@@ -544,7 +544,7 @@ Status QnnBackendManager::ReleaseContext() {
 
   bool failed = false;
   for (auto context : contexts_) {
-    auto result = qnn_interface_.contextFree(context, nullptr);
+    Qnn_ErrorHandle_t result = qnn_interface_.contextFree(context, nullptr);
     if (QNN_CONTEXT_NO_ERROR != result) {
       failed = true;
     }
@@ -566,7 +566,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   // Generate all graphs in one single context
   Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(contexts_[0], &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
-    LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
+    LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error: " << QnnErrorHandleToString(rt);
     return nullptr;
   }
 
@@ -581,7 +581,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
                                        required_buffer_size,
                                        &written_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
-    LOGS(*logger_, ERROR) << "Failed to get context binary.";
+    LOGS(*logger_, ERROR) << "Failed to get context binary. Error: " << QnnErrorHandleToString(rt);
     return nullptr;
   }
 
@@ -1014,8 +1014,8 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
-  auto result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile events.");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile events. Error: ", QnnErrorHandleToString(result));
 
   if (num_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_events: " << profile_events << " num_events: " << num_events;
@@ -1073,8 +1073,8 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
     bool tracelogging_provider_ep_enabled) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
-  auto result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile sub events.");
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile sub events. Error: ", QnnErrorHandleToString(result));
 
   if (num_sub_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_sub_events: " << profile_sub_events << " num_sub_events: " << num_sub_events;
@@ -1113,7 +1113,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
     std::ofstream& outfile,
     bool tracelogging_provider_ep_enabled) {
   QnnProfile_EventData_t event_data;
-  auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
   QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
   ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
@@ -1291,6 +1291,15 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
     default:
       return "UNKNOWN_ERROR";
   }
+}
+
+const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
+  const char* error_msg = nullptr;
+  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(error, &error_msg)) {
+    return error_msg;
+  }
+  return "Unknown";
 }
 
 const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {

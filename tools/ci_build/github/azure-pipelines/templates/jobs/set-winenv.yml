@@ -9,10 +9,10 @@ parameters:
     default: false
   - name: PrimaryCUDAVersion
     type: string
-    default: '11.8'
+    default: '12.2'
   - name: SecondaryCUDAVersion
     type: string
-    default: '12.2'
+    default: '11.8'
 
 steps:
   - ${{ if eq(parameters.DownloadCUDA, 'true') }}:

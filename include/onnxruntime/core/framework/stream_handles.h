@@ -32,7 +32,7 @@ class Stream {
     return {};
   };
   // block the host thread until all the tasks in the stream finished.
-  virtual void Flush(){};
+  virtual void Flush() {};
   // The framework may reuse the stream instance for multiple iterations.
   // This is the API that provide a chance to let the device stream cleanup
   // resource at the end of a iteration.
