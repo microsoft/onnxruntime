@@ -29,7 +29,7 @@ jobs:
   pool: ${{ parameters.PoolName }}
 
   variables:
-    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
+    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de --chrom-flags=--disable-accelerated-video-decode'
     runCodesignValidationInjection: false
     CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
   timeoutInMinutes: 60
