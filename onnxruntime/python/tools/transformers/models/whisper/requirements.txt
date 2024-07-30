@@ -7,7 +7,9 @@ soundfile
 librosa
 optimum
 onnxruntime-extensions>=0.9.0
-onnx==1.16.1
+# git+http://github.com/onnx/onnx.git@84051888d0943883a0edbf683f68c05ca3b28c40#egg=onnx
+--extra-index-url https://pypi.org/simple
+onnx --pre
 protobuf==3.20.2
 numpy==1.23.3
 psutil

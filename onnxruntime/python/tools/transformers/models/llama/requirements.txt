@@ -1,7 +1,9 @@
 optimum>=1.14.1
 transformers>=4.33.2,<= 4.37.2
 torch>=2.2.0
-onnx==1.16.1
+# git+http://github.com/onnx/onnx.git@84051888d0943883a0edbf683f68c05ca3b28c40#egg=onnx
+--extra-index-url https://pypi.org/simple
+onnx --pre
 datasets>=2.8.0
 protobuf==3.20.2
 psutil
