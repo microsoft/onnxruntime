@@ -152,7 +152,7 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() try {
-  if (initialization_status_ == InitializationStatus::NoitInitialized) {
+  if (initialization_status_ == InitializationStatus::NotInitialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
     if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
       initialization_status_ == InitializationStatus::Initializing;
