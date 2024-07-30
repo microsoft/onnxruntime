@@ -1576,9 +1576,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // distributed the compute time won't stay synced. Typically in
     // the hybrid case the P cores finish first (and are thus waiting)
     // which is essentially a priority inversion.
-    const int pref_spin_count = kIsHybrid ? 5000 : 10000;
+    constexpr int pref_spin_count = kIsHybrid ? 5000 : 10000;
     const int spin_count = allow_spinning_ ? pref_spin_count : 0;
-    const int steal_count = pref_spin_count / (kIsHybrid ? 25 : 100);
+    constexpr int steal_count = pref_spin_count / (kIsHybrid ? 25 : 100);
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
