@@ -54,6 +54,7 @@ accumulate_blklen32_r2c1blk2_avx2(
     // const __m256i bv1_32_epi8 = _mm256_and_si256(_mm256_srli_epi16(bv_packed, 4), low_mask);
     __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32~63
 
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     if constexpr (vnni) {
         __m256 scale_b_2_ps = _mm256_castpd_ps(_mm256_broadcast_sd((double*)scale_b));
         {
@@ -78,6 +79,7 @@ accumulate_blklen32_r2c1blk2_avx2(
             acc1 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc1);
         }
     } else {
+#endif
         //{
             const __m256i dot0_16_epi16 = _mm256_maddubs_epi16(bv0_32_epi8, av00_32_epi8);
             const __m256i dot1_16_epi16 = _mm256_maddubs_epi16(bv1_32_epi8, av01_32_epi8);
@@ -106,7 +108,9 @@ accumulate_blklen32_r2c1blk2_avx2(
             __m256 scale_8_ps_ = _mm256_permute_ps(_mm256_mul_ps(scale_a1_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
             acc1 = _mm256_fmadd_ps(sum_ps_, scale_8_ps_, acc1);
         //}
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     }
+#endif
 }
 
 template <bool vnni>
@@ -126,6 +130,7 @@ accumulate_blklen32_r1c1blk2_avx2(
     __m256i bv0_32_epi8 = _mm256_and_si256(bv_packed, low_mask);  // 0~31
     __m256i bv1_32_epi8 = _mm256_srli_epi16(_mm256_sub_epi8(bv_packed, bv0_32_epi8), 4);  // 32~63
 
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     if constexpr (vnni) {
         const __m256i dot0_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av00_32_epi8);
         const __m256i dot1_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv1_32_epi8, av01_32_epi8);
@@ -139,6 +144,7 @@ accumulate_blklen32_r1c1blk2_avx2(
         __m256 scale_8_ps = _mm256_permute_ps(_mm256_mul_ps(scale_a0_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
         acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
     } else {
+#endif
         const __m256i dot0_16_epi16 = _mm256_maddubs_epi16(bv0_32_epi8, av00_32_epi8);
         const __m256i dot1_16_epi16 = _mm256_maddubs_epi16(bv1_32_epi8, av01_32_epi8);
         const __m256i sum_16_epi16 = _mm256_hadd_epi16(dot0_16_epi16, dot1_16_epi16);
@@ -152,7 +158,9 @@ accumulate_blklen32_r1c1blk2_avx2(
         // 1 0 1 0 1 0 1 0 -> 1 1 0 0 1 1 0 0
         __m256 scale_8_ps = _mm256_permute_ps(_mm256_mul_ps(scale_a0_2_ps, scale_b_2_ps), _MM_SHUFFLE(1, 1, 0, 0));
         acc0 = _mm256_fmadd_ps(sum_ps, scale_8_ps, acc0);
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     }
+#endif
 }
 
 template<bool vnni>
@@ -171,15 +179,19 @@ accumulate_blklen32_r2c1blk1_avx2(
     const __m128i bv_packed0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
     __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
     bv_32_epi8 = _mm256_and_si256(_mm256_set1_epi8(0x0F), bv_32_epi8);
-    
+
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     if constexpr (vnni) {
         accumulate_1blk_dot_vnni(av00_32_epi8, bv_32_epi8, combined_scale00, acc0);
         accumulate_1blk_dot_vnni(av10_32_epi8, bv_32_epi8, combined_scale10, acc1);
     } else {
+#endif
         __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_32_epi8, bv_32_epi8), 15);
         accumulate_1blk_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one_16_epi16, acc0);
         accumulate_1blk_dot(av10_32_epi8, bv_32_epi8, combined_scale10, one_16_epi16, acc1);
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     }
+#endif
 }
 
 template <bool vnni>
@@ -196,12 +208,16 @@ accumulate_blklen32_r1c1blk1_avx2(
     __m256i bv_32_epi8 = _mm256_set_m128i(_mm_srli_epi16(bv_packed0, 4), bv_packed0);
     bv_32_epi8 = _mm256_and_si256(_mm256_set1_epi8(0x0F), bv_32_epi8);
 
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     if constexpr (vnni) {
         accumulate_1blk_dot_vnni(av00_32_epi8, bv_32_epi8, combined_scale00, acc0);
     } else {
+#endif
         __m256i one_16_epi16 = _mm256_srli_epi16(_mm256_cmpeq_epi16(bv_32_epi8, bv_32_epi8), 15);
         accumulate_1blk_dot(av00_32_epi8, bv_32_epi8, combined_scale00, one_16_epi16, acc0);
+#if !defined(__GNUC__) || (__GNUC__ > 9)
     }
+#endif
 }
 
 template <bool vnni>
