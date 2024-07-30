@@ -1751,6 +1751,7 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
  * @brief Indirect Depthwise convolution for fp16
  * @param Input         Supplies the indirect buffer for NHWC input
  * @param Filter        Supplies the address for filter tensor
+ * @param Bias          Supplies the address for 1D bias tensor B, has size of M
  * @param Output        Supplies the address for the result tensor
  * @param Channels      # of input channels
  * @param OutputCount   # of output pixels
@@ -1762,6 +1763,7 @@ MLASCALL
 MlasConvDepthwise(
     const MLAS_FP16* const* Input,
     const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,

@@ -1959,7 +1959,9 @@ TEST(CApiTest, get_allocator_cpu) {
 #ifdef USE_CUDA
 TEST(CApiTest, get_allocator_cuda) {
   Ort::SessionOptions session_options;
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
 
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -2076,7 +2078,9 @@ TEST(CApiTest, io_binding_cuda) {
 #ifdef USE_TENSORRT
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
 #else
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
 #endif
   Ort::Session session(*ort_env, MODEL_URI, session_options);
 
@@ -3438,7 +3442,9 @@ TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
 #else
   // arena is enabled but the sole initializer will still be allocated from non-arena memory
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -3890,7 +3896,9 @@ TEST(CApiTest, GitHubIssue10179) {
     try {
       const auto* model_path = MODEL_URI;
       Ort::SessionOptions session_options{};
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      OrtCUDAProviderOptionsV2* options;
+      Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+      session_options.AppendExecutionProvider_CUDA_V2(*options);
       Ort::Session session{*ort_env, model_path, session_options};
     } catch (const std::exception& e) {
       std::cerr << "exception: " << e.what() << "\n";
@@ -3920,7 +3928,9 @@ TEST(CApiTest, GitHubIssue10179) {
 TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
   const auto* model_path = SEQUENCE_MODEL_URI_2;
   Ort::SessionOptions session_options{};
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  OrtCUDAProviderOptionsV2* options;
+  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  session_options.AppendExecutionProvider_CUDA_V2(*options);
   Ort::Session session{*ort_env, model_path, session_options};
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);

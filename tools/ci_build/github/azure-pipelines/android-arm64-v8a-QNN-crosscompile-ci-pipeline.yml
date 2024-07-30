@@ -35,7 +35,7 @@ parameters:
 
 jobs:
 - job: Build_QNN_EP
-  pool: onnxruntime-qnn-ubuntu-2004-cpu
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   timeoutInMinutes: 30
   workspace:
     clean: all
@@ -46,6 +46,10 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
+  - script: |
+      env | grep ANDROID
+    displayName: View Android ENVs
+
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
@@ -55,13 +59,6 @@ jobs:
   - template: templates/jobs/download_linux_qnn_sdk.yml
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
-
-  - script: |
-      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-      export ANDROID_HOME=/usr/local/lib/android/sdk
-      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
-      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
-    displayName: set Android ENVs
 
   - script: |
       set -e -x
