@@ -371,7 +371,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
         data[i].Bias = bias_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
         data[i].ldc = N;
-        data[i].node_name = this->Node().Name();
       }
       MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
                           thread_pool);
