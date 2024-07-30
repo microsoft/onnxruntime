@@ -117,7 +117,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int num_present = static_cast<int>(present_key != nullptr) + static_cast<int>(present_value != nullptr);
   if (num_past == 0 && num_present == 0) {
     // It is valid case without past state.
-  } else if (num_past == 2 && num_present == 2 || num_past == 0 && num_present == 2) {
+  } else if ((num_past == 2 && num_present == 2) || (num_past == 0 && num_present == 2)) {
     if (parameters.qkv_format == AttentionQkvFormat::QKV_BSN3H) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
@@ -127,7 +127,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     if (parameters.qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Inputs 'past_key', 'past_value', 'present_key' and 'present_value' shall be empty for packed QKV format");
+          "Inputs 'past_key', 'past_value', 'present_key' and 'present_value' shall be empty for packed KV format");
     }
 
     if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
@@ -138,7 +138,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   } else {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
-        "Inputs 'past_key', 'past_value', 'present_key' and 'present_value' shall be all provided, or all empty, or only present_key and present_value are provided");
+        "Inputs 'past_key', 'past_value', 'present_key' and 'present_value' shall be all provided, "
+        "or all empty, or only present_key and present_value are provided");
   }
 
   MHARunner* fused_runner = nullptr;
@@ -146,8 +147,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-
-  bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
@@ -159,7 +158,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.num_heads,
                                                               parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
-  if (use_flash_attention && key == nullptr && value == nullptr &&
+  if (use_flash_attention && parameters.qkv_format == AttentionQkvFormat::QKV_BS3NH &&
       parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
   }
@@ -214,7 +213,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == relative_position_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
       nullptr == past_key && nullptr == present_key &&
-      (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
+      (nullptr == key_padding_mask || AttentionMaskType::MASK_1D_KEY_SEQ_LEN) &&
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
@@ -238,10 +237,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int length_threshold = this->kernel_options_->MinSeqLenForEfficientAttentionFp32();
-  bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
+  bool is_long_sequence = std::is_same<T, MLFloat16>::value ||  // sequence length threshold is 0 for FP16
                           parameters.sequence_length >= length_threshold ||
                           parameters.kv_sequence_length >= length_threshold;
 
+  // Check whether the relative position bias alignment is good for memory efficient attention.
   bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
   bool use_memory_efficient_attention =
@@ -250,10 +250,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       fused_cross_attention_kernel == nullptr &&
       !disable_memory_efficient_attention_ &&
       is_long_sequence &&
-      //! past_no_bias &&
       (relative_position_bias == nullptr || is_good_for_rpb) &&
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+      has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
+                                     parameters.head_size, parameters.v_head_size);
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif

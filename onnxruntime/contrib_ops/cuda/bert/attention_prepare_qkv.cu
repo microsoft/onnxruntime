@@ -273,8 +273,6 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
   }
 #if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
   else if (data.use_memory_efficient_attention || data.use_flash_attention) {
-    assert(data.relative_position_bias == nullptr);
-
     if (data.bias != nullptr) {
       LaunchAddBias(stream, max_threads_per_block,
                     batch_size, sequence_length, kv_sequence_length,
@@ -516,6 +514,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                            true, v_head_size, qkv_add_bias, 3);
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else if (nullptr != data.fused_runner) {
+    assert(nullptr == relative_position_bias);
     if (data.bias == nullptr) {
       // When there is no bias, we can directly use the original packed QKV input.
       // Need revisit this when we add support for causal.
