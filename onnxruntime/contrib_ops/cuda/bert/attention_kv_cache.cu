@@ -270,7 +270,8 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
     data.k = data.present;
     data.v = data.present + batch_size * num_heads * total_sequence_length * qk_head_size;
   } else  { // MultiHeadAttention op
-    ORT_ENFORCE(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH || AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+    ORT_ENFORCE(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+                data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
     if (nullptr != data.present_key) {
       if (nullptr != data.past_key) {
         assert(data.past_key != data.k);
