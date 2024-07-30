@@ -229,7 +229,7 @@
   set_target_properties(onnxruntime_providers_rocm PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_ROCM_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_rocm
-          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} /onnxruntime/core/providers/rocm
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/rocm
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
