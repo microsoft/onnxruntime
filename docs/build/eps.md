@@ -613,6 +613,8 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 
 * Install [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/docs-6.0.0/)
   * The ROCm execution provider for ONNX Runtime is built and tested with ROCm6.0.0
+* Install [hipify-clang](https://rocm.docs.amd.com/projects/HIPIFY/en/latest/hipify-clang.html)
+  * This is required for the build target: generate_hipified_files
 
 ### Build Instructions
 {: .no_toc }
