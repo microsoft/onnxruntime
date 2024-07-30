@@ -390,7 +390,7 @@ Q4Int8GemmM1C1BlkLen32Avx2(
     auto* SumPtr = C;
 
     const __m256i low_mask = _mm256_set1_epi8(0x0F);
-    const __m256i bzp8 = _mm256_set1_epi8(8);
+    [[maybe_unused]] const __m256i bzp8 = _mm256_set1_epi8(8);
     for (size_t n = 0; n < CountN; n++) {
         const std::byte* QuantAPtr = QuantA;
         const float* QuantAScalePtr = QuantAScale;

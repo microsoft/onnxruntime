@@ -201,6 +201,7 @@ Q4Int8GemmM1C1BlkLen64Avx2(
     assert(CountN < NCols4);
 
     const __m256i low_mask = _mm256_set1_epi8(0x0F);
+    [[maybe_unused]] const __m256i bzp8 = _mm256_set1_epi8(8);
 
     const std::byte* QuantBDataColPtr = QuantBData;
     const float* QuantBScaleColPtr = QuantBScale;
@@ -213,15 +214,14 @@ Q4Int8GemmM1C1BlkLen64Avx2(
         const float* QuantAScalePtr = QuantAScale;
         const std::byte* QuantBDataPtr = QuantBDataColPtr;
         const float* QuantBScalePtr = QuantBScaleColPtr;
-        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;     
+        const std::byte* QuantBZeroPointPtr = QuantBZeroPointColPtr;
 
         __m256 acc0 = _mm256_setzero_ps();
         for (size_t k = 0; k < BlockCountK; ++k) {
-            const bool is_lower_half_byte_zp = (k % 2) == 0;
+            [[maybe_unused]] const bool is_lower_half_byte_zp = (k % 2) == 0;
             for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                 const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
                 const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
-                const __m256i bzp8 = _mm256_set1_epi8(8);
 
                 if constexpr (HasZeroPoint) {
                     accumulate_blklen64_r1c1blk1_zp_avx2(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, QuantBZeroPointPtr, is_lower_half_byte_zp, acc0, low_mask);
