@@ -378,7 +378,7 @@ jsepDownload:_pp_")
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
-      "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync','jsepDownload']"
+      "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopyAsync']"
     )
     set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js)
   endif()
