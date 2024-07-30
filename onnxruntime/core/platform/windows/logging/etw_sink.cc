@@ -137,11 +137,11 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 EtwRegistrationManager::~EtwRegistrationManager() {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.clear();
-  if (initialization_status_ == InitializationStatus::Intialized ||
+  if (initialization_status_ == InitializationStatus::Initialized ||
       initialization_status_ == InitializationStatus::Initializing) {
     std::lock_guard<OrtMutex> init_lock(init_mutex_);
     assert(initialization_status_ != InitializationStatus::Initializing);
-    if (initialization_status_ == InitializationStatus::Intialized) {
+    if (initialization_status_ == InitializationStatus::Initialized) {
       ::TraceLoggingUnregister(etw_provider_handle);
       initialization_status_ = InitializationStatus::NotInitialized;
     }
@@ -152,7 +152,7 @@ EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() try {
-  if (initialization_status_ == InitializationStatus::NoitIntialized) {
+  if (initialization_status_ == InitializationStatus::NoitInitialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
     if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
       initialization_status_ == InitializationStatus::Initializing;
