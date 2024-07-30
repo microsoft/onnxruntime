@@ -125,7 +125,7 @@ Q4Int8GemmM1C4BlkLen64Avx2(
 
         __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
         for (size_t k = 0; k < BlockCountK; ++k) {
-            const bool is_lower_half_byte_zp = (k % 2) == 0;
+            [[maybe_unused]] const bool is_lower_half_byte_zp = (k % 2) == 0;
             for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                 const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
                 const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
