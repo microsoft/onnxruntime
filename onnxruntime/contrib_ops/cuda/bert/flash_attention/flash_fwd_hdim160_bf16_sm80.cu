@@ -8,9 +8,9 @@
 namespace onnxruntime {
 namespace flash {
 
-template<>
+template <>
 void run_mha_fwd_<cutlass::bfloat16_t, 160>(Flash_fwd_params& params, cudaStream_t stream) {
-    run_mha_fwd_hdim160<cutlass::bfloat16_t>(params, stream);
+  run_mha_fwd_hdim160<cutlass::bfloat16_t>(params, stream);
 }
 
 }  // namespace flash

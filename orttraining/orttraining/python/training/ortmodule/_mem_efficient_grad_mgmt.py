@@ -26,14 +26,6 @@ def get_params_connected_to_pull_param_trigger(
     return {k: v for k, v in named_params if v.requires_grad and k in onnx_initializer_names}
 
 
-def get_params_not_connected_to_pull_param_trigger(
-    named_params: dict[str, torch.nn.parameter.Parameter], exported_model: ModelProto
-):
-    # Be noted, some parameters might not in graph input because they are not used in forward, so we filtered them also.
-    onnx_initializer_names = {p.name for p in exported_model.graph.input}
-    return [v for k, v in named_params if not v.requires_grad and k in onnx_initializer_names]
-
-
 def post_processing_enable_mem_efficient_training(
     exported_model: ModelProto,
     named_params: dict[str, torch.nn.parameter.Parameter],
@@ -138,7 +130,7 @@ def _create_param_retrieval_function(
 
     Args:
         trainable_named_params: The trainable named parameters.
-        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-alloced just once
+        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-allocated just once
             before model execution, later it will be reused by each iteration. This could save the unnecessary
             overhead allocating for each iteration run.
 

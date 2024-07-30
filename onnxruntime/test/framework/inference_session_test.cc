@@ -1278,7 +1278,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   }
 }
 
-static void CreateFuseOpModel(const std::string& model_file_name) {
+static void CreateFuseOpModel(const PathString& model_file_name) {
   onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -1312,7 +1312,7 @@ static void CreateFuseOpModel(const std::string& model_file_name) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  std::string model_file_name = "execution_provider_test_graph.onnx";
+  PathString model_file_name = ORT_TSTR("execution_provider_test_graph.onnx");
   CreateFuseOpModel(model_file_name);
 
   SessionOptions so;
@@ -1365,7 +1365,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
-  std::string model_file_name = "fused_node_shape_inference_test_graph.onnx";
+  PathString model_file_name = ORT_TSTR("fused_node_shape_inference_test_graph.onnx");
 
   CreateFuseOpModel(model_file_name);
 
@@ -1393,14 +1393,14 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
 }
 
 TEST(ExecutionProviderTest, OpKernelInfoCanReadConfigOptions) {
-  std::string model_file_name = "OpKernelInfoCanReadConfigOptions.onnx";
+  PathString model_file_name = ORT_TSTR("OpKernelInfoCanReadConfigOptions.onnx");
   CreateFuseOpModel(model_file_name);
 
   SessionOptions so;
   so.session_logid = "ExecutionProviderTest.OpKernelInfoCanReadConfigOptions";
 
   // add a config key that if read causes the Fuse op kernel to throw in the ctor. this is just to test the value is passed
-  // through in the simplest way, as the kernel is constructed in InferenceSession::Intialize so we don't need to
+  // through in the simplest way, as the kernel is constructed in InferenceSession::Initialize so we don't need to
   // actually run the model.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ThrowInKernelCtor", "1"));
 
@@ -1580,7 +1580,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "3-layer-nested-subgraph-test.onnx";
+  PathString model_file_name = ORT_TSTR("3-layer-nested-subgraph-test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
   ASSERT_TRUE(status.IsOK());
 
@@ -1732,7 +1732,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "2-layer-nested-subgraph-test.onnx";
+  PathString model_file_name = ORT_TSTR("2-layer-nested-subgraph-test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
   ASSERT_TRUE(status.IsOK());
 

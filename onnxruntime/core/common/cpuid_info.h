@@ -61,7 +61,7 @@ class CPUIDInfo {
 
   /**
    * @brief Some ARMv8 power efficient core has narrower 64b load/store
-   *        that needs specialized optimiztion in kernels
+   *        that needs specialized optimization in kernels
    * @return whether the indicated core has narrower load/store device
    */
   bool IsCoreArmv8NarrowLd(uint32_t coreId) const {
@@ -73,7 +73,7 @@ class CPUIDInfo {
 
   /**
    * @brief Some ARMv8 power efficient core has narrower 64b load/store
-   *        that needs specialized optimiztion in kernels
+   *        that needs specialized optimization in kernels
    * @return whether the current core has narrower load/store device
    */
   bool IsCurrentCoreArmv8NarrowLd() const {

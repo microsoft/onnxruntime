@@ -364,6 +364,8 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
+    - template: set-version-number-variables-step.yml
+
     # Reconstruct the build dir
     - task: PowerShell@2
       displayName: 'Extract native libraries for addition to nuget native package'
@@ -376,9 +378,9 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)'
       displayName: 'Create models link'
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.1
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.1
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install mobile workloads
@@ -403,7 +405,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:

@@ -46,11 +46,12 @@ class ApiValueInfo final : public api::ValueInfoRef {
 class ApiTensor final : public api::TensorRef {
  private:
   const onnx::TensorProto& tensor_proto_;
-  const Path& model_path_;
+  const std::filesystem::path& model_path_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator)
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+                     AllocatorPtr cpu_allocator)
       : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
@@ -289,10 +290,12 @@ std::vector<uint8_t> ApiTensor::Data() const {
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
   onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_,
                                                 tensor_proto_, tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
   const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
+  // TODO: the returned data is unaligned, which does not meet the alignment requirement that mlas requires. Because
+  // the returned type is a vector, not a Tensor or tensor buffer that is allocated from a CPU allocator.
   return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
@@ -554,7 +557,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath(),
                                                 *tensor_proto, in_tensor));
 
   ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
@@ -763,10 +766,10 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(data.data(), data.size());
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+  utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();

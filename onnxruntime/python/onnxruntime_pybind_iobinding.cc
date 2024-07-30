@@ -155,11 +155,7 @@ void addIoBindingMethods(pybind11::module& m) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
-      .def(
-          "get_outputs", [](const SessionIOBinding* io_binding) -> const std::vector<OrtValue>& {
-            return io_binding->Get()->GetOutputs();
-          },
-          py::return_value_policy::reference_internal)
+      .def("get_outputs", [](const SessionIOBinding* io_binding) -> const std::vector<OrtValue>& { return io_binding->Get()->GetOutputs(); }, py::return_value_policy::reference_internal)
       .def("copy_outputs_to_cpu", [](const SessionIOBinding* io_binding) -> py::list {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
 
@@ -180,8 +176,7 @@ void addIoBindingMethods(pybind11::module& m) {
           }
           ++pos;
         }
-        return result;
-      });
+        return result; });
 }
 
 }  // namespace python

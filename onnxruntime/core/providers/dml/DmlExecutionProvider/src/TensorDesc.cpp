@@ -201,7 +201,7 @@ TensorDesc::TensorDesc(
     assert(m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType));
 }
 
-gsl::span<const uint32_t> TensorDesc::GetStrides() const
+gsl::span<const uint32_t> TensorDesc::GetStrides() const noexcept
 {
     if (m_bufferTensorDesc.Strides == nullptr)
     {
@@ -212,14 +212,14 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
 
 void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
-    m_bufferTensorDesc.Strides = strides.empty() ? nullptr : strides.data();
-
     if (!strides.empty())
     {
         ML_CHECK_VALID_ARGUMENT(strides.size() <= std::size(m_strides));
         ML_CHECK_VALID_ARGUMENT(strides.size() == m_bufferTensorDesc.DimensionCount);
         std::copy(strides.begin(), strides.end(), m_strides);
     }
+
+    m_bufferTensorDesc.Strides = strides.empty() ? nullptr : m_strides;
 
     m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
         m_bufferTensorDesc.DataType,
@@ -228,7 +228,7 @@ void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
         strides.empty() ? nullptr : m_strides);
 }
 
-DML_TENSOR_DESC TensorDesc::GetDmlDesc()
+DML_TENSOR_DESC TensorDesc::GetDmlDesc() noexcept
 {
     if (m_tensorType == DML_TENSOR_TYPE_INVALID)
     {
@@ -289,6 +289,15 @@ void TensorDesc::ForceUnsignedDataType()
     }
 }
 
+// Add additional padding 1's to ensure the count is at least that large.
+void TensorDesc::EnsureDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
+{
+    if (m_bufferTensorDesc.DimensionCount < newDimensionCount)
+    {
+        SetDimensionCount(newDimensionCount, alignment);
+    }
+}
+
 void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment)
 {
     ML_CHECK_VALID_ARGUMENT(newDimensionCount <= MaximumDimensionCount);
@@ -321,38 +330,48 @@ void TensorDesc::SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignm
     m_bufferTensorDesc.DimensionCount = newDimensionCount;
 }
 
-// Uses dimensionMapping to reorder m_sizes and m_strides to match specific Tensor layout
+void TensorDesc::SetDimensionsAndStrides(gsl::span<const uint32_t> sizes, gsl::span<const uint32_t> strides)
+{
+    static_assert(sizeof(m_sizes) == sizeof(m_strides));
+    ML_CHECK_VALID_ARGUMENT(sizes.size() <= std::size(m_sizes));
+    ML_CHECK_VALID_ARGUMENT(strides.empty() || strides.size() == sizes.size());
+
+    std::copy(sizes.begin(), sizes.end(), m_sizes);
+    m_bufferTensorDesc.DimensionCount = static_cast<uint32_t>(sizes.size());
+    SetStrides(strides);
+}
+
 void TensorDesc::PermuteDimensions(gsl::span<const uint32_t> dimensionMapping, const TensorAxis alignment)
 {
+    const uint32_t oldRank = m_bufferTensorDesc.DimensionCount;
     EnsureStridesExist();
     SetDimensionCount(static_cast<uint32_t>(dimensionMapping.size()), alignment);
 
-    // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping
-    std::vector<uint32_t> tempSizes{m_sizes, m_sizes + MaximumDimensionCount};
-    std::vector<uint32_t> tempStrides{m_strides, m_strides + MaximumDimensionCount};
+    // Shuffle m_sizes and m_strides according to the indexes pointed by dimensionMapping.
+    // Note using MaximumDimensionCount instead of oldRank is intentional here, because the old rank could
+    // be smaller or larger than the new rank, but it will never be larger than MaximumDimensionCount.
+    std::vector<uint32_t> oldSizes{m_sizes, m_sizes + MaximumDimensionCount};
+    std::vector<uint32_t> oldStrides{m_strides, m_strides + MaximumDimensionCount};
 
     for (size_t i = 0; i < dimensionMapping.size(); i++)
     {
-        m_sizes[i] = tempSizes[dimensionMapping[i]];
-        m_strides[i] = tempStrides[dimensionMapping[i]];
+        uint32_t sourceAxis = dimensionMapping[i];
+        m_sizes[i] = sourceAxis < oldRank ? oldSizes[sourceAxis] : 1;
+        m_strides[i] = sourceAxis < oldRank ? oldStrides[sourceAxis] : 0;
     }
 
     m_bufferTensorDesc.Sizes = m_sizes;
     m_bufferTensorDesc.Strides = m_strides;
 }
 
-void TensorDesc::EnsureStridesExist()
+void TensorDesc::EnsureStridesExist() noexcept
 {
     if (m_bufferTensorDesc.Strides != nullptr)
     {
-        // Strides are populated
+        // Strides are already populated
         return;
     }
 
-    uint32_t stride = 1;
-    for (uint32_t i = m_bufferTensorDesc.DimensionCount; i-- > 0;)
-    {
-        m_strides[i] = stride;
-        stride *= m_sizes[i];
-    }
+    GetDescendingPackedStrides({m_sizes, m_bufferTensorDesc.DimensionCount}, {m_strides, m_bufferTensorDesc.DimensionCount});
+    m_bufferTensorDesc.Strides = m_strides;
 }

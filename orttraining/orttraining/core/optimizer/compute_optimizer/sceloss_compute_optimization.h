@@ -32,10 +32,10 @@ namespace onnxruntime {
  * 2. Its 2nd output (log_prob) MUST NOT be a graph output and MUST NOT be consumed by other nodes.
  * 3. Its ignore_index exists and is a constant scalar value.
  * 4. Its 2nd input label's input node is not a `ShrunkGather` node (to avoid this transformer duplicated applied).
- * 5. Its 2nd input label is 1) a graph input or 2) output of a Reshape node taking a graph input as its data input.
+ * 5. Following PythonOp (FlagAndPrintDensity).
  *
  *
- * After the transformation:
+ * After the transformation (PythonOp (FlagAndPrintDensity) is removed unless user need to print density for each step):
  *                                        labels [token_count]
  *                                            \_______
  *                                             \       \

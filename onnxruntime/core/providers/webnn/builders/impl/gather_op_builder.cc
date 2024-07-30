@@ -42,6 +42,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val indices = model_builder.GetOperand(input_defs[1]->Name());
   emscripten::val options = emscripten::val::object();
   options.set("axis", axis);
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("gather", input, indices, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

@@ -575,10 +575,8 @@ Status FusedAttentionTrt(
   }
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(qkv, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len, qkv, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
@@ -631,6 +629,8 @@ Status FlashAttention(
           data.output,
           cu_seqlens_q,
           cu_seqlens_k,
+          nullptr,  // seqused_k
+          nullptr,  // block_table
           softmax_lse_buffer,
           batch_size,
           num_heads,
@@ -640,7 +640,7 @@ Status FlashAttention(
           sequence_length,
           scale,
           false,  // is causal
-          false  // is bf16
+          false   // is bf16
           ));
 
   DUMP_TENSOR_INIT();
