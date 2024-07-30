@@ -217,7 +217,7 @@ dependencies {
     androidTestImplementation 'androidx.test:runner:1.4.0'
     androidTestImplementation 'androidx.test:rules:1.4.0'
 
-cd     implementation project(':onnxruntime-react-native')
+    implementation project(':onnxruntime-react-native')
     // specify ORT dependency here so it can be found in libs flatDir repository
     implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 }
