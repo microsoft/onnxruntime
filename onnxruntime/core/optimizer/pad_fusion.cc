@@ -12,7 +12,7 @@ namespace onnxruntime {
  * It matches following pattern:
  *     Pad
  *      |
- *   Conv/MaxPool
+ *   Conv/MaxPool/AveragePool
  */
 bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   // if Pad has input axis, don't fuse it.
@@ -28,6 +28,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
 
   const Node& child_node = *node.OutputNodesBegin();
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {1, 7, 10, 11, 19}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
     return false;
   }
