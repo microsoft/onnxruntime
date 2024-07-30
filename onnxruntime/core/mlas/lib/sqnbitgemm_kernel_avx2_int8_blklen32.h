@@ -19,6 +19,7 @@ accumulate_1blk_dot(const __m256i& av_32_epi8, const __m256i& bv_32_epi8,
     acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
 }
 
+#if !defined(__GNUC__) || (__GNUC__ > 10)
 MLAS_FORCEINLINE void
 accumulate_1blk_dot_vnni(const __m256i& av_32_epi8, const __m256i& bv_32_epi8, const float& combined_scale, __m256& acc)
 {
@@ -26,6 +27,7 @@ accumulate_1blk_dot_vnni(const __m256i& av_32_epi8, const __m256i& bv_32_epi8, c
     const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
     acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
 }
+#endif
 
 template <bool vnni>
 static MLAS_FORCEINLINE void
