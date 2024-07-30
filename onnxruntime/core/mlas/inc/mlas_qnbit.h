@@ -22,7 +22,6 @@ Abstract:
 
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
-#include <string>
 
 /**
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
@@ -47,7 +46,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;               ///< address of A (float32 matrix)
     size_t lda = 0;                         ///< leading dimension of A
     const void* QuantBDataWorkspace;        ///< address of quantized B (quantized n-bit int values)
-    const std::byte* PackedQuantBData = nullptr;       
+    const std::byte* PackedQuantBData = nullptr;
     const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
     const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
     const float* QuantBBlkSum = nullptr;    ///< optional address of scale * zp, one per block
@@ -57,7 +56,6 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
-    std::string node_name = "";
 };
 
 /**
@@ -171,17 +169,20 @@ MlasSQNBitGemmPackQuantBDataSize(
  *
  * Because ORT OpKernel::PrePack is called for each input (in this case, QuantBData,
  * QuantBScale, and QuantBZeroPoint) separately, this function may be called 3 times, first with QuantBData,
- * and then QuantBScale and QuantBZeroPoint. The second time the function is called with QuantBScale,
+ * and then QuantBScale and QuantBZeroPoint. When the function is called with QuantBScale without QuantBZeroPoint,
  * BlkSum is computed with default zero point 8 and stored at the second part of PackedQuantBDataAndOrBlkSum.
  * If there is a third call with QuantBZeroPoint, BlkSum is recomputed/adjusted with provided zeropoint.
  *
- * @param[in]   N                   column size of matrix B and C
- * @param[in]   K                   column size of matrix A and row size of matrix B
- * @param[in]   BlkBitWidth         quantized value bit width (e.g., 4 means 4 bit ints)
- * @param[in]   BlkLen              number of quantized values per block
- * @param[in]   ComputeType         GEMM compute type (e.g., multiplying float or int8 values)
- * @param[in]   QuantBData          quantized B data
- * @param[out]  PackedQuantBData    packed quantized B data
+ * @param[in]   N                               column size of matrix B and C
+ * @param[in]   K                               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth                     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen                          number of quantized values per block
+ * @param[in]   ComputeType                     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   QuantBData                      quantized B data
+ * @param[in]   PackedQuantBDataAndOrBlkSum     buffer to store packed quantized B data and/or BlkSum
+ * @param[in]   QuantBScale                     quantized B scale
+ * @param[in]   has_zp_input                    whether QuantBZeroPoint is provided
+ * @param[in]   QuantBZeroPoint                 quantized B zero point
  * @param[in]   ThreadPool          thread pool to use (no parallel if nullptr)
  */
 void MLASCALL

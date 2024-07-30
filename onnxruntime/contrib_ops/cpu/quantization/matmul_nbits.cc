@@ -349,7 +349,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 
       IAllocatorUniquePtr<std::byte> workspace{};
       const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(
-        M, N, K, batch_count, nbits_, block_size_, compute_type);
+          M, N, K, batch_count, nbits_, block_size_, compute_type);
       if (workspace_size > 0) {
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));

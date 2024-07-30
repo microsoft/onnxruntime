@@ -263,11 +263,11 @@ void RunTest(const TestOptions& opts,
 }  // namespace
 
 TEST(MatMulNBits, Float32) {
-  //onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
+  // onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
   for (auto M : {1, 2, 100}) {
-    for (auto N : {/*2560, */1, 2, 32, 288}) {
-      for (auto K : {/*2560, */16, 32, 64, 128, 256, 1024, 93, 1234  }) {
-        for (auto block_size : {16, 32, 64, 128 }) {
+    for (auto N : {/*2560, */ 1, 2, 32, 288}) {
+      for (auto K : {/*2560, */ 16, 32, 64, 128, 256, 1024, 93, 1234}) {
+        for (auto block_size : {16, 32, 64, 128}) {
           for (auto accuracy_level : {0, 1, 4}) {
             TestOptions base_opts{};
             base_opts.M = M, base_opts.N = N, base_opts.K = K;
@@ -280,7 +280,7 @@ TEST(MatMulNBits, Float32) {
 
             {
               TestOptions opts = base_opts;
-                RunTest<float>(opts);
+              RunTest<float>(opts);
             }
 
             {
