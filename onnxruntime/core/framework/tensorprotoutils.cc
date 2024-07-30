@@ -1268,6 +1268,8 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
       *mutable_string_data->Add() = *f;
     }
   } else if (use_tensor_buffer && tensor.SizeInBytes() > 127) {
+    // The logic aligns with
+    // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/graph_flatbuffers_utils.cc#L302
     const auto* raw_data = tensor.DataRaw();
     ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
     static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
