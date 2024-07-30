@@ -17,6 +17,7 @@ namespace cuda {
 
 constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
+// A cache for cumulated sequence length. It will be initialized in the first request, then become read-only after that.
 struct CumulatedSequenceLengthCache {
   onnxruntime::IAllocatorUniquePtr<void> buffer;
   int32_t max_batch_size;
@@ -26,6 +27,7 @@ struct CumulatedSequenceLengthCache {
 
   const int32_t* TryGet(int batch_size, int32_t sequence_length, cudaStream_t stream);
 
+  // Use this flag to guard the initializaton only once in multi-threading.
   mutable std::once_flag init_once_flag_;
 };
 

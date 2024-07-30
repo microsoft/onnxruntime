@@ -60,12 +60,12 @@ size_t AlignSize(size_t bytes) {
 
 const int32_t* CumulatedSequenceLengthCache::TryGet(int batch_size, int32_t seq_len, cudaStream_t stream) {
   if (this->sequence_length == 0 && seq_len > 0) {
-    // initialize once with first sequence length requested.
+    // Initialize only once with sequence length in the first request.
     std::call_once(init_once_flag_, [&]() {
       ORT_ENFORCE(buffer.get() != nullptr && this->max_batch_size > 0);
       LaunchTrtSequenceOffset(reinterpret_cast<int32_t*>(buffer.get()), nullptr,
                               this->max_batch_size, seq_len, stream);
-      // Syncronize to ensure the data is ready. It is for thread-safe since other thread uses different compute stream.
+      // Syncronize to ensure thread-safe since other thread will not wait for the above kernel finish.
       // Otherwise, the data might be consumed by other threads before it is ready and causes data race issue.
       cudaStreamSynchronize(stream);
       this->sequence_length = seq_len;

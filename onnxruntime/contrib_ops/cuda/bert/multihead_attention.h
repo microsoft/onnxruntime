@@ -33,12 +33,16 @@ class MultiHeadAttention final : public CudaKernel {
   bool disable_fused_cross_attention_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
+
+  // These mutable members are readonly after they are initialized so that they can be shared among multiple threads.
+  // Initialization are done only once by the first thread using the resource, so use once_flag to guard each resource.
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
   mutable std::once_flag fused_fp16_runner_created_;
   mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
   mutable std::once_flag fused_cross_init_once_flag_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
+
   const AttentionKernelOptions* kernel_options_;
 };
 

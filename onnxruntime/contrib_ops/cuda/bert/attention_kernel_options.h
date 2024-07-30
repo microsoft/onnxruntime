@@ -49,7 +49,6 @@ class AttentionKernelOptions {
   bool use_cudnn_flash_attention_{false};
   bool use_unfused_{true};
 
-  // TRT flash attention is disabled by default due to parity.
   bool use_trt_flash_attention_{true};
 
   bool use_trt_cross_attention_{true};
