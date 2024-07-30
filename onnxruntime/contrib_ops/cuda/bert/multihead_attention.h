@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
@@ -35,6 +36,7 @@ class MultiHeadAttention final : public CudaKernel {
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
   mutable std::once_flag fused_fp16_runner_created_;
   mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
+  mutable std::once_flag fused_cross_init_once_flag_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
   const AttentionKernelOptions* kernel_options_;

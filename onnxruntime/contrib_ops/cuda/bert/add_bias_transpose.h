@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,9 +25,12 @@ namespace cuda {
 // format 3: (requires sequence_length = kv_sequence_length and qk_head_size = v_head_size when num_matrices == 3)
 //     input:   (batch_size, sequence_length, num_matrices, num_heads, head_size)
 //     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
-// format 4: (requires qk_head_size = v_head_size)
+// format 4: (requires qk_head_size == v_head_size)
 //     input:   (batch_size, sequence_length, num_heads, num_matrices, head_size)
 //     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
+// format 5: (requires qk_head_size == v_head_size)
+//     input:   (batch_size, sequence_length, num_heads, num_matrices, head_size)
+//     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
 
 template <typename T>
 void LaunchAddBiasTranspose(
@@ -60,6 +64,46 @@ void LaunchAddBias(
     const int batch_size, const int sequence_length, const int kv_sequence_length,
     const int num_heads, const int head_size, const int v_head_size,
     const T* biases, const T* query, const T* key, const T* value, T* q, T* k, T* v);
+
+// Add (bias) for Q:  (batch_size, sequence_length, num_heads, head_size)
+template <typename T>
+void LaunchAddBias(
+    cudaStream_t stream, const int max_threads_per_block,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int head_size,
+    const T* biases, const T* query, T* q);
+
+// Add bias transpose kernel defined in packed_multihead_attention_impl.cu.
+// Support the following format transforms (for float and half only).
+// source_format  => target_format:
+//   Q_K_V_TNH    => Q_K_V_BNSH (requires token_offset)
+//   Q_K_V_TNH    => Q_K_V_TNH
+//   Q_K_V_TNH    => QKV_TN3H
+//   QKV_TN3H     => Q_K_V_BNSH (requires token_offset)
+//   QKV_TN3H     => Q_K_V_TNH
+//   QKV_TN3H     => QKV_TN3H
+template <typename T>
+void AddBiasTransposePacked(
+    const T* query, const T* key, const T* value, const T* bias, T* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
+// Add bias transpose kernel defined in packed_attention_impl.cu.
+// Support the following format transforms (for float and half only):
+//     format          transform
+//     Q_K_V_BNSH:     Tx3xNxH => 3xBxNxSxH (requires token_offset)
+//     Q_K_V_BSNH:     Tx3xNxH => 3xTxNxH
+//     QKV_BSN3H:      Tx3xNxH => TxNx3xH
+template <typename T>
+void AddBiasTransposePacked(
+    const T* input, const T* biases, T* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
