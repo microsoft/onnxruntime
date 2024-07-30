@@ -10,6 +10,7 @@
 // error: ignoring attributes on template argument "Eigen::PacketType<const float, Eigen::DefaultDevice>::type {aka __vector(4) float}" [-Werror=ignored-attributes]
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated"
 #if __GNUC__ >= 6
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
