@@ -629,8 +629,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm,
                                    const Node& add_after_layer_norm,
                                    Graph& graph,
                                    int64_t hidden_size,
-                                   std::map<std::string,
-                                            NodeArg*>& mask_int32_map,
+                                   std::map<std::string, NodeArg*>& mask_int32_map,
                                    const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, 0, "Add", {7, 13}, kOnnxDomain},
