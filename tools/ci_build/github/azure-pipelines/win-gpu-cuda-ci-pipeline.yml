@@ -59,5 +59,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10

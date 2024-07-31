@@ -22,6 +22,10 @@ parameters:
   type: boolean
   default: false
 
+- name: isTraining
+  type: boolean
+  default: false
+
 - name: EnablePython
   type: boolean
   default: true
@@ -30,6 +34,24 @@ parameters:
   displayName: Run Tests?
   type: boolean
   default: true
+
+- name: ORT_EP_NAME
+  type: string
+  default: CPU
+
+- name: EP_TO_PREDEFINE
+  type: object
+  default:
+    CPU: ''
+    CUDA: '-p:DefineConstants="USE_CUDA"'
+    DML: '-p:DefineConstants="USE_DML"'
+    DNNL: '-p:DefineConstants="USE_DNNL"'
+    MIGRAPHX: '-p:DefineConstants="USE_MIGRAPHX"'
+    NNAPI: '-p:DefineConstants="USE_NNAPI"'
+    ROCM: '-p:DefineConstants="USE_ROCM"'
+    TRT: '-p:DefineConstants="USE_TENSORRT"'
+    VITISAI: ''
+
 
 - name: MachinePool
   type: string
@@ -136,7 +158,7 @@ jobs:
       CacheDir: $(ORT_CACHE_DIR)
       AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
       BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
-      MsbuildArguments: '-maxcpucount'
+      MsbuildArguments: '-maxcpucount ${{ parameters.EP_TO_PREDEFINE[parameters.ORT_EP_NAME] }}'
       BuildArch: ${{ parameters.buildArch }}
       Platform: ${{ parameters.msbuildPlatform }}
       BuildConfig: ${{ parameters.BuildConfig }}

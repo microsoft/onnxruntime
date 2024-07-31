@@ -107,6 +107,7 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: DNNL
         GenerateDocumentation: false
         WITH_CACHE: false
         # Intel EPs require Intel CPUs
@@ -125,6 +126,7 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: true
+        ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -142,6 +144,7 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: false
+        ORT_EP_NAME: VITISAI
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
