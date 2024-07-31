@@ -604,6 +604,12 @@ class SymbolicShapeInference:
             # If casting into int has precision loss: keep float output
             if allow_float_values and value % 1 != 0:
                 return value
+            # Handle NaN and inf values explicitly
+            if np.isinf(value):
+                # Use the maximum float value as the replacement
+                return int(np.finfo(np.float32).max)
+            if np.isnan(value):
+                return 0
             return int(value)
 
         values = [self._try_get_value(node, i) for i in range(len(node.input))]
