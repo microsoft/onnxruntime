@@ -225,7 +225,7 @@ dependencies {
   androidTestImplementation "androidx.test:rules:1.1.0"
 
   implementation "junit:junit:4.12"
-
+  implementation 'com.facebook.react:react-native:+'
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
