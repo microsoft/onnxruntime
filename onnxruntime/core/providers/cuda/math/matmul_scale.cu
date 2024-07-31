@@ -38,19 +38,9 @@ void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor
   cudaFree(d_scale_coef);  // Free device memory
 }
 
-// The instantiations are based on the MatMul type constraints.
-// https://github.com/onnx/onnx/blob/main/docs/Operators.md#MatMul
-// TODO where is float16 defined?
-// template void ComputeStdDevCoefficientsForScale<float16> (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, float16*  h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<float>   (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, float*    h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<double>  (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, double*   h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<uint32_t>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, uint32_t* h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<uint64_t>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, uint64_t* h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<int32_t> (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, int32_t*  h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<int64_t> (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, int64_t*  h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<BFloat16>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, BFloat16* h_scale_coef);
-// TODO these are not listed in the MatMul operator type constraints, but we still get runtime errors without the MLFloat16 instantiation
-template void ComputeStdDevCoefficientsForScale<half>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, half* h_scale_coef);
+template void ComputeStdDevCoefficientsForScale<float>    (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, float*     h_scale_coef);
+template void ComputeStdDevCoefficientsForScale<double>   (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, double*    h_scale_coef);
+template void ComputeStdDevCoefficientsForScale<BFloat16> (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, BFloat16*  h_scale_coef);
 template void ComputeStdDevCoefficientsForScale<MLFloat16>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, MLFloat16* h_scale_coef);
 
 }  // namespace cuda
