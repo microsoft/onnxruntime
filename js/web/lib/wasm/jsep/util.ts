@@ -485,6 +485,18 @@ export class GemmUtil {
   }
 }
 
+export const MIN_CLIP: Map<string, number> =
+    new Map([['float32', -3.4028234663852886e+38], ['float16', -65504.0], ['int32', -2147483648]]);
 
-export const MIN_CLIP = -3.4028234663852886e+38;
-export const MAX_CLIP = 3.4028234663852886e+38;
+export const MAX_CLIP: Map<string, number> =
+    new Map([['float32', 3.4028234663852886e+38], ['float16', 65504.0], ['int32', 2147483648]]);
+
+// Convert float16 to float32
+export const decodeFloat16 = (value: number): number => {
+  let fraction = value & 0x03FF;
+  let exponent = (value & 0x7C00) >> 10;
+  return (value >> 15 ? -1 : 1) *
+      (exponent ?
+           ((exponent === 0x1F) ? (fraction ? NaN : Infinity) : Math.pow(2, exponent - 15) * (1 + fraction / 0x400)) :
+           6.103515625e-5 * (fraction / 0x400))
+};
