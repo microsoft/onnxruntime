@@ -13,6 +13,10 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
 
+#if CUDNN_MAJOR < 9
+// if compiled with cuDNN 8 we want to use the legacy cuDNN API
+#include "conv_8.h"
+#endif
 namespace onnxruntime {
 namespace cuda {
 
@@ -91,6 +95,7 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   return Status::OK();
 }
 
+#if CUDNN_MAJOR >= 9
 #if !defined(__CUDACC__)
 
 template <typename T, bool Layout>
@@ -557,6 +562,7 @@ Status CudnnConvolutionDescriptor::Set(
 
   return Status::OK();
 }
+#endif
 
 #ifndef DISABLE_CONTRIB_OPS
 // template instantiation for NhwcConv

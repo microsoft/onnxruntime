@@ -230,7 +230,7 @@ class Conv : public CudaKernel {
 
   Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
 
-#if !defined(__CUDACC__)
+#if !defined(__CUDACC__) && CUDNN_MAJOR >= 9
   Status CreateCudnnFeExecutionPlan(const onnxruntime::TensorShapeVector& x_dims,
                                     const onnxruntime::TensorShapeVector& w_dims,
                                     const Tensor* B,
