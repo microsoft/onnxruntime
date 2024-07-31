@@ -57,6 +57,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   const auto keep_dims = helper.Get("keepdims", 1);
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   options.set("keepDimensions", keep_dims == 1);
   std::vector<int32_t> axes_data;
 

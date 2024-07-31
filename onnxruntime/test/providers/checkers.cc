@@ -25,7 +25,15 @@ struct DefaultTolerance<double> {
   static constexpr float relative = 1e-5f;
 
   // Allow to have different default absolute tolerance for different providers.
-  static float get_absolute(const std::string& /*provider_type*/) {
+  static float get_absolute(const std::string& provider_type /*provider_type*/) {
+    if (provider_type == kOpenVINOExecutionProvider) {
+#ifdef OPENVINO_CONFIG_NPU
+      return 0.005f;
+#else
+      return absolute;
+#endif
+    }
+
     return absolute;
   }
 };
@@ -40,7 +48,15 @@ struct DefaultTolerance<float> {
 
   static constexpr float relative = 1e-4f;
 
-  static float get_absolute(const std::string& /*provider_type*/) {
+  static float get_absolute(const std::string& provider_type /*provider_type*/) {
+    if (provider_type == kOpenVINOExecutionProvider) {
+#ifdef OPENVINO_CONFIG_NPU
+      return 0.005f;
+#else
+      return absolute;
+#endif
+    }
+
     return absolute;
   }
 };
@@ -411,7 +427,7 @@ struct TensorCheck<MLFloat16> {
 
     for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
-        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
+        EXPECT_TRUE(std::isnan(f_actual[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {

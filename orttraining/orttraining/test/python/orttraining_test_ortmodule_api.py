@@ -3976,9 +3976,9 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
                 out = self.relu(out)
             return out
 
-    assert type(bool_argument) is bool  # noqa: E721
-    assert type(int_argument) is int  # noqa: E721
-    assert type(float_argument) is float  # noqa: E721
+    assert type(bool_argument) is bool
+    assert type(int_argument) is int
+    assert type(float_argument) is float
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -4014,8 +4014,8 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
                 out = self.relu(out)
             return out
 
-    assert type(bool_arguments[0]) is bool  # noqa: E721
-    assert type(bool_arguments[1]) is bool  # noqa: E721
+    assert type(bool_arguments[0]) is bool
+    assert type(bool_arguments[1]) is bool
 
     device = "cuda"
     N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806
@@ -5501,7 +5501,7 @@ def test_random_states_unchanged_for_ortmodule():
             return x[: self.dim, :]
 
     def random_state_equal(a, b):
-        assert type(a) == type(b)
+        assert type(a) is type(b)
         if isinstance(a, tuple):
             assert len(a) == len(b)
             return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])

@@ -163,7 +163,7 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported.");
     }  // switch
-  }    // if-else
+  }  // if-else
 
   QnnParamWrapper constant_value_param(node_unit.Index(),
                                        node_unit.Name(),

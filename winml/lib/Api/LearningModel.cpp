@@ -64,7 +64,7 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
 
-  wil::unique_handle file_handle {
+  wil::unique_handle file_handle{
 #if WINVER >= _WIN32_WINNT_WIN8
     CreateFile2(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)
   };
