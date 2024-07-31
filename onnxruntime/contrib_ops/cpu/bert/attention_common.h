@@ -6,6 +6,12 @@
 namespace onnxruntime {
 namespace contrib {
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
 enum AttentionMaskType {
   MASK_NONE,                  // No mask
   MASK_1D_KEY_SEQ_LEN,        // [batch_size], key sequence length
@@ -24,10 +30,12 @@ enum AttentionQkvFormat {
   UNKNOWN,               // enum value not set, or depends on qkv projection implementation details
   Q_K_V_BNSH,            // for non-packed qkv, permuted
   Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
-  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  Q_K_V_BSNH_BNSH_BNSH,  // for cross attention, k and v are permuted
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
-  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
   Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
+  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
+  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  QKV_BS3NH,             // for DecoderMaskedMultiHeadAttention, qkv are packed
   QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
 };
 
@@ -61,7 +69,6 @@ struct AttentionParameters {
   bool past_present_share_buffer;
   bool do_rotary;
   bool broadcast_res_pos_bias;
-  bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
   bool use_tf32;
