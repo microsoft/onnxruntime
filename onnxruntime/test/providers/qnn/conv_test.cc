@@ -799,7 +799,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
 // CPU EP (f32 model): 25.143 21.554 17.964 10.785 7.195 3.605  -3.574  -7.164  -10.753
 // CPU EP (qdq model): 24.670 21.103 17.536 10.254 6.689 2.972  -4.161  -7.728  -10.700
 // QNN EP (qdq model): 27.186 27.186 27.186 21.541 6.685 -8.022 -10.548 -10.548 -10.548
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S4S32_PerChannel_AccuracyIssue) {
+TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_AccuracyIssue) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -835,7 +835,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S4S32_PerChannel_AccuracyIssue) {
                                               "NOTSET",
                                               ExpectedEPNodeAssignment::All,
                                               false,  // use_qdq_contrib_ops
-                                              21);    // opset
+                                              21,     // opset
+                                              QDQTolerance(0.005f));
 }
 
 // Test per-channel QDQ Conv is rejected with weight axis != 0
