@@ -5889,7 +5889,7 @@ react-native@*:
     ws "^6.2.2"
     yargs "^17.6.2"
 
-react-native@^0.72.0:
+react-native@0.72.15:
   version "0.72.15"
   resolved "https://registry.yarnpkg.com/react-native/-/react-native-0.72.15.tgz#9b74b0c39ec42befb70d494b535f863c4229ef55"
   integrity sha512-UDxOZwCxhwb0dGuvcB/04uWzhDJ8etqW3fMOq6bv35WwEXMgKXXqZpshhMo64UVWm/m2ZmM32ckn5sf1EIqD9Q==
