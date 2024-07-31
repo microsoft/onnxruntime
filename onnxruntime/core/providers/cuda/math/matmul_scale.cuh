@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-float ComputeScale(cudaStream_t stream, const Tensor* tensor);
+void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor, const int32_t size, T *scale_coef);
 
 }  // namespace cuda
 }  // namespace onnxruntime

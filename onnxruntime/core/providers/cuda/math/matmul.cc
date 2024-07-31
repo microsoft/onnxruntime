@@ -285,28 +285,44 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
 }
 
 template <typename T>
-float MatMul<T>::ComputeStandardDeviation(const std::vector<float>& v) const
+template <typename U>
+float MatMul<T>::ComputeStandardDeviation(const U* elems, const int32_t size) const
 {
-  if (v.empty()) {
+  if (size == 0 || elems == nullptr) {
     return 0.0f;
   }
 
   // Calculate the mean
-  float sum = std::accumulate(v.begin(), v.end(), 0.0f);
-  float mean = sum / v.size();
+  float sum = 0.0f;
+  for (int32_t i = 0; i < size; i ++)
+    sum += elems[i];
+  float mean = sum / size;
 
   // Calculate the sum of squared differences from the mean
   float squaredSum = 0.0f;
-  for (float value : v) {
-    float diff = value - mean;
+  for (int32_t i = 0; i < size; i ++) {
+    float diff = elems[i] - mean;
     squaredSum += diff * diff;
   }
 
   // Calculate the variance
-  float variance = squaredSum / v.size();
+  float variance = squaredSum / size;
 
   // Return the square root of variance as standard deviation
   return std::sqrt(variance);
+}
+
+template <typename T>
+float MatMul<T>::ComputeScale(cudaStream_t stream, const Tensor* tensor) const
+{
+  const int32_t num_coef = tensor->Shape().Size();
+  T* scale_coef = (T*)malloc(num_coef * sizeof(T));
+  ComputeStdDevCoefficientsForScale<T>(stream, tensor, num_coef, scale_coef);
+
+  float std_coef = ComputeStandardDeviation(scale_coef, num_coef);
+  free(scale_coef);
+
+  return std_quant_ / std_coef;
 }
 
 template <typename T>
@@ -445,8 +461,8 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
     // Get the weights of the model
-    float scale_a = ComputeScale<T>(stream, left_X);
-    float scale_b = ComputeScale<T>(stream, right_X);
+    float scale_a = ComputeScale(stream, left_X);
+    float scale_b = ComputeScale(stream, right_X);
     float scale_y = 1.0f;
 
     void* scale_a_data = &scale_a;
