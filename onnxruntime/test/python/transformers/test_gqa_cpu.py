@@ -521,6 +521,7 @@ def create_group_query_attention_graph_interactive(
                 "total_sequence_length",
                 "cos_cache" if rotary else "",
                 "sin_cache" if rotary else "",
+                "seqlens_q",
             ],
             ["output", "present_key", "present_value"],
             "GroupQueryAttention_0",
@@ -552,7 +553,12 @@ def create_group_query_attention_graph_interactive(
         helper.make_tensor_value_info(
             "seqlens_k",
             TensorProto.INT32,
-            [2, config.batch_size],
+            [config.batch_size],
+        ),
+        helper.make_tensor_value_info(
+            "seqlens_q",
+            TensorProto.INT32,
+            [config.batch_size],
         ),
         helper.make_tensor_value_info(
             "total_sequence_length",
@@ -1069,12 +1075,14 @@ def gqa_interactive_func(
     cos=None,
     sin=None,
     seqlens_k=None,
+    seqlens_q=None,
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
 ):
     assert seqlens_k is not None
+    assert seqlens_q is not None
     onnx_model_str = create_group_query_attention_graph_interactive(
         config,
         past_kv_format,
@@ -1102,6 +1110,7 @@ def gqa_interactive_func(
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cpu", 0),
             "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cpu", 0),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "seqlens_q": seqlens_q.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([config.kv_sequence_length], dtype=torch.int32)
             .detach()
             .cpu()
@@ -1133,6 +1142,7 @@ def gqa_interactive_func(
             ort_inputs["past_value"].data_ptr(),
         )
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("seqlens_q", ort_inputs["seqlens_q"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
@@ -1147,6 +1157,7 @@ def gqa_interactive_func(
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
+            "seqlens_q": seqlens_q.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([total_seqlen], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
@@ -1169,6 +1180,7 @@ def gqa_interactive_func(
             io_binding.bind_cpu_input("past_value", ort_inputs["past_value"])
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("seqlens_q", ort_inputs["seqlens_q"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_output("present_key")
@@ -2152,7 +2164,9 @@ def parity_check_gqa_interactive(
         device="cpu",
     )
     total_seqlens = past_seqlens + new_seqlens
-    cache_seqlens = torch.stack((past_seqlens, total_seqlens))
+    seqlens_k = total_seqlens - 1
+    seqlens_q = new_seqlens.clone()
+    # cache_seqlens = torch.stack((past_seqlens, total_seqlens))
 
     if rotary:
         rotary_fraction = 1.0
@@ -2205,7 +2219,8 @@ def parity_check_gqa_interactive(
             None,
             cos,
             sin,
-            cache_seqlens,
+            seqlens_k,
+            seqlens_q,
             past_format,
             True,
             left_window_size,
@@ -2221,7 +2236,8 @@ def parity_check_gqa_interactive(
             new_v,
             cos,
             sin,
-            cache_seqlens,
+            seqlens_k,
+            seqlens_q,
             past_format,
             True,
             left_window_size,
@@ -2378,7 +2394,9 @@ def parity_check_gqa_interactive_no_buff(
         device="cpu",
     )
     total_seqlens = past_seqlens + new_seqlens
-    cache_seqlens = torch.stack((past_seqlens, total_seqlens))
+    seqlens_k = total_seqlens - 1
+    seqlens_q = new_seqlens.clone()
+    # cache_seqlens = torch.stack((past_seqlens, total_seqlens))
 
     if rotary:
         rotary_fraction = 1.0
@@ -2452,7 +2470,8 @@ def parity_check_gqa_interactive_no_buff(
             None,
             cos,
             sin,
-            cache_seqlens,
+            seqlens_k,
+            seqlens_q,
             past_format,
             False,
             left_window_size,
@@ -2468,7 +2487,8 @@ def parity_check_gqa_interactive_no_buff(
             new_v,
             cos,
             sin,
-            cache_seqlens,
+            seqlens_k,
+            seqlens_q,
             past_format,
             False,
             left_window_size,
