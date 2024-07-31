@@ -147,11 +147,6 @@ common::Status OpenVINOExecutionProvider::Compile(
                                                       *GetLogger(),
                                                       ep_ctx_handle_);
 
-    if (global_context_->export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
-      ORT_RETURN_IF_ERROR(backend_manager->ExportCompiledBlobAsEPCtxNode(graph_body_viewer,
-                                                                         *GetLogger()));
-    }
-
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {
           OpenVINOEPFunctionState* p = new OpenVINOEPFunctionState();
