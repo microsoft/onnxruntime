@@ -54,7 +54,9 @@ export const createCheckpointHandle = (checkpointData: SerializableInternalBuffe
     throw e;
   } finally {
     // free buffer from wasm heap
-    wasm._OrtFree(checkpointData[0]);
+    if (wasm._OrtFree(checkpointData[0]) !== 0) {
+      checkLastError('Error occurred when trying to free the checkpoint buffer');
+    }
   }
 };
 
@@ -141,7 +143,9 @@ export const createTrainingSessionHandle =
         wasm._free(optimizerModelData[0]);
 
         if (sessionOptionsHandle !== 0) {
-          wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+          if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
+            checkLastError('Error occurred when trying to release the session options');
+          }
         }
         allocs.forEach(alloc => wasm._free(alloc));
       }
@@ -222,8 +226,9 @@ const moveOutputToTensorMetadataArr =
           for (let i = 0; i < dimsLength; i++) {
             Number(dims.push(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
           }
-          wasm._OrtFree(dimsOffset);
-
+          if (wasm._OrtFree(dimsOffset) !== 0) {
+            checkLastError('Error occurred when trying to free the dims buffer');
+          }
           const size = dims.reduce((a, b) => a * b, 1);
           type = tensorDataTypeEnumToString(dataType);
 
@@ -248,7 +253,9 @@ const moveOutputToTensorMetadataArr =
           if (type === 'string' && dataOffset) {
             wasm._free(dataOffset);
           }
-          wasm._OrtReleaseTensor(tensor);
+          if (wasm._OrtReleaseTensor(tensor) !== 0) {
+            checkLastError('Error occurred when trying to release the tensor');
+          }
         }
       }
 
@@ -467,7 +474,9 @@ export const getContiguousParameters =
     }
   } finally {
     if (tensor !== 0) {
-      wasm._OrtReleaseTensor(tensor);
+      if ( wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
     }
     wasm._free(paramsOffset);
     wasm._free(dimsOffset);
@@ -509,7 +518,9 @@ export const loadParametersBuffer =
     }
   } finally {
     if (tensor !== 0) {
-      wasm._OrtReleaseTensor(tensor);
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
     }
     wasm.stackRestore(stack);
     wasm._free(bufferOffset);

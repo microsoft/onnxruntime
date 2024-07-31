@@ -364,17 +364,23 @@ export const createSession = async(
     outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
 
     if (ioBindingHandle !== 0) {
-      wasm._OrtReleaseBinding(ioBindingHandle);
+      if (wasm._OrtReleaseBinding(ioBindingHandle) !== 0) {
+        checkLastError('Can\'t release IO binding.');
+      }
     }
 
     if (sessionHandle !== 0) {
-      wasm._OrtReleaseSession(sessionHandle);
+      if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+        checkLastError('Can\'t release session.');
+      }
     }
     throw e;
   } finally {
     wasm._free(modelDataOffset);
     if (sessionOptionsHandle !== 0) {
-      wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+      if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
+        checkLastError('Can\'t release session options.');
+      }
     }
     allocs.forEach(alloc => wasm._free(alloc));
 
@@ -393,16 +399,22 @@ export const releaseSession = (sessionId: number): void => {
 
   if (ioBindingState) {
     if (enableGraphCapture) {
-      wasm._OrtClearBoundOutputs(ioBindingState.handle);
+      if ( wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
+        checkLastError('Can\'t clear bound outputs.');
+      }
     }
-    wasm._OrtReleaseBinding(ioBindingState.handle);
+    if (wasm._OrtReleaseBinding(ioBindingState.handle) !== 0) {
+      checkLastError('Can\'t release IO binding.');
+    }
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-  wasm._OrtReleaseSession(sessionHandle);
+  if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+    checkLastError('Can\'t release session.');
+  }
   activeSessions.delete(sessionId);
 };
 
@@ -630,8 +642,9 @@ export const run = async(
         for (let i = 0; i < dimsLength; i++) {
           dims.push(Number(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
         }
-        wasm._OrtFree(dimsOffset);
-
+        if (wasm._OrtFree(dimsOffset) !== 0) {
+          checkLastError('Can\'t free memory for tensor dims.');
+        }
         const size = dims.reduce((a, b) => a * b, 1);
         type = tensorDataTypeEnumToString(dataType);
 
@@ -671,7 +684,9 @@ export const run = async(
                 gpuBuffer,
                 download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
                 dispose: () => {
-                  wasm._OrtReleaseTensor(tensor);
+                  if (wasm._OrtReleaseTensor(tensor) !== 0) {
+                    checkLastError('Can\'t release tensor.');
+                  }
                 }
               },
               'gpu-buffer'
@@ -696,7 +711,9 @@ export const run = async(
     }
 
     if (ioBindingState && !enableGraphCapture) {
-      wasm._OrtClearBoundOutputs(ioBindingState.handle);
+      if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
+        checkLastError('Can\'t clear bound outputs.');
+      }
       activeSessions.set(
           sessionId,
           [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, false]);
