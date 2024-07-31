@@ -34,7 +34,6 @@ void SplitQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q. Merge into target and remove DQ and Q.
   const std::string drop_action_name{"drop"};
-  const std::string drop_action_no_nonpositive_scale_name{"drop_no_nonpositive_scale"};
   const std::string drop_action_no_int16_name{"drop_no_int16_support"};
   const std::string drop_action_no_int16_and_positive_scale_name{"drop_no_int16_support_and_positive_scale"};
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
