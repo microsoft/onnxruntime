@@ -163,8 +163,7 @@ void EtwRegistrationManager::LazyInitialize() try {
       initialization_status_ = InitializationStatus::Initialized;
     }
   }
-} catch (...)
-{
+} catch (...){
   initialization_status_ = InitializationStatus::Failed;
   throw;
 }
