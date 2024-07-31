@@ -3254,27 +3254,6 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   return Status::OK();
 }
 
-void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
-  for (auto& node : Nodes()) {
-    for (auto& subgraph : node.MutableSubgraphs()) {
-      subgraphs.push_back(subgraph.get());
-      subgraph->FindAllSubgraphs(subgraphs);
-    }
-  }
-}
-
-Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
-  auto status = func(*this);
-  ORT_RETURN_IF_ERROR(status);
-
-  for (auto& subgraph : subgraphs) {
-    status = func(*subgraph);
-    ORT_RETURN_IF_ERROR(status);
-  }
-
-  return status;
-}
-
 Status Graph::Resolve(const ResolveOptions& options) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
@@ -3386,6 +3365,39 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
+}
+
+void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
+  for (auto& node : Nodes()) {
+    for (auto& subgraph : node.MutableSubgraphs()) {
+      subgraphs.push_back(subgraph.get());
+      subgraph->FindAllSubgraphs(subgraphs);
+    }
+  }
+}
+
+Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
+  auto status = func(*this);
+  ORT_RETURN_IF_ERROR(status);
+
+  for (auto& subgraph : subgraphs) {
+    status = func(*subgraph);
+    ORT_RETURN_IF_ERROR(status);
+  }
+
+  return status;
+}
+
+Status Graph::RemovedUnusedInitializersOrtFormat() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    graph.CleanUnusedInitializersAndNodeArgs(nullptr);
+    return Status::OK();
+  };
+
+  auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+  return result;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -4122,6 +4134,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
@@ -4253,8 +4268,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     }
   }
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 void Graph::ComputeOverridableInitializers() {
   graph_overridable_initializers_.clear();

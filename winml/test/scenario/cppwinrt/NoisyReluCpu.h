@@ -65,12 +65,14 @@ struct NoisyReluOperator : winrt::implements<NoisyReluOperator, IMLOperatorKerne
       }
 
       // If the tensor types are both float type
-      if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
+      if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float &&
+          inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
         // For cpu data
         if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
           ComputeInternal<float>(inputTensor.get(), outputTensor.get(), inputDataSize);
         }
-      } else if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double) {
+      } else if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double &&
+                 inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Double) {
         // For cpu data
         if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
           ComputeInternal<double>(inputTensor.get(), outputTensor.get(), inputDataSize);

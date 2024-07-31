@@ -442,6 +442,16 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
 
   if (is_per_channel) {
     axis = io_def.quant_param->axis.value_or(1);  // 1 is default axis for Q/DQ ops.
+    if (axis < 0) {
+      // Normalize negative axis by adding rank.
+      const auto* tensor_shape_proto = io_def.node_arg.Shape();
+      ORT_RETURN_IF_NOT(tensor_shape_proto != nullptr, "NULL tensor shape proto");
+
+      const int rank = tensor_shape_proto->dim_size();
+      ORT_RETURN_IF_NOT(rank > 0, "Per-channel quantized tensor should be of rank > 0");
+
+      axis += rank;
+    }
   }
 
   return Status::OK();

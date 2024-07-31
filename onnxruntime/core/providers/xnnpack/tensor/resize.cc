@@ -85,8 +85,8 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
         float scale_h = scales[2];
         float scale_w = scales[3];
-        if (!utils::IsScalingByAFactorOfN(h_in, scale_h) ||
-            !utils::IsScalingByAFactorOfN(w_in, scale_w)) {
+        if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h) ||
+            !utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
           break;
         }
       }
