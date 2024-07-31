@@ -79,16 +79,16 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // DepthToSpace and SpaceToDepth not included because there are no integer implementations.
   // https://github.com/microsoft/onnxruntime/issues/21287
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
-                                                         {{"Gather", {}},
+                                                         {{"Expand", {}},
+                                                          {"Flatten", {}},
+                                                          {"Gather", {}},
                                                           {"GatherElements", {}},
                                                           {"Reshape", {}},
-                                                          {"Transpose", {}},
+                                                          {"Slice", {}},
                                                           {"Squeeze", {}},
-                                                          {"Unsqueeze", {}},
-                                                          {"Flatten", {}},
-                                                          {"Expand", {}},
                                                           {"Tile", {}},
-                                                          {"Slice", {}}},
+                                                          {"Transpose", {}},
+                                                          {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(drop_action));
 #else
