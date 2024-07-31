@@ -137,28 +137,45 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 EtwRegistrationManager::~EtwRegistrationManager() {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.clear();
-  ::TraceLoggingUnregister(etw_provider_handle);
+  if (initialization_status_ == InitializationStatus::Initialized ||
+      initialization_status_ == InitializationStatus::Initializing) {
+    std::lock_guard<OrtMutex> init_lock(init_mutex_);
+    assert(initialization_status_ != InitializationStatus::Initializing);
+    if (initialization_status_ == InitializationStatus::Initialized) {
+      ::TraceLoggingUnregister(etw_provider_handle);
+      initialization_status_ = InitializationStatus::NotInitialized;
+    }
+  }
 }
 
 EtwRegistrationManager::EtwRegistrationManager() {
 }
 
-void EtwRegistrationManager::LazyInitialize() {
-  if (!initialized_) {
+void EtwRegistrationManager::LazyInitialize() try {
+  if (initialization_status_ == InitializationStatus::NotInitialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
-    if (!initialized_) {  // Double-check locking pattern
-      initialized_ = true;
+    if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
+      initialization_status_ = InitializationStatus::Initializing;
       etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
       if (FAILED(etw_status_)) {
         ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
       }
+      initialization_status_ = InitializationStatus::Initialized;
     }
   }
+} catch (...) {
+  initialization_status_ = InitializationStatus::Failed;
+  throw;
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                              ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                              PVOID CallbackContext) {
+  if (initialization_status_ != InitializationStatus::Initialized) {
+    // Drop messages until manager is fully initialized.
+    return;
+  }
+
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
     (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
