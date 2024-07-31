@@ -211,6 +211,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
 
 #else  // defined(ORT_NEURAL_SPEED)
+  ORT_UNUSED_PARAMETER(prepacked_weights);
   const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
   if (input_idx == InputIndex::B) {
     if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
@@ -223,12 +224,6 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr, nullptr);
-    if (prepacked_weights) {
-      // TODO: cannot use packed_b_ after following code with std::move.
-      assert(false);
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
     is_packed = true;
   } else if (compute_type == CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86

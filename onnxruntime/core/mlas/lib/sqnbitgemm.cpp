@@ -82,7 +82,7 @@ MlasIsSQNBitGemmAvailable(
         case SQNBitGemmVariant_BitWidth4_CompInt8: { // SQ4BitGemmKernel_BlkSum_CompInt8
             return
               (Dispatch->SQ4BitGemmKernel_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8 != nullptr) ||
-              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARow_CompInt8_2 != nullptr);
+              (Dispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr && Dispatch->QuantizeARowComputeBlkSum_CompInt8 != nullptr);
         }
         default: {
             return false;
@@ -103,8 +103,6 @@ SQNBitGemmPerGemmWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(N);
-
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
     if (Dispatch == nullptr) {
         return 0;
@@ -439,17 +437,6 @@ SQ4BitGemm_CompInt8(
     const size_t RangeCountN
 )
 {
-//#ifdef MLAS_TARGET_AMD64_IX86
-//    if (RangeCountM != 1) {
-//        // perf experiment shows fp32 is faster than int8 in M > 1 cases.
-//        // route to fp32 compute before int8 compute is improved.
-//        SQ4BitGemm_CompFp32(
-//            BlkLen,
-//            K, DataParams, per_gemm_quant_a_workspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN
-//        );
-//        return;
-//    }
-//#endif
 #ifdef MLAS_TARGET_AMD64_IX86
     PerGemmQuantAWorkspace* const per_gemm_quant_a_workspace = static_cast<PerGemmQuantAWorkspace*>(PerGemmWorkspace);
     constexpr size_t BlkBitWidth = 4;
@@ -595,11 +582,12 @@ InitializeWorkspace_CompInt8(
     MLAS_UNREFERENCED_PARAMETER(N);
 
     const auto QuantizeARow = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8;
-    const auto QuantizeARow2 = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8_2;
+    const auto QuantizeARow2 = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
+    // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
     if (QuantizeARow) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
@@ -665,8 +653,6 @@ MlasSQNBitGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    //auto start_batch = std::chrono::high_resolution_clock::now();  // Start timing here
-
     const auto Variant = GetSQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
     assert(Variant != SQNBitGemmVariantInvalid);
 
@@ -695,7 +681,6 @@ MlasSQNBitGemmBatch(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     if (ThreadPool == nullptr) {
-        //auto start = std::chrono::high_resolution_clock::now();  // Start timing here
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             const auto* Data = &DataParams[gemm_i];
             void* PerGemmWorkspace =

@@ -43,16 +43,16 @@ typedef enum {
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
  */
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
-    const float* A = nullptr;               ///< address of A (float32 matrix)
-    size_t lda = 0;                         ///< leading dimension of A
-    const void* QuantBDataWorkspace;        ///< address of quantized B (quantized n-bit int values)
-    const std::byte* PackedQuantBData = nullptr;
-    const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
-    const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
-    const float* QuantBBlkSum = nullptr;    ///< optional address of scale * zp, one per block
-    const float* Bias = nullptr;            ///< optional address of Bias, vector size N
-    float* C = nullptr;                     ///< address of result matrix
-    size_t ldc = 0;                         ///< leading dimension of C
+    const float* A = nullptr;                       ///< address of A (float32 matrix)
+    size_t lda = 0;                                 ///< leading dimension of A
+    const void* QuantBDataWorkspace;                ///< address of quantized B (quantized n-bit int values)
+    const std::byte* PackedQuantBData = nullptr;    /// address of packed quantized B data
+    const float* QuantBScale = nullptr;             ///< address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;          ///< optional address of zero point values of quantized B, one per block
+    const float* QuantBBlkSum = nullptr;            ///< optional address of scale * zp, one per block
+    const float* Bias = nullptr;                    ///< optional address of Bias, vector size N
+    float* C = nullptr;                             ///< address of result matrix
+    size_t ldc = 0;                                 ///< leading dimension of C
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;

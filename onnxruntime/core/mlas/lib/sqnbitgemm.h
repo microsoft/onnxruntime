@@ -53,7 +53,6 @@ struct PackedQuantBDataStruct {
       // TODO: duplicate code from SQ4BitGemmPackQuantBDataSize
         constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        //const size_t ScaleSize = N * BlockCountK * sizeof(float);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
         // _mm256_load_si256 requires alignment on a 32-byte boundary
@@ -238,7 +237,6 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
-     *        This kernel handles the special case where M, the number of rows of A and C, is 1.
      *
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
@@ -249,8 +247,11 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param[out]  C                   Supplies the output C matrix.
      * @param       CountN              Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
-     * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       BlockCountK         Number of blocks between adjacent columns of the quantized B matrix.
      * @param       Bias                Bias vector of length N.
+     * @param       ldc                 Number of elements between adjacent rows of C..
+     * @param       ABlockSum           Supplies the blksum of A.
+     * @param       QuantBBlkSum        Supplies the blksum of B.
      */
     typedef size_t(SQ4BitGemmKernel_BlkSum_CompInt8_Fn)(
         size_t BlkLen,
@@ -327,7 +328,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
 
-    typedef void(QuantizeARow_CompInt8_Fn2)(
+    typedef void(QuantizeARowComputeBlkSum_CompInt8_Fn)(
         size_t BlkLen,
         const float* A,
         size_t CountK,
@@ -335,5 +336,5 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         float* QuantAScale,
         float* AScaledGroupSum  // scale_k * Sum_blklen(a_i)
     );
-    QuantizeARow_CompInt8_Fn2* QuantizeARow_CompInt8_2 = nullptr;
+    QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
 };
