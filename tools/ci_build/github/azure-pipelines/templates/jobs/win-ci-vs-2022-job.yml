@@ -158,7 +158,7 @@ jobs:
       CacheDir: $(ORT_CACHE_DIR)
       AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
       BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
-      MsbuildArguments: '-maxcpucount ${{ parameters.EP_TO_PREDEFINE[parameters.ORT_EP_NAME] }}'
+      MsbuildArguments: '-maxcpucount'
       BuildArch: ${{ parameters.buildArch }}
       Platform: ${{ parameters.msbuildPlatform }}
       BuildConfig: ${{ parameters.BuildConfig }}
@@ -203,7 +203,7 @@ jobs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
-      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)  ${{ parameters.EP_TO_PREDEFINE[parameters.ORT_EP_NAME] }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   # C# test isn't launched by build.py, so models link has to be added.
