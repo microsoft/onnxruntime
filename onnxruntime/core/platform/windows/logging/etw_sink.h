@@ -47,7 +47,10 @@ class EtwSink : public ISink {
 };
 
 class EtwRegistrationManager {
-  enum class InitializationStatus { NotInitialized, Initializing, Initialized, Failed};
+  enum class InitializationStatus { NotInitialized,
+                                    Initializing,
+                                    Initialized,
+                                    Failed };
 
  public:
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
