@@ -61,9 +61,10 @@ bool VulkanKernel::IsSupported(const GraphViewer& graph_viewer, const onnxruntim
 }
 
 Status VulkanKernel::Create(const VulkanExecutionProvider& vulkan_ep,
-                            const GraphViewer* graph_viewer,
+                            const GraphViewer& graph_viewer,
                             const onnxruntime::Node& node,
-                            ValueIndexes& value_indexes, std::unique_ptr<VulkanKernel>& kernel) {
+                            ValueIndexes& value_indexes,
+                            std::unique_ptr<VulkanKernel>& kernel) {
   const auto& op = node.OpType();
 
   auto it = kernel_registrations.find(op);
@@ -76,15 +77,18 @@ Status VulkanKernel::Create(const VulkanExecutionProvider& vulkan_ep,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create Vulkan kernel for ", node.OpType());
   }
 
-  return kernel->CreateNcnnKernel(graph_viewer, value_indexes);
+  return kernel->SetupNcnnLayer(graph_viewer, value_indexes);
 }
 
-Status VulkanKernel::SetupNcnnLayer(ValueIndexes& value_indexes, const ncnn::ParamDict& params) {
+Status VulkanKernel::SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) {
+  ORT_RETURN_IF_ERROR(SetupParamDict(graph_viewer, params_));
   ORT_RETURN_IF_ERROR(CreateNcnnLayer(GetNcnnLayerName(), ncnn_layer_));
 
   ncnn_layer_->vkdev = &vulkan_ep_.Device();
 
-  RETURN_IF_NCNN_ERROR(ncnn_layer_->load_param(params));
+  RETURN_IF_NCNN_ERROR(ncnn_layer_->load_param(params_));
+
+  ORT_RETURN_IF_ERROR(SetupConstantInitializers(graph_viewer, *ncnn_layer_));
 
   // we manually set shape hints instead of using load_model as we handle initializers ourselves given they're coming
   // from the ONNX model and not the NCNN model.

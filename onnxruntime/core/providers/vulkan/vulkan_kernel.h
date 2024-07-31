@@ -30,25 +30,18 @@ class VulkanKernel {
 
   // Create and initialize the VulkanKernel for the Node.
   static Status Create(const VulkanExecutionProvider& vulkan_ep,
-                       const GraphViewer* graph_viewer,
+                       const GraphViewer& graph_viewer,
                        const onnxruntime::Node& node,
                        ValueIndexes& value_indexes,
                        std::unique_ptr<VulkanKernel>& kernel);
 
-  // convenience method for static kernel usage
-  static Status Create(const OpKernelInfo& info,
-                       std::unique_ptr<VulkanKernel>& kernel) {
-    ValueIndexes value_indexes;
-    for (const auto def : info.node().InputDefs()) {
-      value_indexes.Add(*def);
-    }
+  Status UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) {
+    // TODO: Do we need to support masked options?
+    // int uret = layers[i]->upload_model(cmd, get_masked_option(opt_upload, layers[i]->featmask));
 
-    return Create(GetVulkanExecutionProvider(info), nullptr, info.node(), value_indexes, kernel);
-  }
+    RETURN_IF_NCNN_ERROR(ncnn_layer_->upload_model(cmd, upload_options));
 
-  // static kernel usage
-  virtual Status ComputeImpl(OpKernelContext& /*context*/) const {
-    ORT_NOT_IMPLEMENTED("ComputeImpl is not implemented for ", node_.OpType());
+    return Status::OK();
   }
 
   const onnxruntime::Node& Node() const { return node_; }
@@ -63,22 +56,19 @@ class VulkanKernel {
   // see <build output dir>\_deps\ncnn-build\src\layer_registry.h for layer names
   virtual std::string_view GetNcnnLayerName() const { return node_.OpType(); }
 
-  // default implementation that does not require parameters to be passed in.
-  // override to setup ParamDict and call BaseInit
-  //
-  // TODO: Depending on whether we go with static kernels or compiling we need to provide a way to check if a value
-  // is a constant initializer, and whether it is scalar or not (binary elementwise op optimization. maybe others).
-  // If we're compiling we can use the GraphViewer for the fused node to get the TensorProto.
-  // If we're using static kernels we can use TryGetConstantInput from OpKernelInfo but that returns a Tensor or
-  // OrtValue.
-  // Compiling seems lower friction so using GraphViewer for now and skipping optimizations in binary_elementwise.cc
-  // if using static kernels.
-  virtual Status CreateNcnnKernel(const GraphViewer* /*graph_viewer*/, ValueIndexes& value_indexes) {
-    return SetupNcnnLayer(value_indexes);
+  // default implementation that does not require parameters to be passed in to the NCNN layer.
+  // override to setup ParamDict
+  virtual Status SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& /*params*/) {
+    return Status::OK();
+  }
+
+  virtual Status SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ncnn::Layer& /*layer*/) {
+    // populate the ncnn::Mat members of the specific NCNN Layer derived class with constant initializers if applicable
+    return Status::OK();
   }
 
   // create ncnn_layer_, setup the layer shape hints, create the pipeline and populate value_indexes for the node.
-  Status SetupNcnnLayer(ValueIndexes& value_indexes, const ncnn::ParamDict& params = {});
+  Status SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexes& value_indexes);
 
   const ncnn::Option& NcnnOptions() const { return vulkan_ep_.NcnnOptions(); }
   const ncnn::VulkanDevice& Device() const { return vulkan_ep_.Device(); }
@@ -87,6 +77,7 @@ class VulkanKernel {
   const VulkanExecutionProvider& vulkan_ep_;
   const onnxruntime::Node& node_;
   std::unique_ptr<ncnn::Layer> ncnn_layer_;
+  ncnn::ParamDict params_;
 };
 
 }  // namespace vulkan

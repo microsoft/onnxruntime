@@ -37,7 +37,6 @@ T GetProviderOptionWithDefault(const ProviderOptions& options, const std::string
 }
 }  // namespace
 
-// placeholder for future use. no options currently.
 // ProviderOptions are passed through by the generic EP registration infrastructure.
 struct VulkanExecutionProviderInfo {
   const SessionOptions* session_options{nullptr};
@@ -52,17 +51,18 @@ struct VulkanExecutionProviderInfo {
 };
 
 class VulkanExecutionProvider : public IExecutionProvider {
+  struct NcnnModel;
+
  public:
-  explicit VulkanExecutionProvider(const VulkanExecutionProviderInfo& info, bool compiling = true);
+  explicit VulkanExecutionProvider(const VulkanExecutionProviderInfo& info);
   virtual ~VulkanExecutionProvider();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanExecutionProvider);
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
-
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
-    return std::make_unique<vulkan::VulkanDataTransfer>(data_transfer_);
-  }
+  // Starting with input/output on CPU so we don't need any of these.
+  // std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  // std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
+  //   return std::make_unique<vulkan::VulkanDataTransfer>(data_transfer_);
+  // }
 
   const ncnn::VulkanDevice& Device() const { return vulkan_device_; }
   const ncnn::Option& NcnnOptions() const { return ncnn_options_; }
@@ -71,24 +71,16 @@ class VulkanExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                 const IKernelLookup& kernel_lookup) const override;
 
+  common::Status UploadConstantInitializers(NcnnModel& model);
+
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   common::Status OnSessionInitializationEnd() override;
 
-  // void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
-  //                             AllocatorMap& allocators) const override;
-
-  // start simple.
-  // if we use the compiling approach we can do concurrent runs and the VkCompute usage is simple for input/output
-  // upload/download and running the layers.
-  // if we use static kernels it's a lot harder as we need to share the VkCompute instance correctly as the
-  // input/output handling is via the data transfer instance creating further complexity.
-  bool ConcurrentRunSupported() const override { return false; }
-
   ncnn::Option ncnn_options_;
 
-  // TODO: ownership is currently a global in NCNN code. TBD if we want to move it to be local to this instance.
+  // TODO: ownership is currently in a global in NCNN code. TBD if we want to move it to be local to this instance.
   const ncnn::VulkanDevice& vulkan_device_;
 
   // allocators for various operations.
@@ -101,7 +93,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
   ncnn::VkBlobAllocator blob_allocator_;
   std::unique_ptr<ncnn::PipelineCache> pipeline_cache_;
 
-  vulkan::VulkanDataTransferImpl data_transfer_;
+  // vulkan::VulkanDataTransferImpl data_transfer_;
 
   ModelMetadefIdGenerator metadef_id_generator_;
 
@@ -110,10 +102,8 @@ class VulkanExecutionProvider : public IExecutionProvider {
     std::vector<size_t> output_indexes;
   };
 
-  // one entry per partition when compiling_ is true
+  // one entry per partition
   std::unordered_map<std::string, std::unique_ptr<NcnnModel>> models_;
-
-  bool compiling_{true};  // static kernels or compiled
 };
 
 }  // namespace onnxruntime

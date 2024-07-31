@@ -14,7 +14,7 @@ namespace vulkan {
 class ConvKernel : VulkanKernel {
  public:
   static bool IsSupported(const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
-    // TODO: check attribs/inputs
+    // TODO: check attribs/inputs against NCNN requirements.
     return true;
   }
 
@@ -27,16 +27,24 @@ class ConvKernel : VulkanKernel {
     switch (op_type_) {
       case Convolution:
         return "Convolution";
-      case ConvolutionDepthWise:
-        return "ConvolutionDepthWise";
       case Convolution1D:
         return "Convolution1D";
+      case Convolution3D:
+        return "Convolution3D";
+      case ConvolutionDepthWise:
+        return "ConvolutionDepthWise";
+      case ConvolutionDepthWise1D:
+        return "ConvolutionDepthWise1D";
+      case ConvolutionDepthWise3D:
+        return "ConvolutionDepthWise3D";
       default:
         ORT_THROW("ConvType has not been initialized correctly: ", op_type_);
     }
   }
 
-  Status CreateNcnnKernel(const GraphViewer* graph_viewer, ValueIndexes& value_indexes) override;
+  Status SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
+
+  Status SetupConstantInitializers(const GraphViewer& graph_viewer, ncnn::Layer& layer) override;
 
  private:
   ConvKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)
@@ -50,8 +58,11 @@ class ConvKernel : VulkanKernel {
   enum ConvType {
     Unset,
     Convolution,
+    Convolution1D,
+    Convolution3D,
     ConvolutionDepthWise,
-    Convolution1D
+    ConvolutionDepthWise1D,
+    ConvolutionDepthWise3D,
   };
 
   // set in CreateNcnnKernel where we have access to the GraphViewer. not needed externally until CreateNcnnKernel

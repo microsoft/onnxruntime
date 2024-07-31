@@ -25,9 +25,6 @@ class BinaryElementwiseKernel : VulkanKernel {
     return true;
   }
 
-  // static kernel usage.
-  Status ComputeImpl(OpKernelContext& context) const override;
-
 #define BEK_CREATE(name, ncnn_op_type)                                                        \
   static std::unique_ptr<VulkanKernel> Create##name(const VulkanExecutionProvider& vulkan_ep, \
                                                     const onnxruntime::Node& node) {          \
@@ -54,7 +51,7 @@ class BinaryElementwiseKernel : VulkanKernel {
         op_type_{ncnn_op_type} {
   }
 
-  Status CreateNcnnKernel(const GraphViewer* graph_viewer, ValueIndexes& value_indexes) override;
+  Status SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
 
   enum Params {
     kOperationType = 0,  // ncnn::BinaryOp::OperationType
@@ -66,32 +63,5 @@ class BinaryElementwiseKernel : VulkanKernel {
   bool has_scalar_input_{false};
 };
 
-class BinaryElementwise : public OpKernel {
- public:
-  explicit BinaryElementwise(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_THROW_IF_ERROR(VulkanKernel::Create(info, kernel_));
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    return kernel_->ComputeImpl(*context);
-  }
-
- private:
-  std::unique_ptr<VulkanKernel> kernel_;
-};
-
-// class HardSigmoid final : public Sigmoid {
-//  public:
-//   explicit HardSigmoid(const OpKernelInfo& info) : Sigmoid(info) {}
-//   ~HardSigmoid() = default;
-//
-//   Status Compute(OpKernelContext* context) const override { return Sigmoid::Compute(context); }
-//
-//   static bool IsSupported(const onnxruntime::Node& /*node*/, const logging::Logger& /*logger*/) {
-//     // implement any non-data type checks here.
-//     // log why nodes are not supported if rejecting
-//     return true;
-//   }
-// };
 }  // namespace vulkan
 }  // namespace onnxruntime
