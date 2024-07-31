@@ -48,6 +48,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
+  const Tensor* seqlens_q = context->Input<Tensor>(9);
 
   GroupQueryAttentionParameters parameters = {};
   constexpr float scale = 1.0f;
@@ -62,6 +63,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 num_heads_,
                                                                 kv_num_heads_,
                                                                 seqlens_k,
+                                                                seqlens_q,
                                                                 total_seqlen,
                                                                 scale));
 
@@ -124,8 +126,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     if (parameters.is_interactive) {
       for (int b = 0; b < batch_size; b++) {
         for (int s = 0; s < sequence_length; s++) {
-          if (seqlens_k->Data<int32_t>()[b] + s < seqlens_k->Data<int32_t>()[batch_size + b]) {
-            pos_ids[b * sequence_length + s] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b] + s);
+          const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
+          const int past_seqlen = total_seqlen - seqlens_q->Data<int32_t>()[b];
+          if (past_seqlen + s < total_seqlen) {
+            pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen + s);
           } else {
             pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
           }
@@ -195,7 +199,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,
-                        seqlens_k, parameters, allocator, context);
+                        seqlens_k, seqlens_q, parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
