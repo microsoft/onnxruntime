@@ -58,7 +58,6 @@ class MatMul final : public CudaKernel {
   cublasLtEpilogue_t epilogue_;
 
   float ComputeStandardDeviation(const std::vector<float>& v) const;
-  float ComputeScale(const Tensor* tensor) const;
   float Float8e4m3ToFloat32(int i)
   {
     // TODO implement

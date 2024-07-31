@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "matmul_scale.cuh"
+
 #include "core/providers/cuda/math/matmul.h"
 #include "core/framework/ort_value.h"
 
@@ -308,40 +310,6 @@ float MatMul<T>::ComputeStandardDeviation(const std::vector<float>& v) const
 }
 
 template <typename T>
-float MatMul<T>::ComputeScale(const Tensor* tensor) const
-{
-  const T* p_input = tensor->Data<T>();
-  const TensorShape& shape = tensor->Shape();
-  auto size = shape.Size();
-
-  // TODO is there a way to sort without making a copy? Is sorting necessary?
-  std::vector<float> coef;
-  coef.reserve(size);
-  for (int64_t i = 0; i < size; i ++)
-  {
-    // TODO fix
-    coef.push_back(float(p_input[i]));
-  }
-  std::sort(coef.begin(), coef.end());
-
-  const auto coef_count = coef.size();
-  std::vector<float> coef_abs(coef_count);
-  std::transform(coef.begin(), coef.end(), coef_abs.begin(), [](float x) {
-    return std::abs(x);
-  });
-
-  std::vector<float> result;
-  const float power = 1.0f / 3.0f;
-  for (size_t i = 0; i < coef_count; i ++)
-  {
-    result[i] = std::pow(coef_abs[i], power) * float(coef[i]) / coef_abs[i];
-  }
-  float std_coef = ComputeStandardDeviation(result);
-
-  return std_quant_ / std_coef;
-}
-
-template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -363,7 +331,6 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   if (shape_B.NumDimensions() == 1) {
     transb = false;
   }
-
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -478,8 +445,8 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
     ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
     // Get the weights of the model
-    float scale_a = ComputeScale(left_X);
-    float scale_b = ComputeScale(right_X);
+    float scale_a = ComputeScale<T>(stream, left_X);
+    float scale_b = ComputeScale<T>(stream, right_X);
     float scale_y = 1.0f;
 
     void* scale_a_data = &scale_a;
