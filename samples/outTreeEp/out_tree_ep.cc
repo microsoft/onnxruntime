@@ -51,10 +51,9 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : info(e
         }
     };
 
-    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo*** node_compute_info) {
+    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) {
         for (size_t i = 0; i < cnt; i++) {
-            (*node_compute_info)[i] = new OrtNodeComputeInfo();
-            (*node_compute_info)[i]->ComputeFunc = [](void* state, const OrtApi* api, OrtKernelContext* context) ->OrtStatusPtr {
+            node_compute_info[i]->ComputeFunc = [](void* state, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
                 const OrtValue* input = nullptr;
                 api->KernelContext_GetInput(context, 0, &input);
                 std::vector<int64_t> dim(1,4);

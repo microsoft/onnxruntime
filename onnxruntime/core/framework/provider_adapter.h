@@ -55,42 +55,31 @@ public:
       ortNodes.push_back(reinterpret_cast<const OrtNode*>(&fused_node));
     }
     size_t count = fused_nodes_and_graphs.size();
-    node_compute_info_ = new OrtNodeComputeInfo* [count];
-    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, &node_compute_info_);
-
+    std::vector<OrtNodeComputeInfo> cache;
+    cache.resize(count);
+    OrtNodeComputeInfo* cache_data = cache.data();
+    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, &cache_data);
     node_compute_funcs.reserve(count);
     for (size_t i = 0; i < count; i++) {
         NodeComputeInfo compute_info;
-        compute_info.create_state_func = [&, i](ComputeContext* context, void** state) {
-            if (node_compute_info_[i]->CreateFunctionStateFunc) {
-                OrtComputeContext occ;
-                occ.AllocateFunc = context->allocate_func;
-                occ.DestroyFunc = context->release_func;
-                occ.allocator_handle = context->allocator_handle;
-                occ.node_name = context->node_name;
-                return node_compute_info_[i]->CreateFunctionStateFunc(&occ, state);  // TODO(leca): reinterpret_cast<OrtComputeContext*>(context)?
-            }
+        compute_info.create_state_func = [&, cache, i](ComputeContext* context, void** state) {
+            if (cache[i].CreateFunctionStateFunc) return cache[i].CreateFunctionStateFunc(reinterpret_cast<OrtComputeContext*>(context), state);
             return 0;
         };
-        compute_info.compute_func = [&, i](void* state, const OrtApi* api, OrtKernelContext* context) {
-            return ToStatus(node_compute_info_[i]->ComputeFunc(state, api, context));
+        compute_info.compute_func = [&, cache, i](void* state, const OrtApi* api, OrtKernelContext* context) {
+            return ToStatus(cache[i].ComputeFunc(state, api, context));
         };
-        compute_info.release_state_func = [&, i](void* state) {
-            if (node_compute_info_[i]->DestroyFunctionStateFunc) {
-                node_compute_info_[i]->DestroyFunctionStateFunc(state);
+        compute_info.release_state_func = [&, cache, i](void* state) {
+            if (cache[i].DestroyFunctionStateFunc) {
+                cache[i].DestroyFunctionStateFunc(state);
             }
         };
-        node_compute_funcs.push_back(compute_info);
+        node_compute_funcs.emplace_back(std::move(compute_info));
     }
 
-/*    node_compute_funcs.resize(count);
-    NodeComputeInfo*
-    ep_impl_->Compile(ep_impl_, ortGraphs.data(), ortNodes.data(), count, reinterpret_cast<>(&node_compute_funcs.data()));
-*/
     return Status::OK();
   }
 private:
   OrtExecutionProvider* ep_impl_;
-  OrtNodeComputeInfo** node_compute_info_;
 };
 }

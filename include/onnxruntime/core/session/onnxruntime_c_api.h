@@ -729,7 +729,7 @@ typedef struct OrtNodeComputeInfo {
 
 typedef struct OrtExecutionProvider {
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
-  void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo*** node_compute_info);
+  void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
   const char* type;
 } OrtExecutionProvider;
 
