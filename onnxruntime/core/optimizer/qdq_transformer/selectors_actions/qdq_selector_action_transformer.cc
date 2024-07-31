@@ -70,8 +70,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
       std::make_unique<QDQ::DropQDQNodesSelector>(false, true, false);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_and_positive_scale_name,
                                                          {{"MaxPool", {12}},
-                                                          {"ReduceMin", {}},
-                                                          {"ReduceMax", {}}},
+                                                          {"ReduceMax", {}},
+                                                          {"ReduceMin", {}}},
                                                          std::move(selector_no_16bit_and_positive_scale),
                                                          std::move(drop_action_no_int16_and_positive_scale));
 
