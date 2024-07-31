@@ -203,6 +203,7 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
   } else
 #endif
   {  // unfused kernel
+    assert(data.IsUnfused());
     if (data.bias == nullptr) {
       // Transpose query from BSNH to BNSH
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
@@ -268,7 +269,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
         batch_size, sequence_length,
         num_heads, qk_head_size,
         data.bias, data.query, data.key, data.value, data.q, true, kv_sequence_length);
-
+    data.v = nullptr;
     data.qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
   }
 #if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
@@ -297,9 +298,12 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
         batch_size, sequence_length,
         num_heads, qk_head_size,
         data.bias, data.query, data.key, data.value, data.q, false, kv_sequence_length);
+    data.k = nullptr;
+    data.v = nullptr;
 
     data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
   } else {  // unfused kernel
+    assert(data.IsUnfused());
     // Query (BxSxNxH) => Q (BxNxSxH)
     constexpr int format = 0;
     LaunchAddBiasTranspose<T>(
@@ -329,7 +333,11 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
 }
 
 template <typename T>
-constexpr bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& /*data*/) {
+bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& data) {
+  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+    // Q, K and V redirects to query, present_k and present_v, so we do not need extra workspace for QKV.
+    return data.past_key == nullptr && data.present_key != nullptr;
+  }
   return false;
 }
 
@@ -380,6 +388,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
   } else
 #endif
   {  // unfused kernel
+    assert(data.IsUnfused());
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, data.query, data.q));
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
@@ -450,6 +459,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
   } else
 #endif
   {  // unfused kernel
+    assert(data.IsUnfused());
 
     constexpr int format = 0;
     // Query (BxSxNxH) => Q (BxNxSxH)
@@ -514,11 +524,13 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                            true, v_head_size, qkv_add_bias, 3);
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else if (nullptr != data.fused_runner) {
-    assert(nullptr == relative_position_bias);
+    assert(nullptr == data.relative_position_bias);
     if (data.bias == nullptr) {
       // When there is no bias, we can directly use the original packed QKV input.
       // Need revisit this when we add support for causal.
       data.q = const_cast<T*>(data.query);
+      data.k = nullptr;
+      data.v = nullptr;
     } else {  // data.bias != nullptr
       AddBiasTransposePacked<T>(
           data.query, data.key, data.value, data.bias, data.q,
@@ -531,6 +543,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
 
     data.qkv_format = AttentionQkvFormat::QKV_BSN3H;
   } else {  // unfused kernel
+    assert(data.IsUnfused());
     // unpack qkv to BNSH
     constexpr int format = 5;
     T* qkv_add_bias = nullptr;
@@ -591,6 +604,7 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
     data.k = const_cast<T*>(data.key);
     data.v = nullptr;
   } else {  // unfused kernel
+    assert(data.IsUnfused());
     // Transpose q from BSNH to BNSH. Note that there is no bias.
     ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH(batch_size, parameters.sequence_length, num_heads, qk_head_size,
                                                data.query, data.q, stream, max_threads_per_block));

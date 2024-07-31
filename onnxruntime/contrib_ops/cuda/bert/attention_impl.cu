@@ -112,7 +112,7 @@ size_t GetAttentionWorkspaceSize(
     bool no_qkv_workspace) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_size = element_size * batch_size * num_heads *
-                           ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
+                          ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
   const size_t qkv_bytes = no_qkv_workspace ? 0 : qkv_size;
 
 #if USE_FLASH_ATTENTION
@@ -159,6 +159,9 @@ Status FusedTrtCrossAttention(
   // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
   assert(data.mask_index == nullptr);
   assert(data.scratch != nullptr);
+  assert(data.q != nullptr);
+  assert(data.k != nullptr);
+
 #ifndef NDEBUG
   char* scratch_end = reinterpret_cast<char*>(data.scratch) + 2 * GetSequenceOffsetSize(parameters.batch_size, false);
   char* buffer_end = reinterpret_cast<char*>(data.workspace) + data.workspace_bytes;
@@ -257,14 +260,7 @@ Status FusedTrtSelfAttention(
 
   if (!causal) {
     assert(data.qkv_format == AttentionQkvFormat::QKV_BSN3H);
-
-    // When there is no bias, we can directly use packed qkv from inputs.
-    void const* packed_qkv = data.q;
-    if (data.query != nullptr && data.key == nullptr && data.bias == nullptr) {
-      packed_qkv = data.query;
-    }
-
-    fused_fp16_runner->Run(b, s, packed_qkv, sequence_offset, data.output, stream);
+    fused_fp16_runner->Run(b, s, data.q, sequence_offset, data.output, stream);
   } else {
     assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
     fused_fp16_runner->Run(b, s, data.gemm_buffer, sequence_offset, data.output, stream);
@@ -291,12 +287,13 @@ Status FlashAttention(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
     float scale) {
-  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH || data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
   assert(nullptr == data.mask_index);
   assert(nullptr == data.relative_position_bias);
   assert(parameters.head_size == parameters.v_head_size);
 
-  bool is_bf16 = false;
+  constexpr bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
@@ -333,7 +330,8 @@ Status EfficientAttention(
     float scale) {
   // We only enable fused cross attention when there is no key padding mask.
   // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH || data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+  assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH ||
+         data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
 
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;

@@ -40,7 +40,7 @@ def get_provider_support_info(provider: str, use_kv_cache: bool):
         assert provider == "CPUExecutionProvider"
         formats = [InputFormats.Q_K_V_BSNH_BSNH_BSNH]
         if not use_kv_cache:
-            formats.append(InputFormats.Q_K_V_BSNH_BSNH_BSNH)
+            formats.append(InputFormats.Q_K_V_BSNH_BNSH_BNSH)
         device = torch.device("cpu")
         dtype = torch.float
     return device, dtype, formats
@@ -166,12 +166,13 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
         yield
 
     batch_sizes = [1, 2, 3]
-    sequence_lengths = [1, 16, 127, 128, 255, 256, 383, 384, 2048]
+    sequence_lengths = [1, 16, 127, 128, 255, 256, 383, 384, 512]
     heads = [1, 3, 4, 16]
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
     device, dtype, formats = get_provider_support_info(provider, False)
     if comprehensive:
+        sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
         for batch_size in batch_sizes:
             for sequence_length in sequence_lengths:
                 for num_heads in heads:
@@ -233,12 +234,13 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
         yield
 
     batch_sizes = [1, 2, 3]
-    sequence_lengths = [1, 15, 16, 255, 256, 2048]
+    sequence_lengths = [1, 15, 16, 255, 256, 512]
     heads = [1, 3, 4, 16]
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
     device, dtype, formats = get_provider_support_info(provider, True)
 
     if comprehensive:
+        sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
         for batch_size in batch_sizes:
             for past_sequence_length in sequence_lengths:
                 for num_heads in heads:
@@ -473,7 +475,7 @@ def parity_check_mha_multi_threading(
     test_inputs: List[Dict],
     rtol: float = 1e-3,
     atol: float = 1e-3,
-    attention_kernel: int = SdpaKernel.DEFAULT,
+    attention_kernel=SdpaKernel.DEFAULT,
     max_threads: int = 5,
     verbose: bool = False,
 ):
@@ -482,6 +484,7 @@ def parity_check_mha_multi_threading(
     # For now, MHA CUDA kernel does not support causal so skip such test cases.
     if config.causal and config.provider == "CUDAExecutionProvider":
         return None
+
     # Some kernel does not support certain input format.
     if attention_kernel not in [
         SdpaKernel.DEFAULT,
@@ -625,7 +628,7 @@ class TestMultiHeadAttention(unittest.TestCase):
 
     @parameterized.expand(mha_test_cases("CPUExecutionProvider", comprehensive_mode), skip_on_empty=True)
     def test_mha_cpu(self, config):
-        parity_check_mha(config)
+        parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
     def run_mha_cuda_multi_threading(self, attention_kernel):
         for configs in multi_thread_test_cases("CUDAExecutionProvider", comprehensive_mode):

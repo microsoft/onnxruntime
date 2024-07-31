@@ -104,6 +104,11 @@ struct AttentionData {
   size_t workspace_bytes = 0;
   bool allow_debug_info = false;
 
+  bool IsUnfused() const {
+    return !use_flash_attention && !use_memory_efficient_attention &&
+           (fused_runner == nullptr) && (fused_cross_attention_kernel == nullptr);
+  }
+
   void PrintDebugInfo() const {
     std::cout << "flash=" << use_flash_attention
               << ", efficient=" << use_memory_efficient_attention
