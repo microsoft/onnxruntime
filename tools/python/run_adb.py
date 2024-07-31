@@ -13,7 +13,7 @@ from util.android import get_sdk_tool_paths
 
 def run_adb(android_sdk_root: str, args: typing.List[str]):
     sdk_tool_paths = get_sdk_tool_paths(android_sdk_root)
-    if is_emulator_running(sdk_tool_paths):
+    if is_emulator_running(sdk_tool_paths.adb):
         run(sdk_tool_paths.adb, *args)
     else:
         print("No emulator is running.")
