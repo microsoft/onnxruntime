@@ -155,17 +155,17 @@ void EtwRegistrationManager::LazyInitialize() try {
   if (initialization_status_ == InitializationStatus::NotInitialized) {
     std::lock_guard<OrtMutex> lock(init_mutex_);
     if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
-      initialization_status_ == InitializationStatus::Initializing;
+      initialization_status_ = InitializationStatus::Initializing;
       etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
       if (FAILED(etw_status_)) {
         ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
       }
-      initialization_status_ == InitializationStatus::Initialized;
+      initialization_status_ = InitializationStatus::Initialized;
     }
   }
 } catch (...)
 {
-  initialization_status_ == InitializationStatus::Failed;
+  initialization_status_ = InitializationStatus::Failed;
   throw;
 }
 
