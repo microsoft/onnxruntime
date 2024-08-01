@@ -260,7 +260,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    fused_runner,
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -281,6 +282,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.workspace_bytes = workSpaceSize;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   if (nullptr != present) {
     data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
