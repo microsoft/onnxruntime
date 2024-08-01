@@ -52,9 +52,10 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
   T* output = y.MutableData<T>();
 
-  if (IsScalarOr1ElementVector(&y_scale)) {
+  if (IsScalarOr1ElementVector(&y_scale)) { // per-tensor quantization
     ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point),
                 "y_zero_point must be a scalar or 1D tensor of size 1.");
+    ORT_ENFORCE(block_size_ == 0, "block_size must be 0 for per-tensor quantization.");
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
@@ -62,7 +63,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
     ORT_RETURN_IF_ERROR(CudaQuantizeLinear(Stream(ctx), input, output, scale, zero_point, num_of_elements, saturate_));
     return Status::OK();
-  } else {
+  } else if (block_size_ == 0) { // per-axis quantization
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size() &&
                                             y_zero_point->Shape().NumDimensions() == 1),
@@ -78,6 +79,30 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(CudaQuantizeLinearAxis(Stream(ctx), input, output, scale, zero_point, num_of_elements,
                                                x_shape.SizeToDimension(axis), y_scale.Shape().Size(), saturate_));
     return Status::OK();
+  } else { // blocked quantization
+    // TODO(fajin)
+    int64_t axis_no_neg = HandleNegativeAxis(axis_, x_shape.NumDimensions());
+    auto& y_scale_shape = y_scale.Shape();
+
+    ORT_ENFORCE(y_scale_shape.NumDimensions() == x_shape.NumDimensions(),
+                "scale and x must have the same rank for blocked quantization");
+    ORT_ENFORCE(y_zero_point == nullptr || y_zero_point->Shape().NumDimensions() == x_shape.NumDimensions(),
+                "zero_point must be null or have the same rank as x for blocked quantization");
+
+    for (size_t i = 0, ndim = x_shape.NumDimensions(); i < ndim; ++i) {
+      if (i == SafeInt<size_t>(axis_no_neg)) {
+        ORT_ENFORCE(y_scale_shape[i] == (x_shape[i] + block_size_ - 1) / block_size_,
+                    "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
+      } else {
+        ORT_ENFORCE(y_scale_shape[i] == x_shape[i],
+                    "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
+      }
+
+      if (y_zero_point) {
+        ORT_ENFORCE(y_zero_point->Shape()[i] == scale.Shape()[i],
+                    "x_zero_point and x_scale must have the same shape for blocked quantization");
+      }
+    }
   }
 }
 
