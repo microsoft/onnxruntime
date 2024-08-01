@@ -55,10 +55,15 @@ struct OrtVitisAIEpAPI {
   uint32_t (*vaip_get_version)();
   void (*get_backend_compilation_cache)(const std::string& model_path, const onnxruntime::Graph& graph, const char* json_config, uint8_t compiler_codes, std::string& cache_dir, std::string& cache_key, std::string& cache_data);
   void (*restore_backend_compilation_cache)(const std::string& cache_dir, const std::string& cache_key, const std::string& cache_data, const std::string& model_path);
+  void (*create_ep_context_nodes)(
+      onnxruntime::Graph& ep_context_graph,
+      const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
+      vaip_core::DllSafe<std::vector<Node*>>* ret_value) = nullptr;
   void Ensure() {
     if (handle_)
       return;
     auto& env = Provider_GetHost()->Env__Default();
+    auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
 #ifdef _WIN32
     // this dll is already linked to the executable, normally a test program
     handle_ = reinterpret_cast<void*>(GetModuleHandle(TEXT("onnxruntime_vitisai_ep.dll")));
@@ -81,6 +86,10 @@ struct OrtVitisAIEpAPI {
                                            (void**)&vaip_get_version);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "get_compilation_cache", (void**)&get_backend_compilation_cache));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "restore_compilation_cache", (void**)&restore_backend_compilation_cache));
+    status1 = (env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
+    if (!status1.IsOK()) {
+      LOGS(logger, WARNING) << "create_ep_context_nodes is not defined, please upgrade onnxruntime_vitisai_ep.dll. However, it still works.";
+    }
   }
 
  private:
@@ -146,6 +155,24 @@ void restore_backend_compilation_cache(const std::string& cache_dir, const std::
   s_library_vitisaiep.restore_backend_compilation_cache(cache_dir, cache_key, cache_data, model_path);
 }
 
+bool has_create_ep_context_nodes() {
+  return s_library_vitisaiep.create_ep_context_nodes != nullptr;
+}
+
+std::optional<std::vector<Node*>> create_ep_context_nodes(
+    onnxruntime::Graph& ep_context_graph,
+    const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps) {
+  if (s_library_vitisaiep.create_ep_context_nodes) {
+    vaip_core::DllSafe<std::vector<Node*>> nodes;
+    s_library_vitisaiep.create_ep_context_nodes(ep_context_graph, eps, &nodes);
+    if (nodes.get()) {
+      auto ret = std::vector<Node*>(*nodes);
+      return ret;
+    }
+  }
+  return std::nullopt;
+}
+
 struct MyCustomOpKernel : OpKernel {
   MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_kernel_ =
@@ -173,7 +200,7 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
       auto def_builder = KernelDefBuilder::Create();
       def_builder->SetName(op->GetName(op));
       def_builder->SetDomain(domain->domain_.c_str());
-      def_builder->SinceVersion(1);
+      def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
       if (op->version > 12) {
         auto input_count = op->GetInputTypeCount(op);
         for (auto i = 0u; i < input_count; i++) {
@@ -183,7 +210,7 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
       def_builder->Provider(onnxruntime::kVitisAIExecutionProvider);
       KernelCreateFn kernel_create_fn =
           [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        // out = std::make_unique<MyCustomOpKernel>(info, *op);
+        out = std::make_unique<MyCustomOpKernel>(info, *op);
         return Status::OK();
       };
       std::ignore = s_kernel_registry_vitisaiep->Register(KernelCreateInfo(def_builder->Build(), kernel_create_fn));
@@ -403,6 +430,29 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
 
   the_global_api.graph_add_initialized_tensor = [](Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor) {
     graph.AddInitializedTensor(tensor);
+  };
+
+  the_global_api.get_model_path = [](const Graph& graph) -> const std::filesystem::path& {
+    return graph.ModelPath();
+  };
+
+  the_global_api.create_empty_model = [](const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset) -> Model* {
+    auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
+    auto graph_proto = ONNX_NAMESPACE::GraphProto::Create();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    for (const auto& op : opset) {
+      auto* opset_import = model_proto->add_opset_import();
+      *(opset_import->mutable_domain()) = op.first;
+      opset_import->set_version(op.second);
+    }
+    std::ignore = model_proto->mutable_graph();  // create a graph
+    auto& logger = logging::LoggingManager::DefaultLogger();
+    auto model = Model::Create(std::move(*model_proto), path, nullptr, logger);
+    return model.release();
+  };
+
+  the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
+    graph.SetInputs(inputs);
   };
 
   if (!s_library_vitisaiep.vaip_get_version) {

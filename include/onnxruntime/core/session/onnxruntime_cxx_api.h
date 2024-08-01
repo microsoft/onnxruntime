@@ -2216,7 +2216,7 @@ struct ShapeInferContext {
 
   size_t GetInputCount() const { return input_shapes_.size(); }
 
-  Status SetOutputShape(size_t indice, const Shape& shape);
+  Status SetOutputShape(size_t indice, const Shape& shape, ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
 
   int64_t GetAttrInt(const char* attr_name);
 

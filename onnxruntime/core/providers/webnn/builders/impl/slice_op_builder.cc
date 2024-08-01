@@ -97,9 +97,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                  sizes.begin(),
                  [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs,
                                                                             emscripten::val::array(starts),
-                                                                            emscripten::val::array(sizes));
+                                                                            emscripten::val::array(sizes),
+                                                                            options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

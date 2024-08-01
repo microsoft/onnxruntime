@@ -28,7 +28,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
                               const logging::Logger& logger) const override;
 };
@@ -242,6 +242,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   ORT_RETURN_IF_ERROR(SetConvBaseOptions(
       model_builder, node, options, input_shape, weight_shape, strides, dilations, pads, is_nhwc, is_conv1d, logger));
   bool depthwise = false;
@@ -276,7 +277,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (!is_nhwc || !is_constant_weight) {
       // The weight_shape has been appended 1's, reshape weight operand.
       std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(weight_shape);
-      filter = model_builder.GetBuilder().call<emscripten::val>("reshape", filter, emscripten::val::array(new_shape));
+      emscripten::val reshape_options = emscripten::val::object();
+      reshape_options.set("label", node.Name() + "_reshape_filter");
+      filter = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                filter,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_options);
     }
   }
 
@@ -293,6 +299,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       perm = {0, 2, 3, 1};  // L_0231
     }
     transpose_options.set("permutation", emscripten::val::array(perm));
+    transpose_options.set("label", node.Name() + "_transpose_filter");
     filter = model_builder.GetBuilder().call<emscripten::val>("transpose", filter, transpose_options);
   }
 
@@ -323,7 +330,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     std::vector<int64_t> output_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[0], output_shape, logger), "Cannot get output shape");
     std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(output_shape);
-    output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+    emscripten::val reshape_options = emscripten::val::object();
+    reshape_options.set("label", node.Name() + "_reshape_output");
+    output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                              output,
+                                                              emscripten::val::array(new_shape),
+                                                              reshape_options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -364,6 +376,22 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s weight dimension: " << weight_size
                           << ". Only conv 1d / 2d is supported.";
     return false;
+  }
+
+  // WebNN CPU backend (TFLite) only supports default dilations and group.
+  // https://source.chromium.org/chromium/chromium/src/+/main:services/webnn/tflite/graph_builder_tflite.cc;l=1040
+  if (device_type == WebnnDeviceType::CPU && op_type == "ConvTranspose") {
+    NodeAttrHelper helper(node);
+    const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
+    const auto group = helper.Get("group", 1);
+    if (dilations[0] != 1 || (dilations.size() > 1 && dilations[1] != 1)) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default dilation 1.";
+      return false;
+    }
+    if (group != 1) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default group 1.";
+      return false;
+    }
   }
 
   return true;
