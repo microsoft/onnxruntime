@@ -37,7 +37,7 @@ class BasicBackend : public IBackend {
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
-  void EnableCaching();
+  void EnableCaching(ov::AnyMap& device_config);
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);

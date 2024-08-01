@@ -19,10 +19,11 @@ def run_adb(android_sdk_root: str, args: typing.List[str]):
         print("No emulator is running.")
 
 
-def is_emulator_running(adb_path: str) -> bool:
+def is_emulator_running(adb_path) -> bool:
     result = run(adb_path, "devices", capture_stdout=True)
     output = result.stdout
-    lines = output.strip().split("\n")
+    output_str = output.decode('utf-8').strip()
+    lines = output_str.splitlines()
     if len(lines) > 1:
         for line in lines[1:]:
             if "emulator" in line:

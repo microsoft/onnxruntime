@@ -137,6 +137,7 @@ exclude_patterns = [
     'onnxruntime/core/mickey/gemm/**', # CUTLASS based libs recommends NO automatic code formatting
     'winml/lib/Api.Image/shaders/**',  # Contains data chunks
     'onnxruntime/contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h', # Bool Switches hang Clang
+    'onnxruntime/core/providers/coreml/mlprogram_test_scripts/**',  # test scripts only
 ]
 command = [
     'python',

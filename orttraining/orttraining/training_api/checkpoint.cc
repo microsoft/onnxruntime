@@ -449,7 +449,7 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
 
   fbs_optimizer_groups.reserve(optimizer_state.group_named_optimizer_states.size());
   for (const auto& group_name : SortedKeys(optimizer_state.group_named_optimizer_states)) {
-    const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr =
+    std::shared_ptr<GroupOptimizerState> group_optimizer_state_ptr =
         optimizer_state.group_named_optimizer_states.at(group_name);
 
     std::vector<flatbuffers::Offset<fbs::ParameterOptimizerState>> optimizer_states;

@@ -95,8 +95,8 @@ class TorchProxy {
       std::vector<int64_t>& bw_output_to_input_alias_map);
 
  private:
-  TorchProxy(){};
-  ~TorchProxy(){};
+  TorchProxy() {};
+  ~TorchProxy() {};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TorchProxy);
 

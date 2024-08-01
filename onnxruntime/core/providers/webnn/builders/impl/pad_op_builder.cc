@@ -73,6 +73,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   NodeAttrHelper helper(node);
   const auto pad_mode = helper.Get("mode", std::string("constant"));
@@ -145,9 +146,12 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       starts.push_back(start_padding[i] >= 0 ? SafeInt<uint32_t>(0) : SafeInt<uint32_t>(-start_padding[i]));
       sizes.push_back(SafeInt<uint32_t>(input_shape[i] + start_padding[i] + end_padding[i]));
     }
+    emscripten::val slice_options = emscripten::val::object();
+    slice_options.set("label", node.Name() + "_slice_output");
     output = model_builder.GetBuilder().call<emscripten::val>("slice", output,
                                                               emscripten::val::array(starts),
-                                                              emscripten::val::array(sizes));
+                                                              emscripten::val::array(sizes),
+                                                              slice_options);
   }
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

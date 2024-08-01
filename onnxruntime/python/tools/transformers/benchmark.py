@@ -802,7 +802,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)  # noqa: G002
+            logger.error("Creation of the directory %s failed", args.cache_dir)
 
     enable_torch = "torch" in args.engines
     enable_torch2 = "torch2" in args.engines
