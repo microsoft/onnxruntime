@@ -246,7 +246,7 @@ export const init =
       // jsepReleaseBufferId,
       (bufferId: number) => backend.releaseBufferId(bufferId),
       // jsepEnsureBuffer
-      (bufferId: number, onnxDataType: number, dimensions: number[]) =>
+      async (bufferId: number, onnxDataType: number, dimensions: number[]) =>
           backend.ensureBuffer(bufferId, onnxDataType, dimensions),
       // jsepUploadBuffer
       (bufferId: number, data: Uint8Array) => {

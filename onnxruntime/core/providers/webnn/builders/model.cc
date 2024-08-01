@@ -155,27 +155,31 @@ onnxruntime::common::Status Model::Compute(const InlinedHashMap<std::string, Onn
 onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   auto jsepEnsureBuffer = emscripten::val::module_property("jsepEnsureBuffer");
-  for (const auto& input : inputs) {
-    const std::string& name = input.first;
-    const struct OnnxTensorData tensor = input.second;
+  auto promises = emscripten::val::array();
+  for (const auto& [_, tensor] : inputs) {
     emscripten::val shape = emscripten::val::array();
     for (const auto& dim : tensor.tensor_info.shape) {
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
     auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
-    wnn_inputs_.set(name, buffer);
+    promises.call<void>("push", buffer);
   }
-  for (const auto& output : outputs) {
-    const std::string& name = output.first;
-    const struct OnnxTensorData tensor = output.second;
+  for (const auto& [_, tensor] : outputs) {
     emscripten::val shape = emscripten::val::array();
     for (const auto& dim : tensor.tensor_info.shape) {
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
     auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
-    wnn_outputs_.set(name, buffer);
+    promises.call<void>("push", buffer);
+  }
+  auto buffers = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
+  for (const auto& [name, _] : inputs) {
+    wnn_inputs_.set(name, buffers.call<emscripten::val>("shift"));
+  }
+  for (const auto& [name, _] : outputs) {
+    wnn_outputs_.set(name, buffers.call<emscripten::val>("shift"));
   }
   wnn_context_.call<void>("dispatch", wnn_graph_, wnn_inputs_, wnn_outputs_);
 

@@ -285,7 +285,7 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
-bool IsMLBufferSupported(WebnnDeviceType device_type);
+bool IsMLBufferSupported();
 
 }  // namespace webnn
 }  // namespace onnxruntime

@@ -704,7 +704,7 @@ export const run = async(
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
             // ensureBuffer to get/create the MLBuffer.
-            const mlBuffer = ensureBuffer(dataOffset, dataType, dims);
+            const mlBuffer = await ensureBuffer(dataOffset, dataType, dims);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;

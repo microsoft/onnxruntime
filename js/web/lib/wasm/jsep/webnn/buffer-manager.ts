@@ -25,7 +25,7 @@ export interface BufferManager {
   /**
    * Ensure a MLBuffer is created for the BufferId.
    */
-  ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): MLBuffer;
+  ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): Promise<MLBuffer>;
   /**
    * Upload data to a MLBuffer.
    */
@@ -85,12 +85,12 @@ class BufferTracker {
     this.mlBuffer = undefined;
   }
 
-  public ensureBuffer(dataType: MLOperandDataType, dimensions: number[]): MLBuffer {
+  public async ensureBuffer(dataType: MLOperandDataType, dimensions: number[]): Promise<MLBuffer> {
     if (this.mlBuffer) {
       return this.mlBuffer;
     }
 
-    const buffer = this.context.createBuffer({dataType, dimensions});
+    const buffer = await this.context.createBuffer({dataType, dimensions});
     this.mlBuffer = buffer;
 
     if (this.activeUpload) {
@@ -151,7 +151,7 @@ class BufferManagerImpl implements BufferManager {
     }
   }
 
-  public ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): MLBuffer {
+  public async ensureBuffer(bufferId: BufferId, dataType: MLOperandDataType, dimensions: number[]): Promise<MLBuffer> {
     const buffer = this.buffersById.get(bufferId);
     if (!buffer) {
       throw new Error('Buffer not found.');

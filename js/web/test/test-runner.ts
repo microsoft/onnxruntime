@@ -257,8 +257,7 @@ export class ModelTestContext {
       const executionProviderConfig =
           modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || {name: 'webnn'}) : modelTest.backend!;
       let mlContext: MLContext|undefined;
-      if(['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
-
+      if (['ml-tensor', 'ml-location'].includes(modelTest.ioBinding)) {
         const webnnOptions = executionProviderConfig as ort.InferenceSession.WebNNExecutionProviderOption;
         const deviceType = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.deviceType;
         const numThreads = (webnnOptions as ort.InferenceSession.WebNNContextOptions)?.numThreads;
@@ -593,7 +592,7 @@ async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Ty
 
   const dataType = type === 'bool' ? 'uint8' : type;
 
-  const mlBuffer = mlContext.createBuffer({dataType, dimensions: dims as number[]});
+  const mlBuffer = await mlContext.createBuffer({dataType, dimensions: dims as number[]});
 
   return ort.Tensor.fromMLBuffer(mlBuffer, {
     dataType: type,
@@ -611,7 +610,7 @@ async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tenso
     throw new Error(`createMLTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
-  const mlBuffer = mlContext.createBuffer({dataType, dimensions: cpuTensor.dims as number[]});
+  const mlBuffer = await mlContext.createBuffer({dataType, dimensions: cpuTensor.dims as number[]});
   mlContext.writeBuffer(mlBuffer, cpuTensor.data);
   return ort.Tensor.fromMLBuffer(
       mlBuffer, {dataType: cpuTensor.type, dims: cpuTensor.dims, dispose: () => mlBuffer.destroy()});

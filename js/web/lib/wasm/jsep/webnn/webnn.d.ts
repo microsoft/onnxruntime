@@ -387,7 +387,7 @@ interface MLBuffer {
 
 type MLNamedBuffers = Record<string, MLBuffer>;
 interface MLContext {
-  createBuffer(descriptor: MLOperandDescriptor): MLBuffer;
+  createBuffer(descriptor: MLOperandDescriptor): Promise<MLBuffer>;
   writeBuffer(
       dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: number,
       srcElementSize?: number): void;

@@ -24,7 +24,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
           onnxruntime::kWebNNExecutionProvider,
           // If MLBuffer is supported, we force all the tensors to be allocated as MLBuffer.
           OrtDevice(
-              webnn::IsMLBufferSupported(webnn::DeviceTypeFromString(webnn_device_flags)) ? OrtDevice::GPU : OrtDevice::CPU,
+              webnn::IsMLBufferSupported() ? OrtDevice::GPU : OrtDevice::CPU,
               OrtDevice::MemType::DEFAULT,
               0)},
       wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
@@ -381,14 +381,14 @@ WebNNExecutionProvider::GetKernelRegistry() const {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTransfer() const {
-  if (!webnn::IsMLBufferSupported(wnn_device_type_)) {
+  if (!webnn::IsMLBufferSupported()) {
     return nullptr;
   }
   return std::make_unique<webnn::DataTransfer>();
 }
 
 std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
-  if (!webnn::IsMLBufferSupported(wnn_device_type_)) {
+  if (!webnn::IsMLBufferSupported()) {
     return {};
   }
   AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {

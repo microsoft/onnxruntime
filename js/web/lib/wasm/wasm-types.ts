@@ -25,7 +25,8 @@ export declare namespace JSEP {
   type ReplayFunction = () => void;
   type ReserveBufferIdFunction = () => number;
   type ReleaseBufferIdFunction = (bufferId: number) => void;
-  type EnsureBufferFunction = (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) => MLBuffer;
+  type EnsureBufferFunction = (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) =>
+      Promise<MLBuffer>;
   type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
   type DownloadBufferFunction = (bufferId: number) => Promise<ArrayBuffer>;
 
@@ -154,7 +155,7 @@ export declare namespace JSEP {
      * @param bufferId - specify the MLBuffer ID.
      * @returns the MLBuffer.
      */
-    jsepEnsureBuffer: (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) => MLBuffer;
+    jsepEnsureBuffer: (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) => Promise<MLBuffer>;
     /**
      * [exported from pre-jsep.js] Upload data to MLBuffer.
      * @param bufferId - specify the MLBuffer ID.

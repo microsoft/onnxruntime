@@ -211,10 +211,9 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   }
 }
 
-bool IsMLBufferSupported(WebnnDeviceType device_type) {
+bool IsMLBufferSupported() {
   static bool is_supported = !emscripten::val::global("MLBuffer").isUndefined();
-  // The current MLBuffer implementation only supports GPU and NPU devices.
-  return is_supported && device_type != WebnnDeviceType::CPU;
+  return is_supported;
 }
 
 }  // namespace webnn

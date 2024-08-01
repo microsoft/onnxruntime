@@ -99,7 +99,8 @@ export class WebNNBackend {
     this.bufferManager.releaseBufferId(bufferId);
   }
 
-  public ensureBuffer(bufferId: BufferId, onnxDataType: number|MLOperandDataType, dimensions: number[]): MLBuffer {
+  public async ensureBuffer(bufferId: BufferId, onnxDataType: number|MLOperandDataType, dimensions: number[]):
+      Promise<MLBuffer> {
     let dataType: MLOperandDataType;
     if (typeof onnxDataType === 'number') {
       const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
