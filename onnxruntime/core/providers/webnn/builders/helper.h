@@ -171,6 +171,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Cos", {"cos", true}},
     {"Div", {"div", true}},
     {"DequantizeLinear", {"dequantizeLinear", false}},
+    {"Dropout", {"identity", true}},
     {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", false}},
     {"Elu", {"elu", true}},
     {"Equal", {"equal", true}},
