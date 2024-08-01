@@ -474,7 +474,7 @@ export const getContiguousParameters =
     }
   } finally {
     if (tensor !== 0) {
-      if ( wasm._OrtReleaseTensor(tensor) !== 0) {
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
         checkLastError('Error occurred when trying to release the tensor');
       }
     }

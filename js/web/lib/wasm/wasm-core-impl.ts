@@ -399,7 +399,7 @@ export const releaseSession = (sessionId: number): void => {
 
   if (ioBindingState) {
     if (enableGraphCapture) {
-      if ( wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
+      if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
         checkLastError('Can\'t clear bound outputs.');
       }
     }
