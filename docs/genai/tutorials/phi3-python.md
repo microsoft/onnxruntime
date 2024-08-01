@@ -56,7 +56,7 @@ This tutorial downloads and runs the short context (4k) mini (3B) model variant.
 ## Choose your platform
 
 Are you on a Windows machine with GPU?
-* I don't know &rarr; Review [this guide](https://www.microsoft.com/en-us/windows/learning-center/how-to-check-gpu) to see whether you have a GPU in your Windows machine.
+* I don't know &rarr; Review [this guide](https://www.microsoft.com/en-us/windows/learning-center/how-to-check-gpu) to see whether you have a GPU in your Windows machine and confirm that your GPU is [DirectML-supported](https://github.com/microsoft/DirectML?tab=readme-ov-file#hardware-requirements)
 * Yes &rarr; Follow the instructions for [DirectML](#run-with-directml).
 * No &rarr; Do you have an NVIDIA GPU?
   * I don't know &rarr; Review [this guide](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html#verify-you-have-a-cuda-capable-gpu) to see whether you have a CUDA-capable GPU.
@@ -66,6 +66,7 @@ Are you on a Windows machine with GPU?
 **Note: Only one package and model is required based on your hardware. That is, only execute the steps for one of the following sections**
 
 ## Run with DirectML
+
 
 1. Download the model
 
