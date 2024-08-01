@@ -1,6 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+
+/**** NOT CURRENTLY USED *****
+
+Would require cmake/patches/ncnn/record_download.patch.
+
+The whole setup was a little hacky as it tried to replicate internal NCNN packing logic. 
+
+
 #include "core/providers/vulkan/vulkan_data_transfer.h"
 
 #include "ncnn-src/src/command.h"
@@ -64,7 +72,7 @@ Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst,
       // this optionally flattens, but besides that does not change the packing of the data unless it's a 32-bit
       // type and `(opt.use_fp16_storage || (opt.use_fp16_packed && src.elempack % 4 == 0))` is true
       // in which case it casts to fp16
-      transfer->record_upload(src_mat, dst_vkmat, ncnn_options_, /*flatten*/ false);
+      transfer->record_upload(src_mat, dst_vkmat, ncnn_options_, *flatten* false);
     } else {
       compute->record_upload(src_mat, dst_vkmat, ncnn_options_);
     }
@@ -157,3 +165,5 @@ common::Status VulkanDataTransferImpl::CopyTensors(const std::vector<IDataTransf
 
 }  // namespace vulkan
 }  // namespace onnxruntime
+
+****/

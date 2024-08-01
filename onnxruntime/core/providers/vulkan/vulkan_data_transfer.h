@@ -3,6 +3,12 @@
 
 #pragma once
 
+/*** NOT CURRENTLY USED
+
+Would require cmake/patches/ncnn/record_download.patch to be applied.
+The whole setup was a little hacky as it tried to replicate internal NCNN packing logic during upload/download
+which is influenced by the current options.
+
 #include <optional>
 
 #include "core/common/common.h"
@@ -60,7 +66,7 @@ class VulkanDataTransfer : public IDataTransfer {
     return impl_.CopyTensors(src_dst_pairs);
   }
 
-  // common::Status CopyTensorAsync(const Tensor& /*src*/, Tensor& /*dst*/, Stream& /*stream*/) const override
+  // common::Status CopyTensorAsync(const Tensor& *src*, Tensor& *dst*, Stream& *stream*) const override
 
  private:
   const VulkanDataTransferImpl& impl_;
@@ -68,3 +74,5 @@ class VulkanDataTransfer : public IDataTransfer {
 
 }  // namespace vulkan
 }  // namespace onnxruntime
+
+****/
