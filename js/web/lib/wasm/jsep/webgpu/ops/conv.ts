@@ -300,7 +300,8 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
   const adjustedAttributes = getAdjustedConvAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
   context.compute(createGroupedConvProgramInfo(
       inputs, adjustedAttributes,
-      outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
+      outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] :
+                                     [outputShape[0], outputShape[1], outputShape[3]]));
 };
 
 const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
