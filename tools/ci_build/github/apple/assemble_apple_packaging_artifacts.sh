@@ -26,8 +26,6 @@ PODSPEC_BASENAME="${POD_NAME}.podspec"
 # Check for directories starting with "macos" and create symlinks if necessary
 for MACOS_DIR in "${BINARIES_STAGING_DIR}/${POD_NAME}/onnxruntime.xcframework/macos"*; do
   if [ -d "${MACOS_DIR}" ]; then
-
-
     echo "Creating symlinks for ${MACOS_DIR}"
     pushd "${MACOS_DIR}/onnxruntime.framework"
 
@@ -43,6 +41,10 @@ for MACOS_DIR in "${BINARIES_STAGING_DIR}/${POD_NAME}/onnxruntime.xcframework/ma
 
   fi
 done
+
+
+echo "Contents of ${BINARIES_STAGING_DIR}/${POD_NAME}:"
+ls -lR "${BINARIES_STAGING_DIR}/${POD_NAME}"
 
 pushd "${BINARIES_STAGING_DIR}/${POD_NAME}"
 
