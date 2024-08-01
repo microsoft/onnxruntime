@@ -1,5 +1,3 @@
-# git+http://github.com/onnx/onnx.git@84051888d0943883a0edbf683f68c05ca3b28c40#egg=onnx
---extra-index-url https://pypi.org/simple
-onnx --pre
+onnx==1.16.2
 transformers>=4.36.2
 onnxscript>=0.1.0.dev20240126
