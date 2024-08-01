@@ -18,7 +18,7 @@ function(find_cudnn_library NAME)
         PATH_SUFFIXES lib64 lib/x64 lib
         REQUIRED
     )
-    
+
     if(${NAME}_LIBRARY)
         add_library(CUDNN::${NAME} UNKNOWN IMPORTED)
         set_target_properties(
@@ -46,7 +46,7 @@ if(CUDNN_INCLUDE_DIR AND cudnn_LIBRARY)
 
     message(STATUS "cuDNN: ${cudnn_LIBRARY}")
     message(STATUS "cuDNN: ${CUDNN_INCLUDE_DIR}")
-    
+
     set(CUDNN_FOUND ON CACHE INTERNAL "cuDNN Library Found")
 
 else()
@@ -65,7 +65,7 @@ target_include_directories(
 target_link_libraries(
     CUDNN::cudnn_all
     INTERFACE
-    CUDNN::cudnn 
+    CUDNN::cudnn
 )
 
 if(CUDNN_MAJOR_VERSION EQUAL 8)
@@ -107,3 +107,5 @@ elseif(CUDNN_MAJOR_VERSION EQUAL 9)
         CUDNN::cudnn_heuristic
     )
 endif()
+
+mark_as_advanced(CUDNN_INCLUDE_DIR)

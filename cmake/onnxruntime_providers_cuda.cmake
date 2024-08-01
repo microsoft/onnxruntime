@@ -11,7 +11,7 @@
     )
     # Remove pch files
     list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
-      "${ONNXRUNTIME_ROOT}/core/providrs/cuda/integer_gemm.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/integer_gemm.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/triton_kernel.h"
     )
   else()

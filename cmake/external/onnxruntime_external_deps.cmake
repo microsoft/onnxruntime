@@ -587,11 +587,15 @@ endif()
 
 message("Finished fetching external dependencies")
 
-
 set(onnxruntime_LINK_DIRS )
+
 if (onnxruntime_USE_CUDA)
-      #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       find_package(CUDAToolkit REQUIRED)
+
+      if(onnxruntime_CUDNN_HOME)
+        file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+        set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
+      endif()
       include(cuDNN)
 endif()
 
