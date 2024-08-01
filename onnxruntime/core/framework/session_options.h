@@ -15,7 +15,6 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
-#include "core/framework/provider_options.h"
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/library_handles.h"
@@ -185,8 +184,6 @@ struct SessionOptions {
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
-
-  ProviderOptionsMap custom_ep_options;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

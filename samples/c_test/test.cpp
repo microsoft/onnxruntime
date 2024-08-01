@@ -16,7 +16,7 @@ int main() {
     OrtSessionOptions* so = nullptr;
     THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
-    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "outTreeEp", keys.data(), values.data(), keys.size()));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "outTreeEp", p_env, keys.data(), values.data(), keys.size()));
 
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));

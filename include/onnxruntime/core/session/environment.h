@@ -90,7 +90,7 @@ class Environment {
 
   void InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory);
 
-  const std::unordered_map<std::string, std::unique_ptr<OrtExecutionProviderFactory>>& GetCustomEpFactories() const { return custom_ep_factories_; }
+  OrtExecutionProviderFactory* GetOrtExecutionProviderFactory(const std::string& ep_name);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);

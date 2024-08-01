@@ -39,6 +39,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
 #include "core/common/string_helper.h"
+#include "core/framework/provider_factory_adapter.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -2368,13 +2369,13 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterOrtExecutionProviderLibrary, _In_ const cha
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
-  std::unordered_map<std::string, std::string> kv;
-  for (size_t i = 0; i < num_keys; i++) {
-    kv.insert({provider_options_keys[i], provider_options_values[i]});
+  OrtExecutionProviderFactory* ep_factory = env->GetOrtExecutionProviderFactory(ep_name);
+  if (ep_factory) {
+    std::shared_ptr<ExecutionProviderFactoryAdapter> factory = std::make_shared<ExecutionProviderFactoryAdapter>(ep_factory, provider_options_keys, provider_options_values, num_keys);
+    options->provider_factories.push_back(std::move(factory));
   }
-  options->value.custom_ep_options.insert({ep_name, kv});
   return nullptr;
 }
 

@@ -89,7 +89,6 @@
 #include "core/framework/stream_execution_context.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #endif
-#include "core/framework/provider_adapter.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -1655,22 +1654,6 @@ common::Status InferenceSession::Initialize() {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
-
-    const std::unordered_map<std::string, std::unique_ptr<OrtExecutionProviderFactory>>& custom_ep_factories = environment_.GetCustomEpFactories();
-    if (custom_ep_factories.size() > 0) {
-      for (auto const& [ep_name, ep_factory] : custom_ep_factories) {
-        if (session_options_.custom_ep_options.find(ep_name) != session_options_.custom_ep_options.end()) {
-          std::vector<const char*> keys, values;
-          for (auto const& [op_k, op_v] : session_options_.custom_ep_options[ep_name]) {
-            keys.push_back(op_k.c_str());
-            values.push_back(op_v.c_str());
-          }
-          OrtExecutionProvider* ep = reinterpret_cast<OrtExecutionProvider*>(ep_factory->CreateExecutionProvider(ep_factory.get(), keys.data(), values.data(), keys.size()));
-          std::unique_ptr<ExecutionProviderAdapter> ep_adapter = std::make_unique<ExecutionProviderAdapter>(ep);
-          ORT_RETURN_IF_ERROR(RegisterExecutionProvider(std::move(ep_adapter)));
-        }
-      }
-    }
 
     bool have_cpu_ep = false;
 

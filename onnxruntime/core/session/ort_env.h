@@ -67,6 +67,8 @@ struct OrtEnv {
 
   void InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory);
 
+  OrtExecutionProviderFactory* GetOrtExecutionProviderFactory(const char* ep_name);
+
  private:
   static std::unique_ptr<OrtEnv> p_instance_;
   static onnxruntime::OrtMutex m_;

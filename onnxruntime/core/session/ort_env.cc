@@ -114,3 +114,7 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::stri
 void OrtEnv::InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory) {
   value_->InsertCustomEp(ep_name, ep_factory);
 }
+
+OrtExecutionProviderFactory* OrtEnv::GetOrtExecutionProviderFactory(const char* ep_name) {
+  return value_->GetOrtExecutionProviderFactory(ep_name);
+}

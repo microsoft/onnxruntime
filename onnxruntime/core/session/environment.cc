@@ -353,4 +353,10 @@ void Environment::InsertCustomEp(const char* ep_name, OrtExecutionProviderFactor
   custom_ep_factories_.insert({ep_name, std::move(p)});  // TODO(leca): review
 }
 
+OrtExecutionProviderFactory* Environment::GetOrtExecutionProviderFactory(const std::string& ep_name) {
+  std::unordered_map<std::string, std::unique_ptr<OrtExecutionProviderFactory>>::const_iterator it = custom_ep_factories_.find(ep_name);
+  if (it == custom_ep_factories_.end()) return nullptr;
+  return it->second.get();
+}
+
 }  // namespace onnxruntime
