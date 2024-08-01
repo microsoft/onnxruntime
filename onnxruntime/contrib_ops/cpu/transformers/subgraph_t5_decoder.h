@@ -48,7 +48,8 @@ class T5DecoderSubgraph : public Subgraph {
       int cur_len,
       transformers::Sequences& sequences,
       int past_present_share_buffer_max_seq_len = -1,
-      bool need_cache_indir = false);
+      bool need_cache_indir = false,
+      bool use_cuda = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
