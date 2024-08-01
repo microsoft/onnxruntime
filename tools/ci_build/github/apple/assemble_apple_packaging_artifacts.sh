@@ -23,6 +23,27 @@ ORT_POD_VERSION=${4:?${USAGE_TEXT}}
 POD_ARCHIVE_BASENAME="pod-archive-${POD_NAME}-${ORT_POD_VERSION}.zip"
 PODSPEC_BASENAME="${POD_NAME}.podspec"
 
+# Check for directories starting with "macos" and create symlinks if necessary
+for MACOS_DIR in "${BINARIES_STAGING_DIR}/${POD_NAME}/onnxruntime.xcframework/macos"*; do
+  if [ -d "${MACOS_DIR}" ]; then
+
+
+    echo "Creating symlinks for ${MACOS_DIR}"
+    pushd "${MACOS_DIR}/onnxruntime.framework"
+
+    rm -rf Headers Resources onnxruntime
+    rm -rf Versions/Current
+
+    ln -sfn A Versions/Current
+    ln -sfn Versions/Current/Headers Headers
+    ln -sfn Versions/Current/Resources Resources
+    ln -sfn Versions/Current/onnxruntime onnxruntime
+
+    popd
+
+  fi
+done
+
 pushd "${BINARIES_STAGING_DIR}/${POD_NAME}"
 
 # assemble the files in the artifacts staging directory
