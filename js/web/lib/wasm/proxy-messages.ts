@@ -15,9 +15,9 @@ export type GpuBufferMetadata = {
   dispose?: () => void;
 };
 
-export type MlBufferMetadata = {
-  mlBuffer: Tensor.MlBufferType;
-  download?: () => Promise<Tensor.DataTypeMap[Tensor.MlBufferDataTypes]>;
+export type MLBufferMetadata = {
+  mlBuffer: Tensor.MLBufferType;
+  download?: () => Promise<Tensor.DataTypeMap[Tensor.MLBufferDataTypes]>;
   dispose?: () => void;
 };
 
@@ -26,7 +26,7 @@ export type MlBufferMetadata = {
  */
 export type UnserializableTensorMetadata =
     [dataType: Tensor.Type, dims: readonly number[], data: GpuBufferMetadata, location: 'gpu-buffer']|
-    [dataType: Tensor.Type, dims: readonly number[], data: MlBufferMetadata, location: 'ml-buffer']|
+    [dataType: Tensor.Type, dims: readonly number[], data: MLBufferMetadata, location: 'ml-buffer']|
     [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu-pinned'];
 
 /**
@@ -37,7 +37,7 @@ export type UnserializableTensorMetadata =
  *   - cpu: Uint8Array
  *   - cpu-pinned: Uint8Array
  *   - gpu-buffer: GpuBufferMetadata
- *   - ml-buffer: MlBufferMetadata
+ *   - ml-buffer: MLBufferMetadata
  * - location: tensor data location
  */
 export type TensorMetadata = SerializableTensorMetadata|UnserializableTensorMetadata;

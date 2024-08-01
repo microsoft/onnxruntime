@@ -11,22 +11,22 @@
 #include "core/common/safeint.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
-#include "core/providers/webnn/builders/helper.h"
 #include "model.h"
 
 namespace onnxruntime {
 namespace webnn {
 
-Model::Model(const emscripten::val& context, const emscripten::val& graph, const logging::Logger& logger)
+Model::Model(const emscripten::val& context, const emscripten::val& graph, const logging::Logger& logger, bool use_dispatch)
     : wnn_context_(context),
       wnn_graph_(graph),
-      logger_(logger) {}
+      logger_(logger),
+      use_dispatch_(use_dispatch) {}
 
 Model::~Model() {}
 
 Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
-  if (webnn::IsMlBufferSupported()) {
+  if (use_dispatch_) {
     return Dispatch(inputs, outputs);
 
   } else {
@@ -201,7 +201,7 @@ void Model::SetOutputMap(InlinedHashMap<std::string, size_t>&& output_map) {
 // Pre-allocate the input and output buffers for the WebNN graph.
 void Model::AllocateInputOutputBuffers() {
   // We don't need to allocate JS array buffers if the WebNN API supports MLBuffer.
-  if (webnn::IsMlBufferSupported()) {
+  if (use_dispatch_) {
     return;
   }
   for (const auto& input : inputs_) {

@@ -23,20 +23,16 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
     : IExecutionProvider{
           onnxruntime::kWebNNExecutionProvider,
           // If MLBuffer is supported, we force all the tensors to be allocated as MLBuffer.
-          OrtDevice(webnn::IsMlBufferSupported() ? OrtDevice::GPU : OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0)} {
+          OrtDevice(
+              webnn::IsMLBufferSupported(webnn::DeviceTypeFromString(webnn_device_flags)) ? OrtDevice::GPU : OrtDevice::CPU,
+              OrtDevice::MemType::DEFAULT,
+              0)},
+      wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
-  if (webnn_device_flags.compare("cpu") == 0) {
+  if (wnn_device_type_ == webnn::WebnnDeviceType::CPU) {
     preferred_layout_ = DataLayout::NHWC;
-    wnn_device_type_ = webnn::WebnnDeviceType::CPU;
   } else {
     preferred_layout_ = DataLayout::NCHW;
-    if (webnn_device_flags.compare("gpu") == 0) {
-      wnn_device_type_ = webnn::WebnnDeviceType::GPU;
-    } else if (webnn_device_flags.compare("npu") == 0) {
-      wnn_device_type_ = webnn::WebnnDeviceType::NPU;
-    } else {
-      ORT_THROW("Unknown WebNN deviceType.");
-    }
   }
 
   wnn_context_ = emscripten::val::module_property("currentContext");
@@ -385,14 +381,14 @@ WebNNExecutionProvider::GetKernelRegistry() const {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebNNExecutionProvider::GetDataTransfer() const {
-  if (!webnn::IsMlBufferSupported()) {
+  if (!webnn::IsMLBufferSupported(wnn_device_type_)) {
     return nullptr;
   }
   return std::make_unique<webnn::DataTransfer>();
 }
 
 std::vector<AllocatorPtr> WebNNExecutionProvider::CreatePreferredAllocators() {
-  if (!webnn::IsMlBufferSupported()) {
+  if (!webnn::IsMLBufferSupported(wnn_device_type_)) {
     return {};
   }
   AllocatorCreationInfo customAllocatorCreationInfo([&](OrtDevice::DeviceId) {

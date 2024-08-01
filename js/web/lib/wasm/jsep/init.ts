@@ -239,6 +239,21 @@ export const init =
     ]);
   } else {
     const backend = new WebNNBackend();
-    jsepInit('webnn', [backend]);
+    jsepInit('webnn', [
+      backend,
+      // jsepReserveBufferId
+      () => backend.reserveBufferId(),
+      // jsepReleaseBufferId,
+      (bufferId: number) => backend.releaseBufferId(bufferId),
+      // jsepEnsureBuffer
+      (bufferId: number, onnxDataType: number, dimensions: number[]) =>
+          backend.ensureBuffer(bufferId, onnxDataType, dimensions),
+      // jsepUploadBuffer
+      (bufferId: number, data: Uint8Array) => {
+        backend.uploadBuffer(bufferId, data);
+      },
+      // jsepDownloadBuffer
+      async (bufferId: number) => backend.downloadBuffer(bufferId),
+    ]);
   }
 };

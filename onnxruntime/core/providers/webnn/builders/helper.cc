@@ -12,6 +12,19 @@
 namespace onnxruntime {
 namespace webnn {
 
+WebnnDeviceType DeviceTypeFromString(const std::string& device_type) {
+  if (device_type == "gpu") {
+    return WebnnDeviceType::GPU;
+  }
+  if (device_type == "cpu") {
+    return WebnnDeviceType::CPU;
+  }
+  if (device_type == "npu") {
+    return WebnnDeviceType::NPU;
+  }
+  ORT_THROW("Unknown WebNN deviceType.");
+}
+
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer) {
   InitializedTensorSet all_initializers;
   if (graph_viewer.IsSubgraph()) {
@@ -198,9 +211,10 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   }
 }
 
-bool IsMlBufferSupported() {
+bool IsMLBufferSupported(WebnnDeviceType device_type) {
   static bool is_supported = !emscripten::val::global("MLBuffer").isUndefined();
-  return is_supported;
+  // The current MLBuffer implementation only supports GPU and NPU devices.
+  return is_supported && device_type != WebnnDeviceType::CPU;
 }
 
 }  // namespace webnn

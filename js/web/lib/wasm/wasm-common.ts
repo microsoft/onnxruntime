@@ -182,7 +182,7 @@ export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuB
 /**
  * Check whether the given tensor type is supported by WebNN MLBuffer
  */
-export const isMlBufferSupportedType = (type: Tensor.Type): type is Tensor.MlBufferDataTypes => type === 'float32' ||
+export const isMLBufferSupportedType = (type: Tensor.Type): type is Tensor.MLBufferDataTypes => type === 'float32' ||
     type === 'float16' || type === 'int32' || type === 'int64' || type === 'uint32' || type === 'uint64' ||
     type === 'int8' || type === 'uint8' || type === 'bool';
 

@@ -11,7 +11,7 @@ import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
-import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, isMlBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
+import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, isMLBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 import {loadFile} from './wasm-utils-load-file';
@@ -292,7 +292,7 @@ export const createSession = async(
 
     // clear current MLContext after session creation
     if (wasm.currentContext) {
-      wasm.jsepRegisterMlContext!(sessionHandle, wasm.currentContext);
+      wasm.jsepRegisterMLContext!(sessionHandle, wasm.currentContext);
       wasm.currentContext = undefined;
     }
 
@@ -446,11 +446,11 @@ export const prepareInputOutputTensor =
         const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
         dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
 
-        const registerMlBuffer = wasm.jsepRegisterMlBuffer;
-        if (!registerMlBuffer) {
+        const registerMLBuffer = wasm.jsepRegisterMLBuffer;
+        if (!registerMLBuffer) {
           throw new Error('Tensor location "ml-buffer" is not supported without using WebNN.');
         }
-        rawData = registerMlBuffer(mlBuffer);
+        rawData = registerMLBuffer(mlBuffer);
       } else {
         const data = tensor[2];
 
@@ -691,13 +691,13 @@ export const run = async(
               'gpu-buffer'
             ]);
           } else if (preferredLocation === 'ml-buffer' && size > 0) {
-            const getMlBuffer = wasm.jsepGetMlBuffer;
-            if (!getMlBuffer) {
+            const getMLBuffer = wasm.jsepGetMLBuffer;
+            if (!getMLBuffer) {
               throw new Error('preferredLocation "ml-buffer" is not supported without using WebNN.');
             }
-            const mlBuffer = getMlBuffer(dataOffset);
+            const mlBuffer = getMLBuffer(dataOffset);
             const elementSize = getTensorElementSize(dataType);
-            if (elementSize === undefined || !isMlBufferSupportedType(type)) {
+            if (elementSize === undefined || !isMLBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
 
@@ -707,7 +707,7 @@ export const run = async(
             output.push([
               type, dims, {
                 mlBuffer,
-                download: wasm.jsepCreateMlBufferDownloader!(dataOffset, type),
+                download: wasm.jsepCreateMLBufferDownloader!(dataOffset, type),
                 dispose: () => {
                   wasm.jsepReleaseBufferId!(dataOffset);
                   wasm._OrtReleaseTensor(tensor);

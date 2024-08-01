@@ -83,7 +83,9 @@ class Model {
 
   OrtMutex mutex_;
 
-  Model(const emscripten::val& context, const emscripten::val& path, const logging::Logger& logger);
+  bool use_dispatch_;
+
+  Model(const emscripten::val& context, const emscripten::val& path, const logging::Logger& logger, bool use_dispatch);
 
   void SetInputOutputInfo(InlinedHashMap<std::string, OnnxTensorInfo>&& input_output_info) {
     input_output_info_ = std::move(input_output_info);

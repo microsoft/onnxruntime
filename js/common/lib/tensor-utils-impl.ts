@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, MlBufferConstructorParameters, TextureConstructorParameters} from './tensor-factory.js';
+import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, MLBufferConstructorParameters, TextureConstructorParameters} from './tensor-factory.js';
 import {Tensor} from './tensor-impl.js';
 
 /**
@@ -56,7 +56,7 @@ export const tensorReshape = (tensor: Tensor, dims: readonly number[]): Tensor =
       return new Tensor({
         location: 'ml-buffer',
         mlBuffer: tensor.mlBuffer,
-        type: tensor.type as MlBufferConstructorParameters['type'],
+        type: tensor.type as MLBufferConstructorParameters['type'],
         dims,
       });
     default:

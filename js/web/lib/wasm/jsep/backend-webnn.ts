@@ -54,7 +54,7 @@ export class WebNNBackend {
   /**
    * Maps from MLContext to session ids.
    */
-  private sessionIdsByMlContext = new Map<MLContext, Set<number>>();
+  private sessionIdsByMLContext = new Map<MLContext, Set<number>>();
   /**
    * Current session id.
    */
@@ -68,38 +68,38 @@ export class WebNNBackend {
     if (this.currentSessionId === undefined) {
       throw new Error('No active session');
     }
-    return this.getMlContext(this.currentSessionId);
+    return this.getMLContext(this.currentSessionId);
   }
 
-  public registerMlContext(sessionId: number, mlContext: MLContext): void {
+  public registerMLContext(sessionId: number, mlContext: MLContext): void {
     this.mlContextBySessionId.set(sessionId, mlContext);
-    let sessionIds = this.sessionIdsByMlContext.get(mlContext);
+    let sessionIds = this.sessionIdsByMLContext.get(mlContext);
     if (!sessionIds) {
       sessionIds = new Set();
-      this.sessionIdsByMlContext.set(mlContext, sessionIds);
+      this.sessionIdsByMLContext.set(mlContext, sessionIds);
     }
     sessionIds.add(sessionId);
   }
 
-  public unregisterMlContext(sessionId: number): void {
+  public unregisterMLContext(sessionId: number): void {
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       throw new Error(`No MLContext found for session ${sessionId}`);
     }
     this.mlContextBySessionId.delete(sessionId);
-    const sessionIds = this.sessionIdsByMlContext.get(mlContext)!;
+    const sessionIds = this.sessionIdsByMLContext.get(mlContext)!;
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
-      this.sessionIdsByMlContext.delete(mlContext);
+      this.sessionIdsByMLContext.delete(mlContext);
     }
   }
 
   public onReleaseSession(sessionId: number): void {
-    this.unregisterMlContext(sessionId);
-    this.bufferManager.releaseBuffersForContext(this.getMlContext(sessionId));
+    this.unregisterMLContext(sessionId);
+    this.bufferManager.releaseBuffersForContext(this.getMLContext(sessionId));
   }
 
-  public getMlContext(sessionId: number): MLContext {
+  public getMLContext(sessionId: number): MLContext {
     return this.mlContextBySessionId.get(sessionId)!;
   }
 
@@ -137,14 +137,14 @@ export class WebNNBackend {
     return this.bufferManager.download(bufferId);
   }
 
-  public createMlBufferDownloader(bufferId: BufferId, type: Tensor.GpuBufferDataTypes): () => Promise<Tensor.DataType> {
+  public createMLBufferDownloader(bufferId: BufferId, type: Tensor.GpuBufferDataTypes): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await this.bufferManager.download(bufferId);
       return createView(data, type);
     };
   }
 
-  public registerMlBuffer(buffer: MLBuffer): BufferId {
+  public registerMLBuffer(buffer: MLBuffer): BufferId {
     return this.bufferManager.registerBuffer(this.currentContext, buffer);
   }
 

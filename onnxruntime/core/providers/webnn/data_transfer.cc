@@ -4,6 +4,8 @@
 #include "core/providers/webnn/data_transfer.h"
 
 #include <emscripten.h>
+#include "core/framework/tensor.h"
+
 
 namespace onnxruntime {
 namespace webnn {
@@ -24,7 +26,7 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
 
     if (dst_device.Type() == OrtDevice::GPU) {
       EM_ASM({
-        Module.jsepUploadBuffer($0, Module.HEAPU8.subarray($1, $1 + $2));
+        Module.jsepUploadBuffer($0, HEAPU8.subarray($1, $1 + $2));
       },
              dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
     } else {
@@ -33,7 +35,7 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
       EM_ASM({
         const buffer = Emval.toValue($0);
         const src_array = new Uint8Array(buffer, 0, $2);
-        Module.HEAPU8.set(src_array, $1);
+        HEAPU8.set(src_array, $1);
       },
              buffer.as_handle(), reinterpret_cast<intptr_t>(dst_data), bytes);
     }

@@ -3,8 +3,8 @@
 
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
-import {tensorFromGpuBuffer, tensorFromImage, tensorFromMlBuffer, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, MlBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
+import {tensorFromGpuBuffer, tensorFromImage, tensorFromMLBuffer, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
+import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, MLBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
 import {checkTypedArray, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
@@ -16,7 +16,7 @@ type TensorDataType = TensorInterface.DataType;
 type TensorDataLocation = TensorInterface.DataLocation;
 type TensorTextureType = TensorInterface.TextureType;
 type TensorGpuBufferType = TensorInterface.GpuBufferType;
-type TensorMlBufferType = TensorInterface.MlBufferType;
+type TensorMLBufferType = TensorInterface.MLBufferType;
 
 /**
  * the implementation of Tensor interface.
@@ -68,14 +68,14 @@ export class Tensor implements TensorInterface {
    *
    * @param params - Specify the parameters to construct the tensor.
    */
-  constructor(params: MlBufferConstructorParameters);
+  constructor(params: MLBufferConstructorParameters);
 
   /**
    * implementation.
    */
   constructor(
       arg0: TensorType|TensorDataType|readonly string[]|readonly boolean[]|CpuPinnedConstructorParameters|
-      TextureConstructorParameters|GpuBufferConstructorParameters|MlBufferConstructorParameters,
+      TextureConstructorParameters|GpuBufferConstructorParameters|MLBufferConstructorParameters,
       arg1?: TensorDataType|readonly number[]|readonly string[]|readonly boolean[], arg2?: readonly number[]) {
     // perform one-time check for BigInt/Float16Array support
     checkTypedArray();
@@ -273,9 +273,9 @@ export class Tensor implements TensorInterface {
     return tensorFromGpuBuffer(gpuBuffer, options);
   }
 
-  static fromMlBuffer<T extends TensorInterface.GpuBufferDataTypes>(
-      mlBuffer: TensorMlBufferType, options: TensorFromGpuBufferOptions<T>): TensorInterface {
-    return tensorFromMlBuffer(mlBuffer, options);
+  static fromMLBuffer<T extends TensorInterface.GpuBufferDataTypes>(
+      mlBuffer: TensorMLBufferType, options: TensorFromGpuBufferOptions<T>): TensorInterface {
+    return tensorFromMLBuffer(mlBuffer, options);
   }
 
   static fromPinnedBuffer<T extends TensorInterface.CpuPinnedDataTypes>(
@@ -326,7 +326,7 @@ export class Tensor implements TensorInterface {
   /**
    * stores the underlying WebNN MLBuffer when location is 'ml-buffer'. otherwise empty.
    */
-  private mlBufferData?: TensorMlBufferType;
+  private mlBufferData?: TensorMLBufferType;
 
 
   /**
@@ -376,7 +376,7 @@ export class Tensor implements TensorInterface {
     return this.gpuBufferData;
   }
 
-  get mlBuffer(): TensorMlBufferType {
+  get mlBuffer(): TensorMLBufferType {
     this.ensureValid();
     if (!this.mlBufferData) {
       throw new Error('The data is not stored as a WebNN buffer.');

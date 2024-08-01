@@ -20,7 +20,7 @@ import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {createView} from '../lib/wasm/jsep/tensor-view';
-import {getTensorElementSize, isGpuBufferSupportedType, isMlBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
+import {getTensorElementSize, isGpuBufferSupportedType, isMLBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
@@ -577,7 +577,7 @@ const getContext = (() => {
 })();
 
 async function createMlTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]) {
-  if (!isMlBufferSupportedType(type)) {
+  if (!isMLBufferSupportedType(type)) {
     throw new Error(`createMlTensorForOutput can not work with ${type} tensor`);
   }
 
@@ -586,7 +586,7 @@ async function createMlTensorForOutput(type: ort.Tensor.Type, dims: readonly num
   const context = await getContext();
   const mlBuffer = context.createBuffer({dataType, dimensions: dims as number[]});
 
-  return ort.Tensor.fromMlBuffer(mlBuffer, {
+  return ort.Tensor.fromMLBuffer(mlBuffer, {
     dataType: type,
     dims,
     dispose: () => mlBuffer.destroy(),
@@ -598,14 +598,14 @@ async function createMlTensorForOutput(type: ort.Tensor.Type, dims: readonly num
 }
 
 async function createMlTensorForInput(cpuTensor: ort.Tensor): Promise<ort.Tensor> {
-  if (!isMlBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
+  if (!isMLBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
     throw new Error(`createMlTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
   const context = await getContext();
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
   const mlBuffer = context.createBuffer({dataType, dimensions: cpuTensor.dims as number[]});
   context.writeBuffer(mlBuffer, cpuTensor.data);
-  return ort.Tensor.fromMlBuffer(
+  return ort.Tensor.fromMLBuffer(
       mlBuffer, {dataType: cpuTensor.type, dims: cpuTensor.dims, dispose: () => mlBuffer.destroy()});
 }
 

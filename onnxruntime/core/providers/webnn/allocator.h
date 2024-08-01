@@ -8,7 +8,6 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
-#include "core/framework/execution_provider.h"
 #include "core/framework/ortdevice.h"
 
 namespace onnxruntime {

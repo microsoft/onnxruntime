@@ -199,45 +199,43 @@ Module['jsepInit'] = (name, params) => {
       return backend['onRunStart'](sessionId);
     };
   } else if(name === 'webnn') {
-    [Module.jsepBackend] = params;
+    // Functions called from EM_ASM need to be assigned in a way that can be minified.
+    [Module.jsepBackend,
+      Module.jsepReserveBufferId,
+      Module.jsepReleaseBufferId,
+      Module.jsepEnsureBuffer,
+      Module.jsepUploadBuffer,
+      Module.jsepDownloadBuffer,
+    ] = params;
 
-    // expose webnn backend functions
+
+    // Functions called via emscripten::val::module_property need to be assigned in a way that the minifier won't
+    // change the name
+    Module['jsepEnsureBuffer'] = Module.jsepEnsureBuffer;
+    Module['jsepDownloadBuffer'] = Module.jsepDownloadBuffer;
+
+    // Functions called from JS also need to have explicit names.
     const backend = Module.jsepBackend;
     Module['jsepOnRunStart'] = sessionId => {
       return backend['onRunStart'](sessionId);
     };
-    Module['jsepRegisterMlContext'] = (sessionId, mlContext) => {
-      backend['registerMlContext'](sessionId, mlContext);
+    Module['jsepRegisterMLContext'] = (sessionId, mlContext) => {
+      backend['registerMLContext'](sessionId, mlContext);
     };
     Module['jsepOnReleaseSession'] = sessionId => {
       backend['onReleaseSession'](sessionId);
     };
-    Module['jsepGetMlContext'] = sessionId => {
-      return backend['getMlContext'](sessionId);
+    Module['jsepGetMLContext'] = sessionId => {
+      return backend['getMLContext'](sessionId);
     };
-    Module['jsepReserveBufferId'] = () => {
-      return backend['reserveBufferId']();
-    }
-    Module['jsepReleaseBufferId'] = (bufferId) => {
-      backend['releaseBufferId'](bufferId);
-    }
-    Module['jsepGetMlBuffer'] = (bufferId) => {
+    Module['jsepGetMLBuffer'] = (bufferId) => {
       return backend['getBuffer'](bufferId);
     }
-    Module['jsepEnsureBuffer'] = (bufferId, dataType, dimensions) => {
-      return backend['ensureBuffer'](bufferId, dataType, dimensions);
+    Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
+      return backend['createMLBufferDownloader'](bufferId, type);
     }
-    Module['jsepUploadBuffer'] = (bufferId, data) => {
-      backend['uploadBuffer'](bufferId, data);
-    }
-    Module['jsepDownloadBuffer'] = (bufferId) => {
-      return backend['downloadBuffer'](bufferId);
-    }
-    Module['jsepCreateMlBufferDownloader'] = (bufferId, type) => {
-      return backend['createMlBufferDownloader'](bufferId, type);
-    }
-    Module['jsepRegisterMlBuffer'] = (buffer) => {
-      return backend['registerMlBuffer'](buffer);
+    Module['jsepRegisterMLBuffer'] = (buffer) => {
+      return backend['registerMLBuffer'](buffer);
     }
   }
 };

@@ -84,7 +84,7 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
   readonly gpuBuffer: Tensor.GpuBufferType;
 }
 
-export interface MlBufferConstructorParameters<T extends Tensor.MlBufferDataTypes = Tensor.MlBufferDataTypes> extends
+export interface MLBufferConstructorParameters<T extends Tensor.MLBufferDataTypes = Tensor.MLBufferDataTypes> extends
     CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'ml-buffer'.
@@ -94,7 +94,7 @@ export interface MlBufferConstructorParameters<T extends Tensor.MlBufferDataType
   /**
    * Specify the WebNN buffer that holds the tensor data.
    */
-  readonly mlBuffer: Tensor.MlBufferType;
+  readonly mlBuffer: Tensor.MLBufferType;
 }
 
 // #endregion
@@ -212,7 +212,7 @@ export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
   dataType?: T;
 }
 
-export interface TensorFromMlBufferOptions<T extends Tensor.MlBufferDataTypes> extends
+export interface TensorFromMLBufferOptions<T extends Tensor.MLBufferDataTypes> extends
     Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
@@ -345,7 +345,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromMlBuffer<T extends Tensor.MlBufferDataTypes>(buffer: Tensor.MlBufferType, options: TensorFromMlBufferOptions<T>):
+  fromMLBuffer<T extends Tensor.MLBufferDataTypes>(buffer: Tensor.MLBufferType, options: TensorFromMLBufferOptions<T>):
       TypedTensor<T>;
 
   /**

@@ -31,6 +31,8 @@ enum class WebnnDeviceType {
   NPU,
 };
 
+WebnnDeviceType DeviceTypeFromString(const std::string& device_type);
+
 typedef struct {
   std::string opName;
   bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
@@ -283,7 +285,7 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
-bool IsMlBufferSupported();
+bool IsMLBufferSupported(WebnnDeviceType device_type);
 
 }  // namespace webnn
 }  // namespace onnxruntime

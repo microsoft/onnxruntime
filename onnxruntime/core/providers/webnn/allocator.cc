@@ -3,7 +3,6 @@
 
 #include "core/providers/webnn/allocator.h"
 
-#include "core/framework/session_state.h"
 #include "core/common/safeint.h"
 
 namespace onnxruntime {

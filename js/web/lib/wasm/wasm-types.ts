@@ -23,6 +23,11 @@ export declare namespace JSEP {
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
+  type ReserveBufferIdFunction = () => number;
+  type ReleaseBufferIdFunction = (bufferId: number) => void;
+  type EnsureBufferFunction = (bufferId: number, dataType: number|MLOperandDataType, dimensions: number[]) => MLBuffer;
+  type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
+  type DownloadBufferFunction = (bufferId: number) => Promise<ArrayBuffer>;
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
@@ -47,7 +52,10 @@ export declare namespace JSEP {
       download: DownloadFunction, createKernel: CreateKernelFunction, releaseKernel: ReleaseKernelFunction,
       run: RunFunction, captureBegin: CaptureBeginFunction, captureEnd: CaptureEndFunction, replay: ReplayFunction
     ]): void;
-    jsepInit(name: 'webnn', initParams: [backend: BackendType]): void;
+    jsepInit(name: 'webnn', initParams: [
+      backend: BackendType, reserveBufferId: ReserveBufferIdFunction, releaseBufferId: ReleaseBufferIdFunction,
+      ensureBuffer: EnsureBufferFunction, uploadBuffer: UploadBufferFunction, downloadBuffer: DownloadBufferFunction
+    ]): void;
   }
 
   export interface WebGpuModule {
@@ -124,13 +132,13 @@ export declare namespace JSEP {
      * @param context - specify the MLContext.
      * @returns
      */
-    jsepRegisterMlContext: (sessionId: number, context: MLContext) => void;
+    jsepRegisterMLContext: (sessionId: number, context: MLContext) => void;
     /**
      * [exported from pre-jsep.js] Get MLContext for a session.
      * @param sessionId - specify the session ID.
      * @returns the MLContext.
      */
-    jsepGetMlContext: (sessionId: number) => MLContext;
+    jsepGetMLContext: (sessionId: number) => MLContext;
     /**
      * [exported from pre-jsep.js] Reserve a MLBuffer ID attached to the current session.
      * @returns the MLBuffer ID.
@@ -147,7 +155,7 @@ export declare namespace JSEP {
      * @param bufferId - specify the MLBuffer ID.
      * @returns the MLBuffer.
      */
-    jsepGetMlBuffer: (bufferId: number) => MLBuffer;
+    jsepGetMLBuffer: (bufferId: number) => MLBuffer;
     /**
      * [exported from pre-jsep.js] Ensure MLBuffer has been created with the correct type and dimensions.
      * @param bufferId - specify the MLBuffer ID.
@@ -176,15 +184,15 @@ export declare namespace JSEP {
      * @param type - specify the data type.
      * @returns the downloader function.
      */
-    jsepCreateMlBufferDownloader:
+    jsepCreateMLBufferDownloader:
         (bufferId: number,
-         type: Tensor.MlBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.MlBufferDataTypes]>;
+         type: Tensor.MLBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.MLBufferDataTypes]>;
     /**
      * [exported from pre-jsep.js] Register MLBuffer for a session.
      * @param mlBuffer - specify the MLBuffer.
      * @returns the MLBuffer ID.
      */
-    jsepRegisterMlBuffer: (buffer: MLBuffer) => number;
+    jsepRegisterMLBuffer: (buffer: MLBuffer) => number;
   }
 }
 
