@@ -66,8 +66,8 @@ def assemble_c_pod_package(
         print("Warning: staging directory already exists", file=sys.stderr)
 
     # copy the necessary files to the staging directory
-    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True, symlinks=True)
-    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True, symlinks=True)
+    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True)
+    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True)
     copy_repo_relative_to_dir(["LICENSE"], staging_dir)
 
     # generate the podspec file from the template

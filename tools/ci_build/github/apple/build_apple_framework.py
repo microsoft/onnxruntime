@@ -92,7 +92,7 @@ def _build_for_apple_sysroot(
 
     # macos requires different framework structure:
     # https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/FrameworkAnatomy.html
-    if sysroot == "macosx":
+    if sysroot == "macosx" or sysroot == "macabi":
         # create headers and resources directory
         header_dir = os.path.join(framework_dir, "Versions", "A", "Headers")
         resource_dir = os.path.join(framework_dir, "Versions", "A", "Resources")
