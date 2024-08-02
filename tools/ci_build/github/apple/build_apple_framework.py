@@ -197,7 +197,6 @@ def _build_package(args):
             public_headers_path = os.path.join(os.path.dirname(framework_dir), "onnxruntime.framework", "Headers")
 
     # create the folder for xcframework and copy the LICENSE and framework_info.json file
-    # changes here
     xcframework_dir = os.path.join(build_dir, "framework_out")
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
