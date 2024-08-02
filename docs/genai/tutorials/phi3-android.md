@@ -1,5 +1,5 @@
 ---
-title: Implement Phi-3 App for Android
+title: Phi-3 for Android
 description: Tutorial for Phi-3 app for Android using the ONNX Runtime generate() API
 has_children: false
 parent: Tutorials
