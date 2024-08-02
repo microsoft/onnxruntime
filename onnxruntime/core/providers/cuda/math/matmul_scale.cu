@@ -17,8 +17,8 @@ __global__ void ComputeStdDevCoefficientsForScaleKernel(const CudaT* tensor_data
   int i = blockIdx.x * blockDim.x + threadIdx.x;
 
   float val = tensor_data[i];
-  float abs_val = std::abs(val);
-  d_scale_coef[i] = std::pow(abs_val, scale_coef_power) * val / abs_val;
+  float abs_val = fabsf(val);
+  d_scale_coef[i] = powf(abs_val, scale_coef_power) * val / abs_val;
 }
 
 // h_scale_coef is an array of size num_coef allocated by the caller on the host.
@@ -31,10 +31,12 @@ void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor
   int blocksPerGrid = static_cast<int>((num_coef + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
   CudaT* d_scale_coef; // Device memory
-  cudaMalloc(&d_scale_coef, num_coef * sizeof(T)); // Allocate device memory for the kernel output
+  cudaMalloc(&d_scale_coef, num_coef * sizeof(CudaT)); // Allocate device memory for the kernel output
   ComputeStdDevCoefficientsForScaleKernel<CudaT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(tensor_data, d_scale_coef);
 
-  cudaMemcpy(&h_scale_coef, d_scale_coef, num_coef * sizeof(T), cudaMemcpyDeviceToHost);  // Copy results back to host
+  cudaMemcpyAsync(h_scale_coef, d_scale_coef, num_coef * sizeof(CudaT), cudaMemcpyDeviceToHost, stream);  // Copy results back to host
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+
   cudaFree(d_scale_coef);  // Free device memory
 }
 
