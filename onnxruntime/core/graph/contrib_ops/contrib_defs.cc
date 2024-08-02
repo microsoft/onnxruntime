@@ -3546,9 +3546,9 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
 
   static const char* GatherBlockQuantized_ver1_doc = R"DOC(
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
-  1. Input `data` is a constant. It is quantized block-wise along attribute `axis` with block size specified by attribute `block_size`.
-     block_size must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
-  2. Input data's scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
+  1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
+     `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
+  2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
      If `zero_points` is not provided, 0 is the zero point.
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
@@ -3559,10 +3559,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(GatherBlockQuantized_ver1_doc)
-      .Attr("block_size",
-            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
-            AttributeProto::INT,
-            static_cast<int64_t>(128))
       .Attr("gather_axis",
             "(Optional) Which axis to gather on. Negative value means "
             "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
@@ -3571,6 +3567,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "(Optional) Which axis to block-wise quantize. Negative value means "
             "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
             AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("block_size",
+            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
+            AttributeProto::INT,
+            static_cast<int64_t>(128))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
             "indices",
