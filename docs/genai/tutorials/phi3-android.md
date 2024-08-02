@@ -112,6 +112,7 @@ You can manage/change devices and device model through the Device Manager tab on
 
 ### Downloading the App
 Once your device is connected, run the app by using the play button on the top panel. Downloading all packages will take ~10-15 minutes. If you submit a prompt before downloads are complete, you will encounter an error message. Once completed, the logcat (the cat tab on the bottom left panel) will display an "All downloads complete" message.
+
 ![WiFi Instructions](../../../images/phi3_MobileTutorial_Error.png)
 
 ### Ask questions
