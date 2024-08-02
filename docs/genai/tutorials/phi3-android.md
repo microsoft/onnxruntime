@@ -5,42 +5,33 @@ has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
 nav_order: 1
-images: 
-phi3_MobileTutorial_RunDevice.png
-phi3_MobileTutorial_WiFi.png
-phi3_MobileTutorial_DeviceManager.png
-phi3_MobileTutorial_Error.png
-phi3_MobileTutorial_ex1.png
-phi3_MobileTutorial_ex2.png
-phi3_MobileTutorial_ex3.png
 ---
 
-# Incorporate Phi-3 Vision Model for Android Development
-This is a basic [Phi-3 Vision](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to download and run the Phi-3 Vision App on your own mobile device and help you incorporate Phi-3 Vision into your own mobile developments. 
+# Incorporate Phi-3 Model for Android Development
+This is a basic [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to download and run the Phi-3 App on your own mobile device so you can get started incorporating Phi-3 into your own mobile developments.  
 
 ## Capabilities
-[Phi-3 Vision](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu) is a multimodal model incorporating imaging into [Phi-3's](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) language input capabilities. This expands Phi-3's usages to include Optical Character Recognition (OCR), image captioning, table parsing, and more. 
+[Phi-3 Mini-4k-Instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) is a small language model used for language understanding, math, code, long context, logical reasoning, and more showcasing a robust and state-of-the-art performance among models with less than 13 billion parameters.
 
 ## Important Features
 
 ### Java API
-This app uses the [generate() Java API's](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Images, Model, MultiModalProcessor, NamedTensors, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
+This app uses the [generate() Java API's](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
 
 ### Model Downloads
-This app downloads the [Phi-3 Vision](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu) model through Hugging Face. To use a different model, change the path links to refer to your chosen model.
+This app downloads the [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model through Hugging Face. To use a different model, change the path links to refer to your chosen model.
 ```java
-final String baseUrl = "https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu/resolve/main/cpu-int4-rtn-block-32-acc-level-4/";
+final String baseUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/";
 List<String> files = Arrays.asList(
+    "added_tokens.json",
+    "config.json",
+    "configuration_phi3.py",
     "genai_config.json",
-    "phi-3-v-128k-instruct-text-embedding.onnx",
-    "phi-3-v-128k-instruct-text-embedding.onnx.data",
-    "phi-3-v-128k-instruct-text.onnx",
-    "phi-3-v-128k-instruct-text.onnx.data",
-    "phi-3-v-128k-instruct-vision.onnx",
-    "phi-3-v-128k-instruct-vision.onnx.data",
-    "processor_config.json",
+    "phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx",
+    "phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx.data",
     "special_tokens_map.json",
     "tokenizer.json",
+    "tokenizer.model",
     "tokenizer_config.json");
 ```
 These packages will only need to be downloaded once. While editing your app and running new versions, the downloads will skip since all files already exist.
@@ -50,7 +41,7 @@ if (urlFilePairs.isEmpty()) {
     Toast.makeText(this, "All files already exist. Skipping download.", Toast.LENGTH_SHORT).show();
     Log.d(TAG, "All files already exist. Skipping download.");
     model = new Model(getFilesDir().getPath());
-    multiModalProcessor = new MultiModalProcessor(model);
+    tokenizer = model.createTokenizer();
     return;
 }
 ```
@@ -76,22 +67,15 @@ if (model == null) {
     return;
 }
 ```
-### Multimodal Processor
-Since we are using Phi-3 Vision, we refer to the [MultiModalProcessor Class]() to include imaging as well as text input. In an application with no imaging, you can use the [Tokenizer Class](https://github.com/microsoft/onnxruntime-genai/blob/main/src/java/src/main/java/ai/onnxruntime/genai/Tokenizer.java) instead.
 
 ### Prompt Template
 On its own, this model's answers can be very long. To format the AI assistant's answers, you can adjust the prompt template. 
 ```java
-String promptQuestion = "<|user|>\n";
-if (inputImage != null) {
-    promptQuestion += "<|image_1|>\n";
-}
-promptQuestion += userMsgEdt.getText().toString() + "<system>You are a helpful AI assistant. Answer in two paragraphs or less<|end|>\n<|assistant|>\n";
-final String promptQuestion_formatted = promptQuestion;
-
+String promptQuestion = userMsgEdt.getText().toString();
+String promptQuestion_formatted = "<system>You are a helpful AI assistant. Answer in two paragraphs or less<|end|><|user|>"+promptQuestion+"<|end|>\n<assistant|>";
 Log.i("GenAI: prompt question", promptQuestion_formatted);
 ```
-You can also include [parameters](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct-onnx-cpu/blob/main/cpu-int4-rtn-block-32-acc-level-4/genai_config.json) such as a max_length or length_penalty to your liking. 
+You can also include limits such as a max_length or length_penalty to your liking. 
 ```java
 generatorParams.setSearchOption("length_penalty", 1000);
 generatorParams.setSearchOption("max_length", 500);
@@ -114,7 +98,7 @@ Clone the [ONNX Runtime Inference Examples](https://github.com/microsoft/onnxrun
 On your Android Mobile device, go to "Settings > About Phone > Software information" and tap the "Build Number" tile repeatedly until you see the message “You are now in developer mode”. In "Developer Options", turn on Wireless or USB debugging.
 
 ### Open Project in Android Studio
-Open the Phi-3 mobile app in Android Studio (onnxruntime-inference-examples/mobile/examples/phi-3-vision/android/app).
+Open the Phi-3 mobile app in Android Studio (onnxruntime-inference-examples/mobile/examples/phi-3/android/app).
 
 ### Connect Device
 To run the app on a device, follow the instructions from the Running Devices tab on the right side panel. You can connect through Wi-Fi or USB.
