@@ -23,13 +23,17 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
                                const std::filesystem::path& input_external_init_file,
                                const std::filesystem::path& output_onnx,
                                const std::filesystem::path& output_external_init_file,
-                               size_t initializer_size_threshold) {
+                               size_t initializer_size_threshold,
+                               bool align_offset = false,
+                               size_t align_threshold = 1,
+                               size_t allocation_granularity = 4096) {
   auto logger = DefaultLoggingManager().CreateLogger("LoadSaveAndCompareModel");
   std::shared_ptr<Model> model;
   ORT_RETURN_IF_ERROR(Model::Load(input_onnx, model, nullptr, *logger));
   std::filesystem::remove(output_onnx);
   std::filesystem::remove(output_external_init_file);
-  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold));
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(*model, output_onnx, output_external_init_file, initializer_size_threshold,
+                                                          align_offset, align_threshold, allocation_granularity));
 
   std::shared_ptr<Model> model_from_external;
   ORT_RETURN_IF_ERROR(Model::Load(output_onnx.native(), model_from_external, nullptr, *logger));
@@ -75,6 +79,17 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
 
     ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
     ORT_RETURN_IF_NOT(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size) == 0, "data mismatch");
+
+    if (align_offset) {
+      for (const StringStringEntryProto& entry : from_external_tensor_proto->external_data()) {
+        if (entry.has_key() && entry.has_value() && entry.key() == "offset") {
+          size_t tensor_offset;
+          std::stringstream stream(entry.value());
+          stream >> tensor_offset;
+          ORT_RETURN_IF_NOT(tensor_offset % allocation_granularity == 0, "tensor offset not align");
+        }
+      }
+    }
   }
   // Cleanup.
   ORT_RETURN_IF_NOT(std::filesystem::remove(output_onnx), "delete file failed");
@@ -90,6 +105,11 @@ TEST(SaveWithExternalInitializers, Mnist) {
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0));
+}
+
+// Original model has external initializers, align offset
+TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
+  ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, true));
 }
 
 }  // namespace test

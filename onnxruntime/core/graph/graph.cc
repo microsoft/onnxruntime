@@ -4021,7 +4021,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold) const {
+                                                                       size_t initializer_size_threshold,
+                                                                       bool align_offset,
+                                                                       size_t align_threshold,
+                                                                       size_t allocation_granularity) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4061,6 +4064,22 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
       for (size_t index = 0; index != tensor_bytes_size; ++index) {
         external_stream << raw_data[index];
+      }
+
+      // update external_offset for alignment
+      if (align_offset && tensor_bytes_size > align_threshold) {
+        // Align to the larger of the page size or the allocation granularity
+        size_t alignment_factor = std::max(static_cast<size_t>(4096), allocation_granularity);
+        // Align to the next page or alloc granularity boundary
+        size_t new_external_offset = static_cast<size_t>(
+            std::floor((external_offset + alignment_factor - 1) / alignment_factor)) * alignment_factor;
+
+        // padding tensor with zeros for alignment
+        for (size_t index = external_offset; index != new_external_offset; ++index) {
+          external_stream << '0';
+        }
+
+        external_offset = new_external_offset;
       }
 
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
