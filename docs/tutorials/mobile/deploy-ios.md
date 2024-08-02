@@ -88,7 +88,7 @@ Here's an example screenshot of the app:
    pod install
    ```
 
-   The `Podfile` contains the `onnxruntime-mobile-objc` dependency, which is the pod containing the Objective C API.
+   The `Podfile` contains the `onnxruntime-objc` dependency, which is the pod containing the Objective C API.
 
    At the end of this step, you should see a file called `ORTObjectDetection.xcworkspace` in the `mobile/examples/object_detection/ios` directory.
 
