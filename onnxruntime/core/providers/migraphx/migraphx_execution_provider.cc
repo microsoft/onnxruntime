@@ -1198,10 +1198,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         migraphx::compile_options co;
         co.set_fast_math(false);
-        co.set_exhaustive_tune_flag(false);
-        if (exhaustive_tune_) {
-          co.set_exhaustive_tune_flag(true);
-        }
+        co.set_exhaustive_tune_flag(exhaustive_tune_);
         LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
@@ -1361,10 +1358,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
           migraphx::compile_options co;
           co.set_fast_math(false);
-          co.set_exhaustive_tune_flag(false);
-          if (exhaustive_tune_) {
-            co.set_exhaustive_tune_flag(true);
-          }
+          co.set_exhaustive_tune_flag(exhaustive_tune_);
           prog.compile(t, co);
 
           save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);
