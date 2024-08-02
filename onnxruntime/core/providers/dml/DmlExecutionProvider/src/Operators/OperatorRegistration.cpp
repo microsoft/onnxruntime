@@ -467,14 +467,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedAdd);
 DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedSum);
 DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear);
-DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear10);
-DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear13);
-DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear19);
 DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear21);
 DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear);
-DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear10);
-DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear13);
-DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear19);
 DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear21);
 DML_OP_EXTERN_CREATION_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_CREATION_FUNCTION(Sign);
@@ -926,13 +920,13 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Asin,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Atan,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Affine,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  10, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  13, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  19, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear19,      DmlGraphSupport::Supported)},
+    {REG_INFO(      10, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
+    {REG_INFO(      13, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
+    {REG_INFO(      19, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear19,      DmlGraphSupport::Supported)},
     {REG_INFO_VER(  21, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear21,      DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  10, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  13, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
-    {REG_INFO_VER(  19, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear19,    DmlGraphSupport::Supported)},
+    {REG_INFO(      10, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
+    {REG_INFO(      13, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
+    {REG_INFO(      19, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear19,    DmlGraphSupport::Supported)},
     {REG_INFO_VER(  21, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear21,    DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear19,      DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear19,    DmlGraphSupport::Supported)},
