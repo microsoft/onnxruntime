@@ -301,7 +301,13 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
     for (uint32_t i = 0; i < a_0.size() - input_a_labels.size(); ++i) {
       new_a_shape.push_back(SafeInt<int32_t>(1));
     }
-    input_a = model_builder.GetBuilder().call<emscripten::val>("reshape", input_a, emscripten::val::array(new_a_shape));
+
+    emscripten::val options = emscripten::val::object();
+    options.set("label", node.Name() + "_reshape");
+    input_a = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input_a,
+                                                               emscripten::val::array(new_a_shape),
+                                                               options);
   }
   if (input_b_labels.size() < b_0.size()) {
     std::vector<int64_t> input_b_shape;
@@ -311,7 +317,13 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
     for (uint32_t i = 0; i < b_0.size() - input_b_labels.size(); ++i) {
       new_b_shape.push_back(SafeInt<int32_t>(1));
     }
-    input_b = model_builder.GetBuilder().call<emscripten::val>("reshape", input_b, emscripten::val::array(new_b_shape));
+
+    emscripten::val options = emscripten::val::object();
+    options.set("label", node.Name() + "_reshape");
+    input_b = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input_b,
+                                                               emscripten::val::array(new_b_shape),
+                                                               options);
   }
 
   // Inputs Transpose
@@ -320,11 +332,13 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
   if (permutation_a != sequence) {
     emscripten::val options = emscripten::val::object();
     options.set("permutation", emscripten::val::array(permutation_a));
+    options.set("label", node.Name() + "_transpose");
     input_a = model_builder.GetBuilder().call<emscripten::val>("transpose", input_a, options);
   }
   if (permutation_b != sequence) {
     emscripten::val options = emscripten::val::object();
     options.set("permutation", emscripten::val::array(permutation_b));
+    options.set("label", node.Name() + "_transpose");
     input_b = model_builder.GetBuilder().call<emscripten::val>("transpose", input_b, options);
   }
 
@@ -365,14 +379,22 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
       new_new_b_shape.push_back(new_b_shape[idx]);
     }
 
-    input_a = model_builder.GetBuilder().call<emscripten::val>("reshape", input_a,
-                                                               emscripten::val::array(new_new_a_shape));
-    input_b = model_builder.GetBuilder().call<emscripten::val>("reshape", input_b,
-                                                               emscripten::val::array(new_b_shape));
+    emscripten::val options = emscripten::val::object();
+    options.set("label", node.Name() + "_reshape");
+    input_a = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input_a,
+                                                               emscripten::val::array(new_new_a_shape),
+                                                               options);
+    input_b = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input_b,
+                                                               emscripten::val::array(new_b_shape),
+                                                               options);
   }
 
   // Step 2. Matmul
-  output = model_builder.GetBuilder().call<emscripten::val>("matmul", input_a, input_b);
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name() + "_matmul");
+  output = model_builder.GetBuilder().call<emscripten::val>("matmul", input_a, input_b, options);
   std::vector<uint32_t> output_indices = a_1;
   output_indices.push_back(a_2.back());
   output_indices.push_back(b_3.back());
@@ -424,6 +446,7 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
   if (p != sequence_o) {
     emscripten::val options = emscripten::val::object();
     options.set("permutation", emscripten::val::array(p));
+    options.set("label", node.Name() + "_transpose");
     output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
   }
 
@@ -435,6 +458,7 @@ Status PairwiseOperandProcess(ModelBuilder& model_builder,
     }
     emscripten::val options_reduce = emscripten::val::object();
     options_reduce.set("axes", emscripten::val::array(axes_data));
+    options_reduce.set("label", node.Name() + "_reduceSum");
     output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", output, options_reduce);
   }
   return Status::OK();
@@ -510,7 +534,9 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     case RecognizedOperatorType::Multiply: {
       emscripten::val a = model_builder.GetOperand(node.InputDefs()[0]->Name());
       emscripten::val b = model_builder.GetOperand(node.InputDefs()[1]->Name());
-      output = model_builder.GetBuilder().call<emscripten::val>("mul", a, b);
+      emscripten::val options = emscripten::val::object();
+      options.set("label", node.Name() + "_mul");
+      output = model_builder.GetBuilder().call<emscripten::val>("mul", a, b, options);
     } break;
     case RecognizedOperatorType::ReduceSum: {
       auto kept_axes = components.back().GetLabels(label_indices);
@@ -531,6 +557,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       emscripten::val options = emscripten::val::object();
       options.set("keepDimensions", false);
       options.set("axes", emscripten::val::array(reduced_axes));
+      options.set("label", node.Name() + "_reduceSum");
 
       output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", input, options);
 
@@ -555,6 +582,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       }
       emscripten::val options_transpose = emscripten::val::object();
       options.set("permutation", emscripten::val::array(permutation));
+      options.set("label", node.Name() + "_transpose");
       output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
     } break;
     case RecognizedOperatorType::Diagonal: {
@@ -583,14 +611,15 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
       emscripten::val options = emscripten::val::object();
       options.set("permutation", emscripten::val::array(permutation));
-      emscripten::val new_input = emscripten::val::object();
+      options.set("label", node.Name() + "_transpose");
       output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
 
       // triu + tril = diagonal
-      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output);  // triu
-      emscripten::val options_tril = emscripten::val::object();
-      options_tril.set("upper", false);
-      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output, options_tril);  // tril
+      emscripten::val options_trilu = emscripten::val::object();
+      options_trilu.set("label", node.Name() + "_triangular");
+      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output, options_trilu);  // triu
+      options_trilu.set("upper", false);
+      output = model_builder.GetBuilder().call<emscripten::val>("triangular", output, options_trilu);  // tril
 
       // reducesum to achieve the diagonal values
       std::vector<int64_t> input_shape;
@@ -604,6 +633,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       emscripten::val options_reduce = emscripten::val::object();
       options_reduce.set("keepDimensions", false);
       options_reduce.set("axes", emscripten::val::array(reduced_axes));
+      options_reduce.set("label", node.Name() + "_reduceSum");
       output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", output, options_reduce);  // triu
 
       // transpose output
@@ -627,6 +657,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       if (p != sequence_o) {
         emscripten::val options_transpose = emscripten::val::object();
         options.set("permutation", emscripten::val::array(p));
+        options.set("label", node.Name() + "_transpose");
         output = model_builder.GetBuilder().call<emscripten::val>("transpose", output, options);
       }
     } break;
@@ -640,6 +671,7 @@ Status EinsumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       std::vector<uint32_t> permutation{output_labels.begin(), output_labels.end()};
       emscripten::val options = emscripten::val::object();
       options.set("permutation", emscripten::val::array(permutation));
+      options.set("label", node.Name() + "_transpose");
       output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
     } break;
 
