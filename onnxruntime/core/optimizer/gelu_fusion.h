@@ -33,7 +33,7 @@ class GeluFusion : public GraphTransformer {
  public:
   GeluFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
              TransformerLevel level = TransformerLevel::Level1) noexcept
-      : GraphTransformer(GetGeluFusionName(level), compatible_execution_providers) {}
+      : GraphTransformer(GetGeluFusionName(level), compatible_execution_providers), optimize_level(level) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
