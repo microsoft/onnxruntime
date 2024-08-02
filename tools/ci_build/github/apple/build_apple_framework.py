@@ -216,13 +216,6 @@ def _build_package(args):
 
     subprocess.run(build_xcframework_cmd, shell=False, check=True, cwd=REPO_DIR)
 
-    # For debugging
-    print("XCFramework dir:", xcframework_dir)
-    result = subprocess.run(
-        ["ls", "-lR"], shell=False, check=True, cwd=xcframework_dir, stdout=subprocess.PIPE, text=True
-    )
-    print(result.stdout)
-
 
 def parse_args():
     parser = argparse.ArgumentParser(

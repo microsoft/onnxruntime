@@ -116,9 +116,6 @@ def main():
 
     run(build_apple_framework_args)
 
-    print("framework Out: ", str(build_dir / "framework_out"))
-    run(["ls", "-LR", str(build_dir / "framework_out")])
-
     if args.test:
         test_apple_packages_args = [
             sys.executable,
@@ -150,9 +147,6 @@ def main():
             public_headers_dir=build_dir / "framework_out" / "Headers",
             package_variant=package_variant,
         )
-
-        print("C pod dir:", c_pod_staging_dir)
-        run(["ls", "-LR", str(c_pod_staging_dir)])
 
         if args.test:
             test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
