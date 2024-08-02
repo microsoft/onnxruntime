@@ -81,9 +81,8 @@ Resources:
 * Install the NDK
   * Find the available NDK versions by running `sdkmanager --list`
   * Install
-    * you can install a specific version or the latest (called 'ndk-bundle') e.g. `sdkmanager --install "ndk;21.1.6352462"`
+    * install the desired version, e.g., `sdkmanager --install "ndk;21.1.6352462"`
     * NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
-    * NOTE: If you install the ndk-bundle package the path will be `.../Android/ndk-bundle` as there's no version number
 
 ## Android Build Instructions
 
@@ -116,14 +115,12 @@ To build on Windows with `--build_java` enabled you must also:
 * set JAVA_HOME to the path to your JDK install
   * this could be the JDK from Android Studio, or a [standalone JDK install](https://www.oracle.com/java/technologies/javase-downloads.html)
   * e.g. Powershell: `$env:JAVA_HOME="C:\Program Files\Java\jdk-15"` CMD: `set JAVA_HOME=C:\Program Files\Java\jdk-15`
-* install [Gradle version 6.8.3](https://gradle.org/install/) and add the directory to the PATH
-  * e.g. Powershell: `$env:PATH="$env:PATH;C:\Gradle\gradle-6.6.1\bin"` CMD: `set PATH=%PATH%;C:\Gradle\gradle-6.6.1\bin`
 * run the build from an admin window
   * the Java build needs permissions to create a symlink, which requires an admin window
 
 #### Note: Proguard rules for R8 minimization Android app builds to work
 
-For Android consumers using the library with R8-minimized builds, currently you need to add the following line to your `proguard-rules.pro` file inside your Android project to use package `com.microsoft.onnxruntime:onnxruntime-android` (for Full build) or `com.microsoft.onnxruntime:onnxruntime-mobile` (for Mobile build)  to avoid runtime crashes:
+For Android consumers using the library with R8-minimized builds, currently you need to add the following line to your `proguard-rules.pro` file inside your Android project to use package `com.microsoft.onnxruntime:onnxruntime-android` to avoid runtime crashes:
 
 ```
 -keep class ai.onnxruntime.** { *; }
