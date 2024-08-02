@@ -4034,7 +4034,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
-  int64_t external_offset = 0;
+  size_t external_offset = 0;
 
   // Add the initializers to the result graph.
   const auto& model_path = ModelPath();
@@ -4072,7 +4072,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
         size_t alignment_factor = std::max(static_cast<size_t>(4096), allocation_granularity);
         // Align to the next page or alloc granularity boundary
         size_t new_external_offset = static_cast<size_t>(
-            std::floor((external_offset + alignment_factor - 1) / alignment_factor)) * alignment_factor;
+                                         std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                     alignment_factor;
 
         // padding tensor with zeros for alignment
         for (size_t index = external_offset; index != new_external_offset; ++index) {

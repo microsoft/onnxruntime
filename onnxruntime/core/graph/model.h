@@ -187,7 +187,7 @@ class Model {
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
-  // initializer offset could be page aligned and allocation granularity aligned for mmap support. 
+  // initializer offset could be page aligned and allocation granularity aligned for mmap support.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
                                                                   size_t initializer_size_threshold,

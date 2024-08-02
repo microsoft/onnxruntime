@@ -1144,11 +1144,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
-  @align_offset offset will always be page aligned and alloction granularity aligned for mmap support. 
-  This is done by padding previous tensor data with zeros keeping same length. 
+  @align_offset offset will always be page aligned and alloction granularity aligned for mmap support.
+  This is done by padding previous tensor data with zeros keeping same length.
   Tensor data will be aligned if > align_threshold
   @align_threshold alignment threshold for size of data.
-  Having a low threshold will waste file space for small initializers. 
+  Having a low threshold will waste file space for small initializers.
   Only when tensor's data is > the page_align_threshold it will be force aligned.
   Default to 1MB.
   @allocation_granularity the allocation Granularity for mmap() support.
