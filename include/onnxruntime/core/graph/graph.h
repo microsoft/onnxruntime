@@ -1158,7 +1158,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold,
-                                                                  bool align_offset = FALSE,
+                                                                  bool align_offset = false,
                                                                   size_t align_threshold = 1048576,
                                                                   size_t allocation_granularity = 65536) const;
 

@@ -2056,7 +2056,7 @@ common::Status InferenceSession::Initialize() {
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
                                                                              optimized_model_external_initializers_min_size_in_bytes,
-                                                                             TRUE));
+                                                                             true));
         }
       }
     }
