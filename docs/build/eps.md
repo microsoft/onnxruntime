@@ -620,8 +620,10 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 #### Linux
 
 ```bash
-./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home>
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home> --build_wheel --update --build --parallel
 ```
+
+This produces the .whl file in `./build/Linux/<Release|Debug|RelWithDebInfo>/dist`.
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
 
