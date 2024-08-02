@@ -33,8 +33,9 @@ class DropoutOpBuilder : public BaseOpBuilder {
 void DropoutOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // Skip ratio and training_mode if present.
   for (size_t i = 1; i < node.InputDefs().size(); i++) {
-    model_builder.AddInitializerToSkip(node.InputDefs()[i]->Name());
-    model_builder.AddInputToSkip(node.InputDefs()[i]->Name());
+    const auto input_name = node.InputDefs()[i]->Name();
+    model_builder.AddInitializerToSkip(input_name);
+    model_builder.AddInputToSkip(input_name);
   }
 }
 
@@ -47,7 +48,7 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
 
-  // WebNN EP only supports test mode, we don't need to care about other inputs or
+  // WebNN EP only supports test mode. So we don't need to care about other inputs or
   // attributes about training mode. Simply use WebNN's identity op to copy the input.
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("identity", input, options);
 
