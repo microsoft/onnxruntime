@@ -21,7 +21,6 @@ export * from './backend.js';
 export * from './env.js';
 export * from './inference-session.js';
 export * from './tensor.js';
-export * from './tensor-conversion.js';
 export * from './tensor-factory.js';
 export * from './trace.js';
 export * from './onnx-model.js';

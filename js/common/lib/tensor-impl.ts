@@ -1,10 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
-import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
-import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
+import {tensorFromGpuBuffer, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
+import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromTextureOptions, TextureConstructorParameters} from './tensor-factory.js';
 import {checkTypedArray, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
@@ -236,12 +234,6 @@ export class Tensor implements TensorInterface {
   // #endregion
 
   // #region factory
-  static async fromImage(
-      image: ImageData|HTMLImageElement|ImageBitmap|string,
-      options?: TensorFromImageDataOptions|TensorFromImageElementOptions|TensorFromImageBitmapOptions|
-      TensorFromUrlOptions): Promise<TensorInterface> {
-    return tensorFromImage(image, options);
-  }
 
   static fromTexture<T extends TensorInterface.TextureDataTypes>(
       texture: TensorTextureType, options: TensorFromTextureOptions<T>): TensorInterface {
@@ -258,16 +250,6 @@ export class Tensor implements TensorInterface {
     return tensorFromPinnedBuffer(type, buffer, dims);
   }
 
-  // #endregion
-
-  // #region conversions
-  toDataURL(options?: TensorToDataUrlOptions): string {
-    return tensorToDataURL(this, options);
-  }
-
-  toImageData(options?: TensorToImageDataOptions): ImageData {
-    return tensorToImageData(this, options);
-  }
   // #endregion
 
   // #region public fields

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OptionsFormat, OptionsNormalizationParameters, OptionsTensorLayout} from './tensor-factory.js';
+import {OptionsFormat, OptionsNormalizationParameters, OptionsTensorLayout} from './tensor-from-image-type.js';
 
 export interface TensorToDataUrlOptions extends OptionsTensorLayout, OptionsFormat, OptionsNormalizationParameters {}
 

@@ -1,0 +1,31 @@
+{
+  "license": "MIT",
+  "type": "module",
+  "name": "onnxruntime-utils",
+  "repository": {
+    "url": "https://github.com/Microsoft/onnxruntime.git",
+    "type": "git"
+  },
+  "author": "fs-eire",
+  "version": "0.1.0",
+  "description": "A collection of utilities that makes ONNX Runtime more powerful and easier to use",
+  "main": "dist/cjs/index.js",
+  "exports": {
+    "require": "./dist/cjs/index.js",
+    "import": "./dist/esm/index.js"
+  },
+  "scripts": {
+    "build:cjs": "tsc --module commonjs --moduleResolution node10 --outDir ./dist/cjs",
+    "build:esm": "tsc",
+    "build": "node ./build.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ONNX",
+    "ONNXRuntime",
+    "ONNX Runtime Utilities"
+  ],
+  "peerDependencies": {
+    "onnxruntime-common": "file:../common"
+  }
+}

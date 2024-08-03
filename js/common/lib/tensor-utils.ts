@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {ConversionUtils} from './tensor-conversion.js';
 import {Tensor, TypedTensor} from './tensor.js';
 
 interface Properties {
@@ -23,7 +22,7 @@ export interface TypedShapeUtils<T extends Tensor.Type> {
 /**
  * interface `TensorUtils` includes all utility members that does not use the type parameter from their signature.
  */
-export interface TensorUtils extends Properties, ConversionUtils {}
+export interface TensorUtils extends Properties {}
 
 /**
  * interface `TypedShapeUtils` includes all utility members that uses the type parameter from their signature.
