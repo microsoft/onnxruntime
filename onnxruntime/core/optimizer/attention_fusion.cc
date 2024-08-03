@@ -211,13 +211,13 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if ((node.GetOutputEdgesCount() >= 2 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1, 17}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.InputDefs().size() > 2) {
-      // Get hidden size from layer norm bias tensor shape.
-      const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
-      if (!optimizer_utils::IsShapeKnownOnAllDims(layer_norm_bias, 1)) {
-        DEBUG_LOG("shape of layer norm bias tensor not expected");
+      // Get hidden size from layer norm scale tensor shape. `bias` is an optional input and may not exist.
+      const NodeArg& layer_norm_scale = *(node.InputDefs()[1]);
+      if (!optimizer_utils::IsShapeKnownOnAllDims(layer_norm_scale, 1)) {
+        DEBUG_LOG("shape of layer norm scale tensor not expected");
         continue;
       }
-      int64_t hidden_size = layer_norm_bias.Shape()->dim(0).dim_value();
+      int64_t hidden_size = layer_norm_scale.Shape()->dim(0).dim_value();
 
       const Node* add_node = nullptr;
       unsigned int add_count = 0;

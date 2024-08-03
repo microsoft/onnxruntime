@@ -40,13 +40,17 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   // Generate new dims.
   InlinedVector<int64_t> new_dims(output_rank, 0);
   for (int64_t axis : axes) {
-    new_dims[static_cast<size_t>(axis)] = 1;
+    if (static_cast<size_t>(axis) < new_dims.size()) {
+      new_dims[static_cast<size_t>(axis)] = 1;
+    }
   }
 
   auto begin = tensor_proto.dims().cbegin();
-  for (auto& axis : new_dims) {
-    if (axis == 0) {
-      axis = *begin++;
+  if (begin != tensor_proto.dims().cend()) {
+    for (auto& axis : new_dims) {
+      if (axis == 0) {
+        axis = *begin++;
+      }
     }
   }
 
