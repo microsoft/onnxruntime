@@ -11,6 +11,7 @@
 
 #include <map>
 #include <unordered_map>
+#include <filesystem>
 
 namespace onnxruntime {
 
@@ -93,7 +94,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   bool int8_calibration_cache_available_ = false;
   bool int8_use_native_migraphx_calibration_table_ = false;
   std::string calibration_cache_path_;
-  std::unordered_map<std::string, float> dynamic_range_map;
+  std::unordered_map<std::string, float> dynamic_range_map_;
   bool save_compiled_model_ = false;
   std::string save_compiled_path_;
   bool load_compiled_model_ = false;
@@ -103,6 +104,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
   bool exhaustive_tune_ = false;
+  mutable std::filesystem::path model_path_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
