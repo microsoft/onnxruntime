@@ -10,6 +10,7 @@ import ai.onnxruntime.providers.OrtCUDAProviderOptions;
 import ai.onnxruntime.providers.OrtFlags;
 import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -90,6 +91,31 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
+        allocator);
+  }
+
+  /**
+   * Creates a session reading the model from the supplied byte buffer.
+   *
+   * <p>Must be a direct byte buffer.
+   *
+   * @param env The environment.
+   * @param modelBuffer The model protobuf as a byte buffer.
+   * @param allocator The allocator to use.
+   * @param options Session configuration options.
+   * @throws OrtException If the model was corrupted or some other error occurred in native code.
+   */
+  OrtSession(
+      OrtEnvironment env, ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      throws OrtException {
+    this(
+        createSession(
+            OnnxRuntime.ortApiHandle,
+            env.getNativeHandle(),
+            modelBuffer,
+            modelBuffer.position(),
+            modelBuffer.remaining(),
+            options.getNativeHandle()),
         allocator);
   }
 
@@ -512,6 +538,15 @@ public class OrtSession implements AutoCloseable {
 
   private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
+
+  private static native long createSession(
+      long apiHandle,
+      long envHandle,
+      ByteBuffer modelBuffer,
+      int bufferPos,
+      int bufferSize,
+      long optsHandle)
+      throws OrtException;
 
   private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
 
