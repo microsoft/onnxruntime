@@ -105,6 +105,7 @@ struct OrtShapeInferContext {
       }
     }
     ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
+    ONNX_NAMESPACE::updateOutputElemType(ctx_, index, info->type);
     return onnxruntime::Status::OK();
   }
 

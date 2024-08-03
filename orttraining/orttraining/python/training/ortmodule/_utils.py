@@ -74,7 +74,7 @@ def _ortvalues_to_torch_tensor(
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
 
     if not isinstance(ortvalues, C.OrtValueVector):
-        raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
+        raise TypeError(f"ortvalues must be an instance of OrtValueVector not {type(ortvalues)!r}.")
 
     res: List[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
     bool_indices = ortvalues.bool_tensor_indices()

@@ -373,5 +373,36 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
   test.Run();
 }
 
+TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
+  OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "CRD");
+
+  constexpr int64_t N = 2, C = 4, H = 2, W = 3;
+  std::vector<float> X = {0., 1., 2.,
+                          3., 4., 5.,
+                          9., 10., 11.,
+                          12., 13., 14.,
+                          18., 19., 20.,
+                          21., 22., 23.,
+                          27., 28., 29.,
+                          30., 31., 32.};
+
+  // append same data but in reverse order so we can tell if the batch output is wrong
+  X.insert(X.end(), X.rbegin(), X.rend());
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0., 9., 1., 10., 2., 11.,
+                               18., 27., 19., 28., 20., 29.,
+                               3., 12., 4., 13., 5., 14.,
+                               21., 30., 22., 31., 23., 32.};
+  result.insert(result.end(), result.rbegin(), result.rend());
+
+  test.AddOutput<float>("output", {2, 1, 4, 6}, result);
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

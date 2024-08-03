@@ -37,7 +37,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
@@ -82,26 +82,28 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
       }
 #else  // !IO_BUFFER_ENABLED
+      std::string prec_str = (global_context_.precision_str != "ACCURACY") ? global_context_.precision_str : global_context_.model_precision;
       if (is_ep_ctx_graph_) {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
         exe_network_ = global_context_.ie_core.ImportModel(ep_ctx_handle.GetModelBlobStream(),
                                                            hw_target,
                                                            device_config,
+                                                           global_context_.ep_context_embed_mode,
                                                            subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
-      } else if (!subgraph_context_.has_dynamic_input_shape) {
+      } else if ((!subgraph_context_.has_dynamic_input_shape) &&
+                 ((hw_target.find("AUTO") == std::string::npos) ||
+                  (global_context_.OpenVINO_Version.at(0) >= 2024 && global_context_.OpenVINO_Version.at(1) > 2))) {
+        // Optimized OV compile_model API is supported with AUTO from version 2024.3 and above
         // Inputs with static dimenstions
-        std::string prec_str = (global_context_.precision_str != "ACCURACY") ? global_context_.precision_str : global_context_.model_precision;
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.CompileModel(model,
                                                             hw_target,
-                                                            prec_str,
-                                                            global_context_.cache_dir,
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
         ie_cnn_network_ = exe_network_.Get().get_runtime_model();
-      } else {  // Inputs with dynamic dimensions
+      } else {  // For all other types use ov::Model Type
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.CompileModel(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
@@ -173,13 +175,19 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (is_ep_ctx_graph_) return;
 
-  if (!global_context_.cache_dir.empty()) {
+  if (!global_context_.cache_dir.empty() && !global_context_.export_ep_ctx_blob) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    global_context_.ie_core.SetCache(global_context_.cache_dir, global_context_.device_type);
+    if (global_context_.device_type.find("AUTO:GPU") != std::string::npos) {
+      std::pair<std::string, ov::Any> device_property;
+      device_property = std::make_pair("CACHE_DIR", global_context_.cache_dir);
+      device_config.emplace(ov::device::properties("GPU", device_property));
+    } else {
+      global_context_.ie_core.SetCache(global_context_.cache_dir);
+    }
   }
 }
 
@@ -274,7 +282,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
         }
 
         try {
-          infer_request->SetTensor(input_name, tensor_ptr);
+          infer_request->SetTensor(std::move(input_name), tensor_ptr);
         } catch (const char* msg) {
           ORT_THROW(msg);
         }

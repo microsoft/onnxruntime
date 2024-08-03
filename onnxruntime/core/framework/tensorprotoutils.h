@@ -114,14 +114,22 @@ common::Status TensorProtoToTensor(const Env& env, const std::filesystem::path& 
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
 
-/** Creates a TensorProto from a Tensor.
-    @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
-    @param[in] tensor_proto_name the name of the TensorProto.
-    @return the TensorProto.
-
-    Note: Method currently requires that data is in little-endian format.
+/**
+ * @brief Creates a TensorProto from a Tensor.
+ * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
+ * @param[in] tensor_proto_name the name of the TensorProto.
+ * @param[in] use_tensor_buffer the tensor proto is set to use external location, with
+ *                              'location' set to onnxruntime::utils::kTensorProtoMemoryAddressTag
+ *                              'offset' set to tensor's memory location, and 'length' set to tensor's
+ *                              memory size. The caller is responsible to maintain the lifetime of
+ *                              the allocated memory buffer. Use with caution.
+ * @return the TensorProto.
+ *
+ *  Note: Method currently requires that data is in little-endian format.
  */
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name);
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
+                                                const std::string& tensor_proto_name,
+                                                bool use_tensor_buffer = false);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -141,10 +149,15 @@ constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_A
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
+// If tensor_proto's external file path is kTensorProtoMemoryAddressTag, and
+// buffered_tensor is not null, buffered_tensor holds the real buffer pointed
+// by tensor_proto. buffered_tensor must be the owner of the buffer and deleter
+// should release the buffer when tensor_proto is released.
 common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
-                                         OrtCallback& ext_data_deleter);
+                                         OrtCallback& ext_data_deleter,
+                                         Tensor* buffered_tensor = nullptr);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
