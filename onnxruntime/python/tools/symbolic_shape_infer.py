@@ -232,6 +232,7 @@ class SymbolicShapeInference:
             "bitwise_or": self._infer_aten_bitwise_or,
             "diagonal": self._infer_aten_diagonal,
             "max_pool2d_with_indices": self._infer_aten_pool2d,
+            "resize": self._infer_aten_pool2d,
             "max": self._infer_aten_minmax,
             "min": self._infer_aten_minmax,
             "multinomial": self._infer_aten_multinomial,
