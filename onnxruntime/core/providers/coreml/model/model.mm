@@ -502,7 +502,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 class Execution {
  public:
   Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
-  ~Execution(){};
+  ~Execution() {};
 
   Status LoadModel();
   Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,

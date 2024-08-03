@@ -181,6 +181,64 @@ static void propagateRecvOutputTensorElemTypes(
   }
 }
 
+void SendShapeInfer(ONNX_NAMESPACE::InferenceContext& ctx) {
+  if (ctx.getNumInputs() < 3) {
+    fail_shape_inference("Send must have at least three inputs.");
+  } else {
+    if (hasInputShape(ctx, 0)) {
+      auto& signal_input_shape = getInputShape(ctx, 0);
+      if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+        fail_shape_inference("InputSignal of Send must be a scalar.");
+      }
+    }
+    if (hasInputShape(ctx, 1)) {
+      auto& remote_input_shape = getInputShape(ctx, 1);
+      if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+        fail_shape_inference("Remote of Send must be a scalar.");
+      }
+    }
+
+    checkSendInputTensorElemTypes(ctx, "element_types", ctx.getNumInputs() - 2);
+  }
+
+  if (ctx.getNumOutputs() != 1) {
+    fail_shape_inference("Send must have one output.");
+  }
+
+  auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
+  output_element_type->set_elem_type(TensorProto::BOOL);
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  updateOutputShape(ctx, 0, {});
+  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+}
+
+void RecvShapeInfer(ONNX_NAMESPACE::InferenceContext& ctx) {
+  if (ctx.getNumInputs() != 2) {
+    fail_shape_inference("Recv must have two inputs.");
+  } else {
+    if (hasInputShape(ctx, 0)) {
+      auto& signal_input_shape = getInputShape(ctx, 0);
+      if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
+        fail_shape_inference("InputSignal of Recv must be a scalar.");
+      }
+    }
+    if (hasInputShape(ctx, 1)) {
+      auto& remote_input_shape = getInputShape(ctx, 1);
+      if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
+        fail_shape_inference("Remote of Recv must be a scalar.");
+      }
+    }
+  }
+
+  if (ctx.getNumOutputs() < 2) {
+    fail_shape_inference("Recv must have at least two outputs.");
+  }
+
+  updateOutputShape(ctx, 0, {});
+  updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+  propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs() - 1);
+}
+
 TensorProto ToDimensionOneFloatTensor(float value) {
   auto t = ToTensor(std::vector<float>({value}));
   t.add_dims(1);
@@ -3388,30 +3446,7 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() < 3) {
-          fail_shape_inference("Send must have at least three inputs.");
-        } else {
-          auto& signal_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
-            fail_shape_inference("InputSignal of Send must be a scalar.");
-          }
-          auto& remote_input_shape = getInputShape(ctx, 1);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Send must be a scalar.");
-          }
-
-          checkSendInputTensorElemTypes(ctx, "element_types", ctx.getNumInputs() - 2);
-        }
-
-        if (ctx.getNumOutputs() != 1) {
-          fail_shape_inference("Send must have one output.");
-        }
-
-        auto output_element_type = ctx.getOutputType(0)->mutable_tensor_type();
-        output_element_type->set_elem_type(TensorProto::BOOL);
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        SendShapeInfer(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Recv)
@@ -3437,26 +3472,7 @@ Return true if all elements are true and false otherwise.
           "Constrain types to boolean tensors.")
       .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != 2) {
-          fail_shape_inference("Recv must have two inputs.");
-        } else {
-          auto& signal_input_shape = getInputShape(ctx, 0);
-          if (static_cast<int>(signal_input_shape.dim_size()) != 0) {
-            fail_shape_inference("InputSignal of Recv must be a scalar.");
-          }
-          auto& remote_input_shape = getInputShape(ctx, 1);
-          if (static_cast<int>(remote_input_shape.dim_size()) != 0) {
-            fail_shape_inference("Remote of Recv must be a scalar.");
-          }
-        }
-
-        if (ctx.getNumOutputs() < 2) {
-          fail_shape_inference("Recv must have at least two outputs.");
-        }
-
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-        propagateRecvOutputTensorElemTypes(ctx, "element_types", ctx.getNumOutputs() - 1);
+        RecvShapeInfer(ctx);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MegatronF)

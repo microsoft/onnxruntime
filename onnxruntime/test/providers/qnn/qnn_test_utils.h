@@ -42,7 +42,7 @@ struct QuantParams {
         symmetric);
   }
 
-  static QuantParams<QType> Compute(float rmin, float rmax, QType qmin, QType qmax, bool symmetric = false) {
+  static QuantParams<QType> Compute(float rmin, float rmax, float qmin, float qmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -56,8 +56,8 @@ struct QuantParams {
       rmin = -abs_max;
     }
 
-    float qmin_flt = static_cast<float>(qmin);
-    float qmax_flt = static_cast<float>(qmax);
+    float qmin_flt = qmin;
+    float qmax_flt = qmax;
     const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
     float initial_zero_point = 0.0f;
 

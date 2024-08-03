@@ -25,6 +25,7 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
                 const std::initializer_list<float>& expected_output,
                 const vector<int64_t>& expected_output_shape,
                 bool weight_is_initializer = false,
+                optional<float> epsilon = optional<float>(),
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 int opset = 7) {
@@ -56,11 +57,13 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
 
   test.AddOutput<float>("Y", expected_output_shape, expected_output);
 
+  if (epsilon.has_value()) {
+    test.SetOutputTolerance(*epsilon);
+  }
+
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
   excluded_providers.insert(kTensorrtExecutionProvider);
-  // Disable CUDA NHWC execution provider as it is currently flaky
-  excluded_providers.insert(kCudaNHWCExecutionProvider);
 
   // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
   excluded_providers.insert(kQnnExecutionProvider);
@@ -189,10 +192,15 @@ TEST(ConvTest, Conv1D_Bias) {
   vector<int64_t> Y_shape = {2, 1, 4};
   auto expected_vals = {0.37892162799835205f, 0.4625728130340576f, 0.4934738576412201f, 0.44801419973373413f,
                         0.37892162799835205f, 0.2499445676803589f, 0.31682088971138f, 0.32773756980895996f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // For the CUDA EP: Due to CUDNN Frontend using TF32 for FP32 operations we get a higher error than using FP32 only,
+  // as TF32 has a 10 bit mantissa.
+  float epsilon = 1.1e-5f;
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon);
 
   // CoreML EP requires weight to be an initializer
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true, epsilon);
 }
 
 // Conv47
@@ -240,7 +248,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   vector<int64_t> X_shape = {1, 1, 1};
   vector<int64_t> dummy_shape = {1, 1, 2};
   auto dummy_vals = {0.0f, 0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, optional<float>(),
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=0 Declared=2 Dimension=2",
@@ -263,7 +271,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
   vector<int64_t> dummy_shape = {2, 2, 1, 2};
   auto dummy_vals = {-0.0f, 0.0f, -0.0f, -0.0f,
                      -0.0f, 0.0f, -0.0f, -0.0f};
-  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
+  TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false, optional<float>(),
              OpTester::ExpectResult::kExpectFailure,
              "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=1 Declared=2 Dimension=0",
@@ -620,7 +628,12 @@ TEST(ConvTest, Conv3D_Bias) {
                         -0.47542816400527954f, -0.5078460574150085f, -0.4205915927886963f, -0.5584549903869629f,
                         -0.39770257472991943f, -0.45317384600639343f, -0.5598302483558655f, -0.2542789578437805f,
                         -0.5359901785850525f, -0.48090484738349915f, -0.38603779673576355f, -0.4991581439971924f};
-  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+
+  // For the CUDA EP: Due to CUDNN Frontend using TF32 for FP32 operations we get a higher error than using FP32 only,
+  // as TF32 has a 10 bit mantissa.
+  float epsilon = 2.1e-4f;
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, false, epsilon);
 }
 
 TEST(ConvTest, Conv2D_group) {
@@ -647,6 +660,241 @@ TEST(ConvTest, Conv2D_group) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvTest, Depthwise2D_Bias_Group1_Issue18992) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {1.0f};
+  vector<int64_t> X_shape = {1, 1, 1, 1};
+  vector<float> W = {0.5f};
+  vector<int64_t> W_shape = {1, 1, 1, 1};
+  vector<float> B = {0.5f};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 1, 1, 1};
+  auto expected_vals = {1.0f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Depthwise2D_Bias_Group2) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {
+      0.0f, 1.0f, 2.0f,
+      3.0f, 4.0f, 5.0f,
+      6.0f, 7.0f, 8.0f,
+
+      9.0f, 10.0f, 11.0f,
+      12.0f, 13.0f, 14.0f,
+      15.0f, 16.0f, 17.0f};
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<float> W = {1.0f, 2.0f};
+  vector<int64_t> W_shape = {2, 1, 1, 1};
+  vector<float> B = {1.0f, -1.0f};
+  vector<int64_t> B_shape = {2};
+  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  auto expected_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+      7.0f, 8.0f, 9.0f,
+
+      17.0f, 19.0f, 21.0f,
+      23.0f, 25.0f, 27.0f,
+      29.0f, 31.0f, 33.0f};
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Depthwise2D_Bias_Group15) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      15,                           // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {
+      // C = 0
+      0.0f, 1.0f,
+      2.0f, 3.0f,
+
+      // C = 1
+      4.0f, 5.0f,
+      6.0f, 7.0f,
+
+      // C = 2
+      8.0f, 9.0f,
+      10.0f, 11.0f,
+
+      // C = 3
+      12.0f, 13.0f,
+      14.0f, 15.0f,
+
+      // C = 4
+      16.0f, 17.0f,
+      18.0f, 19.0f,
+
+      // C = 5
+      20.0f, 21.0f,
+      22.0f, 23.0f,
+
+      // C = 6
+      24.0f, 25.0f,
+      26.0f, 27.0f,
+
+      // C = 7
+      28.0f, 29.0f,
+      30.0f, 31.0f,
+
+      // C = 8
+      32.0f, 33.0f,
+      34.0f, 35.0f,
+
+      // C = 9
+      36.0f, 37.0f,
+      38.0f, 39.0f,
+
+      // C = 10
+      40.0f, 41.0f,
+      42.0f, 43.0f,
+
+      // C = 11
+      44.0f, 45.0f,
+      46.0f, 47.0f,
+
+      // C = 12
+      48.0f, 49.0f,
+      50.0f, 51.0f,
+
+      // C = 13
+      52.0f, 53.0f,
+      54.0f, 55.0f,
+
+      // C = 14
+      56.0f, 57.0f,
+      58.0f, 59.0f};
+  vector<int64_t> X_shape = {1, 15, 2, 2};
+  vector<float> W = {
+      // M = 0
+      0.0f, 1.0f,
+      2.0f, 3.0f,
+
+      // M = 1
+      4.0f, 5.0f,
+      6.0f, 7.0f,
+
+      // M = 2
+      8.0f, 9.0f,
+      10.0f, 11.0f,
+
+      // M = 3
+      12.0f, 13.0f,
+      14.0f, 15.0f,
+
+      // M = 4
+      16.0f, 17.0f,
+      18.0f, 19.0f,
+
+      // M = 5
+      20.0f, 21.0f,
+      22.0f, 23.0f,
+
+      // M = 6
+      24.0f, 25.0f,
+      26.0f, 27.0f,
+
+      // M = 7
+      28.0f, 29.0f,
+      30.0f, 31.0f,
+
+      // M = 8
+      32.0f, 33.0f,
+      34.0f, 35.0f,
+
+      // M = 9
+      36.0f, 37.0f,
+      38.0f, 39.0f,
+
+      // M = 10
+      40.0f, 41.0f,
+      42.0f, 43.0f,
+
+      // M = 11
+      44.0f, 45.0f,
+      46.0f, 47.0f,
+
+      // M = 12
+      48.0f, 49.0f,
+      50.0f, 51.0f,
+
+      // M = 13
+      52.0f, 53.0f,
+      54.0f, 55.0f,
+
+      // M = 14
+      56.0f, 57.0f,
+      58.0f, 59.0f};
+  vector<int64_t> W_shape = {15, 1, 2, 2};
+  vector<float> B = {
+      101.0f,
+      102.0f,
+      103.0f,
+      104.0f,
+      105.0f,
+      106.0f,
+      107.0f,
+      108.0f,
+      109.0f,
+      110.0f,
+      111.0f,
+      112.0f,
+      113.0f,
+      114.0f,
+      115.0f};
+  vector<int64_t> B_shape = {15};
+  vector<int64_t> Y_shape = {1, 15, 1, 1};
+  auto expected_vals = {
+      115.0f,  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 101.0
+      228.0f,
+      469.0f,
+      838.0f,
+      1335.0f,
+      1960.0f,
+      2713.0f,  // 24.0*24.0 + 25.0*25.0 + 26.0*26.0 + 27.0*27.0 + 107.0
+      3594.0f,
+      4603.0f,
+      5740.0f,
+      7005.0f,
+      8398.0f,
+      9919.0f,   // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 113.0
+      11568.0f,  // 52.0*52.0 + 53.0*53.0 + 54.0*54.0 + 55.0*55.0 + 114.0
+      13345.0f   // 56.0*56.0 + 57.0*57.0 + 58.0*58.0 + 59.0*59.0 + 115.0
+  };
+
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvTest, ConvDimWithZero) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
@@ -667,7 +915,8 @@ TEST(ConvTest, ConvDimWithZero) {
   // not handled by ACL
   attrs.excluded_providers.insert(kAclExecutionProvider);
 
-  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, OpTester::ExpectResult::kExpectSuccess, "", 10);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, {}, out_shape, false, optional<float>(),
+             OpTester::ExpectResult::kExpectSuccess, "", 10);
 }
 
 TEST(ConvTest, Conv1D_asymmetric_padding) {

@@ -46,9 +46,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(gtest_disable_pthreads ON)
   endif()
-  if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(gtest_disable_pthreads ON CACHE BOOL "gtest_disable_pthreads" FORCE)
-  endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
   if (IOS OR ANDROID)
     # on mobile platforms the absl flags class dumps the flag names (assumably for binary size), which breaks passing
@@ -590,20 +587,16 @@ endif()
 
 message("Finished fetching external dependencies")
 
-
 set(onnxruntime_LINK_DIRS )
+
 if (onnxruntime_USE_CUDA)
-      #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       find_package(CUDAToolkit REQUIRED)
-      if (WIN32)
-        if(onnxruntime_CUDNN_HOME)
-          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
-        endif()
-      else()
-        if(onnxruntime_CUDNN_HOME)
-          list(APPEND onnxruntime_LINK_DIRS  ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib64)
-        endif()
+
+      if(onnxruntime_CUDNN_HOME)
+        file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
+        set(CUDNN_PATH ${onnxruntime_CUDNN_HOME})
       endif()
+      include(cuDNN)
 endif()
 
 if(onnxruntime_USE_SNPE)
