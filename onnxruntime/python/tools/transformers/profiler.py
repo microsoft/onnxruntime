@@ -538,7 +538,9 @@ def create_bert_inputs(
         input_ids=input_ids,
         segment_ids=segment_ids,
         input_mask=input_mask,
-        random_mask_length=False,
+        average_sequence_length=sequence_length,
+        random_sequence_length=False,
+        mask_type=2,
     )
 
     return all_inputs
