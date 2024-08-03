@@ -1,10 +1,10 @@
 diff --git a/cmake/onnxruntime_mlas.cmake b/cmake/onnxruntime_mlas.cmake
-index 304aa77f54..5c22b7097b 100644
+index 66f4aea606..481109e560 100644
 --- a/cmake/onnxruntime_mlas.cmake
 +++ b/cmake/onnxruntime_mlas.cmake
-@@ -354,7 +354,7 @@ else()
+@@ -361,7 +361,7 @@ else()
          )
-         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                      PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
 -        if (NOT APPLE)
 +        if (NOT APPLE AND NOT onnxruntime_USE_VSINPU)
@@ -12,11 +12,11 @@ index 304aa77f54..5c22b7097b 100644
              ${mlas_platform_srcs}
              ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
 diff --git a/onnxruntime/core/mlas/inc/mlas.h b/onnxruntime/core/mlas/inc/mlas.h
-index cdfd283899..678a055b24 100644
+index 675f7c7a13..eb7ed77911 100644
 --- a/onnxruntime/core/mlas/inc/mlas.h
 +++ b/onnxruntime/core/mlas/inc/mlas.h
 @@ -82,6 +82,9 @@ Abstract:
-
+ 
  #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
  #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 +#if !defined(USE_VSINPU)
@@ -26,9 +26,9 @@ index cdfd283899..678a055b24 100644
  // Had to temporary disable fp16 under APPLE ARM64, as compiling
  // the source files require a hardware specific compilation flag.
 @@ -90,6 +93,7 @@ Abstract:
-
+ 
  #define MLAS_F16VEC_INTRINSICS_SUPPORTED
-
+ 
 +#endif //
  #endif //
  #endif // ARM64
