@@ -407,8 +407,12 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
   set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
   onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CLOG_PROJ})
   set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
+  # if cpuinfo is from find_package, use it with imported name
   if(TARGET cpuinfo::clog)
     set(ONNXRUNTIME_CLOG_TARGET_NAME cpuinfo::clog)
+  elseif(onnxruntime_USE_VCPKG)
+    # however, later cpuinfo versions may not contain clog. use cpuinfo
+    set(ONNXRUNTIME_CLOG_TARGET_NAME cpuinfo::cpuinfo)
   endif()
 endif()
 
@@ -534,14 +538,18 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
 
-find_package(Eigen3 CONFIG)
-if(NOT Eigen3_FOUND)
-  include(eigen)
+if(onnxruntime_USE_VCPKG)
+  find_package(Eigen3 CONFIG REQUIRED)
+  get_target_property(eigen_INCLUDE_DIRS Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
+else()
+  include(eigen) # FetchContent
 endif()
 
-find_package(wil CONFIG)
-if(NOT wil_FOUND)
-  include(wil)
+if(onnxruntime_USE_VCPKG)
+  find_package(wil CONFIG REQUIRED)
+  set(WIL_TARGET "WIL::WIL")
+else()
+  include(wil) # FetchContent
 endif()
 
 # XNNPACK EP
