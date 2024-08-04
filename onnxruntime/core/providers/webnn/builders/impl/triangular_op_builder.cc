@@ -46,6 +46,7 @@ Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val output = emscripten::val::object();
   NodeAttrHelper helper(node);
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   const bool upper = helper.Get("upper", 1);
   options.set("upper", upper);

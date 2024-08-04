@@ -714,6 +714,241 @@ TEST(ConvFp16Test, Conv2D_group) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+TEST(ConvFp16Test, Depthwise2D_Bias_Group1_Issue18992) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f)};
+  vector<int64_t> X_shape = {1, 1, 1, 1};
+  vector<MLFloat16> W = {MLFloat16(0.5f)};
+  vector<int64_t> W_shape = {1, 1, 1, 1};
+  vector<MLFloat16> B = {MLFloat16(0.5f)};
+  vector<int64_t> B_shape = {1};
+  vector<int64_t> Y_shape = {1, 1, 1, 1};
+  auto expected_vals = {MLFloat16(1.0f)};
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvFp16Test, Depthwise2D_Bias_Group2) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {
+      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(2.0f),
+      MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f), MLFloat16(8.0f),
+
+      MLFloat16(9.0f), MLFloat16(10.0f), MLFloat16(11.0f),
+      MLFloat16(12.0f), MLFloat16(13.0f), MLFloat16(14.0f),
+      MLFloat16(15.0f), MLFloat16(16.0f), MLFloat16(17.0f)};
+  vector<int64_t> X_shape = {1, 2, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(2.0f)};
+  vector<int64_t> W_shape = {2, 1, 1, 1};
+  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> B_shape = {2};
+  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  auto expected_vals = {
+      MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+      MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+      MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f),
+
+      MLFloat16(17.0f), MLFloat16(19.0f), MLFloat16(21.0f),
+      MLFloat16(23.0f), MLFloat16(25.0f), MLFloat16(27.0f),
+      MLFloat16(29.0f), MLFloat16(31.0f), MLFloat16(33.0f)};
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvFp16Test, Depthwise2D_Bias_Group15) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      15,                           // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<MLFloat16> X = {
+      // C = 0
+      MLFloat16(0.0f), MLFloat16(1.0f),
+      MLFloat16(2.0f), MLFloat16(3.0f),
+
+      // C = 1
+      MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f),
+
+      // C = 2
+      MLFloat16(8.0f), MLFloat16(9.0f),
+      MLFloat16(10.0f), MLFloat16(11.0f),
+
+      // C = 3
+      MLFloat16(12.0f), MLFloat16(13.0f),
+      MLFloat16(14.0f), MLFloat16(15.0f),
+
+      // C = 4
+      MLFloat16(16.0f), MLFloat16(17.0f),
+      MLFloat16(18.0f), MLFloat16(19.0f),
+
+      // C = 5
+      MLFloat16(20.0f), MLFloat16(21.0f),
+      MLFloat16(22.0f), MLFloat16(23.0f),
+
+      // C = 6
+      MLFloat16(24.0f), MLFloat16(25.0f),
+      MLFloat16(26.0f), MLFloat16(27.0f),
+
+      // C = 7
+      MLFloat16(28.0f), MLFloat16(29.0f),
+      MLFloat16(30.0f), MLFloat16(31.0f),
+
+      // C = 8
+      MLFloat16(32.0f), MLFloat16(33.0f),
+      MLFloat16(34.0f), MLFloat16(35.0f),
+
+      // C = 9
+      MLFloat16(36.0f), MLFloat16(37.0f),
+      MLFloat16(38.0f), MLFloat16(39.0f),
+
+      // C = 10
+      MLFloat16(40.0f), MLFloat16(41.0f),
+      MLFloat16(42.0f), MLFloat16(43.0f),
+
+      // C = 11
+      MLFloat16(44.0f), MLFloat16(45.0f),
+      MLFloat16(46.0f), MLFloat16(47.0f),
+
+      // C = 12
+      MLFloat16(48.0f), MLFloat16(49.0f),
+      MLFloat16(50.0f), MLFloat16(51.0f),
+
+      // C = 13
+      MLFloat16(52.0f), MLFloat16(53.0f),
+      MLFloat16(54.0f), MLFloat16(55.0f),
+
+      // C = 14
+      MLFloat16(56.0f), MLFloat16(57.0f),
+      MLFloat16(58.0f), MLFloat16(59.0f)};
+  vector<int64_t> X_shape = {1, 15, 2, 2};
+  vector<MLFloat16> W = {
+      // M = 0
+      MLFloat16(0.0f), MLFloat16(1.0f),
+      MLFloat16(2.0f), MLFloat16(3.0f),
+
+      // M = 1
+      MLFloat16(4.0f), MLFloat16(5.0f),
+      MLFloat16(6.0f), MLFloat16(7.0f),
+
+      // M = 2
+      MLFloat16(8.0f), MLFloat16(9.0f),
+      MLFloat16(10.0f), MLFloat16(11.0f),
+
+      // M = 3
+      MLFloat16(12.0f), MLFloat16(13.0f),
+      MLFloat16(14.0f), MLFloat16(15.0f),
+
+      // M = 4
+      MLFloat16(16.0f), MLFloat16(17.0f),
+      MLFloat16(18.0f), MLFloat16(19.0f),
+
+      // M = 5
+      MLFloat16(20.0f), MLFloat16(21.0f),
+      MLFloat16(22.0f), MLFloat16(23.0f),
+
+      // M = 6
+      MLFloat16(24.0f), MLFloat16(25.0f),
+      MLFloat16(26.0f), MLFloat16(27.0f),
+
+      // M = 7
+      MLFloat16(28.0f), MLFloat16(29.0f),
+      MLFloat16(30.0f), MLFloat16(31.0f),
+
+      // M = 8
+      MLFloat16(32.0f), MLFloat16(33.0f),
+      MLFloat16(34.0f), MLFloat16(35.0f),
+
+      // M = 9
+      MLFloat16(36.0f), MLFloat16(37.0f),
+      MLFloat16(38.0f), MLFloat16(39.0f),
+
+      // M = 10
+      MLFloat16(40.0f), MLFloat16(41.0f),
+      MLFloat16(42.0f), MLFloat16(43.0f),
+
+      // M = 11
+      MLFloat16(44.0f), MLFloat16(45.0f),
+      MLFloat16(46.0f), MLFloat16(47.0f),
+
+      // M = 12
+      MLFloat16(48.0f), MLFloat16(49.0f),
+      MLFloat16(50.0f), MLFloat16(51.0f),
+
+      // M = 13
+      MLFloat16(52.0f), MLFloat16(53.0f),
+      MLFloat16(54.0f), MLFloat16(55.0f),
+
+      // M = 14
+      MLFloat16(56.0f), MLFloat16(57.0f),
+      MLFloat16(58.0f), MLFloat16(59.0f)};
+  vector<int64_t> W_shape = {15, 1, 2, 2};
+  vector<MLFloat16> B = {
+      MLFloat16(101.0f),
+      MLFloat16(102.0f),
+      MLFloat16(103.0f),
+      MLFloat16(104.0f),
+      MLFloat16(105.0f),
+      MLFloat16(106.0f),
+      MLFloat16(107.0f),
+      MLFloat16(108.0f),
+      MLFloat16(109.0f),
+      MLFloat16(110.0f),
+      MLFloat16(111.0f),
+      MLFloat16(112.0f),
+      MLFloat16(113.0f),
+      MLFloat16(114.0f),
+      MLFloat16(115.0f)};
+  vector<int64_t> B_shape = {15};
+  vector<int64_t> Y_shape = {1, 15, 1, 1};
+  auto expected_vals = {
+      MLFloat16(115.0f),  // 0.0*0.0 + 1.0*1.0 + 2.0*2.0 + 3.0*3.0 + 101.0
+      MLFloat16(228.0f),
+      MLFloat16(469.0f),
+      MLFloat16(838.0f),
+      MLFloat16(1335.0f),
+      MLFloat16(1960.0f),
+      MLFloat16(2713.0f),  // 24.0*24.0 + 25.0*25.0 + 26.0*26.0 + 27.0*27.0 + 107.0
+      MLFloat16(3594.0f),
+      MLFloat16(4603.0f),
+      MLFloat16(5740.0f),
+      MLFloat16(7005.0f),
+      MLFloat16(8398.0f),
+      MLFloat16(9919.0f),   // 48.0*48.0 + 49.0*49.0 + 50.0*50.0 + 51.0*51.0 + 113.0
+      MLFloat16(11568.0f),  // 52.0*52.0 + 53.0*53.0 + 54.0*54.0 + 55.0*55.0 + 114.0
+      MLFloat16(13345.0f)   // 56.0*56.0 + 57.0*57.0 + 58.0*58.0 + 59.0*59.0 + 115.0
+  };
+
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
 TEST(ConvFp16Test, ConvDimWithZero) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad

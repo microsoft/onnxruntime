@@ -75,6 +75,12 @@ export declare namespace Env {
     wasmPaths?: WasmPrefixOrFilePaths;
 
     /**
+     * Set a custom buffer which contains the WebAssembly binary. If this property is set, the `wasmPaths` property will
+     * be ignored.
+     */
+    wasmBinary?: ArrayBufferLike|Uint8Array;
+
+    /**
      * Set or get a boolean value indicating whether to proxy the execution of main thread to a worker thread.
      *
      * @defaultValue `false`

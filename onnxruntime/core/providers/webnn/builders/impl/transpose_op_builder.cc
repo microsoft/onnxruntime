@@ -42,6 +42,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   std::vector<uint32_t> permutation = GetVecUint32FromVecInt64(perm);
   options.set("permutation", emscripten::val::array(permutation));
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);

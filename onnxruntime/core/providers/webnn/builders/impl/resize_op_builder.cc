@@ -106,6 +106,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   NodeAttrHelper helper(node);
   const auto mode = helper.Get("mode", "nearest");
   if (mode == "linear") {

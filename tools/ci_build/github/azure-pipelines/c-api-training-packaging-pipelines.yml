@@ -32,13 +32,25 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
   default: 0
-  
+
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
+
 stages:
 - template: stages/set_packaging_variables_stage.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
 - template: templates/ondevice-training-cpu-packaging-pipeline.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
@@ -49,3 +61,14 @@ stages:
     AdditionalBuildFlags: '--enable_training_apis'
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
+
+- template: templates/publish-nuget-steps.yml
+  parameters:
+    download_artifacts_steps:
+      - template: templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline Artifact - Signed NuGet Training Package'
+          ArtifactName: 'drop-signed-nuget-Training-CPU'
+          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+          SpecificArtifact: ${{ parameters.specificArtifact }}
+          BuildId: ${{ parameters.BuildId }}

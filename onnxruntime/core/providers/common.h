@@ -83,6 +83,14 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 
 // helper function
 
+constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                            const int64_t pad_head, const int64_t pad_tail) {
+  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
+  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
+  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
+}
+
 inline Status ComputePad(const int64_t in_dim,
                          const int64_t stride, const int64_t kernel, const int64_t dilation,
                          AutoPadType pad_type,
@@ -106,6 +114,15 @@ inline Status ComputePad(const int64_t in_dim,
       // is retained as is
       SafeInt<int64_t> legacy_target_size = (SafeInt<int64_t>(in_dim) + stride - 1) / stride;
       SafeInt<int64_t> pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      // out_dim = floor((in_dim + 2p - k) / s) + 1
+      // => if (in_dim + 2p - k) is not divisible by s we can remove the floor with following equation:
+      // out_dim + eps = ((in_dim + 2p - k) / s) + 1 ;where eps is in [0.0, 1.0]
+      // therefore in edge cases padding can lower calculated above than it should be
+      SafeInt<int64_t> actual_out_size = ComputeOutputShape(in_dim, stride, kernel, /*dilation*/ 1,
+                                                            pad_needed, pad_needed);
+      if (actual_out_size < legacy_target_size) {
+        pad_needed += 1;
+      }
       // make sure padding is symmetric
       if (force_symmetric_auto_padding) {
         // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
@@ -124,14 +141,6 @@ inline Status ComputePad(const int64_t in_dim,
   }
 
   return Status::OK();
-}
-
-constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
-                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                            const int64_t pad_head, const int64_t pad_tail) {
-  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
-  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
-  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
 }
 
 inline Status ComputePadAndOutputShape(const int64_t in_dim,

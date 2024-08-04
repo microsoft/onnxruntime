@@ -42,8 +42,11 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     inputs.push_back(model_builder.GetOperand(input->Name()));
   }
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   emscripten::val output =
-      model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis);
+      model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
