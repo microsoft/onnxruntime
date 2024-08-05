@@ -18,7 +18,7 @@ This is a basic [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
 ### Java API
 This app uses the [generate() Java API's](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
 
-### Model Downloads
+### Model Download
 This app downloads the [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model through Hugging Face. To use a different model, change the path links to refer to your chosen model.
 ```java
 final String baseUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/";
