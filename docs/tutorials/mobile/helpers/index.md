@@ -28,9 +28,8 @@ See [here](./model-usability-checker.md) for more details.
 
 ## ONNX model opset updater
 
-The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer ONNX opset using this tool. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
-
-The ONNX opsets supported by the pre-built package are documented [here](../../../reference/operators/MobileOps.md).
+If you are doing a custom build, you may want to update your target models to the same ONNX opset or opsets so that the custom build can support a smaller number of opsets in order to reduce binary size.
+Most ONNX models can be updated to a newer ONNX opset using this tool.
 
 Usage:
 
