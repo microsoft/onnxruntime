@@ -10,8 +10,10 @@
             "name": "vcpkg-manifest",
             "hidden": true,
             "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+            "cacheVariables": {
+                "VCPKG_INSTALLED_DIR": "${sourceParentDir}/.build"
+            },
             "environment": {
-                "VCPKG_INSTALLED_DIR": "${sourceParentDir}/.build",
                 "VCPKG_FEATURE_FLGAS": "manifests,versions"
             }
         },
