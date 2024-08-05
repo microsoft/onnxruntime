@@ -11,9 +11,9 @@ The whole setup was a little hacky as it tried to replicate internal NCNN packin
 
 #include "core/providers/vulkan/vulkan_data_transfer.h"
 
-#include "ncnn-src/src/command.h"
-#include "ncnn-src/src/gpu.h"
-#include "ncnn-src/src/option.h"
+#include "include/ncnn/command.h"
+#include "include/ncnn/gpu.h"
+#include "include/ncnn/option.h"
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/tensor.h"

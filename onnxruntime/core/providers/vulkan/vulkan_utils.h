@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "ncnn-src/src/layer.h"
-#include "ncnn-src/src/command.h"
+#include "include/ncnn/layer.h"
+#include "include/ncnn/command.h"
 
 #include "core/common/gsl.h"
 #include "core/framework/op_kernel_info.h"
@@ -42,8 +42,8 @@ ncnn::Mat TensorToMat(const Tensor& tensor);
 ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
 
 // apply packing logic that VkCompute::record_upload uses
-ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
-                                     const ncnn::VulkanDevice& device, const ncnn::Option& options);
+// ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
+//                                     const ncnn::VulkanDevice& device, const ncnn::Option& options);
 
 // get input/output shape hints
 std::tuple<std::vector<ncnn::Mat>, std::vector<ncnn::Mat>> GetLayerShapeHints(const Node& node);

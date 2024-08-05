@@ -95,18 +95,33 @@ if (onnxruntime_USE_VULKAN)
   onnxruntime_fetchcontent_makeavailable(ncnn)
 
   # Add the _deps directory as an include. NCNN doesn't have a subdirectory for the source so the default addition
-  # to the include path is _deps/ncnn-src/src, and would result in for example `#include "layer.h"`, which doesn't convey
-  # that the file comes from NCNN and is also likely to clash with other header filenames.
+  # to the include path is _deps/ncnn-src/src, and would result in for example `#include "layer.h"`, which doesn't
+  # convey that the file comes from NCNN and is also likely to clash with other header filenames.
   # By adding _deps we can at least do #include "ncnn-src/src/layer.h" which is more explicit and unique.
-  target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR}>)
+  #
+  # This works, but it's a little ugly.
+  #
+  # target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR}>)
+
+  # Trying alternative of creating an 'include' directory _deps/ncnn-src directory with a symlink called ncnn that
+  # _deps/ncnn-src/src. This would allow #include "include/ncnn/layer.h" which is a bit closer to typical
+  if (NOT EXISTS ${ncnn_SOURCE_DIR}/include)
+    file(MAKE_DIRECTORY ${ncnn_SOURCE_DIR}/include)
+    file(CREATE_LINK ${ncnn_SOURCE_DIR}/src ${ncnn_SOURCE_DIR}/include/ncnn SYMBOLIC)
+  endif()
+  target_include_directories(ncnn PUBLIC ${ncnn_SOURCE_DIR})
 
   # Create a symlink from the glslang-src to the ncnn-src/glslang directory that would be used if glslang was fetched
   # as a submodule of NCNN.
   # NCNN source requires the glslang headers come from 'glslang/...' so the symlink converts the path from
   # 'glslang-src' to 'glslang'. We could alternatively symlink _deps/glslang-src to _deps/glslang, but doing it this
   # way hides the details under the ncnn-src directory.
-  file(REMOVE_RECURSE ${ncnn_SOURCE_DIR}/glslang)
-  file(CREATE_LINK ${glslang_SOURCE_DIR} ${ncnn_SOURCE_DIR}/glslang SYMBOLIC)
+  #
+  # NOTE: We need to detect if we have done this before, otherwise the REMOVE_RECURSE will delete the real glslang src
+  if (NOT IS_SYMLINK ${ncnn_SOURCE_DIR}/glslang)
+    file(REMOVE_RECURSE ${ncnn_SOURCE_DIR}/glslang)
+    file(CREATE_LINK ${glslang_SOURCE_DIR} ${ncnn_SOURCE_DIR}/glslang SYMBOLIC)
+  endif()
 endif()
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)

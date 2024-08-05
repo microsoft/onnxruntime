@@ -14,8 +14,8 @@ which is influenced by the current options.
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
 
-// #include "ncnn-src/src/command.h"
-// #include "ncnn-src/src/option.h"
+// #include "include/ncnn/command.h"
+// #include "include/ncnn/option.h"
 
 namespace ncnn {
 class VkAllocator;

@@ -4,7 +4,7 @@
 
 #include "core/providers/vulkan/math/binary_elementwise.h"
 
-#include "ncnn-src/src/layer/binaryop.h"
+#include "include/ncnn/layer/binaryop.h"
 
 #include "core/optimizer/initializer.h"
 

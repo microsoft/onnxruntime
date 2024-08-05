@@ -425,6 +425,8 @@ bool SetEpsForAllNodes(Graph& graph,
       auto provider_type = ep->Type();
 
       node.SetExecutionProviderType(provider_type);
+
+      // compiling execution providers don't have static kernel registrations
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
@@ -432,7 +434,8 @@ bool SetEpsForAllNodes(Graph& graph,
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
-          provider_type == onnxruntime::kSnpeExecutionProvider) {
+          provider_type == onnxruntime::kSnpeExecutionProvider ||
+          provider_type == onnxruntime::kVulkanExecutionProvider) {
         found = true;
         break;
       }

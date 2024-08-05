@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/vulkan/nn/conv.h"
-#include "ncnn-src/src/layer/convolution.h"
-#include "ncnn-src/src/layer/convolution1d.h"
-#include "ncnn-src/src/layer/convolution3d.h"
-#include "ncnn-src/src/layer/convolutiondepthwise.h"
-#include "ncnn-src/src/layer/convolutiondepthwise1d.h"
-#include "ncnn-src/src/layer/convolutiondepthwise3d.h"
+#include "include/ncnn/layer/convolution.h"
+#include "include/ncnn/layer/convolution1d.h"
+#include "include/ncnn/layer/convolution3d.h"
+#include "include/ncnn/layer/convolutiondepthwise.h"
+#include "include/ncnn/layer/convolutiondepthwise1d.h"
+#include "include/ncnn/layer/convolutiondepthwise3d.h"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -22,7 +22,9 @@ Status ConvKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::Par
   return Status::OK();
 }
 
-Status ConvKernel::SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ncnn::Layer& /*layer*/) {
+Status ConvKernel::SetupConstantInitializers(const GraphViewer& /*graph_viewer*/) {
+  // auto& layer = Layer();
+
   // update the ncnn::Mat values in the base NCNN layer for any constant initializers
   switch (op_type_) {
     case ConvType::Convolution: {
