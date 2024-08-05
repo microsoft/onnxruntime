@@ -200,7 +200,7 @@ def _build_package(args):
     xcframework_dir = os.path.join(build_dir, "framework_out")
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
-    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True)
+    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True, symlinks=True)
     _merge_framework_info_files(framework_info_files_to_merge, os.path.join(build_dir, "xcframework_info.json"))
 
     # remove existing xcframework if any
