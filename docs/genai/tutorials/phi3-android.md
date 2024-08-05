@@ -7,7 +7,7 @@ grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 
-# Incorporate Phi-3 Model for Android Development
+# Build an Android generative AI application
 This is a basic [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to download and run the Phi-3 App on your own mobile device so you can get started incorporating Phi-3 into your own mobile developments.  
 
 ## Capabilities
