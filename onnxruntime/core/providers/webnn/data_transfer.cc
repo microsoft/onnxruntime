@@ -29,19 +29,14 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
     const auto& dst_device = dst.Location().device;
 
     if (dst_device.Type() == OrtDevice::GPU) {
-      EM_ASM({
-        Module.jsepUploadBuffer($0, HEAPU8.subarray($1, $1 + $2));
-      },
-             dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
+      EM_ASM({ Module.jsepUploadBuffer($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
     } else {
       auto jsepDownloadBuffer = emscripten::val::module_property("jsepDownloadBuffer");
       auto buffer = jsepDownloadBuffer(reinterpret_cast<intptr_t>(src_data)).await();
       EM_ASM({
         const buffer = Emval.toValue($0);
         const src_array = new Uint8Array(buffer, 0, $2);
-        HEAPU8.set(src_array, $1);
-      },
-             buffer.as_handle(), reinterpret_cast<intptr_t>(dst_data), bytes);
+        HEAPU8.set(src_array, $1); }, buffer.as_handle(), reinterpret_cast<intptr_t>(dst_data), bytes);
     }
   }
 
