@@ -101,13 +101,12 @@ jobs:
             ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
-              --enable_training \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
-                onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
+                onnxruntime_USE_COMPOSABLE_KERNEL=ON \
               --mpi_home /opt/ompi \
-              --use_migraphx \
+              --use_rocm \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
@@ -165,7 +164,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
-      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
+      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -185,7 +184,26 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
+            python /onnxruntime_src/tools/ci_build/build.py \
+              --config Release \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
+                onnxruntime_USE_COMPOSABLE_KERNEL=ON \
+              --mpi_home /opt/ompi \
+              --use_rocm \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home /opt/rocm \
+              --nccl_home /opt/rocm \
+              --enable_nccl \
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel \
+              --build_wheel \
+              --skip_submodule_sync \
+              --tests --enable_onnx_tests --enable_transformers_tool_test \
+              --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 
