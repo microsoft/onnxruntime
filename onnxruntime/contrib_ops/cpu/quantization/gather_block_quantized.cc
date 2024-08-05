@@ -62,7 +62,6 @@ struct Prepare {
                                int64_t gather_N,
                                int64_t gather_axis_dim,
                                int64_t gather_block,
-                               int64_t quantize_M,
                                int64_t quantize_axis_dim,
                                int64_t quantize_N,
                                concurrency::ThreadPool* tp) const;
@@ -107,7 +106,7 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
   ORT_RETURN_IF_NOT(data_shape.NumDimensions() == scales_shape.NumDimensions(),
                     "data and scales must have the same rank.");
   for (size_t i = 0; i < data_shape.NumDimensions(); ++i) {
-    ORT_RETURN_IF_NOT(i == q.quantize_axis
+    ORT_RETURN_IF_NOT(i == static_cast<size_t>(p.quantize_axis)
                           ? (data_shape[i] + block_size_ - 1) / block_size_ == scales_shape[i]
                           : data_shape[i] == scales_shape[i],
                       "data and scales do not match shapes.");
@@ -143,19 +142,18 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
 
 template <typename T1, typename Tind>
 template <typename T2>
-Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize<T2>(const T1* data_ptr,
-                                                                 const Tind* indices_ptr,
-                                                                 const T2* scales_ptr,
-                                                                 const T1* zero_points_ptr,
-                                                                 T2* output_ptr,
-                                                                 int64_t gather_M,
-                                                                 int64_t gather_N,
-                                                                 int64_t gather_axis_dim,
-                                                                 int64_t gather_block,
-                                                                 int64_t quantize_M,
-                                                                 int64_t quantize_axis_dim,
-                                                                 int64_t quantize_N,
-                                                                 concurrency::ThreadPool* tp) const {
+Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
+                                                             const Tind* indices_ptr,
+                                                             const T2* scales_ptr,
+                                                             const T1* zero_points_ptr,
+                                                             T2* output_ptr,
+                                                             int64_t gather_M,
+                                                             int64_t gather_N,
+                                                             int64_t gather_axis_dim,
+                                                             int64_t gather_block,
+                                                             int64_t quantize_axis_dim,
+                                                             int64_t quantize_N,
+                                                             concurrency::ThreadPool* tp) const {
   auto data_full_block = gather_axis_dim * gather_block;
   auto quantize_full_block = quantize_axis_dim * quantize_N;
   auto scale_full_block = (quantize_axis_dim + block_size_ - 1) / block_size_ * quantize_N;
@@ -231,7 +229,7 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //  4> pick the element from the block: value_i = data_blk[blk_ele_i]
   const int64_t gather_block = data_shape.SizeFromDimension(SafeInt<size_t>(p.gather_axis) + 1);
   const int64_t gather_axis_dim = data_shape[p.gather_axis];
-  const int64_t gather_M = input_data_shape.SizeToDimension(narrow<size_t>(p.gather_axis));
+  const int64_t gather_M = data_shape.SizeToDimension(narrow<size_t>(p.gather_axis));
   const int64_t gather_N = p.indices_tensor->Shape().Size();
   // re-shape the data tensor to [quantize_M, quantize_axis_dim, quantize_N]
   // For an index i in the output tensor:
@@ -244,7 +242,6 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //      data_i % quantize_N)
   //  4> get scale index: (x, y / block_size_, z)
   const int64_t quantize_axis_dim = data_shape[p.quantize_axis];
-  const int64_t quantize_M = data_shape.SizeToDimension(narrow<size_t>(p.quantize_axis));
   const int64_t quantize_N = data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
@@ -259,7 +256,7 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
 
     return CopyDataAndDequantize<float>(data_ptr, indices_ptr, scales_ptr, zero_points_ptr,
                                         output_ptr, gather_M, gather_N, gather_axis_dim, gather_block,
-                                        quantize_M, quantize_axis_dim, quantize_N,
+                                        quantize_axis_dim, quantize_N,
                                         tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const auto* scales_ptr = p.scales_tensor->Data<MLFloat16>();
@@ -267,7 +264,7 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
 
     return CopyDataAndDequantize<MLFloat16>(data_ptr, indices_ptr, scales_ptr, zero_points_ptr,
                                             output_ptr, gather_M, gather_N, gather_axis_dim, gather_block,
-                                            quantize_M, quantize_axis_dim, quantize_N,
+                                            quantize_axis_dim, quantize_N,
                                             tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     ORT_THROW("DequantizeLinear into BFLOAT16 is not implemented yet.");
