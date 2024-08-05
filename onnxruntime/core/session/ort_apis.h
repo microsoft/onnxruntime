@@ -225,6 +225,8 @@ ORT_API_STATUS_IMPL(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _
 ORT_API_STATUS_IMPL(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                     _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count);
 
+ORT_API_STATUS_IMPL(CopyOutputsToCpu, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator, _Outptr_result_maybenull_ OrtValue*** output, _Out_ size_t* output_count);
+
 ORT_API(void, ClearBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
 ORT_API(void, ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
 

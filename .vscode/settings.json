@@ -23,6 +23,16 @@
         "-runtime/references"
     ],
     "files.associations": {
-        "span": "cpp"
-    }
+        ".fantomasignore": "ignore",
+        "span": "cpp",
+        "algorithm": "cpp",
+        "assert": "cpp",
+        "byte": "cpp",
+        "narrow": "cpp",
+        "pointers": "cpp",
+        "span_ext": "cpp",
+        "string_span": "cpp",
+        "util": "cpp"
+    },
+    "FSharp.suggestGitignore": false
 }

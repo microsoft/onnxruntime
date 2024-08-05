@@ -23,12 +23,12 @@ namespace Microsoft.ML.OnnxRuntime
     /// your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
     /// the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
     /// for your use case. The fact that data copy is not made during runtime also has performance implications.
-    /// 
+    ///
     /// Making OrtValue first class citizen in ORT C# API practically obsoletes all of the existing overloads
     /// because OrtValue can be created on top of the all other types of memory. No need to designate it as external
     /// or Ort allocation or wrap it in FixedBufferOnnxValue. The latter does not support rebinding or memory other than
     /// CPU anyway.
-    /// 
+    ///
     /// In fact, one can now create OrtValues over arbitrary pieces of memory, managed, native, stack and device(gpu)
     /// and feed them to the model and achieve the same effect without using IOBinding class.
     /// </summary>
@@ -63,7 +63,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This is the preferable and universal way to bind input to OrtValue.
         /// This way you retain control over the original value, can modify the data
         /// using OrtValue interfaces between the runs.
-        /// 
+        ///
         /// You can also create OrtValue on all kinds of memory, managed, native, stack and device(gpu).
         /// </summary>
         /// <param name="name">input name</param>
@@ -324,6 +324,56 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer,
+                out IntPtr ortValues, out UIntPtr count));
+
+            if ((ulong)count == 0)
+            {
+                return Array.Empty<OrtValue>();
+            }
+
+            int outputCount = (int)count;
+            Span<IntPtr> srcSpan;
+            unsafe
+            {
+                srcSpan = new Span<IntPtr>(ortValues.ToPointer(), outputCount);
+            }
+
+            try
+            {
+                OrtValue[] result = new OrtValue[outputCount];
+
+                for (int i = 0; i < outputCount; ++i)
+                {
+                    result[i] = new OrtValue(srcSpan[i]);
+                }
+
+                return result;
+            }
+            catch (Exception)
+            {
+                // There is a very little chance that we throw
+                for (int i = 0; i < srcSpan.Length; ++i)
+                {
+                    NativeMethods.OrtReleaseValue(srcSpan[i]);
+                }
+                throw;
+            }
+            finally
+            {
+                allocator.FreeMemory(ortValues);
+            }
+        }
+
+        public IDisposableReadOnlyCollection<OrtValue> CopyOutputsToCpu()
+        {
+            var ortValues = CopyOutputOrtValuesToCpu();
+            return new DisposableList<OrtValue>(ortValues);
+        }
+
+        internal OrtValue[] CopyOutputOrtValuesToCpu()
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCopyOutputsToCpu(handle, allocator.Pointer,
                 out IntPtr ortValues, out UIntPtr count));
 
             if ((ulong)count == 0)

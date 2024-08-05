@@ -208,6 +208,56 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "TestIOBindingCopyOutputsToCPU")]
+        public void TestIOBindingCopyOutputsToCPU()
+        {
+            ClearOutput();
+
+            using var ioBinding = _session.CreateIoBinding();
+
+            // Input OrtValue on top if input buffer
+            using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance,
+                   TensorElementType.Float,
+                   _inputShape, _inputNativeAllocation.Handle, _inputSizeInBytes))
+            {
+                ioBinding.BindInput(_inputName, tensor);
+            }
+
+            // Output OrtValue on top if output buffer
+            using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance,
+                   TensorElementType.Float,
+                   _outputShape, _outputNativeAllocation.Handle, _outputSizeInBytes))
+            {
+                ioBinding.BindOutput(_outputName, tensor);
+            }
+
+            ioBinding.SynchronizeBoundInputs();
+
+            _session.RunWithBinding(_runOptions, ioBinding);
+
+
+            using var results = ioBinding.CopyOutputsToCpu();
+
+            ioBinding.SynchronizeBoundOutputs();
+            Assert.Single(results);
+            var res = results.First();
+            Assert.True(res.IsTensor);
+
+            var typeAndShape = res.GetTensorTypeAndShape();
+            Assert.Equal(_outputData.LongLength, typeAndShape.ElementCount);
+
+            var dataSpan = res.GetTensorDataAsSpan<float>();
+            Assert.Equal(_outputData, dataSpan.ToArray(), new FloatComparer());
+
+            // The result is good, but we want to make sure that the result actually is
+            // in the output memory, not some other place
+            CheckOutput(_outputNativeAllocation.Handle);
+
+            var outputNames = ioBinding.GetOutputNames();
+            Assert.Single(outputNames);
+            Assert.Equal(_outputName, outputNames[0]);
+        }
+
         [Fact(DisplayName = "TestIOBindingWithDeviceBoundOutput")]
         public void TestIOBindingWithDeviceBoundOutput()
         {
