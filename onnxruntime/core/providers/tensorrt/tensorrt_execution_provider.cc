@@ -3756,7 +3756,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     if (trt_engine == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Invalid TensorRT engine, please rebuild.");
     }
-      
+
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();
     std::vector<char const*> input_binding_names, output_binding_names;
