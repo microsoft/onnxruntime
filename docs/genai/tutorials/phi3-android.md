@@ -1,25 +1,25 @@
 ---
 title: Phi-3 for Android
-description: Tutorial for Phi-3 app for Android using the ONNX Runtime generate() API
+description: Develop an Android generative AI application with ONNX Runtime
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
 nav_order: 1
 ---
 
-# Incorporate Phi-3 Model for Android Development
-This is a basic [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to download and run the Phi-3 App on your own mobile device so you can get started incorporating Phi-3 into your own mobile developments.  
+# Build an Android generative AI application
+This is a [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to build and run the Phi-3 app on your own mobile device so you can get started incorporating Phi-3 into your own mobile developments.  
 
-## Capabilities
+## Model Capabilities
 [Phi-3 Mini-4k-Instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) is a small language model used for language understanding, math, code, long context, logical reasoning, and more showcasing a robust and state-of-the-art performance among models with less than 13 billion parameters.
 
 ## Important Features
 
 ### Java API
-This app uses the [generate() Java API's](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
+This app uses the [generate() Java API](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
 
-### Model Downloads
-This app downloads the [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model through Hugging Face. To use a different model, change the path links to refer to your chosen model.
+### Model Download
+This app downloads the [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model from Hugging Face. To use a different model, such as the [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct/tree/main), change the path links to refer to your chosen model. If using a model with imaging capabilities, use the [MultiModalProcessor class]() in place of the [Tokenizer class]() and update the prompt template accordingly.
 ```java
 final String baseUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/";
 List<String> files = Arrays.asList(
@@ -34,7 +34,7 @@ List<String> files = Arrays.asList(
     "tokenizer.model",
     "tokenizer_config.json");
 ```
-These packages will only need to be downloaded once. While editing your app and running new versions, the downloads will skip since all files already exist.
+The model files will only need to be downloaded once. While editing your app and running new versions, the downloads will skip since all files already exist.
 ```java
 if (urlFilePairs.isEmpty()) {
     // Display a message using Toast
@@ -45,8 +45,8 @@ if (urlFilePairs.isEmpty()) {
     return;
 }
 ```
-### Crash Prevention
-Downloading the packages for the app on your mobile device takes ~15-30 minutes depending on which device you are using. The progress bar indicates what percent of the downloads are completed. 
+### Status while model is downloading
+Downloading the packages for the app on your mobile device takes ~10-15 minutes depending on which device you are using. The progress bar indicates what percent of the downloads are completed. 
 ```java
 public void onProgress(long lastBytesRead, long bytesRead, long bytesTotal) {
     long lastPctDone = 100 * lastBytesRead / bytesTotal;
@@ -83,10 +83,6 @@ generatorParams.setSearchOption("max_length", 500);
 NOTE: Including a max_length will cut off the assistant's answer once reaching the maximum number of tokens rather than formatting a complete response.
 
 ## Run the App
-### Build the generate() API
-NOTE: **SKIP THIS STEP!** This project includes an .aar package, so does not need to be built. 
-
-Follow the instructions on how to [Build the generate() API from source](https://onnxruntime.ai/docs/genai/howto/build-from-source.html) for the [java API](https://onnxruntime.ai/docs/genai/api/java.html).
 
 ### Download Android Studio
 You will be using [Android Studio](https://developer.android.com/studio) to run the app.
