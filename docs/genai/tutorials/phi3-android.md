@@ -1,6 +1,6 @@
 ---
 title: Phi-3 for Android
-description: Tutorial for Phi-3 app for Android using the ONNX Runtime generate() API
+description: Develop an Android generative AI application with ONNX Runtime
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
