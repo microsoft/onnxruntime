@@ -5,6 +5,7 @@
 
 #include <napi.h>
 #include <vector>
+#include <memory>
 
 #include "onnxruntime_cxx_api.h"
 
@@ -12,4 +13,4 @@
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo *memory_info);
 
 // convert an OrtValue object to a Javascript OnnxValue object
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value &value);
+Napi::Value OrtValueToNapiValue(Napi::Env env, std::unique_ptr<Ort::Value> value);
