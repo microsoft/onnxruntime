@@ -1,7 +1,6 @@
 ---
 title: Phi-3 for Android
 description: Develop an Android generative AI application with ONNX Runtime
-description: Develop an Android generative AI application with ONNX Runtime
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
@@ -52,7 +51,7 @@ Downloading the packages for the app on your mobile device takes ~10-15 minutes 
 public void onProgress(long lastBytesRead, long bytesRead, long bytesTotal) {
     long lastPctDone = 100 * lastBytesRead / bytesTotal;
     long pctDone = 100 * bytesRead / bytesTotal;
-    if (pctDone > lastPctDone) {}
+    if (pctDone > lastPctDone) {
         Log.d(TAG, "Downloading files: " + pctDone + "%");
         runOnUiThread(() -> {
             progressText.setText("Downloading: " + pctDone + "%");
