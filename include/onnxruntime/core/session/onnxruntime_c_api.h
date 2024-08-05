@@ -308,6 +308,7 @@ ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(ExecutionProviderFactory);
 ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(GraphViewer);
+ORT_RUNTIME_CLASS(KernelRegistry);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -728,13 +729,17 @@ typedef struct OrtNodeComputeInfo {
 } OrtNodeComputeInfo;
 
 typedef struct OrtExecutionProvider {
+#ifdef __cplusplus
+  OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr} {}
+#endif
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
   void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
+  void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
   const char* type;
 } OrtExecutionProvider;
 
 typedef struct OrtExecutionProviderFactory {
-  void*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
+  OrtExecutionProvider*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
 } OrtExecutionProviderFactory;
 
 /** \brief Thread work loop function
@@ -4734,6 +4739,8 @@ struct OrtApi {
   ORT_API2_STATUS(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size);
 
   ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name);
+
+  ORT_API2_STATUS(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op);
 };  // struct OrtApi
 
 /*

@@ -8,7 +8,12 @@
 namespace onnxruntime {
 class ExecutionProviderAdapter : public IExecutionProvider {
 public:
-  ExecutionProviderAdapter(OrtExecutionProvider* ep) : IExecutionProvider(ep->type), ep_impl_(ep) {}
+  ExecutionProviderAdapter(OrtExecutionProvider* ep) : IExecutionProvider(ep->type), ep_impl_(ep) {
+    if (ep_impl_->RegisterKernels) {
+      kernel_registry_ = std::make_shared<KernelRegistry>();
+      ep_impl_->RegisterKernels(reinterpret_cast<OrtKernelRegistry*>(kernel_registry_.get()));
+    }
+  }
   virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
     size_t cnt = 0;
     OrtIndexedSubGraph** indexed_subgraph = nullptr;
@@ -79,7 +84,10 @@ public:
 
     return Status::OK();
   }
+
+  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return kernel_registry_; }
 private:
   OrtExecutionProvider* ep_impl_;
+  std::shared_ptr<KernelRegistry> kernel_registry_; // TODO(leca): should be static local
 };
 }

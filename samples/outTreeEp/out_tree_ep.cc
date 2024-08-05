@@ -3,7 +3,7 @@
 #include <vector>
 namespace onnxruntime {
 
-OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : info(ep_info) {
+OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExecutionProvider(), info(ep_info) {
     type = ep_type;
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
@@ -78,7 +78,7 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : info(e
 }
 
 OutTreeEpFactory::OutTreeEpFactory() {
-    OrtExecutionProviderFactory::CreateExecutionProvider = [](OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size) -> void* {
+    OrtExecutionProviderFactory::CreateExecutionProvider = [](OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size) -> OrtExecutionProvider* {
         OutTreeEpInfo info;
         for (size_t i = 0; i < option_size; i++) {
             if (!strcmp(ep_option_keys[i], "int_property")) info.int_property = std::atoi(ep_option_values[i]);

@@ -49,9 +49,9 @@ static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
+#define SUPPORTED_TENSOR_TYPES onnxruntime::DataTypeImpl::AllTensorTypesIRv9()
 #else
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
+#define SUPPORTED_TENSOR_TYPES onnxruntime::DataTypeImpl::AllTensorTypesIRv4()
 #endif
 
 #if defined(ORT_MINIMAL_BUILD)
@@ -1331,3 +1331,93 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
 }  // namespace onnxruntime
 #endif  // ENABLE_CUSTOM_OP_API
+
+//namespace onnxruntime {
+class FuncManager;
+class OpKernelInfo;
+onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op) {
+  const size_t input_count = op->GetInputTypeCount(op);
+  const size_t output_count = op->GetOutputTypeCount(op);
+
+  onnxruntime::KernelDefBuilder def_builder;
+  def_builder.SetName(op->GetName(op))
+      .SetDomain(domain);
+
+  if (op->version >= min_ort_version_with_custom_version) {
+    if (op->GetStartVersion && op->GetEndVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
+    } else if (op->GetStartVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op));
+    } else {
+      def_builder.SinceVersion(1);
+    }
+  } else {
+    def_builder.SinceVersion(1);
+  }
+
+  // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
+  // to work with newer versions (> 12) of the ORT binary.
+  if (op->version > 12) {
+    for (size_t i = 0; i < input_count; i++) {
+      def_builder.InputMemoryType(op->GetInputMemoryType(op, i), gsl::narrow_cast<int>(i));
+    }
+  }
+
+  for (size_t i = 0; i < input_count; i++) {
+    const auto input_type = op->GetInputType(op, i);
+    const auto input_name = "Input" + std::to_string(i);
+    if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
+    } else {
+      def_builder.TypeConstraint(input_name,
+                                 onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
+    }
+  }
+
+  for (size_t i = 0; i < output_count; i++) {
+    const auto output_type = op->GetOutputType(op, i);
+    const auto output_name = "Output" + std::to_string(i);
+    if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
+    } else {
+      def_builder.TypeConstraint(output_name,
+                                 onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
+    }
+  }
+
+  if (const char* provider_type = op->GetExecutionProviderType(op)) {
+    def_builder.Provider(provider_type);
+  } else {
+    def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+  }
+
+  if (op->version >= 18 && op->GetMayInplace != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetMayInplace(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.MayInplace(input_index[i], output_index[i]);
+      op->ReleaseMayInplace(input_index, output_index);
+    }
+  }
+
+  if (op->version >= 18 && op->GetAliasMap != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetAliasMap(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.Alias(input_index[i], output_index[i]);
+      op->ReleaseAliasMap(input_index, output_index);
+    }
+  }
+
+  onnxruntime::KernelCreateFn kernel_create_fn = [op](onnxruntime::FuncManager&, const onnxruntime::OpKernelInfo& info,
+                                         std::unique_ptr<onnxruntime::OpKernel>& out) -> onnxruntime::common::Status {
+    out = std::make_unique<onnxruntime::CustomOpKernel>(info, *op);
+    return onnxruntime::common::Status::OK();
+  };
+
+  return onnxruntime::KernelCreateInfo(def_builder.Build(), kernel_create_fn);
+//  return onnxruntime::KernelCreateInfo(def_builder.Build(), nullptr);
+}
+//} // namespace onnxruntime

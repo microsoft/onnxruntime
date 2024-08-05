@@ -40,6 +40,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/common/string_helper.h"
 #include "core/framework/provider_factory_adapter.h"
+#include "core/framework/kernel_registry.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -113,6 +114,9 @@ using namespace onnxruntime;
   API_IMPL_BEGIN                   \
   auto v = (value);                \
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
+
+// TODO(leca): try: namespace onnxruntime { KernelCreateInfo CreateKernelCreateInfo2(..); }, then define this function inside onnxruntime namespace
+KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op);
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid,
@@ -2431,6 +2435,12 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op) {
+  KernelRegistry* kr = reinterpret_cast<KernelRegistry*>(kernel_registry);
+  KernelCreateInfo kci = CreateKernelCreateInfo2("", custom_op);
+  return ToOrtStatus(kr->Register(std::move(kci)));
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2820,6 +2830,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtNode_GetIthInputName,
     &OrtApis::OrtNode_GetOutputSize,
     &OrtApis::OrtNode_GetIthOutputName,
+    &OrtApis::OrtKernelRegistry_RegisterKernel,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
