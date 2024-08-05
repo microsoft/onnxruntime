@@ -817,6 +817,10 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
+def is_arm_cross_compile(args):
+    return (args.arm64 and platform.machine() != "ARM64") or args.arm64ec or args.arm
+
+
 def run_subprocess(
     args,
     cwd=None,
@@ -1107,9 +1111,7 @@ def generate_build_tree(
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
 
-    # By default on Windows we currently support only cross compiling for ARM/ARM64
-    # (no native compilation supported through this script).
-    if args.arm64 or args.arm64ec or args.arm:
+    if is_arm_cross_compile(args):
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if args.use_extensions:
             add_default_definition(cmake_extra_defines, "OPENCV_SKIP_SYSTEM_PROCESSOR_DETECTION", "ON")
@@ -1667,7 +1669,7 @@ def generate_build_tree(
                 f"-DCMAKE_BUILD_TYPE={config}",
                 (
                     f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    if preinstalled_dir.exists() and not is_arm_cross_compile(args)
                     else ""
                 ),
             ],
@@ -2562,7 +2564,7 @@ def main():
                 )
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
-    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
+    cross_compiling = is_arm_cross_compile(args) or args.android
 
     if args.enable_address_sanitizer:
         # Disable ONNX Runtime's builtin memory checker
@@ -2729,14 +2731,14 @@ def main():
         if is_windows() and not args.build_wasm:
             cpu_arch = platform.architecture()[0]
             if args.cmake_generator == "Ninja":
-                if cpu_arch == "32bit" or args.arm or args.arm64 or args.arm64ec:
+                if cpu_arch == "32bit" or is_arm_cross_compile(args):
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
                         "Tools Command Prompt for VS)"
                     )
                 cmake_extra_args = ["-G", args.cmake_generator]
-            elif args.arm or args.arm64 or args.arm64ec:
+            elif is_arm_cross_compile(args):
                 if args.arm:
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
