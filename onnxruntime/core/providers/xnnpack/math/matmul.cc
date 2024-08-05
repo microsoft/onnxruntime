@@ -31,22 +31,30 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
     // Support only float
     const auto* A_type = A_arg.TypeAsProto();
 
-    const auto* A_shape = A_arg.Shape();
-    const auto* B_shape = B_arg.Shape();
-
     if (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       break;
     }
 
-    if (A_shape == nullptr || A_shape->dim_size() > 2 ||
-        (A_shape->dim_size() == 2 && A_shape->dim(1).dim_value() == 0) ||
-        A_shape->dim(0).dim_value() == 0) {
+    const auto* A_shape = A_arg.Shape();
+    const auto* B_shape = B_arg.Shape();
+
+    if (A_shape == nullptr || B_shape == nullptr) {
       break;
     }
 
-    if (B_shape == nullptr || B_shape->dim_size() > 2 ||
-        (B_shape->dim_size() == 2 && B_shape->dim(1).dim_value() == 0) ||
-        B_shape->dim(0).dim_value() == 0) {
+    size_t A_rank = A_shape->dim_size();
+    size_t B_rank = B_shape->dim_size();
+
+    // Support A [M, K] or [batch, M, K] x B [K, N] or [N]
+    if (B_rank > 2 || (A_rank != B_rank && A_rank != B_rank + 1)) {
+      break;
+    }
+
+    if (B_shape->dim(0).dim_value() == 0) {
+      break;
+    }
+
+    if (B_rank == 2 && B_shape->dim(1).dim_value() == 0) {
       break;
     }
 
@@ -128,20 +136,26 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   auto* y_data = y->MutableData<float>();
 
-  xnn_status status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_fully_connected_nc_f32 returned ", status);
+  xnn_status status = xnn_status::xnn_status_uninitialized;
+  auto a_shape = a->Shape();
+
+  ORT_ENFORCE(a_shape[a_shape.NumDimensions() - 1] == b_shape_[0], "A and B channels does not match");
+
+  size_t batch_size = a_shape.NumDimensions() == b_shape_.NumDimensions() ? 1 : a_shape[0];
+  size_t M = batch_size == 1 ? a_shape[0] : a_shape[1];
+
+  xnn_status status = xnn_status::xnn_status_uninitialized;
+
+  for (size_t i = 0; i < batch_size; i++) {
+    size_t offset = i * M * sizeof(float);
+    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), M, threadpool);
+    ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_reshape_fully_connected_nc_f32 returned ", status);
+    status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>() + offset, y_data + offset);
+    ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_setup_fully_connected_nc_f32 returned ", status);
+    status = xnn_run_operator(op0_.get(), nullptr);
+    ORT_RETURN_IF_NOT(xnn_status_success == status, "xnn_run_operator returned ", status);
   }
 
-  status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
-  }
-
-  status = xnn_run_operator(op0_.get(), nullptr);
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
-  }
   return Status::OK();
 }
 

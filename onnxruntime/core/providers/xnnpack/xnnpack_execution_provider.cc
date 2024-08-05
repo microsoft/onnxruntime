@@ -79,6 +79,9 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnx
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 12, MatMul);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
 
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, int8_t, MatMulInteger);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, uint8_t, MatMulInteger);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 10, Softmax);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Softmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
@@ -130,6 +133,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(1, 8, MatMul, kOnnxDomain),
       KERNEL_CREATE_INFO_VERSIONED(9, 12, MatMul, kOnnxDomain),
       KERNEL_CREATE_INFO(13, MatMul, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_TYPED(10, int8_t, MatMulInteger, kOnnxDomain),
+      KERNEL_CREATE_INFO_TYPED(10, uint8_t, MatMulInteger, kOnnxDomain),
 
       //  quantization op
       KERNEL_CREATE_INFO(1, QLinearAveragePool, kMSInternalNHWCDomain),
