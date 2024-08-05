@@ -10,6 +10,7 @@
             "kind": "git",
             "packages": [
                 "abseil",
+                "eigen3",
                 "onnx"
             ],
             "baseline": "8f14a82699eb749ea5c03b40c644810b703357cd"
