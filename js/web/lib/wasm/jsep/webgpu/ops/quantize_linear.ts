@@ -50,7 +50,9 @@ const validateInputs = (inputs: readonly TensorView[], attributes: DequantizeLin
     if (inputs[1].dims.length === 0 || (inputs[1].dims.length === 1 && inputs[1].dims[0] === 1)) {
       throw new Error('blockSize must be set only for block quantization.');
     }
-    if (!inputs[1].dims.map((d, i) => i === attributes.axis || d === inputs[0].dims[i]).reduce((a, b) => a && b, true)) {
+    if (!inputs[1]
+             .dims.map((d, i) => i === attributes.axis || d === inputs[0].dims[i])
+             .reduce((a, b) => a && b, true)) {
       throw new Error('For block qunatization, scale input shape to match the input shape except for the axis')
     }
     // Scale input rank should be same as the input rank
