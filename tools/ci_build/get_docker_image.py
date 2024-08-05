@@ -98,12 +98,7 @@ def main():
         )
 
     if use_container_registry:
-        run(args.docker_path,
-            "buildx",
-            "create",
-            "--driver=docker-container",
-            "--name=container_builder"
-            )
+        run(args.docker_path, "buildx", "create", "--driver=docker-container", "--name=container_builder")
         run(
             args.docker_path,
             "--log-level",
