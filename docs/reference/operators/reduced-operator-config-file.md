@@ -3,7 +3,7 @@ title: Reduced operator config file
 description: Specification of the reduced operator config file, used to reduce the size of the ONNX Runtime
 parent: Operators
 grand_parent: Reference
-nav_order: 5
+nav_order: 4
 ---
 
 
