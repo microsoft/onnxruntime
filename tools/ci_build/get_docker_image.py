@@ -98,23 +98,35 @@ def main():
         )
 
     if use_container_registry:
+        run(args.docker_path,
+            "buildx",
+            "create",
+            "--driver=docker-container",
+            "--name=container_builder"
+            )
         run(
             args.docker_path,
             "--log-level",
             "error",
             "buildx",
             "build",
-            "--push",
+            "--load",
             "--tag",
             full_image_name,
-            "--cache-from",
-            full_image_name,
+            "--cache-from=type=registry,ref=" + full_image_name,
+            "--builder",
+            "container_builder",
             "--build-arg",
             "BUILDKIT_INLINE_CACHE=1",
             *shlex.split(args.docker_build_args),
             "-f",
             args.dockerfile,
             args.context,
+        )
+        run(
+            args.docker_path,
+            "push",
+            full_image_name,
         )
     elif args.use_imagecache:
         log.info("Building image with pipeline cache...")

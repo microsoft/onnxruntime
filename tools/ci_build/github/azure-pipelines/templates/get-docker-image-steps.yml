@@ -53,6 +53,7 @@ steps:
       displayName: patch manylinux
 
 - script: |
+    docker version --
     docker image ls
     docker system df
   displayName: Check Docker Images
