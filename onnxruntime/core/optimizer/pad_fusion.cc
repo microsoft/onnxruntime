@@ -53,9 +53,14 @@ void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_val
   }
 }
     /*
- * It matches following pattern:
+ * Before:
  *     Pad
  *      |
+ *    Cast (Optional)
+ *      |
+ *   Conv/MaxPool/AveragePool
+ * 
+ * After:
  *    Cast (Optional)
  *      |
  *   Conv/MaxPool/AveragePool
@@ -130,8 +135,6 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   } else {
     pads_values.assign(pad_node.GetAttributes().at("pads").ints().begin(), pad_node.GetAttributes().at("pads").ints().end());
   }
-
-  //assert(static_cast<uint32_t>(pads_values.size()) == (2 * static_cast<uint32_t>(pad_node.InputDefs()[0]->Shape()->dim_size())));
 
   uint32_t pads_size = static_cast<uint32_t>(pads_values.size());
   // check if padding is applied only on feature dims
