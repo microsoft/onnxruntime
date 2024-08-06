@@ -35,7 +35,7 @@ enum class BroadcastIndexType : int32_t {
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() {};
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 

@@ -113,7 +113,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
         return False
 
     with open(config_file) as config:
-        for line in [orig_line.strip() for orig_line in config.readlines()]:
+        for line in [orig_line.strip() for orig_line in config]:
             if process_non_op_line(line):
                 continue
 

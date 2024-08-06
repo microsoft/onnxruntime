@@ -226,7 +226,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
         ORT_THROW("Only OrtValues that are Tensors/SparseTensors are currently supported");
 #else
-            ORT_THROW("Only OrtValues that are Tensors are supported in this build");
+        ORT_THROW("Only OrtValues that are Tensors are supported in this build");
 #endif
       })
       .def("shape", [](const OrtValue* ort_value) -> py::list {
@@ -275,26 +275,15 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
-      .def(
-          "element_type", [](const OrtValue* ort_value) -> int32_t {
-            return GetTensorProtoType(*ort_value);
-          },
-          "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
-          "This integer is one type defined by ONNX TensorProto_DataType "
-          "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.")
-      .def("has_value", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsAllocated();
-      })
-      .def("is_tensor", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsTensor();
-      })
-      .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsSparseTensor();
-      })
-      .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsTensorSequence();
-      })
+      .def("element_type", [](const OrtValue* ort_value) -> int32_t { return GetTensorProtoType(*ort_value); },
+           "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
+           "This integer is one type defined by ONNX TensorProto_DataType "
+           "(such as onnx.TensorProto.FLOAT)."
+           "Raises an exception in any other case.")
+      .def("has_value", [](const OrtValue* ort_value) -> bool { return ort_value->IsAllocated(); })
+      .def("is_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensor(); })
+      .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsSparseTensor(); })
+      .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensorSequence(); })
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
@@ -310,37 +299,22 @@ void addOrtValueMethods(pybind11::module& m) {
 #else
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
-        return obj;
-      })
+        return obj; })
 #ifdef ENABLE_TRAINING
-      .def(
-          "to_dlpack", [](OrtValue* ort_value) -> py::object {
-            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-          },
-          "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
-          "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
-          "is consumed.")
-      .def_static(
-          "from_dlpack", [](py::object data, bool is_bool_tensor) {
-            return FromDlpack(data.ptr(), is_bool_tensor);
-          },
-          py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
-      .def(
-          "__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
-            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-          },
-          py::arg("stream") = py::none(),
-          "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-          "This method does not copy the pointer shape, instead, it copies the pointer value. "
-          "The OrtValue must persist until the dlpack structure is consumed.")
-      .def(
-          "__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
+           "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
+           "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
+           "is consumed.")
+      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) { return FromDlpack(data.ptr(), is_bool_tensor); }, py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
+           "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
+           "This method does not copy the pointer shape, instead, it copies the pointer value. "
+           "The OrtValue must persist until the dlpack structure is consumed.")
+      .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
             DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
-            return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
-          },
-          "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
+            return py::make_tuple(static_cast<int>(device.device_type), device.device_id); }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
 
@@ -350,13 +324,8 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #ifdef ENABLE_TRAINING
-      .def(
-          "push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-            v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-          },
-          "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
-      .def(
-          "push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
+      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor)); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+      .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
               py::object& element_type = element_types.at(i);
               const std::vector<int64_t>& shape = shapes.at(i);
@@ -377,52 +346,36 @@ void addOrtValueMethods(pybind11::module& m) {
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
               v->push_back(ml_value);
-            }
-          },
-          "Add a batch of OrtValue's by wrapping PyTorch tensors.")
+            } }, "Add a batch of OrtValue's by wrapping PyTorch tensors.")
 #endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def(
-          "__iter__", [](const std::vector<OrtValue>& v) {
-            return py::make_iterator(v.cbegin(), v.cend());
-          },
-          py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
-      })
-      .def(
-          "bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
+      .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
+      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); })
+      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
             std::vector<int64_t> indices;
             for (size_t i = 0; i < v->size(); ++i) {
               if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
                 indices.push_back(static_cast<int64_t>(i));
               }
             }
-            return indices;
-          },
-          "Returns the indices of every boolean tensor in this vector of OrtValue. "
-          "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
-          "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
-          "to get a boolean tensor.")
+            return indices; },
+           "Returns the indices of every boolean tensor in this vector of OrtValue. "
+           "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
+           "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
+           "to get a boolean tensor.")
 #ifdef ENABLE_TRAINING
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      })
+      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) { return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
 #endif
-      .def(
-          "element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
-            return GetTensorProtoType(v->at(idx));
-          },
-          "Returns an integer equal to the ONNX proto type of the tensor at position i. "
-          "This integer is one type defined by ONNX TensorProto_DataType "
-          "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.",
-          py::arg("idx"))
+      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
+           "Returns an integer equal to the ONNX proto type of the tensor at position i. "
+           "This integer is one type defined by ONNX TensorProto_DataType "
+           "(such as onnx.TensorProto.FLOAT)."
+           "Raises an exception in any other case.",
+           py::arg("idx"))
 #ifdef ENABLE_TRAINING
-      .def(
-          "to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
             if (v.size() == 0)
               return py::list();
 
@@ -469,9 +422,8 @@ void addOrtValueMethods(pybind11::module& m) {
                 Py_DECREF(capsule);
               }
             }
-            return list_dlpacks;
-          },
-          R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
+            return list_dlpacks; },
+           R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
 a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
 consuming the DLPack structure or return a list of capsule if this function is None.
 
@@ -488,7 +440,7 @@ It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
 for every transferred tensor.
 )pbdoc",
-          py::arg("to_tensor"))
+           py::arg("to_tensor"))
 #endif
       ;
 
