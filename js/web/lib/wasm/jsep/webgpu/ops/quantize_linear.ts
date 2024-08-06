@@ -80,8 +80,8 @@ const createDequantizeLinearProgramInfo =
       const isPacked = inputType === DataType.int8 || inputType === DataType.uint8;
       const inputShape = isPacked ? [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)] : inputs[0].dims;
       const scaleShape = inputs[1].dims;
-      const input = inputVariable('input', DataType.uint32, inputShape.length);
-      const scale = inputVariable('scale', inputs[1].dataType, scaleShape.length);
+      const input = inputVariable('input', isPacked ? DataType.uint32 : inputType, inputShape.length);
+      const scale = inputVariable('scale', dataType, scaleShape.length);
       const zeroPointInput = inputs.length > 2 ? inputs[2] : undefined;
       const zeroPointShape = zeroPointInput ?
           (isPacked ? [Math.ceil(ShapeUtil.size(zeroPointInput.dims) / 4)] : zeroPointInput.dims) :
@@ -92,8 +92,9 @@ const createDequantizeLinearProgramInfo =
       const perAxisQuantization = perLayerQuantization === false && scaleShape.length === 1;
       // Left unnecessary commented-out assignment for documentation
       // const blockQuantization = perLayerQuantization === false && perAxisQuantization === false;
-      const zeroPoint =
-          zeroPointInput ? inputVariable('zero_point', DataType.uint32, zeroPointShape!.length) : undefined;
+      const zeroPoint = zeroPointInput ?
+          inputVariable('zero_point', isPacked ? DataType.uint32 : inputType, zeroPointShape!.length) :
+          undefined;
       const output = outputVariable('output', dataType, outputShape.length);
       const inputVariables = [input, scale];
       if (zeroPoint) {
@@ -107,7 +108,7 @@ const createDequantizeLinearProgramInfo =
         {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: axis},
         {type: DataType.uint32, data: attributes.blockSize}, ...createTensorShapeVariables(...inputShapes, outputShape)
       ];
-
+      const wgslType = isSigned ? 'i32' : 'u32';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
       ${shaderHelper.mainStart()}
@@ -119,7 +120,7 @@ const createDequantizeLinearProgramInfo =
         if (isPacked) {
           return `
               let input = ${input.getByOffset('global_idx / 4')};
-              let x_vec: vec4<${isSigned ? 'i32' : 'u32'}> = ${isSigned ? 'unpack4xI8(input)' : 'unpack4xU8(input)'};
+              let x_vec: vec4<${wgslType}> = ${isSigned ? 'unpack4xI8(input)' : 'unpack4xU8(input)'};
               let x_value = x_vec[global_idx % 4];`;
         } else {
           return `let x_value = ${input.getByOffset('global_idx')};`;
@@ -155,7 +156,7 @@ const createDequantizeLinearProgramInfo =
             if (isPacked) {
               return `
               let zero_point_input = ${zeroPoint.getByOffset('0')};
-              let zero_point_vec: vec4<${isSigned ? 'i32' : 'u32'}> =  ${
+              let zero_point_vec: vec4<${wgslType}> =  ${
                   isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
               let zero_point_value= zero_point_vec[0]`;
             } else {
@@ -167,7 +168,7 @@ const createDequantizeLinearProgramInfo =
               return `
               let zero_point_index = ${output.indicesGet('output_indices', 'uniforms.axis')};
               let zero_point_input = ${zeroPoint.getByOffset('zero_point_index / 4')};
-              let zero_point_vec: vec4<${isSigned ? 'i32' : 'u32'}> =  ${
+              let zero_point_vec: vec4<${wgslType}> =  ${
                   isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
               let zero_point_value = zero_point_vec[zero_point_index % 4]`;
             } else {
@@ -181,7 +182,7 @@ const createDequantizeLinearProgramInfo =
               return `
               let zero_point_offset = ${scale.indicesToOffset('scale_indices')};
               let zero_point_input = ${zeroPoint.getByOffset('zero_point_offset / 4')};
-              let zero_point_vec: vec4<${isSigned ? 'i32' : 'u32'} = ${
+              let zero_point_vec: vec4<${wgslType}> = ${
                   isSigned ? 'unpack4xI8(zero_point_input)' : 'unpack4xU8(zero_point_input)'};
               let zero_point_value = zero_point_vec[zero_point_offset % 4];`;
             } else {
