@@ -2034,6 +2034,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        // Test hangs on mobile.
+#if !(ANDROID || IOS)  
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async void TestModelRunAsyncTask()
         {
@@ -2068,6 +2070,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+#endif
 
         [Fact(DisplayName = "TestModelRunAsyncTaskFail")]
         private async void TestModelRunAsyncTaskFail()

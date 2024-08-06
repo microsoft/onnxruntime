@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- netstandard2.0 is used by most platforms. net6.0 is required for linux. -->
-    <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU</Platforms>
@@ -99,8 +99,13 @@
     </None>
   </ItemGroup>
 
-  <ItemGroup>
-    <None Condition="'$(IsWindowsBuild)'=='true'" Include="$(NativeBuildOutputDir)\onnxruntime.dll;$(NativeBuildOutputDir)\onnxruntime.pdb">
+  <!--
+  Microsoft.ML.OnnxRuntime.Tests.MAUI.csproj handles the native lib coming from a local build or a nuget package so we
+  don't need to duplicate that logic to include the native lib here.
+  -->
+  <ItemGroup Condition="$(SkipNativeLibInclude) != 'true'">
+    <None Condition="'$(IsWindowsBuild)'=='true'"
+          Include="$(NativeBuildOutputDir)\onnxruntime.dll;$(NativeBuildOutputDir)\onnxruntime.pdb">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
@@ -117,10 +122,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="Google.Protobuf" Version="3.21.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="xunit" Version="2.4.1" />
+    <PackageReference Include="xunit" Version="2.9.0" />
   </ItemGroup>
 
   <ItemGroup>
