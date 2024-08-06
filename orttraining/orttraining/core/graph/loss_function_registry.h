@@ -18,7 +18,7 @@ struct LossFunctionUsingOperator : public ILossFunction {
 
 class LossFunctionRegistry : public GenericRegistry<ILossFunction> {
  public:
-  // Register a list of non-operator loss functions stacitally.
+  // Register a list of non-operator loss functions statically.
   void RegisterNonOperatorLossFunctions();
 
   // Register a operator loss function.

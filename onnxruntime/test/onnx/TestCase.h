@@ -53,7 +53,8 @@ class TestModelInfo {
  public:
   virtual const std::filesystem::path& GetModelUrl() const = 0;
   virtual std::filesystem::path GetDir() const {
-    return GetModelUrl().parent_path();
+    const auto& p = GetModelUrl();
+    return p.has_parent_path() ? p.parent_path() : std::filesystem::current_path();
   }
   virtual const std::string& GetNodeName() const = 0;
   virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;

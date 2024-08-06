@@ -92,6 +92,11 @@ void set_params_fprop(Flash_fwd_params& params,
   params.softmax_lse_ptr = softmax_lse_d;
 
   // Set the dimensions.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4267)  // Ignore conversion from 'size_t' to 'int', possible loss of data
+#pragma warning(disable : 4244)  // Ignore conversion from 'double' to 'float', possible loss of data
+#endif
   params.b = batch_size;
   params.h = num_heads;
   params.h_k = num_heads_k;
@@ -107,7 +112,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
 
-  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API seperates
+  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API separates
   // local and causal, meaning when we have local window size
   params.is_causal = is_causal;
   if (is_causal && (window_size_left >= 0 || window_size_right != 0)) {
@@ -119,6 +124,9 @@ void set_params_fprop(Flash_fwd_params& params,
   if (window_size_left >= 0 && window_size_right < 0) {
     window_size_right = seqlen_k;
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   params.window_size_left = window_size_left;
   params.window_size_right = window_size_right;
 

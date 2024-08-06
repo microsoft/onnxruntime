@@ -304,6 +304,16 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 # Disable
 	```
 
+#### ORTMODULE_ATEN_SDPA_FALLBACK
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling pre-export attention fall back to PyTorch's [_scaled_dot_product_efficient_attention](https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778) ATen kernel for execution when calling torch.nn.functional.scaled_dot_product_attention. NOTE: only use this feature if user model leverages memory efficient attention WITHOUT masking (ie. attn_mask=None). Utilize GPU profiling looks like NVIDIA Nsight Systems to identify if user model leverages memory efficient attention.
+
+    ```bash
+    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE
+    unset ORTMODULE_ATEN_SDPA_FALLBACK # DISABLE
+    ```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*

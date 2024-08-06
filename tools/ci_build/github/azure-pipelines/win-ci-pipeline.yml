@@ -137,6 +137,25 @@ stages:
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
+# Build only. Does not run any tests.
+- stage: x64_release_vitisai
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        buildArch: x64
+        additionalBuildFlags: --build_wheel --use_vitisai
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release
+        RunOnnxRuntimeTests: false
+        isTraining: false
+        ORT_EP_NAME: VITISAI
+        GenerateDocumentation: false
+        WITH_CACHE: false
+        MachinePool: 'onnxruntime-Win-CPU-2022'
+
 - stage: x64_release_winml
   dependsOn: []
   jobs:

@@ -8,7 +8,7 @@
 #include <numeric>
 #include <type_traits>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "gtest/gtest.h"
 
@@ -163,8 +163,8 @@ void TestInitializerRawData() {
   tensor_proto.set_name("OptimizerInitializerTest_RawData");
   tensor_proto.add_dims(3);
   tensor_proto.add_dims(4);
-  tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
 
+  utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size() * sizeof(T));
   const Initializer init(tensor_proto, std::filesystem::path());
 
   for (size_t idx = 0; idx < data.size(); idx++) {

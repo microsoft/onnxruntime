@@ -21,6 +21,7 @@
  *    DEALINGS IN THE SOFTWARE.
  *
  *****************************************************************************/
+#pragma once
 #include <memory>
 #include <vector>
 #include "core/providers/vsinpu/builders/impl/base_op_builder.h"

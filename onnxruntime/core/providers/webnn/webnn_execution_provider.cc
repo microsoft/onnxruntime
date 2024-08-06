@@ -17,24 +17,12 @@
 
 namespace onnxruntime {
 
-WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
-                                               const std::string& webnn_threads_number, const std::string& webnn_power_flags)
+WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
-  // Create WebNN context and graph builder.
-  const emscripten::val ml = emscripten::val::global("navigator")["ml"];
-  if (!ml.as<bool>()) {
-    ORT_THROW("Failed to get ml from navigator.");
-  }
-  emscripten::val context_options = emscripten::val::object();
-  context_options.set("deviceType", emscripten::val(webnn_device_flags));
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
     wnn_device_type_ = webnn::WebnnDeviceType::CPU;
-    // Set "numThreads" if it's not default 0.
-    if (webnn_threads_number.compare("0") != 0) {
-      context_options.set("numThreads", stoi(webnn_threads_number));
-    }
   } else {
     preferred_layout_ = DataLayout::NCHW;
     if (webnn_device_flags.compare("gpu") == 0) {
@@ -45,17 +33,10 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
       ORT_THROW("Unknown WebNN deviceType.");
     }
   }
-  if (webnn_power_flags.compare("default") != 0) {
-    context_options.set("powerPreference", emscripten::val(webnn_power_flags));
-  }
 
-  wnn_context_ = ml.call<emscripten::val>("createContext", context_options).await();
+  wnn_context_ = emscripten::val::module_property("currentContext");
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
-  }
-  wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
-  if (!wnn_builder_.as<bool>()) {
-    ORT_THROW("Failed to create WebNN builder.");
   }
 }
 
@@ -96,7 +77,13 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto& logger = *GetLogger();
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, wnn_device_type_, logger);
+  emscripten::val wnn_builder = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
+  if (!wnn_builder.as<bool>()) {
+    ORT_THROW("Failed to create WebNN builder.");
+  }
+
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, logger);
+  wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
     return result;
@@ -226,9 +213,10 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                wnn_builder_, preferred_layout_, wnn_device_type_);
+                                preferred_layout_, wnn_device_type_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
+
     // Build map from input name to its index in input definitions.
     {
       InlinedHashMap<std::string, size_t> input_map;

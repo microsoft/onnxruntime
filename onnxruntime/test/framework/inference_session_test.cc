@@ -1400,7 +1400,7 @@ TEST(ExecutionProviderTest, OpKernelInfoCanReadConfigOptions) {
   so.session_logid = "ExecutionProviderTest.OpKernelInfoCanReadConfigOptions";
 
   // add a config key that if read causes the Fuse op kernel to throw in the ctor. this is just to test the value is passed
-  // through in the simplest way, as the kernel is constructed in InferenceSession::Intialize so we don't need to
+  // through in the simplest way, as the kernel is constructed in InferenceSession::Initialize so we don't need to
   // actually run the model.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ThrowInKernelCtor", "1"));
 

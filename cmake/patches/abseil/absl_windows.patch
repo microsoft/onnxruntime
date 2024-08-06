@@ -1,8 +1,43 @@
+diff --git a/absl/base/attributes.h b/absl/base/attributes.h
+index 5ea5ee3e..f4949898 100644
+--- a/absl/base/attributes.h
++++ b/absl/base/attributes.h
+@@ -559,7 +559,7 @@
+ #undef ABSL_ATTRIBUTE_UNUSED
+ #define ABSL_ATTRIBUTE_UNUSED __attribute__((__unused__))
+ #else
+-#define ABSL_ATTRIBUTE_UNUSED
++#define ABSL_ATTRIBUTE_UNUSED [[maybe_unused]]
+ #endif
+ 
+ // ABSL_ATTRIBUTE_INITIAL_EXEC
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index d4fe8f5c..27418d13 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -1924,7 +1924,7 @@ HashtablezInfoHandle SampleHashtablezInfo(size_t sizeof_slot, size_t sizeof_key,
+   // In SOO, we sample on the first insertion so if this is an empty SOO case
+   // (e.g. when reserve is called), then we still need to sample.
+   if (kSooEnabled && was_soo && c.size() == 0) {
+-    return Sample(sizeof_slot, sizeof_key, sizeof_value, SooCapacity());
++    return Sample(sizeof_slot, sizeof_key, sizeof_value, (int16_t)SooCapacity());
+   }
+   // For non-SOO cases, we sample whenever the capacity is increasing from zero
+   // to non-zero.
+@@ -3525,7 +3525,7 @@ class raw_hash_set {
+     assert(is_soo());
+     if (!ShouldSampleHashtablezInfo<CharAlloc>()) return HashtablezInfoHandle{};
+     return Sample(sizeof(slot_type), sizeof(key_type), sizeof(value_type),
+-                  SooCapacity());
++                  (int16_t)SooCapacity());
+   }
+ 
+   inline void destroy_slots() {
 diff --git a/absl/copts/GENERATED_AbseilCopts.cmake b/absl/copts/GENERATED_AbseilCopts.cmake
-index a4ab1aa2..dfd13fd7 100644
+index da2282fe..4c7fc26f 100644
 --- a/absl/copts/GENERATED_AbseilCopts.cmake
 +++ b/absl/copts/GENERATED_AbseilCopts.cmake
-@@ -129,8 +129,6 @@ list(APPEND ABSL_MSVC_FLAGS
+@@ -181,8 +181,6 @@ list(APPEND ABSL_MSVC_FLAGS
      "/wd4005"
      "/wd4068"
      "/wd4180"
@@ -10,12 +45,12 @@ index a4ab1aa2..dfd13fd7 100644
 -    "/wd4267"
      "/wd4503"
      "/wd4800"
- )
+     "/DNOMINMAX"
 diff --git a/absl/copts/GENERATED_copts.bzl b/absl/copts/GENERATED_copts.bzl
-index a6efc98e..8c4de8e7 100644
+index b9e0071e..dd8410ec 100644
 --- a/absl/copts/GENERATED_copts.bzl
 +++ b/absl/copts/GENERATED_copts.bzl
-@@ -130,8 +130,6 @@ ABSL_MSVC_FLAGS = [
+@@ -182,8 +182,6 @@ ABSL_MSVC_FLAGS = [
      "/wd4005",
      "/wd4068",
      "/wd4180",
@@ -23,12 +58,12 @@ index a6efc98e..8c4de8e7 100644
 -    "/wd4267",
      "/wd4503",
      "/wd4800",
- ]
+     "/DNOMINMAX",
 diff --git a/absl/copts/copts.py b/absl/copts/copts.py
-index e6e11949..0aa7d868 100644
+index 2d85ac74..4875d668 100644
 --- a/absl/copts/copts.py
 +++ b/absl/copts/copts.py
-@@ -115,10 +115,6 @@ MSVC_WARNING_FLAGS = [
+@@ -118,10 +118,6 @@ MSVC_WARNING_FLAGS = [
      "/wd4068",  # unknown pragma
      # qualifier applied to function type has no meaning; ignored
      "/wd4180",

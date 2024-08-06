@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=6.0
+ARG ROCM_VERSION=6.1
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -41,7 +41,7 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # CMake
-ENV CMAKE_VERSION=3.27.3
+ENV CMAKE_VERSION=3.30.1
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
@@ -77,11 +77,7 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 RUN export MAJOR=$(cut -d '.' -f 1 <<< "$ROCM_VERSION") && \
     export MINOR=$(cut -d '.' -f 2 <<< "$ROCM_VERSION") && \
     export PATCH=$(cut -d '.' -f 3 <<< "$ROCM_VERSION") && \
-    if (( MAJOR >= 6 )); then \
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm${MAJOR}.${MINOR} ; \
-    else \
-        pip install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${MAJOR}.${MINOR}/ ; \
-    fi && \
+    pip install torch==2.1.2 torchvision==0.16.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${MAJOR}.${MINOR}/ && \
     pip install torch-ort --no-dependencies
 
 ##### Install Cupy to decrease CPU utilization

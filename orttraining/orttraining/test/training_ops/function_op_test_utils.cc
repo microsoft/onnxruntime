@@ -72,7 +72,7 @@ void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
   }
 }
 
-OpFunctionTester::~OpFunctionTester(){};
+OpFunctionTester::~OpFunctionTester() {};
 
 template <class T>
 std::unique_ptr<T> CreateOpTester(const onnxruntime::training::OpDef& op_def,

@@ -15,7 +15,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
       "get_all_operator_schema", []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
         return ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
       },
-      "Return a vector of OpSchema all registed operators");
+      "Return a vector of OpSchema all registered operators");
   m.def(
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
