@@ -130,9 +130,8 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   } else {
     pads_values.assign(pad_node.GetAttributes().at("pads").ints().begin(), pad_node.GetAttributes().at("pads").ints().end());
   }
-  /*const auto* pad_first_node_arg = pad_node.InputDefs()[0];
-  const auto* shape_proto = pad_first_node_arg->Shape();*/
-  //assert(static_cast<uint32_t>(pads_values.size()) == (2 * static_cast<uint32_t>(shape_proto->dim_size())));
+
+  //assert(static_cast<uint32_t>(pads_values.size()) == (2 * static_cast<uint32_t>(pad_node.InputDefs()[0]->Shape()->dim_size())));
 
   uint32_t pads_size = static_cast<uint32_t>(pads_values.size());
   // check if padding is applied only on feature dims
@@ -163,14 +162,12 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
         graph.RemoveInitializedTensor(pad_node.InputDefs()[2]->Name());
         graph.AddInitializedTensor(new_pad_constant_value_tensor_proto);
 
+        // Update the type of the constant node arg
         auto* constant_node_arg = graph.GetNodeArg(new_pad_constant_value_tensor_proto.name());
         auto* type_proto = constant_node_arg->TypeAsProto();
         ONNX_NAMESPACE::TypeProto t{*type_proto};
         t.mutable_tensor_type()->set_elem_type(new_pad_constant_value_tensor_proto.data_type());
         graph.SetNodeArgType(*graph.GetNodeArg(new_pad_constant_value_tensor_proto.name()), t);
-        /*ONNX_NAMESPACE::TypeProto t{};
-        t.mutable_tensor_type()->set_elem_type(new_pad_constant_value_tensor_proto.data_type());
-        graph.SetNodeArgType(*graph.GetNodeArg(new_pad_constant_value_tensor_proto.name()), t);*/
       }
     } else {
       // Pad only supports float data type for constant value in opset < 11
@@ -178,41 +175,16 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
       return Status::OK();
     }
     Update_Pad_Attribute(*graph.GetNode(child_node.OutputNodesBegin()->Index()), pads_values, pads_size);
-
-    
-    /*graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
-    auto* cast_output_node_arg = child_node.MutableOutputDefs()[0];
-    cast_output_node_arg->SetShape(*pad_node.MutableInputDefs()[0]->Shape());
-    graph_utils::ReplaceNodeInput(*graph.GetNode(child_node.OutputNodesBegin()->Index()), 0, *pad_node.MutableOutputDefs()[0]);
-    graph_utils::ReplaceNodeInput(pad_node, 0, *child_node.MutableOutputDefs()[0]);
-    rule_effect = RewriteRuleEffect::kModifiedRestOfGraph;*/
-
   } else {
     Update_Pad_Attribute(child_node, pads_values, pads_size);
-    /*graph_utils::RemoveNodeOutputEdges(graph, pad_node);
-    graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
-    graph.RemoveNode(pad_node.Index());
-    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;*/
   }
   
-  
-  /*auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
-  uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
-
-  for (uint32_t pads_index = 2, child_index = 0; pads_index < pads_size / 2; pads_index++, child_index++) {
-    child_pads->Set(child_index, child_pads->Get(child_index) + pads_values[pads_index]);
-    uint32_t mirrored_child_index = child_index + (child_pads_size / 2);
-    uint32_t mirrored_pad_index = pads_index + (pads_size / 2);
-    child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
-  }*/
-
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
   if (child_node.OpType() == "Cast") {
     auto* cast_output_node_arg = child_node.MutableOutputDefs()[0];
     cast_output_node_arg->SetShape(*pad_node.MutableInputDefs()[0]->Shape());
   }
-  
   graph.RemoveNode(pad_node.Index());
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
