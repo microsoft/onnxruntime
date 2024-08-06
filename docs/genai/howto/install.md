@@ -53,7 +53,6 @@ pip install onnxruntime-genai --pre
 ### DirectML
 
 ```bash
-pip install numpy
 pip install onnxruntime-directml
 pip install onnxruntime-genai-directml --pre
 ```
