@@ -491,7 +491,7 @@ export const MIN_CLIP: Map<string, number> =
 export const MAX_CLIP: Map<string, number> =
     new Map([['float32', 3.4028234663852886e+38], ['float16', 65504.0], ['int32', 2147483648]]);
 
-// Convert float16 to float32
+// Convert float16 stored as the bits of a Uint16 into float32
 export const decodeFloat16 = (value: number): number => {
   let fraction = value & 0x03FF;
   let exponent = (value & 0x7C00) >> 10;

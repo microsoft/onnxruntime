@@ -146,13 +146,13 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
   if (inputs.length >= 3 && inputs[2].data !== 0) {
     switch (inputs[0].dataType) {
       case DataType.float:
-        max = inputs[1].getFloat32Array()[0];
+        max = inputs[2].getFloat32Array()[0];
         break;
       case DataType.int32:
-        max = inputs[1].getInt32Array()[0];
+        max = inputs[2].getInt32Array()[0];
         break;
       case DataType.float16:
-        max = decodeFloat16(inputs[1].getUint16Array()[0]);
+        max = decodeFloat16(inputs[2].getUint16Array()[0]);
         break;
       default:
         throw new Error('Unsupport data type');
