@@ -49,7 +49,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
   // Gelu is an official ONNX operator as of opset 20, so we can fuse in level 1 if it is available
   bool gelu_fusion_flag = (onnx_version != version_map.end() && onnx_version->second >= 20);
   const auto compatible_providers = GetCompatibleExecutionProviders();
-  if ((optimize_level == TransformerLevel::Level1 && !gelu_fusion_flag) || (optimize_level == TransformerLevel::Level2 && gelu_fusion_flag)) {
+  if ((optimization_level_ == TransformerLevel::Level1 && !gelu_fusion_flag) || (optimization_level_ == TransformerLevel::Level2 && gelu_fusion_flag)) {
     return Status::OK();
   }
 
@@ -166,12 +166,13 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       p_mul2_node = &mul2_node;
     }
 
+    auto op_domain = optimization_level_ == TransformerLevel::Level1 ? kOnnxDomain : kMSDomain;
     const std::array gelu_input_defs{div.MutableInputDefs()[0]};
     Node& gelu_node = graph.AddNode(graph.GenerateNodeName("Gelu"),
                                     "Gelu",
                                     "fused Gelu subgraphs ",
                                     gelu_input_defs,
-                                    {}, {}, kOnnxDomain);
+                                    {}, {}, op_domain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     gelu_node.SetExecutionProviderType(div.GetExecutionProviderType());

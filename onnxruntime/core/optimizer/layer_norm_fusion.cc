@@ -144,7 +144,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   // LayerNorm is an official ONNX operator as of opset 17, so we can fuse in level 1 if it is available
   bool layernorm_fusion_flag = (onnx_version != version_map.end() && onnx_version->second >= 17);
   const auto compatible_providers = GetCompatibleExecutionProviders();
-  if ((optimize_level == TransformerLevel::Level1 && !layernorm_fusion_flag) || (optimize_level == TransformerLevel::Level2 && layernorm_fusion_flag)) {
+  if ((optimization_level_ == TransformerLevel::Level1 && !layernorm_fusion_flag) || (optimization_level_ == TransformerLevel::Level2 && layernorm_fusion_flag)) {
     return Status::OK();
   }
 
