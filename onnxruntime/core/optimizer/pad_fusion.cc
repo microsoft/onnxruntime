@@ -8,8 +8,7 @@
 
 namespace onnxruntime {
 
-bool VerifyNonCastChild(const Node& child_node)
-{
+bool VerifyNonCastChild(const Node& child_node) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {1, 7, 10, 11, 19}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
@@ -40,8 +39,7 @@ bool VerifyNonCastChild(const Node& child_node)
   return true;
 }
 
-void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size)
-{
+void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size) {
   auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
   uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
 
@@ -59,7 +57,7 @@ void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_val
  *    Cast (Optional)
  *      |
  *   Conv/MaxPool/AveragePool
- * 
+ *
  * After:
  *    Cast (Optional)
  *      |
@@ -107,8 +105,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
   }
 
   const Node& child_node = *node.OutputNodesBegin();
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", { 1, 6, 9, 13 }))
-  {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", {1, 6, 9, 13})) {
     if (child_node.GetOutputEdgesCount() != 1) {
       return false;
     }
@@ -149,14 +146,13 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   }
 
   Node& child_node = *graph.GetNode(pad_node.OutputNodesBegin()->Index());
-  
+
   if (child_node.OpType() == "Cast") {
     if (pad_node.SinceVersion() >= 11) {
       if (pad_node.InputDefs().size() > 2) {
         auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, pad_node.InputDefs()[2]->Name());
-        Initializer new_pad_constant_value{static_cast<ONNX_NAMESPACE::TensorProto_DataType>(child_node.GetAttributes().at("to").i()),
-                                       pad_constant_value_proto->name(),
-                                       pad_constant_value_proto->dims()};
+        ONNX_NAMESPACE::TensorProto_DataType cast_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(child_node.GetAttributes().at("to").i());
+        Initializer new_pad_constant_value{cast_data_type, pad_constant_value_proto->name(), pad_constant_value_proto->dims()};
         // Create new initializers of Pad
         ONNX_NAMESPACE::TensorProto new_pad_constant_value_tensor_proto;
         new_pad_constant_value.ToProto(new_pad_constant_value_tensor_proto);
@@ -181,7 +177,7 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   } else {
     Update_Pad_Attribute(child_node, pads_values, pads_size);
   }
-  
+
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
   if (child_node.OpType() == "Cast") {
