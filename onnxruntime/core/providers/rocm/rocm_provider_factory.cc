@@ -13,7 +13,7 @@
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #endif
 
