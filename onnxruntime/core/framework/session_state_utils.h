@@ -23,6 +23,7 @@ class SessionState;
 class GraphViewer;
 class OrtValueNameIdxMap;
 class DataTransferManager;
+class ExternalDataLoaderManager;
 class NodeArg;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
@@ -45,6 +46,7 @@ common::Status SaveInitializedTensors(
     const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger,
     const DataTransferManager& data_transfer_mgr,
+    const ExternalDataLoaderManager& external_data_loader_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,

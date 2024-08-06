@@ -1095,6 +1095,31 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   return Status::OK();
 }
 
+Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          const IExternalDataLoader& ext_data_loader,
+                                          Tensor& tensor) {
+  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+
+  ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                " does not match the tensor size: ", tensor.SizeInBytes());
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
+}
+
 #define CASE_PROTO(X, Y)                                                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \
     ORT_RETURN_IF_ERROR(                                                                                            \

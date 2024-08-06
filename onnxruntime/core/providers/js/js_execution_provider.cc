@@ -22,6 +22,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "data_transfer.h"
+#include "external_data_loader.h"
 
 namespace onnxruntime {
 
@@ -760,6 +761,11 @@ std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
 
 std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer() const {
   return std::make_unique<js::DataTransfer>();
+}
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader() const {
+  // return std::make_unique<js::ExternalDataLoader>();
+  return nullptr;
 }
 
 JsExecutionProvider::~JsExecutionProvider() {

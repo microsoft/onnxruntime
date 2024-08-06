@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -85,6 +86,13 @@ class IExecutionProvider {
    * return a nullptr.
    */
   virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
+
+  /**
+   * Returns an external data loader object that implements methods to load data from external sources.
+   */
+  virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
   }
 

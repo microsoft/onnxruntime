@@ -830,6 +830,14 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
+  if (p_external_data_loader) {
+    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
+    if (!st.IsOK()) {
+      return st;
+    }
+  }
+
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
@@ -1731,6 +1739,7 @@ common::Status InferenceSession::Initialize() {
         GetIntraOpThreadPoolToUse(),
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
+        external_data_loader_mgr_,
         *session_logger_,
         session_profiler_,
         session_options_,
@@ -2147,6 +2156,10 @@ const SessionOptions& InferenceSession::GetSessionOptions() const {
 
 const DataTransferManager& InferenceSession::GetDataTransferManager() const {
   return data_transfer_mgr_;
+}
+
+const ExternalDataLoaderManager& InferenceSession::GetExternalDataLoaderManager() const {
+  return external_data_loader_mgr_;
 }
 
 common::Status InferenceSession::CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
