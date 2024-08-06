@@ -123,25 +123,6 @@ def main():
             "push",
             full_image_name,
         )
-    elif args.use_imagecache:
-        log.info("Building image with pipeline cache...")
-        run(
-            args.docker_path,
-            "--log-level",
-            "error",
-            "buildx",
-            "build",
-            "--tag",
-            full_image_name,
-            "--cache-from",
-            full_image_name,
-            "--build-arg",
-            "BUILDKIT_INLINE_CACHE=1",
-            *shlex.split(args.docker_build_args),
-            "-f",
-            args.dockerfile,
-            args.context,
-        )
     else:
         log.info("Building image...")
         run(
