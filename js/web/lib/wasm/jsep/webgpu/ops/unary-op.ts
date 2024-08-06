@@ -3,7 +3,7 @@
 
 import {DataType, tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
-import {decodeFloat16, MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
+import {convertFloat16ToFloat32, MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
@@ -136,7 +136,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
         min = inputs[1].getInt32Array()[0];
         break;
       case DataType.float16:
-        min = decodeFloat16(inputs[1].getUint16Array()[0]);
+        min = convertFloat16ToFloat32(inputs[1].getUint16Array())[0];
         break;
       default:
         throw new Error('Unsupport data type');
@@ -152,7 +152,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
         max = inputs[2].getInt32Array()[0];
         break;
       case DataType.float16:
-        max = decodeFloat16(inputs[2].getUint16Array()[0]);
+        max = convertFloat16ToFloat32(inputs[2].getUint16Array())[0];
         break;
       default:
         throw new Error('Unsupport data type');

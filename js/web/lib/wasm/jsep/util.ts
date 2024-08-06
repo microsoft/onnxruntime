@@ -491,12 +491,54 @@ export const MIN_CLIP: Map<string, number> =
 export const MAX_CLIP: Map<string, number> =
     new Map([['float32', 3.4028234663852886e+38], ['float16', 65504.0], ['int32', 2147483648]]);
 
-// Convert float16 stored as the bits of a Uint16 into float32
-export const decodeFloat16 = (value: number): number => {
-  let fraction = value & 0x03FF;
-  let exponent = (value & 0x7C00) >> 10;
-  return (value >> 15 ? -1 : 1) *
-      (exponent ?
-           ((exponent === 0x1F) ? (fraction ? NaN : Infinity) : Math.pow(2, exponent - 15) * (1 + fraction / 0x400)) :
-           6.103515625e-5 * (fraction / 0x400))
+// Refer http://www.fox-toolkit.org/ftp/fasthalffloatconversion.pdf
+export const convertFloat16ToFloat32 = (float16Values: Uint16Array): Float32Array => {
+  const mantissatable = new Uint32Array(2048);
+  const convertMantissa = (i: number): number => {
+    let m = i << 13;
+    let e = 0;
+    while ((m & 0x00800000) === 0) {
+      e -= 0x00800000;
+      m <<= 1;
+    }
+    m &= ~0x00800000;
+    e += 0x38800000;
+    return m | e;
+  };
+  mantissatable[0] = 0;
+  for (let i = 1; i < 1024; i++) {
+    mantissatable[i] = convertMantissa(i);
+  }
+  for (let i = 1024; i < 2048; i++) {
+    mantissatable[i] = 0x38000000 + ((i - 1024) << 13);
+  }
+
+  const exponenttable = new Uint32Array(48);
+  exponenttable[0] = 0;
+  exponenttable[32] = 0x80000000;
+  for (let i = 1; i < 31; i++) {
+    exponenttable[i] = i << 23;
+  }
+  for (let i = 33; i < 63; i++) {
+    exponenttable[i] = 0x80000000 + (i - 32) << 23;
+  }
+  exponenttable[31] = 0x47800000;
+  exponenttable[63] = 0xC7800000;
+
+  const offsettable = new Uint32Array(48);
+  offsettable[0] = 0;
+  for (let i = 1; i < 64; i++) {
+    offsettable[i] = 1024;
+  }
+  offsettable[32] = 0;
+
+  const buffer = new ArrayBuffer(4 * float16Values.length);
+  const uint32ArrayView = new Uint32Array(buffer);
+  for (let i = 0; i < float16Values.length; i++) {
+    const h = float16Values[i];
+    const f = mantissatable[offsettable[h >> 10] + (h & 0x3ff)] + exponenttable[h >> 10];
+    uint32ArrayView[i] = f;
+  }
+
+  return new Float32Array(buffer);
 };
