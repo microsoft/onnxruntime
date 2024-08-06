@@ -52,7 +52,7 @@ void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_val
     child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
   }
 }
-    /*
+/*
  * Before:
  *     Pad
  *      |
