@@ -16,7 +16,7 @@ This is a [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Andro
 ## Important Features
 
 ### Java API
-This app uses the [generate() Java API](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes ([documentation](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
+This app uses the [generate() Java API](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes (see documentation [here](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
 
 ### Model Download
 This app downloads the [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model from Hugging Face. To use a different model, such as the [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct/tree/main), change the path links to refer to your chosen model. If using a model with imaging capabilities, use the [MultiModalProcessor class]() in place of the [Tokenizer class]() and update the prompt template accordingly.
