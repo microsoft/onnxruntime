@@ -140,10 +140,10 @@ const createDequantizeLinearProgramInfo =
         } else {
           // Block quantization. Scale input rank is same as input/output rank.
           return `
-          let scale_indices: ${scale.type.indices} = output_indices;
-          let index = ${scale.indicesGet('scale_indices', 'uniforms.axis')} / 'uniforms.block_size';
-          ${scale.indicesSet('scale_indices', 'uniform.axis', 'index')};
-          let scale_value= ${scale.getByIndices('scales_indices')};`;
+          var scale_indices: ${scale.type.indices} = output_indices;
+          let index = ${scale.indicesGet('scale_indices', 'uniforms.axis')} / uniforms.block_size;
+          ${scale.indicesSet('scale_indices', 'uniforms.axis', 'index')};
+          let scale_value= ${scale.getByIndices('scale_indices')};`;
         }
       })()};
 
