@@ -14,7 +14,7 @@ class DequantizeLinear : public JsKernel {
     if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       axis_ = 1;
     }
-    if (!info.GetAttr<int64_t>("block_size", &axis_).IsOK()) {
+    if (!info.GetAttr<int64_t>("block_size", &block_size_).IsOK()) {
       block_size_ = 0;
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(DequantizeLinear, ({

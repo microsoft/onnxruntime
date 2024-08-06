@@ -13,20 +13,20 @@ namespace js {
       T,                                                                               \
       kJsExecutionProvider,                                                            \
       (*KernelDefBuilder::Create())                                                    \
-          .TypeConstraint("T1", JsepSupportedFloatTypes())                             \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())                      \
+          .TypeConstraint("T2", JsepSupportedFloatTypes()),                            \
       DequantizeLinear);
 
-#define REGISTER_DEQUANTIZED_LINEAR_TYPED_KERNEL(T, sinceVersion)  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
-      DequantizeLinear,                                            \
-      kOnnxDomain,                                                 \
-      sinceVersion,                                                \
-      T,                                                           \
-      kJsExecutionProvider,                                        \
-      (*KernelDefBuilder::Create())                                \
-          .TypeConstraint("T1", JsepSupportedFloatTypes())         \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_DEQUANTIZED_LINEAR_TYPED_KERNEL(T, sinceVersion) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      DequantizeLinear,                                           \
+      kOnnxDomain,                                                \
+      sinceVersion,                                               \
+      T,                                                          \
+      kJsExecutionProvider,                                       \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", JsepSupportedFloatTypes()),       \
       DequantizeLinear);
 
 #define REGISTER_DEQUANTIZED_LINEAR_VERSIONED_TYPED_KERNEL_PRE_19(T, sinceVersion, endVerion) \
