@@ -16,7 +16,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template<typename T1, typename Tind>
+template <typename T1, typename Tind>
 class GatherBlockQuantized : public OpKernel {
  public:
   GatherBlockQuantized(const OpKernelInfo& info) : OpKernel(info) {
@@ -38,19 +38,18 @@ class GatherBlockQuantized : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override;
 
-protected:
-struct Prepare {
-  const Tensor* data_tensor;
-  const Tensor* indices_tensor;
-  const Tensor* scales_tensor;
-  const Tensor* zero_points_tensor;
-  Tensor* output_tensor;
-  int64_t gather_axis;
-  int64_t quantize_axis;
-};
+ protected:
+  struct Prepare {
+    const Tensor* data_tensor;
+    const Tensor* indices_tensor;
+    const Tensor* scales_tensor;
+    const Tensor* zero_points_tensor;
+    Tensor* output_tensor;
+    int64_t gather_axis;
+    int64_t quantize_axis;
+  };
 
-
-  Status PrepareForCompute(OpKernelContext* context, Prepare &args) const;
+  Status PrepareForCompute(OpKernelContext* context, Prepare& args) const;
 
   template <typename T2>
   Status CopyDataAndDequantize(const T1* data_ptr,
@@ -72,8 +71,8 @@ struct Prepare {
   int64_t block_size_;
 };
 
-template<typename T1, typename Tind>
-Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, Prepare &p) const {
+template <typename T1, typename Tind>
+Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
   p.data_tensor = context->Input<Tensor>(0);
   p.indices_tensor = context->Input<Tensor>(1);
   p.scales_tensor = context->Input<Tensor>(2);
@@ -213,7 +212,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
   return Status::OK();
 }
 
-template<typename T1, typename Tind>
+template <typename T1, typename Tind>
 Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));

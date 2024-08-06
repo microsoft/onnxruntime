@@ -3573,7 +3573,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             static_cast<int64_t>(128))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
-            "indices",
+             "indices",
              "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
              "along axis of size s. It is an error if any of the index values are out of bounds.",
              "Tind")
@@ -3594,7 +3594,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
         int r = data_shape.dim_size();
-        
+
         if (r < 1) {
           fail_shape_inference("data tensor must have rank >= 1");
         }

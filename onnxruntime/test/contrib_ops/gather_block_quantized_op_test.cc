@@ -4,6 +4,7 @@
 #include <vector>
 #include <type_traits>
 #include <memory>
+#include <utility>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -60,20 +61,20 @@ template <typename T1, typename T2>
 typename std::enable_if<
     (boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16, float>, T1>::value && std::is_same<T2, float>::value) ||
         (std::is_integral<T1>::value && std::is_same<T2, int>::value),
-    std::vector<T1>&>::type
+    std::vector<T1>>::type
 ToType(const std::vector<T2>& vec) {
-  std::vector<T> result(vec.size());
+  std::vector<T1> result;
   for (auto v : vec) {
-    result.push_back(static_cast<T>(v));
+    result.push_back(static_cast<T1>(v));
   }
 
   return result;
 }
 
 template <typename T>
-typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>, std::vector<T>&>::type
+typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec) {
-  std::vector<T> result((vec.size() + 1) / 2);
+  std::vector<T> result;
   size_t i = 0;
   constexpr int offset = std::is_same<T, UInt4x2>::value ? 0 : 8;
   for (i = 0; i + 1 < vec.size(); i += 2) {
@@ -96,15 +97,15 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 3, 1};
   std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
-  std::vector<float> output = {8f, 10f, 12f, 14f,
-                               3f, 4f, 5f, 6f,
-                               -6f, -4f, -2f, 0f};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
@@ -160,15 +161,15 @@ void Test_ShapeMismatch_WithZeroPoints() {
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 2, 1};
   std::vector<int> zero_points = {-1, 1, 0, 0};
-  std::vector<float> output = {8f, 10f, 12f, 14f,
-                               3f, 4f, 5f, 6f,
-                               -6f, -4f, -2f, 0f};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
@@ -199,15 +200,15 @@ void Test_InvalidIndices_WithZeroPoints() {
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {2};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 3, 1};
   std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
-  std::vector<float> output = {8f, 10f, 12f, 14f,
-                               3f, 4f, 5f, 6f,
-                               -6f, -4f, -2f, 0f};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
@@ -225,7 +226,7 @@ void Test_InvalidIndices_WithZeroPoints() {
                           OpTester::ExpectResult::kExpectFailure);
 }
 
-TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
+TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
 }
@@ -238,7 +239,7 @@ void Test_GatherAxis0_WithZeroPoints() {
                            4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4,
                            4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4,
                            -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4};
-  std::vevctor<int64_t> data_shape = {2, 3, 17};
+  std::vector<int64_t> data_shape = {2, 3, 17};
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
@@ -298,14 +299,14 @@ void Test_GatherAxis0_NoZeroPoints() {
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 3, 1};
-  std::vector<float> output = {8f, 10f, 12f, 14f,
-                               4f, 5f, 6f, 7f,
-                               -8f, -6f, -4f, -2f};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               4.f, 5.f, 6.f, 7.f,
+                               -8.f, -6.f, -4.f, -2.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
@@ -355,16 +356,16 @@ void Test_GatherAxis1_WithZeroPoints() {
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {2, -3};
   std::vector<int64_t> indices_shape = {1, 2};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 1, 4};
   std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1, 0, 0};
-  std::vector<float> output = {1f, 0f, 2f, 6f,
-                               -7f, -16f, -6f, -10f,
-                               -5f, -4f, -2f, -2f
-                               3f, 12f, 6f, 14f};
+  std::vector<float> output = {1.f, 0.f, 2.f, 6.f,
+                               -7.f, -16.f, -6.f, -10.f,
+                               -5.f, -4.f, -2.f, -2.f,
+                               3.f, 12.f, 6.f, 14.f};
   std::vector<int64_t> output_shape = {2, 1, 2, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
@@ -414,7 +415,7 @@ void Test_GatherAxis2_WithZeroPoints() {
                            4, 5, 6, 7,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
-  std::vevctor<int64_t> data_shape = {2, 3, 4};
+  std::vector<int64_t> data_shape = {2, 3, 4};
   std::vector<int> indices = {-2, 0};
   std::vector<int64_t> indices_shape = {2, 1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f,
@@ -424,8 +425,8 @@ void Test_GatherAxis2_WithZeroPoints() {
   std::vector<int> zero_points = {-1, 1, 0, 0,
                                   1, -1, 0, 0,
                                   0, 0, 1, -1};
-  std::vector<float> output = {-6f, -7f, -2f, -5f, 1f, 0f,
-                               6f, 5f, 6f, 3f, -3f, -4f};
+  std::vector<float> output = {-6.f, -7.f, -2.f, -5.f, 1.f, 0.f,
+                               6.f, 5.f, 6.f, 3.f, -3.f, -4.f};
   std::vector<int64_t> output_shape = {2, 3, 2, 1};
 
   RunGatherBlockQuantized(ToType<T1>(data),
