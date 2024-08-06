@@ -50,7 +50,7 @@ if (urlFilePairs.isEmpty()) {
 ```
 
 ### Status while model is downloading
-Downloading the packages for the app on your mobile device takes ~10-15 minutes depending on which device you are using. The progress bar indicates what percent of the downloads are completed. 
+Downloading the packages for the app on your mobile device takes ~10-15 minutes (depending on which device you are using). The progress bar indicates what percent of the downloads are completed. 
 ```java
 public void onProgress(long lastBytesRead, long bytesRead, long bytesTotal) {
     long lastPctDone = 100 * lastBytesRead / bytesTotal;
