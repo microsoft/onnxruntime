@@ -103,8 +103,7 @@ jobs:
               --config Release \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
-                onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
-                onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
+                onnxruntime_BUILD_KERNEL_EXPLORER=ON \
               --mpi_home /opt/ompi \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
@@ -188,8 +187,7 @@ jobs:
               --config Release \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
-                onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
-                onnxruntime_USE_COMPOSABLE_KERNEL=ON \
+                onnxruntime_BUILD_KERNEL_EXPLORER=ON \
               --mpi_home /opt/ompi \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
