@@ -71,6 +71,14 @@ steps:
             --repository "${{ parameters.Repository }}"
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
       ContainerRegistry: onnxruntimebuildcache
+- ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
+  - script: |
+      ${{ parameters.ScriptName }} \
+        --dockerfile "${{ parameters.Dockerfile }}" \
+        --context "${{ parameters.Context }}" \
+        --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+        --repository "${{ parameters.Repository }}"
+    displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
 
 - script: |
     docker version
