@@ -172,7 +172,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
               nodes_falsenodeids.size() == nodes_values_as_tensor.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-  ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
   ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
   ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
   ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
@@ -319,10 +318,17 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
-    w.i = target_class_ids[i];
-    w.value = target_class_weights_as_tensor.empty() ? static_cast<ThresholdType>(target_class_weights[i])
-                                                     : target_class_weights_as_tensor[i];
-    if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
+    if (i >= target_class_ids.size()) {
+      ORT_THROW("Index ", i, " is out of bounds for target_class_ids.");
+    }
+    if (i >= target_class_weights.size() && i >= target_class_weights_as_tensor.size()) {
+      ORT_THROW("Index ", i, " is out of bounds for both target_class_weights and target_class_weights_as_tensor.");
+    }
+
+    w.i = target_class_ids.at(i);
+    w.value = target_class_weights_as_tensor.empty() ? static_cast<ThresholdType>(target_class_weights.at(i))
+                                                     : target_class_weights_as_tensor.at(i);
+    if (leaf.truenode_or_weight.weight_data.n_weights == 0) { 
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
     }
