@@ -48,6 +48,7 @@ namespace js {
 
 REGISTER_DEQUANTIZED_LINEAR_KERNEL_TYPED(int8_t)
 REGISTER_DEQUANTIZED_LINEAR_KERNEL_TYPED(uint8_t)
+REGISTER_DEQUANTIZED_LINEAR_KERNEL_TYPED(int32_t)
 
 }  // namespace js
 }  // namespace onnxruntime
