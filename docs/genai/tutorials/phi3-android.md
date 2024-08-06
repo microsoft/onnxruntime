@@ -87,7 +87,7 @@ NOTE: Including a max_length will cut off the assistant's answer once reaching t
 ### Download Android Studio
 You will be using [Android Studio](https://developer.android.com/studio) to run the app.
 
-### Download the App
+### Download the application source code
 Clone the [ONNX Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/c29d8edd6d010a2649d69f84f54539f1062d776d) repository.
 
 ### Enable Developer Mode on Mobile
