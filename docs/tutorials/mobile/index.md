@@ -90,8 +90,8 @@ To give an idea of the binary size difference between the pre-built package and 
 
 File|Pre-built package size (bytes)|Custom build size (bytes)
 -|-|-
-`jni/arm64-v8a/libonnxruntime.so`, uncompressed|16276832|4079536
-`jni/x86_64/libonnxruntime.so`, uncompressed|18222208|4464568
-AAR|24415212|8234421
+AAR|24415212|7532309
+`jni/arm64-v8a/libonnxruntime.so`, uncompressed|16276832|3962832
+`jni/x86_64/libonnxruntime.so`, uncompressed|18222208|4240864
 
 This custom build supports the operators needed to run a ResNet50 model. It also has limited framework support (built with `--minimal_build=extended`), only supporting ORT format models. It has support for the NNAPI and XNNPACK execution providers.
