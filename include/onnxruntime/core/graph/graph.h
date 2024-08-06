@@ -1139,28 +1139,40 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
+  // Options to align external initializer offset.
+  struct OffsetAlignmentInfo {
+    // Offset will always be page aligned and allocation granularity aligned for mmap support.
+    // This is done by padding previous tensor data with zeros keeping same length.
+    bool align_offset = false;
+    // Alignment threshold for size of data.
+    // Having a low threshold will waste file space for small initializers.
+    // Only when tensor's data is > the page_align_threshold it will be force aligned.
+    // Default to 1MB.
+    size_t align_threshold = 1048576;
+    // The allocation Granularity for mmap() support.
+    // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
+    size_t allocation_granularity = 65536;
+  };
+
   /** Gets the GraphProto representation of this Graph
   @param external_file_path File path of the binary file to use for initializers.
   @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
-  @align_offset offset will always be page aligned and alloction granularity aligned for mmap support.
-  This is done by padding previous tensor data with zeros keeping same length.
-  Tensor data will be aligned if > align_threshold
-  @align_threshold alignment threshold for size of data.
-  Having a low threshold will waste file space for small initializers.
-  Only when tensor's data is > the page_align_threshold it will be force aligned.
-  Default to 1MB.
-  @allocation_granularity the allocation Granularity for mmap() support.
-  Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
+  @param align_info offset alignment info.
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
                                                                   size_t initializer_size_threshold,
-                                                                  bool align_offset = false,
-                                                                  size_t align_threshold = 1048576,
-                                                                  size_t allocation_granularity = 65536) const;
+                                                                  const OffsetAlignmentInfo& align_info) const;
+
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                  const std::filesystem::path& model_file_path,
+                                                                  size_t initializer_size_threshold) const {
+    OffsetAlignmentInfo default_options;
+    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options);
+  }
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;

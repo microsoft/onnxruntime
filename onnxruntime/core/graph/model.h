@@ -191,9 +191,14 @@ class Model {
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
                                                                   size_t initializer_size_threshold,
-                                                                  bool align_offset = false,
-                                                                  size_t align_threshold = 1048576,
-                                                                  size_t allocation_granularity = 65536) const;
+                                                                  const Graph::OffsetAlignmentInfo& align_info) const;
+
+  ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+      const std::filesystem::path& file_path,
+      size_t initializer_size_threshold) const {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold, default_align_info);
+  }
 
   static common::Status Save(Model& model, const PathString& file_path);
 
@@ -205,18 +210,31 @@ class Model {
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold,
-                                                     bool align_offset = false,
-                                                     size_t align_threshold = 1048576,
-                                                     size_t allocation_granularity = 65536);
+                                                     const Graph::OffsetAlignmentInfo& align_info);
+
+  static common::Status SaveWithExternalInitializers(Model& model,
+      const std::filesystem::path& file_path,
+      const std::filesystem::path& external_file_path,
+      size_t initializer_size_threshold) {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return SaveWithExternalInitializers(model, file_path, external_file_path, initializer_size_threshold, default_align_info);
+  }
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
                                                      size_t initializer_size_threshold,
-                                                     bool align_offset = false,
-                                                     size_t align_threshold = 1048576,
-                                                     size_t allocation_granularity = 65536);
+                                                     const Graph::OffsetAlignmentInfo& align_info);
+
+  static common::Status SaveWithExternalInitializers(Model& model,
+      int fd,
+      const std::filesystem::path& file_path,
+      const std::filesystem::path& external_file_path,
+      size_t initializer_size_threshold) {
+    Graph::OffsetAlignmentInfo default_align_info;
+    return SaveWithExternalInitializers(model, fd, file_path, external_file_path, initializer_size_threshold, default_align_info);
+  }
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 

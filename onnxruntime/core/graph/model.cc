@@ -384,17 +384,13 @@ ModelProto Model::ToProto() const {
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                        const std::filesystem::path& file_path,
                                                        size_t initializer_size_threshold,
-                                                       bool align_offset,
-                                                       size_t align_threshold,
-                                                       size_t allocation_granularity) const {
+                                                       const Graph::OffsetAlignmentInfo& align_info) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
                                                                          initializer_size_threshold,
-                                                                         align_offset,
-                                                                         align_threshold,
-                                                                         allocation_granularity);
+                                                                         align_info);
   return result;
 }
 
@@ -612,9 +608,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
                                                 const std::filesystem::path& external_file_name,
                                                 size_t initializer_size_threshold,
-                                                bool align_offset = false,
-                                                size_t align_threshold = 1048576,
-                                                size_t allocation_granularity = 65536) {
+                                                const Graph::OffsetAlignmentInfo& align_info) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
@@ -622,8 +616,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
   ORT_TRY {
     status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name,
                                                  initializer_size_threshold,
-                                                 align_offset, align_threshold,
-                                                 allocation_granularity);
+                                                 align_info);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -654,11 +647,9 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold,
-                                           bool align_offset,
-                                           size_t align_threshold,
-                                           size_t allocation_granularity) {
+                                           const Graph::OffsetAlignmentInfo& align_info) {
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold,
-                                           align_offset, align_threshold, allocation_granularity);
+                                           align_info);
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -775,9 +766,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
                                            const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            size_t initializer_size_threshold,
-                                           bool align_offset,
-                                           size_t align_threshold,
-                                           size_t allocation_granularity) {
+                                           const Graph::OffsetAlignmentInfo& align_info) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
   }
@@ -786,8 +775,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
 
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
                                                                 initializer_size_threshold,
-                                                                align_offset, align_threshold,
-                                                                allocation_granularity);
+                                                                align_info);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
