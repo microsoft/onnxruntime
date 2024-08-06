@@ -517,6 +517,9 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
         return builder.Release();
     }
 
+    std::vector<uint32_t> nodesInTopologicalOrder(graphDesc.Nodes.size());
+    PerformTopologicalSortAndCheckIsAcyclic(graphDesc, nodesInTopologicalOrder);
+
     // create input/output edge index to name map
     std::unordered_map<uint32_t, flatbuffers::Offset<flatbuffers::String>> graphInputIndexToNameMap = 
         ConvertToEdgeIndexToNameMap<DmlInputSerializedGraphEdge>(graphDesc.InputEdges, builder);
@@ -548,14 +551,14 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
 
     // Create flatbuffer node objects
     std::vector<flatbuffers::Offset<dml::ir::DmlGraphNode>> nodes(graphDesc.Nodes.size());
-    for (uint32_t nodeIndex = 0; nodeIndex < static_cast<uint32_t>(graphDesc.Nodes.size()); nodeIndex++)
+    for (uint32_t nodeIndex = 0; nodeIndex < static_cast<uint32_t>(nodesInTopologicalOrder.size()); nodeIndex++)
     {
         nodes[nodeIndex] = SerializeNode(
                             builder,
-                            nodeIndex,
-                            graphDesc.Nodes[nodeIndex],
-                            nodeToInputNames[nodeIndex],
-                            nodeToOutputNames[nodeIndex]);
+                            nodesInTopologicalOrder[nodeIndex],
+                            graphDesc.Nodes[nodesInTopologicalOrder[nodeIndex]],
+                            nodeToInputNames[nodesInTopologicalOrder[nodeIndex]],
+                            nodeToOutputNames[nodesInTopologicalOrder[nodeIndex]]);
     }
 
     // Convert to std::vector to create the <dml::ir::DmlGraphDesc> object.

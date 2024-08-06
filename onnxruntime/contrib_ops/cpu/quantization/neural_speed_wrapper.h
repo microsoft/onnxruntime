@@ -27,6 +27,7 @@
 #pragma warning(disable : 4244)
 #pragma warning(disable : 4267)
 #pragma warning(disable : 4702)
+#pragma warning(disable : 4127)
 #endif
 
 #include "bestla/bestla_prologue_a.h"

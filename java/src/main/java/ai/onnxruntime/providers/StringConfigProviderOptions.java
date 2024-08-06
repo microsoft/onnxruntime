@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
@@ -36,7 +36,6 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
     Objects.requireNonNull(key, "Key must not be null");
     Objects.requireNonNull(value, "Value must not be null");
     options.put(key, value);
-    add(getApiHandle(), nativeHandle, key, value);
   }
 
   /**
@@ -49,7 +48,7 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
   public void parseOptionsString(String serializedForm) throws OrtException {
     String[] options = serializedForm.split(";");
     for (String o : options) {
-      if (!o.isEmpty() && o.contains("=")) {
+      if (o.contains("=")) {
         String[] curOption = o.split("=");
         if ((curOption.length == 2) && !curOption[0].isEmpty() && !curOption[1].isEmpty()) {
           add(curOption[0], curOption[1]);
@@ -76,15 +75,31 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
         .collect(Collectors.joining(";", "", ";"));
   }
 
+  @Override
+  protected void applyToNative() throws OrtException {
+    if (!options.isEmpty()) {
+      String[] keys = new String[options.size()];
+      String[] values = new String[options.size()];
+      int i = 0;
+      for (Map.Entry<String, String> e : options.entrySet()) {
+        keys[i] = e.getKey();
+        values[i] = e.getValue();
+        i++;
+      }
+
+      applyToNative(getApiHandle(), this.nativeHandle, keys, values);
+    }
+  }
+
   /**
-   * Adds an option to this options instance.
+   * Add all the options to this options instance.
    *
    * @param apiHandle The api pointer.
    * @param nativeHandle The native options pointer.
-   * @param key The option key.
-   * @param value The option value.
+   * @param key The option keys.
+   * @param value The option values.
    * @throws OrtException If the addition failed.
    */
-  protected abstract void add(long apiHandle, long nativeHandle, String key, String value)
-      throws OrtException;
+  protected abstract void applyToNative(
+      long apiHandle, long nativeHandle, String[] key, String[] value) throws OrtException;
 }

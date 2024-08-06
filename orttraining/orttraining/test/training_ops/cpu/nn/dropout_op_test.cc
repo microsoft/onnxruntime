@@ -78,7 +78,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-    ASSERT_GE(fetches.size(), 1);
+    ASSERT_GE(fetches.size(), size_t{1});
     const auto& output_tensor = fetches[0].Get<Tensor>();
     auto output_span = output_tensor.DataAsSpan<float>();
 
@@ -99,7 +99,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     }
 
     if (use_mask) {
-      ASSERT_GE(fetches.size(), 2);
+      ASSERT_GE(fetches.size(), size_t{2});
       const auto& mask_tensor = fetches[1].Get<Tensor>();
       auto mask_span = mask_tensor.DataAsSpan<bool>();
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;

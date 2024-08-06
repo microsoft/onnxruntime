@@ -438,10 +438,18 @@ class InferenceSession(Session):
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
         if "TensorrtExecutionProvider" in available_providers:
-            if providers and any(
-                provider == "CUDAExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                for provider in providers
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "TensorrtExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
+                    for provider in providers
+                )
             ):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
@@ -646,7 +654,7 @@ class IOBinding:
         return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
-        """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
+        """Copy output contents to CPU."""
         return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):

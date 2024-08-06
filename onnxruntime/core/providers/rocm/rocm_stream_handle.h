@@ -8,6 +8,7 @@
 #include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
+void WaitRocmNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 
 struct RocmStream : Stream {
   RocmStream(hipStream_t stream,
@@ -36,6 +37,8 @@ struct RocmStream : Stream {
 
   void* GetResource(int version, int id) const override;
 
+  WaitNotificationFn GetWaitNotificationFn() const override { return WaitRocmNotificationOnDevice; }
+
  private:
   std::vector<void*> deferred_cpu_buffers_;
   AllocatorPtr cpu_allocator_;
@@ -50,5 +53,4 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                bool use_existing_stream,
                                miopenHandle_t external_miopen_handle,
                                rocblas_handle external_rocblas_handle);
-void WaitRocmNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 }  // namespace onnxruntime

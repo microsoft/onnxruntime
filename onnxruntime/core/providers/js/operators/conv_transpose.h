@@ -5,7 +5,7 @@
 
 #include <algorithm>
 #include <string>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
 #include "core/providers/js/js_kernel.h"
 namespace onnxruntime {
@@ -44,7 +44,7 @@ class ConvTranspose : public JsKernel {
                                    "autoPad" : $1,
                                    "dilations" : [$2],
                                    "group" : $3,
-                                   "kernel_shape" : [$4],
+                                   "kernelShape" : [$4],
                                    "pads" : [ $5, $6 ],
                                    "strides" : [$7],
                                    "wIsConst" : () JS_ARROW(!!HEAP8[$9]),

@@ -25,9 +25,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze);
 
 // axes is input instead of attribute
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Squeeze,
     13,
+    20,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .Alias(0, 0),
+    Squeeze);
+
+// Opset 21 added support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+// TODO(adrianlizarraga): Implement support for float8e4m3fnuz, float8e5m2, float8e5m2fnuz, int4 and uint4.
+ONNX_CPU_OPERATOR_KERNEL(
+    Squeeze,
+    21,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         .Alias(0, 0),

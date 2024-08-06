@@ -11,6 +11,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
@@ -18,7 +19,6 @@
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
@@ -185,7 +185,8 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
 }
 
 common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnitIODef& io_def,
-                                                const Path& model_path, float& scale, int32_t& zero_point) {
+                                                const std::filesystem::path& model_path, float& scale,
+                                                int32_t& zero_point) {
   scale = 0.0f;
   zero_point = 0;
 

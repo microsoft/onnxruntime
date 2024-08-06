@@ -1829,7 +1829,7 @@ Zbigniew Skowron <zbychs@gmail.com>
 
 _____
 
-HalidelR
+HalideIR
 
 Copyright (c) 2016 HalideIR contributors
 Copyright (c) 2012-2014 MIT CSAIL, Google Inc., and other contributors
@@ -4820,7 +4820,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------------
 
-This is the MIT/Expat Licence. For more information see:
+This is the MIT/Expat License. For more information see:
 
 1. http://www.opensource.org/licenses/mit-license.php
 

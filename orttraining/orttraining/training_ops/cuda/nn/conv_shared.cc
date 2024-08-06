@@ -105,7 +105,8 @@ struct AlgoSearch<T_BwdDataPerf> {
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT, CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD, CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED};
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
-    ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
+    static_assert(sizeof(algos) / sizeof(algos[0]) == num_algos,
+                  "Missing cuDNN convolution backward data algorithms.");
     int perf_count;
     std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
@@ -146,7 +147,9 @@ struct AlgoSearch<T_BwdFilterPerf> {
 
     // NOTE: - 1 because ALGO_WINOGRAD is not implemented.
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT - 1;
-    ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
+    static_assert(sizeof(algos) / sizeof(algos[0]) == num_algos,
+                  "Missing cuDNN convolution backward filter algorithms.");
+
     std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
@@ -188,7 +191,9 @@ struct AlgoSearch<T_FwdPerf> {
     };
 
     static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-    ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
+    static_assert(sizeof(algos) / sizeof(algos[0]) == num_algos,
+                  "Missing cuDNN convolution backward filter algorithms.");
+
     std::unique_ptr<T_FwdPerf[]> candidates = std::make_unique<T_FwdPerf[]>(num_algos);
     int perf_count;
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {

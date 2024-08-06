@@ -35,7 +35,7 @@ export const createGroupedConvProgramInfo =
         {type: DataType.uint32, data: outputChannelsPerGroup}
       ];
       appendActivationUniformsData(attributes, programUniforms);
-      programUniforms.push(...createTensorShapeVariables(xShape, wShape, outputShape));
+      programUniforms.push(...createTensorShapeVariables(xShape, wShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
@@ -51,7 +51,7 @@ export const createGroupedConvProgramInfo =
         const w = inputVariable('w', inputs[1].dataType, wShape.length);
         const inputVars = [x, w];
         if (hasBias) {
-          inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims));
+          inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims.length));
         }
 
         const uniforms: UniformsArrayType = [

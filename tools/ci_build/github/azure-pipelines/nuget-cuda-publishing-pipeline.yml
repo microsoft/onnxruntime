@@ -1,22 +1,31 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Nuget-CUDA-Packaging-Pipeline'
+    source: 'CUDA-Zip-Nuget-Java-Packaging-Pipeline'
     trigger: 
       branches:
         include:
         - main
+        - rel-*
     branch: main
 
 parameters:
-  - name: nightly
+  - name: isReleaseBuild
     type: boolean
-    default: true
+    default: false
+
+variables:
+  - name: ArtifactFeed
+    ${{ if eq(parameters.isReleaseBuild, false) }}:
+      value: ORT-Nightly
+    ${{ else }}:
+      value: onnxruntime-cuda-12
 
 stages:
-- template: stages/nuget-cuda-publishing-stage.yml
-  parameters:
-    ${{ if ne(parameters.nightly, true) }}:
-      artifact_feed: onnxruntime-cuda-12
-    ${{ else }}:
-      artifact_feed: ort-cuda-12-nightly
+  - template: stages/nuget-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)
+
+  - template: stages/java-cuda-publishing-stage.yml
+    parameters:
+      artifact_feed: $(ArtifactFeed)

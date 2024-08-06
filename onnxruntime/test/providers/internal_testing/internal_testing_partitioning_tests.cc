@@ -83,7 +83,7 @@ TEST(InternalTestingEP, TestSortResultsInSinglePartition) {
 }
 
 // mode has Resize op with optional input roi which is just a placeholder.
-// partition funtion should skip the placeholder inputs.
+// partition function should skip the placeholder inputs.
 TEST(InternalTestingEP, TestResizeWithOptionalInput) {
   // Resize op has optional input roi which is just a placeholder
   const ORTCHAR_T* model_path = ORT_TSTR("testdata/model_resize_empty_optional_input.onnx");

@@ -34,6 +34,7 @@ Do not modify directly.*
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
+| DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
@@ -53,10 +54,11 @@ Do not modify directly.*
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| GroupQueryAttention | com.microsoft(1+) |  |
 | HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
-| LayerNormalization | ai.onnx(17+) |  |
+| LayerNormalization | ai.onnx(1-16,17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
 | Less | ai.onnx(7-8,9-12,13+) |  |
 | LessOrEqual | ai.onnx(12-15,16+) |  |
@@ -72,6 +74,7 @@ Do not modify directly.*
 | Not | ai.onnx(1+) |  |
 | Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
+| QuickGelu | com.microsoft(1+) |  |
 | Range | ai.onnx(11+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
 | ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |
@@ -87,11 +90,14 @@ Do not modify directly.*
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
+| RotaryEmbedding | com.microsoft(1+) |  |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
+| SimplifiedLayerNormalization | ai.onnx(1+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | SkipLayerNormalization | com.microsoft(1+) |  |
+| SkipSimplifiedLayerNormalization | com.microsoft(1+) |  |
 | Slice | ai.onnx(1-9,10,11-12,13+) |  |
 | Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |

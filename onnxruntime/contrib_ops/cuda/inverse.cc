@@ -78,9 +78,9 @@ struct Inverse::ComputeImpl {
     cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
     // Make a copy of the input which will serve as a workspace as well.
-    if (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {
+    if constexpr (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {
       IAllocatorUniquePtr<float> input_workspace = inst->GetScratchBuffer<float>(input_count, ort_stream);
-      if (std::is_same<T, MLFloat16>::value) {
+      if constexpr (std::is_same<T, MLFloat16>::value) {
         // Convert from MLFloat16(half) to float
         Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.Data<MLFloat16>()), input_workspace.get(), input_count);
       } else {
@@ -96,7 +96,7 @@ struct Inverse::ComputeImpl {
       // Need to compute ptrs for output buffers
       // Output for MLFloat
       IAllocatorUniquePtr<float*> output_ptrs = inst->GetScratchBuffer<float*>(n_batches, ort_stream);
-      if (std::is_same<T, MLFloat16>::value) {
+      if constexpr (std::is_same<T, MLFloat16>::value) {
         IAllocatorUniquePtr<float> ml_float_output = inst->GetScratchBuffer<float>(input_count, ort_stream);
         ORT_RETURN_IF_ERROR(ComputeMatrixOffsets<float>(stream, ml_float_output.get(), num_batches, rows, output_ptrs));
         // Do the inverse
@@ -112,7 +112,7 @@ struct Inverse::ComputeImpl {
         ORT_RETURN_IF_ERROR(CheckForSingularity(stream, info, info_cpu, num_batches));
         // We are done here
       }
-    } else if (std::is_same<T, double>::value) {
+    } else if constexpr (std::is_same<T, double>::value) {
       IAllocatorUniquePtr<double> input_workspace = inst->GetScratchBuffer<double>(static_cast<int>(input_count), ort_stream);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_workspace.get(), input.Data<double>(), sizeof(double) * input_count,
                                            cudaMemcpyDeviceToDevice, stream));

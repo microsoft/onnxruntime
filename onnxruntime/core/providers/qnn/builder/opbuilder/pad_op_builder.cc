@@ -51,7 +51,7 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     auto& pads_input_name = inputs[1].node_arg.Name();
     ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(pads_input_name),
                       "Qnn doesn't support dynamic pad input");
-    if (node_unit.Inputs().size() > 2) {
+    if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
       auto& constant_value_input_name = inputs[2].node_arg.Name();
       ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(constant_value_input_name),
                         "Qnn doesn't support dynamic constant_value input");
@@ -77,47 +77,50 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
   if (input.quant_param.has_value()) {
     // QNN prefers pad_constant_value quantized with quantization params same as in[0], and data stored as 32-bit signed integer
     // Onnx doesn't guarantee it has same quantization parameter as in[0], so get back the float32 value and use non-quantized data directly
+    ORT_RETURN_IF_NOT(input_info.quant_param.IsPerTensor(),
+                      "Pad's constant value must use per-tensor quantization");
+    const Qnn_QuantizeParams_t& quant_param = input_info.quant_param.Get();
     constant_value_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
     float constant_value = 0;
     switch (input_info.qnn_data_type) {
       case QNN_DATATYPE_SFIXED_POINT_8: {
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(int8_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_SFIXED_POINT_16: {
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpacked_tensor));
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(int16_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_SFIXED_POINT_32: {
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(int32_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_8: {
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(unpacked_tensor.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_16: {
         auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(unpacked_tensor));
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(uint16_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_32: {
         auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(unpacked_tensor));
-        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
-                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+        constant_value = static_cast<float>(utils::Dequantize(quant_param.scaleOffsetEncoding.offset,
+                                                              quant_param.scaleOffsetEncoding.scale,
                                                               static_cast<double>(uint32_span.data()[0])));
         break;
       }
@@ -160,7 +163,7 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported.");
     }  // switch
-  }    // if-else
+  }  // if-else
 
   QnnParamWrapper constant_value_param(node_unit.Index(),
                                        node_unit.Name(),
@@ -224,13 +227,13 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   param_tensor_names.push_back(mode_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(mode_param));
 
-  QnnParamWrapper multiples_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
-                                  std::move(pad_amount_dim), std::move(pad_amount));
-  param_tensor_names.push_back(multiples_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(multiples_param));
+  QnnParamWrapper pad_amount_param(node_unit.Index(), node_unit.Name(), QNN_OP_PAD_PARAM_PAD_AMOUNT,
+                                   std::move(pad_amount_dim), std::move(pad_amount));
+  param_tensor_names.push_back(pad_amount_param.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_param));
 
   // Process optional input constant_value
-  if (node_unit.Inputs().size() > 2) {
+  if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
     ORT_RETURN_IF_ERROR(ProcessConstantValue(qnn_model_wrapper, param_tensor_names, node_unit, inputs[2]));
   }  // constant_value
 

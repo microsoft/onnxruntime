@@ -89,8 +89,9 @@ def _test_apple_packages(args):
 
         # create a zip file contains the framework
         zip_file_path = local_pods_dir / f"{pod_name}.zip"
-        # shutil.make_archive require target file as full path without extension
-        shutil.make_archive(zip_file_path.with_suffix(""), "zip", root_dir=local_pods_dir)
+
+        # shutil.make_archive doesn't preserve symlinks. we know this is running on macOS so use zip
+        subprocess.run(["zip", "-r", "-y", str(zip_file_path), "."], cwd=local_pods_dir, check=True)
 
         # update the podspec to point to the local framework zip file
         with open(podspec) as file:
@@ -176,7 +177,26 @@ def _test_apple_packages(args):
 
                 break
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile and not args.skip_macos_test:
+            if args.mac_catalyst_enabled:
+                subprocess.run(
+                    [
+                        "xcrun",
+                        "xcodebuild",
+                        "test",
+                        "-workspace",
+                        "./apple_package_test.xcworkspace",
+                        "-scheme",
+                        "ios_package_test",
+                        "-destination",
+                        "platform=macOS,variant=Mac Catalyst",
+                        "CODE_SIGNING_ALLOWED=NO",
+                    ],
+                    shell=False,
+                    check=True,
+                    cwd=target_proj_path,
+                )
+
+            if not args.skip_macos_test:
                 subprocess.run(
                     [
                         "xcrun",
@@ -242,6 +262,12 @@ def parse_args():
         "--skip_macos_test",
         action="store_true",
         help="Skip macos platform tests. Specify this argument when build targets only contain ios archs. ",
+    )
+
+    parser.add_argument(
+        "--mac_catalyst_enabled",
+        action="store_true",
+        help="Run tests for mac catalyst variants. Specify this argument when build targets contains catalyst archs. ",
     )
 
     return parser.parse_args()

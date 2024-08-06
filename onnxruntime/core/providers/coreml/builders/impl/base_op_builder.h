@@ -28,6 +28,10 @@ class BaseOpBuilder : public IOpBuilder {
   void AddInitializersToSkip(ModelBuilder& /*model_builder*/, const Node& /*node*/) const override {}
 
  protected:
+  explicit BaseOpBuilder(bool allow_empty_tensor_as_input = false)
+      : allow_empty_tensor_as_input_(allow_empty_tensor_as_input) {
+  }
+
   // currently we only support float
   static bool IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
                            const logging::Logger& logger);
@@ -42,7 +46,7 @@ class BaseOpBuilder : public IOpBuilder {
                                       const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /*node*/) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 20; }
+  virtual int GetMaxSupportedOpSet(const Node& /*node*/) const { return 21; }
 
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
   bool HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
@@ -50,6 +54,8 @@ class BaseOpBuilder : public IOpBuilder {
 
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                        const logging::Logger& logger) const = 0;
+
+  const bool allow_empty_tensor_as_input_;  // some operators can handle ignoring an empty tensor as input
 };
 
 }  // namespace coreml

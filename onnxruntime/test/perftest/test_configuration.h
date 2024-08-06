@@ -29,6 +29,7 @@ struct ModelInfo {
   std::basic_string<ORTCHAR_T> model_file_path;
   std::basic_string<ORTCHAR_T> input_file_path;
   std::basic_string<ORTCHAR_T> result_file_path;
+  bool load_via_path = false;
 };
 
 struct MachineConfig {
@@ -70,7 +71,6 @@ struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
-  std::basic_string<ORTCHAR_T> backend = ORT_TSTR("ort");
 };
 
 }  // namespace perftest

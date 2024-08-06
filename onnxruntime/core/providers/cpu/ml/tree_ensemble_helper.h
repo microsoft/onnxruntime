@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
@@ -13,3 +16,5 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
 
 }  // namespace ml
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

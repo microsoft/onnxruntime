@@ -12,24 +12,27 @@ class QDQNormalization(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "InstanceNormalization" or node.op_type == "LayerNormalization"
+        assert node.op_type in {"InstanceNormalization", "LayerNormalization", "BatchNormalization"}
 
         # Input
         self.quantizer.quantize_activation_tensor(node.input[0])
 
         # Scale
         scale_is_initializer = self.quantizer.is_input_a_initializer(node.input[1])
+        scale_is_per_channel, scale_channel_axis = self.quantizer.is_tensor_per_channel(
+            node.input[1], default_axis=1, op_type=node.op_type
+        )
 
-        if self.quantizer.is_per_channel() and scale_is_initializer:
-            channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
-            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], axis=channel_axis)
+        if scale_is_per_channel:
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], axis=scale_channel_axis)
         elif scale_is_initializer:
             self.quantizer.quantize_weight_tensor(node.input[1])
         else:
             self.quantizer.quantize_activation_tensor(node.input[1])
 
         # Bias
-        self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])
+        if len(node.input) > 2 and node.input[2]:
+            self.quantizer.quantize_bias_tensor(node.name, node.input[2], node.input[0], node.input[1])
 
         # Output
         if not self.disable_qdq_for_node_output:

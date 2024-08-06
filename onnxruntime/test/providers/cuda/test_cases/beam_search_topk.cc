@@ -80,7 +80,8 @@ TEST(TestBeamSearch, TopK) {
   std::vector<float> top_k_values_ref(batch_size * k);
   std::vector<int32_t> top_k_tokens_ref(batch_size * k);
   std::vector<int32_t> top_k_indices_ref(batch_size * k);
-  ComputeTopKReference(values, top_k_values_ref, top_k_tokens_ref, top_k_indices_ref, batch_size, beam_size, vocab_size, k);
+  ComputeTopKReference(values, top_k_values_ref, top_k_tokens_ref, top_k_indices_ref, batch_size,
+                       beam_size, vocab_size, k);
 
   const int32_t max_vocab_parts = 128;
   size_t buffer_size = batch_x_beam_x_vocab * 4                                      // input

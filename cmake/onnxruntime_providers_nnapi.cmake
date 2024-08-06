@@ -49,12 +49,10 @@
   endif()
 
   # These are shared utils,
-  # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
+  # TODO, move this to a separate lib when used by EPs other than NNAPI and CoreML
   list(APPEND onnxruntime_provider_nnapi_cc_src_patterns
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
   )
 
   file(GLOB onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS ${onnxruntime_provider_nnapi_cc_src_patterns})

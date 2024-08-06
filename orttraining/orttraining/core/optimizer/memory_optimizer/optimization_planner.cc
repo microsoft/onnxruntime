@@ -15,9 +15,10 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
-Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const GraphViewer& graph_viewer,
-                                                                   const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
-                                                                   const SequentialExecutionPlan& p_seq_exec_plan) {
+Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(
+    const GraphViewer& graph_viewer,
+    const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
+    const SequentialExecutionPlan& p_seq_exec_plan) {
   InlinedHashMap<int, std::string> idx_to_ortvalue_name_map;
   for (const auto& entry : ortvalue_name_to_idx_map) {
     idx_to_ortvalue_name_map[entry.second] = entry.first;

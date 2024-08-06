@@ -65,7 +65,7 @@ class ProcessRotCacheFunc:
         return x
 
 
-# TODO: move to a seperate file
+# TODO: move to a separate file
 class Fission(Fusion):
     def __init__(
         self,
@@ -353,8 +353,10 @@ class Phi2PreProcessor(DynamoOnnxHelper):
                     elem_type=TensorProto.INT64,
                     shape=[1],
                 )
-                new_inputs.extend([vi_iid, vi_step, vi_mask]) if not self.use_vllm else new_inputs.extend(
-                    [vi_iid, vi_pid, vi_meta]
+                (
+                    new_inputs.extend([vi_iid, vi_step, vi_mask])
+                    if not self.use_vllm
+                    else new_inputs.extend([vi_iid, vi_pid, vi_meta])
                 )
             if self.use_attn:
                 if "past_key" in vi.name:

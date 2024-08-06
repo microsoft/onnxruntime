@@ -5,9 +5,11 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/trt_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -102,7 +104,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   // TensorRT: results mismatch
   // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_uint8) {
@@ -132,7 +134,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation_int8) {
@@ -192,7 +195,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
   // DML: results mismatch
   test.Run(
       OpTester::ExpectResult::kExpectSuccess, "",
-      {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+      {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_extrapolation_int8) {
@@ -224,25 +227,33 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
-  OpTester test("Resize", 13);
-  std::vector<float> roi{};
-  std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 1.0f, 0.6f, 0.6f};
 
-  test.AddAttribute("mode", "linear");
+    test.AddAttribute("mode", "linear");
 
-  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
-  std::vector<float> X = {
-      1.0f, 2.0f, 3.0f, 4.0f,
-      5.0f, 6.0f, 7.0f, 8.0f};
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        5.0f, 6.0f, 7.0f, 8.0f};
 
-  test.AddInput<float>("X", {N, C, H, W}, X);
-  test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {4}, scales);
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
 
-  std::vector<float> Y = {2.66666651f, 4.3333331f};
+    std::vector<float> Y = {2.66666651f, 4.3333331f};
 
-  test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    // QNN: result diff
+    // TRT: Segmentation fault in A100
+    std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
@@ -266,8 +277,9 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider});
+  // TRT: Segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
@@ -291,7 +303,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
   // CUDA: result mismatch due to not implementing NHWC support
   // ROCm: results mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
@@ -313,19 +326,20 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
   std::vector<int8_t> Y = {0, 0};
 
   test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 // Since NNAPI(TFLite) only using the scale calculate using the input/output size
 // For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
 // The output size is [1,1,2,4].*[1,1,0.6,0.6]=[1,1,1,2]
-// NNAPI will recaluclate the scales as the output size divided by input size
+// NNAPI will recalculate the scales as the output size divided by input size
 // scales = [1,1,1,2]./[1,1,2,4] = [1,1,0.5,0.5]
 // See:https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/internal/reference/reference_ops.h
 // So the result of the above example will be different than CPU EP
-// Add the following 2 tests to test with scales valid to NNAPI
+// Add the following 2 tests to test with scales valid to NNAPI.
+// CoreML also doesn't handle a scale that doesn't divide the input size evenly.
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -345,7 +359,37 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
     std::vector<float> Y = {3.5f, 5.5f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+// Downsize with factor being an odd number (1/3)
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_OddNumber) {
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 1.0f, (1.f / 3), (1.f / 3)};
+
+    test.AddAttribute("mode", "linear");
+
+    constexpr int64_t N = 1, C = 1, H = 3, W = 6;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+        7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f,
+        13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<float> Y = {8.f, 11.f};
+
+    test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -353,7 +397,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1) {
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_and_sizes_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -381,8 +425,32 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
   run_test(true);
 }
 
+// test handling for opset 11. scales input is provided but should be ignored in favor of sizes
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizesOpset11) {
+  OpTester test("Resize", 11);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+  std::vector<int64_t> sizes{N, C, 1, 2};
+  test.AddAttribute("mode", "linear");
+
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes, true);  // add as initializer so CoreML EP can take
+
+  std::vector<float> Y = {3.5f, 5.5f};
+
+  test.AddOutput<float>("Y", sizes, Y);
+  test.Run();
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -403,20 +471,56 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
     std::vector<float> Y = {1.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
 
-#ifdef USE_NNAPI
-  // NNAPI will need the scales as an initializer
+#if defined(USE_NNAPI) || defined(USE_COREML)
+  // NNAPI and CoreML need the scales as an initializer
+  // Also tensor RT EP will fail if scales is an initializer but will pass if it is not
+  run_test(true);
+#endif
+}
+
+TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners_sizes) {
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{};
+    std::vector<int64_t> sizes{1, 1, 1, 2};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, C = 1, H = 2, W = 4;
+    std::vector<float> X = {
+        1.0f, 2.0f, 3.0f, 4.0f,
+        5.0f, 6.0f, 7.0f, 8.0f};
+
+    test.AddInput<float>("X", {N, C, H, W}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("", {0}, scales);
+    test.AddInput<int64_t>("sizes", {4}, sizes, scales_in_initializer);
+
+    std::vector<float> Y = {1.0f, 4.0f};
+
+    test.AddOutput<float>("Y", {N, C, 1, 2}, Y);
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+  };
+
+  run_test(false);
+
+#if defined(USE_NNAPI) || defined(USE_COREML)
+  // NNAPI and CoreML will need the scales as an initializer
   // Also tensor RT EP will fail if scales is an initializer but will pass if it is not
   run_test(true);
 #endif
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uint8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -439,7 +543,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
     // CUDA: result mismatch due to not implementing NHWC support
     // ROCm: results mismatch
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
   };
 
   run_test(false);
@@ -447,7 +552,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -539,7 +644,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   // ROCm: results mismatch
   // DML: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixel_int8) {
@@ -605,7 +710,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric_scales) {
         7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -613,7 +718,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric_scales) {
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -650,7 +755,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
                             Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
     // ROCm: results mismatch
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
   };
 
   run_test(false);
@@ -658,7 +764,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
-  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  // To test NNAPI EP, we need the scales/sizes to be in initializers
   auto run_test = [](bool scales_in_initializer) {
     OpTester test("Resize", 13);
     std::vector<float> roi{};
@@ -721,7 +827,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_align_corners) {
       4.0f, 4.5714290f, 5.142857f, 5.714286f, 6.285714f, 6.8571430f, 7.428571f, 8.0f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) {
@@ -815,7 +921,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest) {
                             7.0f, 11.0f};
 
     test.AddOutput<float>("Y", {N, C, H, W}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -841,7 +947,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
@@ -863,7 +969,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Opset12) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
@@ -916,7 +1022,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_half_pixel) {
                           14.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_tf_crop_and_resize_with_extrapolation) {
@@ -996,7 +1102,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest) {
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
@@ -1089,7 +1195,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
                           13.0f, 13.0f, 13.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
@@ -1193,7 +1299,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
                             3.0f, 3.0f, 4.0f, 4.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
   };
 
   run_test(false);
@@ -1258,7 +1364,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest) {
                           11.9165f, 13.2266f, 14.5278f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
@@ -1288,7 +1394,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_exclude_outside) {
                           11.949f, 13.2503f, 14.5942f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
@@ -1315,7 +1421,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_coeff) {
                           11.8701f, 13.168f, 14.4912f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_with_roi) {
@@ -1369,7 +1475,7 @@ TEST(ResizeOpTest, ResizeOpCubicDownSampleTest_asymmetric) {
                           11.375f, 12.6719f, 13.9688f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
@@ -1401,7 +1507,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest) {
                           13.375f, 13.7813f, 14.375f, 14.875f, 15.375f, 15.9688f, 16.375f, 16.4688f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
@@ -1482,7 +1588,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_tf_half_pixel_for_nn) {
                           13.332f, 13.8086f, 14.4375f, 14.8438f, 15.4727f, 15.9492f, 16.2461f, 16.1758f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
@@ -1508,7 +1614,10 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  // QNN: result diff
+  // TRT: segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
@@ -1534,7 +1643,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_Ver10) {
   std::vector<float> Y = {1.0f, 2.66666651f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
@@ -1570,7 +1679,10 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_Ver10) {
       7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});  // QNN: result diff
+  // QNN: result diff
+  // TRT: segmentation fault in A100
+  std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
 }
 
 TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
@@ -1598,7 +1710,7 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_2DBilinear_Ver10) {
       4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 8.0f, 8.0f, 8.0f};
 
   test.AddOutput<float>("Y", {static_cast<int64_t>(H * scales[0]), static_cast<int64_t>(W * scales[1])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
@@ -1623,7 +1735,7 @@ TEST(ResizeOpTest, ResizeOpLinearScalesNoOpTest_Ver10) {
                           7.0f, 11.0f};
 
   test.AddOutput<float>("Y", {N, C, H, W}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
@@ -1643,7 +1755,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_Ver10) {
   std::vector<float> Y = {1.0f, 3.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
@@ -1664,10 +1776,10 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_Ver10) {
                           3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
-TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
+TEST(ResizeOpTest, ResizeOpNearestNoScaleTest_Ver10) {
   OpTester test("Resize", 10);
   std::vector<float> scales{1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -1682,7 +1794,7 @@ TEST(UpsampleOpTest, ResizeOpNearestNoScaleTest_Ver10) {
   std::vector<float> Y = {1.0f, 2.0f, 3.0f, 4.0f};
 
   test.AddOutput<float>("Y", {N, C, H, W}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOp_MissingRoiAndMissingScalesOptionalInputs) {
@@ -1733,7 +1845,7 @@ void ResizeOpTypeCheck_Ver_10() {
                       3, 3, 3, 4, 4, 4};
 
   test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
@@ -1764,7 +1876,7 @@ void ResizeOpTypeCheck_Ver_11_13_18(int opset_version) {
                       3, 3, 3, 4, 4, 4};
 
   test.AddOutput<T>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
@@ -1913,6 +2025,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
                  });
   // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accuracy issue.
   excluded_eps.insert(kTensorrtExecutionProvider);
+  // Test is flaky on kCudaNHWCExecutionProvider
+  excluded_eps.insert(kCudaNHWCExecutionProvider);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }

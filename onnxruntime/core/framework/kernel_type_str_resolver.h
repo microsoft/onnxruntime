@@ -7,13 +7,13 @@
 #include <string_view>
 #include <utility>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/onnx_protobuf.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/graph/op_identifier.h"

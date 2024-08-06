@@ -10,8 +10,6 @@ class ORTModuleFallbackException(Exception):  # noqa: N818
     it can also be used for generic exception that require fallback
     """
 
-    pass
-
 
 class ORTModuleInitException(ORTModuleFallbackException):
     """Trigger fallback for ORTModule initialization related exceptions
@@ -19,8 +17,6 @@ class ORTModuleInitException(ORTModuleFallbackException):
     This exception is triggered when an incompatible or missing requirements for ORTModule are detected,
     including PyTorch version, missing ORTModule's PyTorch C++ extension binaries, etc.
     """
-
-    pass
 
 
 class ORTModuleDeviceException(ORTModuleFallbackException):
@@ -31,8 +27,6 @@ class ORTModuleDeviceException(ORTModuleFallbackException):
     This exception does not capture these scenarios.
     """
 
-    pass
-
 
 class ORTModuleIOError(ORTModuleFallbackException):
     """Trigger fallback for I/O related exceptions
@@ -42,8 +36,6 @@ class ORTModuleIOError(ORTModuleFallbackException):
     This exception does not capture these scenarios.
     """
 
-    pass
-
 
 class ORTModuleTorchModelException(ORTModuleFallbackException):
     """Trigger fallback for PyTorch modules related exceptions
@@ -52,16 +44,12 @@ class ORTModuleTorchModelException(ORTModuleFallbackException):
     checking type(model) over a hardcoded list of incompatible models.
     """
 
-    pass
-
 
 class ORTModuleONNXModelException(ORTModuleFallbackException):
     """Trigger fallback for ONNX model related exceptions
 
     This exception is raised during model conversion to ONNX and post-processing validation within ORTModule frontend.
     """
-
-    pass
 
 
 def wrap_exception(

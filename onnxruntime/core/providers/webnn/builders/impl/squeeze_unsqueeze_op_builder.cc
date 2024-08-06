@@ -54,11 +54,10 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
   const auto input_rank = input_shape.size();
 
-  emscripten::val options = emscripten::val::object();
   std::vector<int32_t> axes_data;
   auto rank = input_rank;
 
-  if (node.SinceVersion() >= 13 && input_defs.size() > 1) {
+  if (node.SinceVersion() >= 13 && !GetTensorName(input_defs, 1).empty()) {
     // Input axes is provided, use axes initializer data.
     const auto& initializers = model_builder.GetInitializerTensors();
     const auto& axes_tensor = *initializers.at(input_defs[1]->Name());
@@ -111,7 +110,12 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
                            "SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
-  output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+  output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                            input,
+                                                            emscripten::val::array(new_shape),
+                                                            options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }

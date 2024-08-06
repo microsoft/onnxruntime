@@ -10,12 +10,16 @@ class RuntimeOptimizationRecordContainerEntry(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsRuntimeOptimizationRecordContainerEntry(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = RuntimeOptimizationRecordContainerEntry()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsRuntimeOptimizationRecordContainerEntry(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def RuntimeOptimizationRecordContainerEntryBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -56,8 +60,32 @@ class RuntimeOptimizationRecordContainerEntry(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
-def RuntimeOptimizationRecordContainerEntryStart(builder): builder.StartObject(2)
-def RuntimeOptimizationRecordContainerEntryAddOptimizerName(builder, optimizerName): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerName), 0)
-def RuntimeOptimizationRecordContainerEntryAddRuntimeOptimizationRecords(builder, runtimeOptimizationRecords): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(runtimeOptimizationRecords), 0)
-def RuntimeOptimizationRecordContainerEntryStartRuntimeOptimizationRecordsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def RuntimeOptimizationRecordContainerEntryEnd(builder): return builder.EndObject()
+def RuntimeOptimizationRecordContainerEntryStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    RuntimeOptimizationRecordContainerEntryStart(builder)
+
+def RuntimeOptimizationRecordContainerEntryAddOptimizerName(builder, optimizerName):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerName), 0)
+
+def AddOptimizerName(builder, optimizerName):
+    RuntimeOptimizationRecordContainerEntryAddOptimizerName(builder, optimizerName)
+
+def RuntimeOptimizationRecordContainerEntryAddRuntimeOptimizationRecords(builder, runtimeOptimizationRecords):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(runtimeOptimizationRecords), 0)
+
+def AddRuntimeOptimizationRecords(builder, runtimeOptimizationRecords):
+    RuntimeOptimizationRecordContainerEntryAddRuntimeOptimizationRecords(builder, runtimeOptimizationRecords)
+
+def RuntimeOptimizationRecordContainerEntryStartRuntimeOptimizationRecordsVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartRuntimeOptimizationRecordsVector(builder, numElems: int) -> int:
+    return RuntimeOptimizationRecordContainerEntryStartRuntimeOptimizationRecordsVector(builder, numElems)
+
+def RuntimeOptimizationRecordContainerEntryEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return RuntimeOptimizationRecordContainerEntryEnd(builder)

@@ -84,7 +84,7 @@ class GRU_Helper:  # noqa: N801
             hidden_size = f_output.shape[3]
 
             output = np.empty((0, 2, batch_size, hidden_size), np.float32)
-            for x in range(0, seq_length):
+            for x in range(seq_length):
                 output = np.append(output, f_output[x])
                 output = np.append(output, r_output_orig_input_order[x])
 

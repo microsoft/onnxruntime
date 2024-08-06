@@ -10,9 +10,8 @@ import ctypes
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, helper
 
-from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
-
-from ._pythonop_helper import make_pythonop_node
+from onnxruntime.training.ortmodule._pythonop_helper import make_pythonop_node
+from onnxruntime.training.utils import onnx_dtype_to_pytorch_dtype, pytorch_type_to_onnx_dtype
 
 MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME = "mem_efficient_pull_weight_trigger"
 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
@@ -27,65 +26,33 @@ def get_params_connected_to_pull_param_trigger(
     return {k: v for k, v in named_params if v.requires_grad and k in onnx_initializer_names}
 
 
-def get_params_not_connected_to_pull_param_trigger(
-    named_params: dict[str, torch.nn.parameter.Parameter], exported_model: ModelProto
-):
-    # Be noted, some parameters might not in graph input because they are not used in forward, so we filtered them also.
-    onnx_initializer_names = {p.name for p in exported_model.graph.input}
-    return [v for k, v in named_params if not v.requires_grad and k in onnx_initializer_names]
-
-
 def post_processing_enable_mem_efficient_training(
     exported_model: ModelProto,
     named_params: dict[str, torch.nn.parameter.Parameter],
-) -> tuple[bool, ModelProto]:
-    """This function is used to enable zero stage3 compatibility.
+    device: torch.device,
+) -> tuple[bool, ModelProto, torch.Tensor]:
+    """This function is used to enable memory efficient gradient management.
 
     Args:
-        exported_model (ModelProto): The exported model.
-        named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The full parameter map.
+        exported_model: The exported model.
+        named_params: The full parameter map.
+        device: The device to run the model.
 
     Returns:
-        tuple[bool, ModelProto]: A tuple of bool and ModelProto. The bool indicates whether the model is modified.
+        A tuple of bool, ModelProto and param_trigger_grad tensor. The bool indicates whether the model is modified.
 
     """
     trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
     if len(trainable_named_params) == 0:
-        return False, exported_model
+        return False, exported_model, None
 
     # Create weight retrieving function using trainable_named_params.
-    param_pull_trigger_func_class = _create_param_trigger_function(trainable_named_params)
-    param_retrieve_func_class = _create_param_retrieval_function(trainable_named_params)
-
-    def _get_param_pull_trigger_name(param_name: str) -> str:
-        return f"pull_{param_name}"
-
-    # Create weight retrieving PythonOp.
-    inputs = [
-        helper.make_tensor_value_info(
-            MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
-            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,  # Use the same data type with output for the input
-            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-        )
-    ]
-
-    outputs = [
-        helper.make_tensor_value_info(
-            _get_param_pull_trigger_name(pname),
-            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
-            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-        )
-        for pname in trainable_named_params
-    ]
-
-    weight_pull_node = make_pythonop_node(
-        "weight_pull_trigger",
-        inputs,
-        outputs,
-        param_pull_trigger_func_class,
-        training_mode=1,
-        safe_run_mode=0,
+    param_trigger_grad = torch.zeros(
+        MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+        dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
+        device=device,
     )
+    param_retrieve_func_class = _create_param_retrieval_function(trainable_named_params, param_trigger_grad)
 
     graph_inputs_to_remove = []
     input_offset = 0
@@ -98,7 +65,7 @@ def post_processing_enable_mem_efficient_training(
         # Create the param retrieval function for this parameter.
         node_inputs = [
             helper.make_tensor_value_info(
-                _get_param_pull_trigger_name(graph_input.name),
+                MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
             ),
@@ -141,75 +108,43 @@ def post_processing_enable_mem_efficient_training(
         if input.name in named_params:
             break
         offset += 1
-    exported_model.graph.input.insert(offset, inputs[0])
-    exported_model.graph.node.insert(0, weight_pull_node)
+    exported_model.graph.input.insert(
+        offset,
+        helper.make_tensor_value_info(
+            MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,  # Use the same data type with output for the input
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+        ),
+    )
 
-    return True, exported_model
+    return True, exported_model, param_trigger_grad
 
 
 _PARAM_FUNCTION_INDEX = [0]
 
 
-def _create_param_trigger_function(trainable_named_params: dict[str, torch.nn.parameter.Parameter]):
-    """This function is used to create a weight retrieving function using trainable_named_params."""
+def _create_param_retrieval_function(
+    trainable_named_params: dict[str, torch.nn.parameter.Parameter], param_trigger: torch.Tensor
+):
+    """This function is used to create a weight retrieving function using trainable_named_params.
 
-    @staticmethod
-    def forward(ctx, weight_in_trigger):
-        params = list(trainable_named_params.values())
-        ctx.params = params
-        ctx.dtype = weight_in_trigger.dtype
-        ctx.device = weight_in_trigger.device
-        ctx.shape = weight_in_trigger.shape
-        return (torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype),) * len(params)
+    Args:
+        trainable_named_params: The trainable named parameters.
+        param_trigger: The trigger tensor for pulling the weights. param_trigger is pre-allocated just once
+            before model execution, later it will be reused by each iteration. This could save the unnecessary
+            overhead allocating for each iteration run.
 
-    @staticmethod
-    def backward(ctx, *grad_outputs):
-        return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype)
-
-    @staticmethod
-    def infer_shape(
-        node: NodeProto,
-        tensor_input_shapes: list[list[int | str] | None],
-        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
-    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
-        param_count = len(trainable_named_params.values())
-        tensor_output_shapes = [
-            tensor_input_shapes[0],
-        ] * param_count
-        tensor_output_dtypes = [
-            tensor_input_dtypes[0],
-        ] * param_count
-
-        return tensor_output_shapes, tensor_output_dtypes
-
-    _PARAM_FUNCTION_INDEX[0] += 1
-
-    return type(
-        f"ParamTriggerFunction_{_PARAM_FUNCTION_INDEX[0]}",
-        (torch.autograd.Function,),
-        {
-            "forward": forward,
-            "backward": backward,
-            "infer_shape": infer_shape,
-        },
-    )
-
-
-def _create_param_retrieval_function(trainable_named_params: dict[str, torch.nn.parameter.Parameter]):
-    """This function is used to create a weight retrieving function using trainable_named_params."""
+    """
 
     @staticmethod
     def forward(ctx, param_trigger, param_name):
         ctx.param_name = param_name
-        ctx.dtype = param_trigger.dtype
-        ctx.device = param_trigger.device
-        ctx.shape = param_trigger.shape
         return trainable_named_params[param_name]
 
     @staticmethod
     def backward(ctx, *grad_outputs):
         trainable_named_params[ctx.param_name].backward(grad_outputs[0])
-        return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype), None
+        return param_trigger, None
 
     @staticmethod
     def infer_shape(
@@ -234,6 +169,8 @@ def _create_param_retrieval_function(trainable_named_params: dict[str, torch.nn.
         ]
 
         return tensor_output_shapes, tensor_output_dtypes
+
+    _PARAM_FUNCTION_INDEX[0] += 1
 
     return type(
         f"ParamRetrievalFunction_{_PARAM_FUNCTION_INDEX[0]}",

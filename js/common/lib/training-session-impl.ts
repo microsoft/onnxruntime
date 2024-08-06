@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {resolveBackend} from './backend-impl.js';
+import {resolveBackendAndExecutionProviders} from './backend-impl.js';
 import {SessionHandler, TrainingSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSession} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
@@ -55,13 +55,12 @@ export class TrainingSession implements TrainingSessionInterface {
     const optimizerModel: string|Uint8Array = trainingOptions.optimizerModel || '';
     const options: SessionOptions = sessionOptions || {};
 
-    // get backend hints
-    const eps = options.executionProviders || [];
-    const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
-    const backend = await resolveBackend(backendHints);
+    // resolve backend, update session options with validated EPs, and create session handler
+    const [backend, optionsWithValidatedEPs] = await resolveBackendAndExecutionProviders(options);
     if (backend.createTrainingSessionHandler) {
       const handler = await backend.createTrainingSessionHandler(
-          trainingOptions.checkpointState, trainingOptions.trainModel, evalModel, optimizerModel, options);
+          trainingOptions.checkpointState, trainingOptions.trainModel, evalModel, optimizerModel,
+          optionsWithValidatedEPs);
       return new TrainingSession(handler, !!trainingOptions.optimizerModel, !!trainingOptions.evalModel);
     } else {
       throw new Error(noBackendErrMsg);

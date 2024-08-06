@@ -14,7 +14,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -381,7 +381,7 @@ void InvokeTranspose(
     const T* query, const T* key, const T* value, const T* bias, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
-    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    [[maybe_unused]] AttentionQkvFormat source_format, AttentionQkvFormat target_format,
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   if (key != nullptr && value != nullptr) {
@@ -502,7 +502,7 @@ struct T2<half> {
 };
 
 template <typename T>
-void LaunchTranspose(
+void AddBiasTransposePacked(
     const T* query, const T* key, const T* value, const T* bias, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
@@ -551,7 +551,7 @@ void LaunchTranspose(
 
 template <typename T>
 Status FusedAttentionTrt(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& /*device_prop*/,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedMultiHeadAttentionData<T>& data) {
@@ -566,19 +566,17 @@ Status FusedAttentionTrt(
   // When packed QKV is used, we can directly pass it to fused runner. Otherwise, we need transpose to BSN3H format.
   const T* qkv = data.query;
   if (!data.no_qkv_workspace) {
-    LaunchTranspose(data.query, data.key, data.value, data.bias, data.workspace,
-                    batch_size, sequence_length,
-                    num_heads, qk_head_size, v_head_size,
-                    data.source_qkv_format, AttentionQkvFormat::QKV_TN3H,
-                    data.token_offset, parameters.token_count, stream);
+    AddBiasTransposePacked(data.query, data.key, data.value, data.bias, data.workspace,
+                           batch_size, sequence_length,
+                           num_heads, qk_head_size, v_head_size,
+                           data.source_qkv_format, AttentionQkvFormat::QKV_TN3H,
+                           data.token_offset, parameters.token_count, stream);
     qkv = data.workspace;
   }
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(qkv, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len, qkv, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
@@ -603,11 +601,11 @@ Status FlashAttention(
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
-    LaunchTranspose(data.query, data.key, data.value, data.bias, data.workspace,
-                    batch_size, sequence_length,
-                    num_heads, qk_head_size, v_head_size,
-                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
-                    data.token_offset, parameters.token_count, stream);
+    AddBiasTransposePacked(data.query, data.key, data.value, data.bias, data.workspace,
+                           batch_size, sequence_length,
+                           num_heads, qk_head_size, v_head_size,
+                           data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
+                           data.token_offset, parameters.token_count, stream);
   }
 
   float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
@@ -631,6 +629,8 @@ Status FlashAttention(
           data.output,
           cu_seqlens_q,
           cu_seqlens_k,
+          nullptr,  // seqused_k
+          nullptr,  // block_table
           softmax_lse_buffer,
           batch_size,
           num_heads,
@@ -640,7 +640,7 @@ Status FlashAttention(
           sequence_length,
           scale,
           false,  // is causal
-          false  // is bf16
+          false   // is bf16
           ));
 
   DUMP_TENSOR_INIT();
@@ -675,11 +675,11 @@ Status FusedAttentionCutlass(
 
   // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
   if (!data.no_qkv_workspace) {
-    LaunchTranspose(data.query, data.key, data.value, data.bias, data.workspace,
-                    batch_size, sequence_length,
-                    num_heads, qk_head_size, v_head_size,
-                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
-                    data.token_offset, parameters.token_count, stream);
+    AddBiasTransposePacked(data.query, data.key, data.value, data.bias, data.workspace,
+                           batch_size, sequence_length,
+                           num_heads, qk_head_size, v_head_size,
+                           data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
+                           data.token_offset, parameters.token_count, stream);
   }
 
   MemoryEfficientAttentionParams p;
@@ -746,11 +746,11 @@ Status UnfusedAttention(
   const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
 
   // Q, K and V pointers when fused attention is not used
-  LaunchTranspose(data.query, data.key, data.value, data.bias, data.workspace,
-                  batch_size, sequence_length,
-                  num_heads, qk_head_size, v_head_size,
-                  data.source_qkv_format, AttentionQkvFormat::Q_K_V_BNSH,
-                  data.token_offset, parameters.token_count, stream);
+  AddBiasTransposePacked(data.query, data.key, data.value, data.bias, data.workspace,
+                         batch_size, sequence_length,
+                         num_heads, qk_head_size, v_head_size,
+                         data.source_qkv_format, AttentionQkvFormat::Q_K_V_BNSH,
+                         data.token_offset, parameters.token_count, stream);
 
   T* qkv = data.workspace;
   T* q = qkv;
@@ -847,6 +847,22 @@ Status QkvToContext(
 
   return UnfusedAttention<T>(device_prop, cublas, stream, parameters, data);
 }
+
+template void AddBiasTransposePacked<half>(
+    const half* query, const half* key, const half* value, const half* bias, half* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
+template void AddBiasTransposePacked<float>(
+    const float* query, const float* key, const float* value, const float* bias, float* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,

@@ -50,9 +50,11 @@ def _build_for_apple_sysroot(
     # Build binary for each arch, one by one
     for current_arch in archs:
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
+        # Use MacOS SDK for Catalyst builds
+        apple_sysroot = "macosx" if sysroot == "macabi" else sysroot
         build_command = [
             *base_build_command,
-            "--apple_sysroot=" + sysroot,
+            "--apple_sysroot=" + apple_sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -65,9 +67,11 @@ def _build_for_apple_sysroot(
             build_dir_current_arch,
             build_config,
             build_config + "-" + sysroot,
-            "onnxruntime.framework"
-            if build_dynamic_framework
-            else os.path.join("static_framework", "onnxruntime.framework"),
+            (
+                "onnxruntime.framework"
+                if build_dynamic_framework
+                else os.path.join("static_framework", "onnxruntime.framework")
+            ),
         )
         ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
 
@@ -85,18 +89,52 @@ def _build_for_apple_sysroot(
     pathlib.Path(framework_dir).mkdir(parents=True, exist_ok=True)
 
     # copy the Info.plist, framework_info.json, and header files
-    shutil.copy(info_plist_path, framework_dir)
-    shutil.copy(framework_info_path, os.path.dirname(framework_dir))
-    header_dir = os.path.join(framework_dir, "Headers")
-    pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
-    for _header in headers:
-        shutil.copy(_header, header_dir)
 
-    # use lipo to create a fat ort library
-    lipo_command = ["lipo", "-create"]
-    lipo_command += ort_libs
-    lipo_command += ["-output", os.path.join(framework_dir, "onnxruntime")]
-    subprocess.run(lipo_command, shell=False, check=True)
+    # macos requires different framework structure:
+    # https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/FrameworkAnatomy.html
+    if sysroot == "macosx" or sysroot == "macabi":
+        # create headers and resources directory
+        header_dir = os.path.join(framework_dir, "Versions", "A", "Headers")
+        resource_dir = os.path.join(framework_dir, "Versions", "A", "Resources")
+        pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(resource_dir).mkdir(parents=True, exist_ok=True)
+
+        shutil.copy(info_plist_path, resource_dir)
+        shutil.copy(framework_info_path, os.path.dirname(framework_dir))
+
+        for _header in headers:
+            shutil.copy(_header, header_dir)
+
+        # use lipo to create a fat ort library
+        lipo_command = ["lipo", "-create"]
+        lipo_command += ort_libs
+        lipo_command += ["-output", os.path.join(framework_dir, "Versions", "A", "onnxruntime")]
+        subprocess.run(lipo_command, shell=False, check=True)
+
+        # create the symbolic link
+        pathlib.Path(os.path.join(framework_dir, "Versions", "Current")).symlink_to("A", target_is_directory=True)
+        pathlib.Path(os.path.join(framework_dir, "Headers")).symlink_to(
+            "Versions/Current/Headers", target_is_directory=True
+        )
+        pathlib.Path(os.path.join(framework_dir, "Resources")).symlink_to(
+            "Versions/Current/Resources", target_is_directory=True
+        )
+        pathlib.Path(os.path.join(framework_dir, "onnxruntime")).symlink_to("Versions/Current/onnxruntime")
+
+    else:
+        shutil.copy(info_plist_path, framework_dir)
+        shutil.copy(framework_info_path, os.path.dirname(framework_dir))
+        header_dir = os.path.join(framework_dir, "Headers")
+        pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
+
+        for _header in headers:
+            shutil.copy(_header, header_dir)
+
+        # use lipo to create a fat ort library
+        lipo_command = ["lipo", "-create"]
+        lipo_command += ort_libs
+        lipo_command += ["-output", os.path.join(framework_dir, "onnxruntime")]
+        subprocess.run(lipo_command, shell=False, check=True)
 
     return framework_dir
 
@@ -162,7 +200,7 @@ def _build_package(args):
     xcframework_dir = os.path.join(build_dir, "framework_out")
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
-    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True)
+    shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True, symlinks=True)
     _merge_framework_info_files(framework_info_files_to_merge, os.path.join(build_dir, "xcframework_info.json"))
 
     # remove existing xcframework if any
@@ -183,7 +221,7 @@ def parse_args():
         os.path.basename(__file__),
         description="""Create iOS framework and podspec for one or more osx_archs (xcframework)
         and building properties specified in the given build config file, see
-        tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json for details.
+        tools/ci_build/github/apple/default_full_apple_framework_build_settings.json for details.
         The output of the final xcframework and podspec can be found under [build_dir]/framework_out.
         Please note, this building script will only work on macOS.
         """,

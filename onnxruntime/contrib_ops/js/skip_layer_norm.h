@@ -11,19 +11,20 @@ namespace js {
 
 using onnxruntime::js::JsKernel;
 
+template <bool simplified>
 class SkipLayerNorm final : public JsKernel {
  public:
   SkipLayerNorm(const OpKernelInfo& op_kernel_info) : JsKernel(op_kernel_info) {
-    ORT_ENFORCE(op_kernel_info.GetAttr("epsilon", &epsilon_).IsOK());
-    ORT_ENFORCE(epsilon_ >= 0);
+    float epsilon;
+    ORT_ENFORCE(op_kernel_info.GetAttr("epsilon", &epsilon).IsOK());
+    ORT_ENFORCE(epsilon >= 0);
     JSEP_INIT_KERNEL_ATTRIBUTE(SkipLayerNormalization, ({
-                                 "epsilon" : $1
+                                 "epsilon" : $1,
+                                 "simplified" : !!$2
                                }),
-                               epsilon_);
+                               epsilon,
+                               static_cast<int32_t>(simplified));
   }
-
- private:
-  float epsilon_;
 };
 
 }  // namespace js

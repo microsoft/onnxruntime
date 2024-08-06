@@ -268,7 +268,7 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
     //[FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kW] -> [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kH=1, kW]
     context.inputs[1].reshape([context.inputs[1].dims[0], context.inputs[1].dims[1], 1, context.inputs[1].dims[2]])
   ];
-  if (inputs.length === 3) {
+  if (context.inputs.length === 3) {
     inputs.push(context.inputs[2]);
   }
   let kernelShape = attributes.kernelShape;

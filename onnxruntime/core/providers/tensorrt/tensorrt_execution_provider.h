@@ -3,10 +3,15 @@
 
 #pragma once
 #include <ctime>
+#ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
-#include <cublas_v2.h>
-#include "NvInfer.h"
-#include "NvOnnxParser.h"
+#else
+typedef void* cudnnHandle_t;
+typedef void* cublasHandle_t;
+typedef void* cudnnStatus_t;
+#endif
+#include "core/providers/tensorrt/nv_includes.h"
+
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
@@ -26,7 +31,9 @@ static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
-// As a timing cache can be used across multiple ONNX files it makes sense to have a seperate cache path
+static const std::string kWeightStrippedEngineEnable = "ORT_TENSORRT_WEIGHT_STRIPPED_ENGINE_ENABLE";
+static const std::string kOnnxModelFolderPath = "ORT_TENSORRT_ONNX_MODEL_FOLDER_PATH";
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
 static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
@@ -84,6 +91,12 @@ class TensorrtLogger : public nvinfer1::ILogger {
       }
     }
   }
+  void set_level(Severity verbosity) {
+    verbosity_ = verbosity;
+  }
+  Severity get_level() const {
+    return verbosity_;
+  }
 };
 
 namespace tensorrt_ptr {
@@ -107,8 +120,11 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
+#if NV_TENSORRT_MAJOR >= 10
+  void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
+#else
   void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-
+#endif
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {
@@ -133,6 +149,10 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
   std::vector<int64_t> output_shapes;
 };
 
+/*
+ * This map saves the dimension range of the shape of the shape tensor or execution tensor:
+ * tensor name -> ( dimension -> [min, max, opt] )
+ */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Information to construct kernel function state.
@@ -180,6 +200,7 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
+  bool engine_hw_compatible = false;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -206,6 +227,7 @@ struct SubGraphContext {
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
+std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -249,8 +271,18 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   bool IsGraphCaptureEnabled() const override;
-  bool IsGraphCaptured() const override;
-  Status ReplayGraph() override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
+
+  static common::Status RefitEngine(std::string onnx_model_filename,
+                                    std::string& onnx_model_folder_path,
+                                    std::string& weight_stripped_engine_cath_path,
+                                    bool path_check,
+                                    const void* onnx_model_bytestream,
+                                    size_t onnx_model_bytestream_size,
+                                    nvinfer1::ICudaEngine* trt_engine,
+                                    bool serialize_refitted_engine,
+                                    bool detailed_build_log);
 
  private:
   mutable TensorrtExecutionProviderInfo info_;
@@ -269,6 +301,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
+  bool weight_stripped_engine_enable_ = false;
+  bool weight_stripped_engine_refit_ = false;
+  std::string onnx_model_folder_path_;
+  const void* onnx_model_bytestream_;
+  size_t onnx_model_bytestream_size_;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;
@@ -292,6 +329,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
+  bool engine_hw_compatible_ = false;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
@@ -372,10 +410,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
     bool IsGraphCaptureAllowed() const;
-    void CaptureBegin();
-    void CaptureEnd();
-    bool IsGraphCaptured() const;
-    Status ReplayGraph();
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
@@ -539,14 +577,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
+  void CaptureBegin(int graph_annotation_id);
+  void CaptureEnd(int graph_annotation_id);
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**
    * Get the pointer to the IBuilder instance.
    * This function only creates the instance at the first time it's being called."
    */
-  nvinfer1::IBuilder* GetBuilder() const;
+  nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 };
 }  // namespace onnxruntime

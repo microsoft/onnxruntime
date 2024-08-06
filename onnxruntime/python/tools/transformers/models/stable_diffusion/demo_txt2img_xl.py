@@ -132,9 +132,11 @@ def run_demo(args):
 
 
 def run_dynamic_shape_demo(args):
-    """Run demo of generating images with different settings with ORT CUDA provider."""
+    """
+    Run demo of generating images with different settings with ORT CUDA provider.
+    Try "python demo_txt2img_xl.py --max-cuda-graphs 3 --user-compute-stream" to see the effect of multiple CUDA graphs.
+    """
     args.engine = "ORT_CUDA"
-    args.disable_cuda_graph = True
     base, refiner = load_pipelines(args, 1)
 
     prompts = [
@@ -216,7 +218,6 @@ def run_dynamic_shape_demo(args):
 def run_turbo_demo(args):
     """Run demo of generating images with test prompts with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
-    args.disable_cuda_graph = True
     base, refiner = load_pipelines(args, 1)
 
     from datasets import load_dataset
@@ -239,13 +240,7 @@ def run_turbo_demo(args):
         refiner.teardown()
 
 
-if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
-
-    parser = arg_parser("Options for Stable Diffusion XL Demo")
-    add_controlnet_arguments(parser)
-    args = parse_arguments(is_xl=True, parser=parser)
-
+def main(args):
     no_prompt = isinstance(args.prompt, list) and len(args.prompt) == 1 and not args.prompt[0]
     if no_prompt:
         if args.version == "xl-turbo":
@@ -254,3 +249,20 @@ if __name__ == "__main__":
             run_dynamic_shape_demo(args)
     else:
         run_demo(args)
+
+
+if __name__ == "__main__":
+    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+
+    parser = arg_parser("Options for Stable Diffusion XL Demo")
+    add_controlnet_arguments(parser)
+    args = parse_arguments(is_xl=True, parser=parser)
+
+    if args.user_compute_stream:
+        import torch
+
+        s = torch.cuda.Stream()
+        with torch.cuda.stream(s):
+            main(args)
+    else:
+        main(args)

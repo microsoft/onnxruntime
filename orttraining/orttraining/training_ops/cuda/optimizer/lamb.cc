@@ -582,7 +582,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     // Allocate a buffer in byte for reduction API calls.
     size_t rbs = compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
-    // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
+    // Enlarge reduction buffer to accommodate multi-tensor reduction kernel as well
     constexpr int tensor_group_size = 4;  // w, d, w_norm, d_norm
     constexpr int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
     constexpr size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);

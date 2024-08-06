@@ -33,19 +33,21 @@
   )
 
 
-  if (onnxruntime_CUDA_MINIMAL)
-    set(onnxruntime_providers_cuda_shared_srcs "")
-  else()
+  if (NOT onnxruntime_CUDA_MINIMAL)
     file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
     )
+  else()
+    set(onnxruntime_providers_cuda_cu_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        )
   endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
   # disable contrib ops conditionally
-  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
@@ -122,7 +124,7 @@
   endif()
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
-    # add to the lib onnxruntime_providers_cuda separatedly.
+    # added to the lib onnxruntime_providers_cuda separately.
     # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
     set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
     list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
@@ -141,18 +143,22 @@
     if (HAS_GUARD_CF)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
     endif()
+
     if (HAS_QSPECTRE)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
     endif()
+
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
     endforeach()
+
     # CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
+      set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
+
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
@@ -162,6 +168,17 @@
       #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+      if (MSVC)
+        # the VS warnings for 'Conditional Expression is Constant' are spurious as they don't handle multiple conditions
+        # e.g. `if (std::is_same_v<T, float> && not_a_const)` will generate the warning even though constexpr cannot
+        # be used due to `&& not_a_const`. This affects too many places for it to be reasonable to disable at a finer
+        # granularity.
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
+      endif()
+    endif()
+
+    if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
@@ -180,14 +197,18 @@
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
-              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-      if(onnxruntime_CUDNN_HOME)
-          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      include(cudnn_frontend) # also defines CUDNN::*
+      if (onnxruntime_USE_CUDA_NHWC_OPS)
+        if(CUDNN_MAJOR_VERSION GREATER 8)
+          add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
+        else()
+          message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
+        endif()
       endif()
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
-    
+
     if (onnxruntime_USE_TRITON_KERNEL)
       # compile triton kernel, generate .a and .h files
       include(onnxruntime_compile_triton_kernel.cmake)
@@ -201,7 +222,7 @@
     endif()
 
     include(cutlass)
-    target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
+    target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
 
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES}
      PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
@@ -272,8 +293,15 @@
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
-
+  # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
+  set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"
+        "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_resource.h"
+      )
+  set_target_properties(onnxruntime_providers_cuda PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_cuda
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

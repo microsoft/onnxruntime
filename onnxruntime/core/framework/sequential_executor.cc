@@ -306,18 +306,20 @@ class KernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    auto& node = kernel_.Node();
-    profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
-    profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
-    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
-      // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
-               forward_range.IsBeginCalled()) {
-      // Start timing backward pass when encountering the first backward node.
-      // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
+    {
+      auto& node = kernel_.Node();
+      profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
+      profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
+      if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+        // Start timing forward pass when encountering the first forward node.
+        forward_range.Begin();
+      } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
+                 forward_range.IsBeginCalled()) {
+        // Start timing backward pass when encountering the first backward node.
+        // In the meanwhile, forward range ends.
+        forward_range.End();
+        backward_range.Begin();
+      }
     }
 #endif
 
@@ -440,7 +442,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
     // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
     // memory lingers while the tensor is used downstream after the export.
     ctx.RecycleNodeInputs(idx);
@@ -613,7 +615,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
 #ifdef ENABLE_TRAINING
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& feeds,
+                                          gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                               fetch_allocators,
@@ -624,8 +627,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,
                                           int32_t partial_graph_index) {
+  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
+
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));

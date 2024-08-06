@@ -23,7 +23,7 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-#if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
+#if defined(OPENVINO_CONFIG_CPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -117,6 +117,24 @@ TEST(MathOpTest, Clip_Default_uint64) {
 
   // TensorRT does not support Clip opset 12 yet.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(MathOpTest, Clip_MLFloat16) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f),
+                            MLFloat16(-4.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                            MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(8.0f)});
+  test.AddInput<MLFloat16>("min", {}, {MLFloat16(0.0f)});
+  test.AddInput<MLFloat16>("max", {}, {MLFloat16(6.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+                             MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                             MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(6.0f)});
+
+  test.Run();
 }
 
 TEST(MathOpTest, Clip_int32) {

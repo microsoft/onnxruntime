@@ -20,8 +20,15 @@ Abstract:
 #include <thread>
 #include <mutex>
 
-#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#if defined(MLAS_TARGET_POWER) 
+#if defined(__linux__)
 #include <sys/auxv.h>
+#elif defined(_AIX)
+#define POWER_10       0x40000
+#define POWER_10_ANDUP (POWER_10)
+#include <sys/systemcfg.h>
+#define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+#endif
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -274,6 +281,8 @@ Return Value:
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
     this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -373,6 +382,7 @@ Return Value:
                 this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
+                this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -399,6 +409,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
+                    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -421,6 +432,7 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
+                    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
@@ -438,6 +450,7 @@ Return Value:
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
                         this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
+                        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -450,6 +463,7 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
+                            this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }
@@ -541,11 +555,16 @@ Return Value:
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
     this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
     this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 
 #if defined(__linux__)
     unsigned long hwcap2 = getauxval(AT_HWCAP2);
 
     bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+#elif defined(_AIX)
+    bool HasP9Instructions = __power_9_andup();
+#endif // __linux__
     if (HasP9Instructions) {
         this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
         this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
@@ -554,7 +573,11 @@ Return Value:
 #if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
+#if defined(__linux__)
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+#elif defined(_AIX)
+    bool HasP10Instructions = (__power_10_andup() && __power_mma_version() == MMA_V31);
+#endif // __linux__
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
         this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
@@ -563,7 +586,6 @@ Return Value:
 #endif
 #endif
 
-#endif // __linux__
 #endif // MLAS_TARGET_POWER
 
 #if defined(MLAS_TARGET_LARCH64)
@@ -668,7 +690,6 @@ MlasPlatformU8S8Overflow(
 }
 
 #endif
-
 thread_local size_t ThreadedBufSize = 0;
 #ifdef _MSC_VER
 thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);

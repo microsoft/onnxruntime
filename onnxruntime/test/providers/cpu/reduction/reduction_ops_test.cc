@@ -43,7 +43,7 @@ void TestReduceOp(const std::string& op,
   test.AddAttribute("keepdims", keepdims);
   test.AddInput<float>("data", input_dims, data);
   test.AddOutput<OutT>("reduced", expected_dims, expected_data);
-#if defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // TensorRT,OpenVINO: result differs
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});  // TensorRT: result differs
@@ -263,6 +263,22 @@ TEST(ReductionOpTest, ReduceL1) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceL1_double) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {1, 2, 1}, {33.0f, 45.0f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceL1_int32) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -423,6 +439,23 @@ TEST(ReductionOpTest, ReduceL2) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceL2_double) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {2}, {15.71623325f, 20.07485962f});
+  test.Run();
+}
+
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL2_bfloat16) {
 #ifdef USE_DNNL
@@ -509,6 +542,25 @@ TEST(ReductionOpTest, ReduceLogSum) {
                         {1.38629436f, 1.79175949f,
                          2.48490667f, 2.6390574f,
                          2.99573231f, 3.09104252f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceLogSum_double) {
+  OpTester test("ReduceLogSum");
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {3, 1, 2},
+                         {1.38629436f, 1.79175949f,
+                          2.48490667f, 2.6390574f,
+                          2.99573231f, 3.09104252f});
   test.Run();
 }
 
@@ -1356,7 +1408,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
                           11, 12});
   test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
 
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
@@ -1377,7 +1429,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
                           9, 10,
                           11, 12});
   test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+#if defined(OPENVINO_CONFIG_GPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
@@ -1817,6 +1869,23 @@ TEST(ReductionOpTest, ReduceMean_int32) {
                           90, 100,
                           110, 120});
   test.AddOutput<int32_t>("reduced", {1, 2, 1}, {55, 75});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_int64) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {10, 20,
+                          30, 40,
+
+                          50, 60,
+                          70, 80,
+
+                          90, 100,
+                          110, 120});
+  test.AddOutput<int64_t>("reduced", {1, 2, 1}, {55, 75});
   test.Run();
 }
 
@@ -2989,6 +3058,22 @@ TEST(ReductionOpTest, ReduceProd) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceProd_double) {
+  OpTester test("ReduceProd");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f,
+
+                         5.0f, 6.0f,
+                         7.0f, 8.0f,
+
+                         9.0f, 10.0f,
+                         11.0f, 12.0f});
+  test.AddOutput<double>("reduced", {1, 2, 1}, {5400.f, 88704.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceProdAxesInitializerOpset18) {
   OpTester test("ReduceProd", 18);
   test.AddInput<float>("data", {3, 2, 2},
@@ -3541,6 +3626,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -3591,6 +3677,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
+                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -5779,6 +5866,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       {
           kCoreMLExecutionProvider,
           kCudaExecutionProvider,
+          kCudaNHWCExecutionProvider,
           kDmlExecutionProvider,
           kDnnlExecutionProvider,
           kMIGraphXExecutionProvider,

@@ -27,6 +27,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -37,10 +38,14 @@ function(get_c_cxx_api_headers HEADERS_VAR)
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    file(GLOB _provider_headers CONFIGURE_DEPENDS
-      "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
-    )
-    list(APPEND _headers ${_provider_headers})
+    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory 
+    # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
+    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+      file(GLOB _provider_headers CONFIGURE_DEPENDS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
+      )
+      list(APPEND _headers ${_provider_headers})
+    endif()
   endforeach()
 
   set(${HEADERS_VAR} ${_headers} PARENT_SCOPE)
@@ -57,6 +62,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
 endforeach()
 
+if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
   COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
     --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -66,6 +72,7 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+endif()
 if(WIN32)
   onnxruntime_add_shared_library(onnxruntime
     ${SYMBOL_FILE}
@@ -95,30 +102,33 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
     MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
-    SOVERSION ${ORT_VERSION}
     # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
-  onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
+  else()
+    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
+  endif()
   if (onnxruntime_USE_CUDA)
     set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
   endif()
 endif()
 
-add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
+else()
+  add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
+endif()
 target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
-target_compile_definitions(onnxruntime PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
-target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
+
 target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
-  else()
+  elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
@@ -130,7 +140,6 @@ if (NOT WIN32)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
-        SOVERSION ${ORT_VERSION}
         MACOSX_RPATH TRUE
         INSTALL_RPATH_USE_LINK_PATH FALSE
         BUILD_WITH_INSTALL_NAME_DIR TRUE
@@ -138,7 +147,7 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
@@ -146,7 +155,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
   # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
-  # affecting downstream ort library users with the behaviour of dummy __cxa_demangle. So the dummy
+  # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
   # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
   # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
   # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
@@ -189,6 +198,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
+  ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
@@ -205,11 +215,8 @@ set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_flatbuffers
 )
 
-if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_INTERNAL_LIBRARIES
-    onnxruntime_language_interop
-    onnxruntime_pyop
-  )
+if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
 endif()
 
 if (onnxruntime_USE_EXTENSIONS)
@@ -228,13 +235,30 @@ target_link_libraries(onnxruntime PRIVATE
 )
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-set_target_properties(onnxruntime PROPERTIES
-  PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-  LINK_DEPENDS ${SYMBOL_FILE}
-  VERSION ${ORT_VERSION}
-  FOLDER "ONNXRuntime"
-)
-
+#See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
+if(NOT APPLE AND NOT WIN32)
+  if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    set_target_properties(onnxruntime PROPERTIES
+      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+      VERSION ${ORT_VERSION}
+      SOVERSION 1
+      FOLDER "ONNXRuntime")
+  else()
+    set_target_properties(onnxruntime PROPERTIES
+      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+      LINK_DEPENDS ${SYMBOL_FILE}
+      VERSION ${ORT_VERSION}
+      SOVERSION 1
+      FOLDER "ONNXRuntime")
+  endif()
+else()
+  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    FOLDER "ONNXRuntime")
+endif()
 install(TARGETS onnxruntime
         EXPORT ${PROJECT_NAME}Targets
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
@@ -281,7 +305,13 @@ endif()
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+  # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
+  # we specify as `-macabi` in the name of the output static apple framework directory.
+  if (PLATFORM_NAME STREQUAL "macabi")
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-macabi)
+  else()
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+  endif()
 
   # Setup the various directories required. Remove any existing ones so we start with a clean directory.
   set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)
@@ -299,18 +329,34 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # to enforce symbol visibility. doing it this way limits the symbols included from the .a files to symbols used
   # by the ORT .o files.
 
-  # If it's an onnxruntime library, extract .o files to a separate directory for each library to avoid any clashes
-  # with filenames (e.g. utils.o)
+  # If it's an onnxruntime library, extract .o files from the original cmake build path to a separate directory for
+  # each library to avoid any clashes with filenames (e.g. utils.o)
   foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
       set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/$<TARGET_LINKER_FILE_BASE_NAME:${_LIB}>)
       add_custom_command(TARGET onnxruntime POST_BUILD
                          COMMAND ${CMAKE_COMMAND} -E make_directory ${CUR_STATIC_LIB_OBJ_DIR})
-
-      add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
-                         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      if (PLATFORM_NAME STREQUAL "macabi")
+        # There exists several duplicate names for source files under different subdirectories within
+        # each onnxruntime library. (e.g. onnxruntime/contrib_ops/cpu/element_wise_ops.o
+        # vs. onnxruntime/providers/core/cpu/math/element_wise_ops.o)
+        # In that case, using 'ar ARGS -x' to extract the .o files from .a lib would possibly cause duplicate naming files being overwritten
+        # and lead to missing undefined symbol error in the generated binary.
+        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR}
+        # and verifies that matches the content of the .a, and then copy from the source dir.
+        # TODO: The copying action here isn't really necessary. For future fix, consider using the script extracts from the ar with the rename to potentially
+        # make both maccatalyst and other builds do the same thing.
+        set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                          COMMAND ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
+                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
+                          WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      else()
+        add_custom_command(TARGET onnxruntime POST_BUILD
+        COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+        WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
+      endif()
     endif()
   endforeach()
 

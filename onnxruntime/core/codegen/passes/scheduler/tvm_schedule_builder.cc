@@ -39,7 +39,7 @@ void TVMScheduleBuilder::DumpAllSchedulers() const {
 
     d->ForEach([&stream](const std::string& key, Scheduler* op) {
       stream << "Key " << key
-             << ", Creater " << op->Name() << std::endl;
+             << ", Creator " << op->Name() << std::endl;
     });
 
     ++count;

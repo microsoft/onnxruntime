@@ -13,6 +13,9 @@ import onnx
 from onnxruntime.tools.convert_onnx_models_to_ort import OptimizationStyle, convert_onnx_models_to_ort
 from onnxruntime.training import onnxblock
 
+# threshold for the size of the modelproto where you should use a path instead
+USE_PATH_THRESHOLD = 2147483648
+
 
 class LossType(Enum):
     """Loss type to be added to the training model.
@@ -37,11 +40,11 @@ class OptimType(Enum):
 
 
 def generate_artifacts(
-    model: onnx.ModelProto,
+    model: Union[onnx.ModelProto, str],
     requires_grad: Optional[List[str]] = None,
     frozen_params: Optional[List[str]] = None,
     loss: Optional[Union[LossType, onnxblock.Block]] = None,
-    optimizer: Optional[OptimType] = None,
+    optimizer: Optional[Union[OptimType, onnxblock.Block]] = None,
     artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
     prefix: str = "",
     ort_format: bool = False,
@@ -61,11 +64,12 @@ def generate_artifacts(
     All generated ModelProtos will use the same opsets defined by *model*.
 
     Args:
-        model: The base model to be used for gradient graph generation.
+        model: The base model or path to the base model to be used for gradient graph generation. For models >2GB,
+            use the path to the base model.
         requires_grad: List of names of model parameters that require gradient computation
         frozen_params: List of names of model parameters that should be frozen.
-        loss: The loss function enum to be used for training. If None, no loss node is added to the graph.
-        optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
+        loss: The loss function enum or onnxblock to be used for training. If None, no loss node is added to the graph.
+        optimizer: The optimizer enum or onnxblock to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
             If None, the current working directory is used.
         prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
@@ -85,6 +89,22 @@ def generate_artifacts(
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
         RuntimeError: If the optimizer provided is not one of the supported optimizers.
     """
+
+    loaded_model = None
+    model_path = None
+
+    if isinstance(model, str):
+        loaded_model = onnx.load(model)
+        model_path = model
+    elif isinstance(model, onnx.ModelProto):
+        if model.ByteSize() > USE_PATH_THRESHOLD:
+            # infer_shapes and check_model from ONNX both require paths to be used for >2GB models.
+            raise RuntimeError("This model is > 2GB. Please pass in a path to the ONNX file instead.")
+
+        loaded_model = model
+        model_path = None
+    else:
+        raise RuntimeError("Please pass in either a string or an ONNX ModelProto for the model.")
 
     loss_blocks = {
         LossType.MSELoss: onnxblock.loss.MSELoss,
@@ -165,12 +185,12 @@ def generate_artifacts(
         logging.info("Custom op library provided: %s", custom_op_library)
         custom_op_library_path = pathlib.Path(custom_op_library)
 
-    with onnxblock.base(model), (
+    with onnxblock.base(loaded_model, model_path), (
         onnxblock.custom_op_library(custom_op_library_path)
         if custom_op_library is not None
         else contextlib.nullcontext()
     ):
-        _ = training_block(*[output.name for output in model.graph.output])
+        _ = training_block(*[output.name for output in loaded_model.graph.output])
         training_model, eval_model = training_block.to_model_proto()
         model_params = training_block.parameters()
 
@@ -219,24 +239,27 @@ def generate_artifacts(
         logging.info("No optimizer enum provided. Skipping optimizer model generation.")
         return
 
-    if not isinstance(optimizer, OptimType):
-        raise RuntimeError(
-            f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be of type "
-            "onnxruntime.training.artifacts.OptimType."
-        )
-
-    logging.info("Optimizer enum provided: %s", optimizer.name)
-
     opset_version = None
-    for domain in model.opset_import:
+    for domain in loaded_model.opset_import:
         if domain.domain == "" or domain.domain == "ai.onnx":
             opset_version = domain.version
             break
 
     optim_model = None
     optim_blocks = {OptimType.AdamW: onnxblock.optim.AdamW, OptimType.SGD: onnxblock.optim.SGD}
+    optim_block = None
+    if isinstance(optimizer, OptimType):
+        logging.info("Optimizer enum provided: %s", optimizer.name)
+        optim_block = optim_blocks[optimizer]()
+    elif isinstance(optimizer, onnxblock.Block):
+        logging.info("Optimizer block provided: %s", optimizer.__class__.__name__)
+        optim_block = optimizer
+    else:
+        raise TypeError(
+            f"Unknown optimizer provided {type(optimizer)}. Expected optimizer to be either one of"
+            "onnxruntime.training.artifacts.OptimType or onnxruntime.training.onnxblock.Block."
+        )
 
-    optim_block = optim_blocks[optimizer]()
     with onnxblock.empty_base(opset_version=opset_version):
         _ = optim_block(model_params)
         optim_model = optim_block.to_model_proto()

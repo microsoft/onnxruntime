@@ -190,7 +190,7 @@ def main():
     device_candidates = ["cuda", "cpu"]
     test_data_step_count = 11
     for device in device_candidates:
-        for adam_mode in range(0, 2):
+        for adam_mode in range(2):
             generate_adamw_single_weight_tests(adam_mode, test_data_step_count, device)
             generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count, device)
 

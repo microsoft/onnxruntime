@@ -26,23 +26,52 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
+
+// ortenv_setup is used by /onnxruntime/test/xctest/xcgtest.mm so can't be file local
 void ortenv_setup() {
   OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+
+  // allow verbose logging to be enabled by setting this environment variable to a numeric log level
+  constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
+  OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
+  if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
+      log_level_override.has_value()) {
+    *log_level_override = std::clamp(*log_level_override,
+                                     static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                                     static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+    std::cout << "Setting log level to " << *log_level_override << "\n";
+    log_level = static_cast<OrtLoggingLevel>(*log_level_override);
+  }
+
+  ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
 }
 
 #ifdef USE_TENSORRT
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
+#endif
+
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
 // every single unit test, which leads to excessive test execution time due to that overhead.
 // Nvidia suggests to keep a placeholder builder object around to avoid this.
 #include "NvInfer.h"
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
 class DummyLogger : public nvinfer1::ILogger {
  public:
-  DummyLogger(Severity verbosity) {}
-  void log(Severity severity, const char* msg) noexcept override {}
+  DummyLogger(Severity /*verbosity*/) {}
+  void log(Severity /*severity*/, const char* /*msg*/) noexcept override {}
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
+
 auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+
 #endif
 
 #define TEST_MAIN main
@@ -61,17 +90,6 @@ int TEST_MAIN(int argc, char** argv) {
   ORT_TRY {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
-
-    // allow verbose logging to be enabled by setting this environment variable to a numeric log level
-    constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
-    if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
-        log_level.has_value()) {
-      *log_level = std::clamp(*log_level,
-                              static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
-                              static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
-      std::cout << "Setting log level to " << *log_level << "\n";
-      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
-    }
 
     status = RUN_ALL_TESTS();
   }

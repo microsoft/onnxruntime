@@ -6,7 +6,7 @@
 #include <random>
 #include <type_traits>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "gtest/gtest.h"
 
@@ -115,6 +115,19 @@ inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 star
   float f_step = step.ToFloat();
   for (size_t i = 0; i < count; ++i) {
     result.emplace_back(MLFloat16(curr));
+    curr += f_step;
+  }
+  return result;
+}
+
+template <>
+inline std::vector<BFloat16> ValueRange<BFloat16>(size_t count, BFloat16 start, BFloat16 step) {
+  std::vector<BFloat16> result;
+  result.reserve(count);
+  float curr = start.ToFloat();
+  float f_step = step.ToFloat();
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(BFloat16(curr));
     curr += f_step;
   }
   return result;

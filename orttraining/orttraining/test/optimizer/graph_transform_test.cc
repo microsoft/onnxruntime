@@ -25,6 +25,7 @@
 #include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/optimizer/cast_sce_loss_fusion.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
@@ -518,6 +519,22 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   }
 }
 
+TEST_F(GraphTransformationTests, CastSceLossFusion) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "computation_reduction/reshape/mlm_bert_e2e.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Cast"], 10);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CastSceLossFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Cast"], 9);
+}
+
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -610,7 +627,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "mlp_megatron_basic_test_partition_rank0.onnx";
+  PathString model_uri2 = ORT_TSTR("mlp_megatron_basic_test_partition_rank0.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -688,7 +705,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "mlp_megatron_basic_test_partition_rank1.onnx";
+  PathString model_uri2 = ORT_TSTR("mlp_megatron_basic_test_partition_rank1.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -748,7 +765,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
 }
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
-  auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
+  PathString model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -764,7 +781,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "self_attention_megatron_basic_test_partition_rank0.onnx";
+  PathString model_uri2 = ORT_TSTR("self_attention_megatron_basic_test_partition_rank0.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -821,7 +838,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
 }
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
-  auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
+  PathString model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -839,7 +856,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "self_attention_megatron_basic_test_partition_rank1.onnx";
+  PathString model_uri2 = ORT_TSTR("self_attention_megatron_basic_test_partition_rank1.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -896,7 +913,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
 }
 
 TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
-  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
+  PathString model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -1200,7 +1217,7 @@ TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
   ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
 }
 
-TEST_F(GraphTransformationTests, Conv1dReplacement) {
+TEST_F(GraphTransformationTests, Conv1dReplacement_TakeEffect) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_map = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
@@ -1208,7 +1225,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement) {
   };
 
   for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
-    for (auto group : {1, 2}) {
+    for (auto group : {1, 2, 4}) {
       auto build_test_case = [&](ModelTestBuilder& builder) {
         auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
         auto out_channel = 64;
@@ -1222,6 +1239,8 @@ TEST_F(GraphTransformationTests, Conv1dReplacement) {
         conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
         conv_node.AddAttribute("strides", std::vector<int64_t>{1});
         conv_node.AddAttribute("group", static_cast<int64_t>(group));
+        conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0});
+        conv_node.AddAttribute("auto_pad", "NOTSET");
       };
 
       auto post_graph_checker = [&](Graph& graph) {
@@ -1243,28 +1262,31 @@ TEST_F(GraphTransformationTests, Conv1dReplacement) {
   }
 }
 
-TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
+// node has bias input so conv not replaced
+TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect1) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_map = CountOpsInGraph(graph);
     TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
     return Status::OK();
   };
 
-  // "group" is 3 so conv not replaced
   for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
       auto out_channel = 64;
       auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
 
-      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / 3, 1}, {-1.0f, 1.0f});
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* bias_arg = builder.MakeInitializer<float>({out_channel}, {-1.0f, 1.0f});
       auto* conv_output = builder.MakeOutput();
 
-      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg, bias_arg}, {conv_output});
       conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
       conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
       conv_node.AddAttribute("strides", std::vector<int64_t>{1});
-      conv_node.AddAttribute("group", static_cast<int64_t>(3));
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0});
+      conv_node.AddAttribute("auto_pad", "NOTSET");
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
@@ -1272,8 +1294,16 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
                                           TransformerLevel::Level1, 1,
                                           pre_graph_checker, pre_graph_checker));
   }
+}
 
-  // "kernel_shape" is not 1 so conv not replaced
+// "auto_pad " is not NOTSET so conv not replaced
+TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect2) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
   for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
@@ -1285,9 +1315,44 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
 
       auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
       conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
-      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
       conv_node.AddAttribute("strides", std::vector<int64_t>{1});
       conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0});
+      conv_node.AddAttribute("auto_pad", "VALID");
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
+  }
+}
+
+// pads is not all zero, so conv not replaced
+TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect3) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+      auto out_channel = 64;
+      auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* conv_output = builder.MakeOutput();
+
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 0});
+      conv_node.AddAttribute("auto_pad", "NOTSET");
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
@@ -1332,7 +1397,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
         TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
     graphs.push_back(&graph);
-    auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
+    PathString model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
     ASSERT_STATUS_OK(Model::Save(*p_models[i], model_uri2));
   }
 
@@ -1340,7 +1405,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
   auto& combine_graph = combine_model.MainGraph();
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
-  auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
+  PathString model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
   ASSERT_STATUS_OK(Model::Save(combine_model, model_uri2));
 
   float scale = 1.f;
@@ -1725,7 +1790,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
 
 #ifdef ENABLE_TRITON
 TEST_F(GraphTransformationTests, TritonFusion) {
-  auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+  PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
@@ -1740,7 +1805,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 4);
 
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1780,7 +1845,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // No Dropout.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1819,7 +1884,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // Ignore min nodes.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1859,7 +1924,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // Exclude Softmax using axis attribute.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();

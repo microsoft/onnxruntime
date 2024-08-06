@@ -5,17 +5,13 @@ parameters:
   default: 'onnxruntime-qnn-windows-vs-2022-arm64'
 
 - name: QNN_SDK
-  displayName: QNN Windows SDK path
+  displayName: QNN SDK Version
   type: string
-  default: qnn-v2.18.0.240101_win
+  default: 2.24.0.240626
 
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-
-- name: NUMPY_VERSION
-  type: string
-  default: '1.25.2'
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -37,17 +33,12 @@ jobs:
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
-    QNN_SDK_ROOTDIR: 'C:\data\qnnsdk\${{parameters.QNN_SDK}}'
   steps:
       - checkout: self
         clean: true
         submodules: recursive
 
       - template: telemetry-steps.yml
-
-      - script: |
-          DIR C:\data\qnnsdk
-        displayName: Check available QNN SDKs
 
       - script: |
           MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
@@ -75,11 +66,15 @@ jobs:
           scriptSource: inline
           script: |
             import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', 'numpy==${{parameters.NUMPY_VERSION}}'])
+            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel'])
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
 
       - template: set-nightly-build-option-variable-step.yml
+
+      - template: jobs/download_win_qnn_sdk.yml
+        parameters:
+          QnnSDKVersion: ${{ parameters.QNN_SDK }}
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
@@ -91,10 +86,9 @@ jobs:
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
             --use_qnn
-            --qnn_home $(QNN_SDK_ROOTDIR)
+            --qnn_home $(QnnSDKRootDir)
             --enable_pybind
             --parallel --update
-            --numpy_version ${{ parameters.NUMPY_VERSION }}
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -116,13 +110,13 @@ jobs:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: true
-          Pattern: '*.pyd,*.dll'
+          Pattern: '*.pyd'
 
       - task: PythonScript@0
         displayName: 'Build wheel'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=qnn'
+          arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
       - task: CopyFiles@2

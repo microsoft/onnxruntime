@@ -16,7 +16,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace cuda {
@@ -71,9 +71,27 @@ class ToCudaType<Float8E4M3FN> {
 };
 
 template <>
+class ToCudaType<Float8E4M3FNUZ> {
+ public:
+  typedef Float8E4M3FNUZ MappedType;
+  static MappedType FromFloat(float f) {
+    return MappedType(f);
+  }
+};
+
+template <>
 class ToCudaType<Float8E5M2> {
  public:
   typedef Float8E5M2 MappedType;
+  static MappedType FromFloat(float f) {
+    return MappedType(f);
+  }
+};
+
+template <>
+class ToCudaType<Float8E5M2FNUZ> {
+ public:
+  typedef Float8E5M2FNUZ MappedType;
   static MappedType FromFloat(float f) {
     return MappedType(f);
   }

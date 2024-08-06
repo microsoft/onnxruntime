@@ -7,9 +7,9 @@
 
 namespace Dml
 {
-    PooledUploadHeap::PooledUploadHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext)
+    PooledUploadHeap::PooledUploadHeap(ID3D12Device* device, ExecutionContext* executionContext)
         : m_device(device)
-        , m_executionContext(std::move(executionContext))
+        , m_executionContext(executionContext)
     {
     }
 

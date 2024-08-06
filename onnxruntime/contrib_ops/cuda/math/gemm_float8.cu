@@ -174,7 +174,7 @@ Status GemmFloat8::ComputeGemm(
     int32_t dtype_A, int32_t dtype_B,
     int32_t dtype_C, int32_t dtype_Y,
     const TensorShape& shape_A, const TensorShape& shape_B,
-    const TensorShape& shape_C, const TensorShape& shape_Y,
+    const TensorShape& shape_C, const TensorShape& /*shape_Y*/,
     bool trans_A, bool trans_B, const void* p_input_a, const void* p_input_b,
     const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
     const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
@@ -207,7 +207,7 @@ Status GemmFloat8::ComputeGemm(
 #endif
         case CUDA_R_8F_E4M3:
         case CUDA_R_8F_E5M2:
-          compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+          compute_type = CUBLAS_COMPUTE_32F;
           break;
 #endif
         default:
@@ -219,7 +219,7 @@ Status GemmFloat8::ComputeGemm(
       compute_type = CUBLAS_COMPUTE_32F_FAST_16BF;
       break;
     case CUDA_R_32F:
-      compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
+      compute_type = CUBLAS_COMPUTE_32F;
       break;
     default:
       ORT_THROW("Unable to determine computeType in operator GemmFloat8.");

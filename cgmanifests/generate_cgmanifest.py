@@ -73,7 +73,7 @@ def add_github_dep(name, parsed_url):
             return
         # Make a REST call to convert to tag to a git commit
         url = f"https://api.github.com/repos/{org_name}/{repo_name}/git/refs/tags/{tag}"
-        print("requesting %s ..." % url)
+        print(f"requesting {url} ...")
         res = requests.get(url, auth=(args.username, args.token))
         response_json = res.json()
         tag_object = response_json["object"]
@@ -115,8 +115,8 @@ proc = subprocess.run(
 submodule_lines = proc.stdout.splitlines()
 for submodule_line in submodule_lines:
     (absolute_path, url, commit) = submodule_line.split(" ")
-    git_deps[GitDep(commit, url)] = "git submodule at {}".format(
-        normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))
+    git_deps[GitDep(commit, url)] = (
+        f"git submodule at {normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))}"
     )
 
 with open(os.path.join(SCRIPT_DIR, "..", "cmake", "deps.txt")) as f:

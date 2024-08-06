@@ -6,6 +6,9 @@
 import logging
 import tempfile
 from pathlib import Path
+from typing import Union
+
+import onnx
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
@@ -16,6 +19,7 @@ from .quant_utils import (
     QuantType,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
+    save_and_reload_model_with_shape_infer,
 )
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
@@ -182,6 +186,12 @@ class StaticQuantConfig(QuantConfig):
                                                        Invalid if also set `scale` or `zero_point`.
                             'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                        Invalid if also set `scale` or `zero_point`.
+                    QDQKeepRemovableActivations = True/False:
+                        Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                        will be explicitly represented in the QDQ model. If false, these activations are automatically
+                        removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                        optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                        operators from the model.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -280,8 +290,8 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
 
 
 def quantize_static(
-    model_input,
-    model_output,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     calibration_data_reader: CalibrationDataReader,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
@@ -304,7 +314,7 @@ def quantize_static(
 
     Args:
 
-        model_input: file path of model to quantize
+        model_input: file path of model or ModelProto to quantize
         model_output: file path of quantized model
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
@@ -371,6 +381,9 @@ def quantize_static(
                 CalibTensorRangeSymmetric = True/False :
                     Default is False. If enabled, the final range of tensor during calibration will be explicitly
                     set to symmetric to central point "0".
+                CalibStridedMinMax = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max, only stride amount of
+                    data will be used and then all results will be merged in the end.
                 CalibMovingAverage = True/False :
                     Default is False. If enabled, the moving average of the minimum and maximum values will be
                     computed when the calibration method selected is MinMax.
@@ -419,6 +432,12 @@ def quantize_static(
                                                    Invalid if also set `scale` or `zero_point`.
                         'rmin' = Float           : Override the minimum real tensor value in calibration data.
                                                    Invalid if also set `scale` or `zero_point`.
+                QDQKeepRemovableActivations = True/False:
+                    Default is False. If true, "removable" activations (e.g., Clip or Relu) will not be removed, and
+                    will be explicitly represented in the QDQ model. If false, these activations are automatically
+                    removed if activations are asymmetrically quantized. Keeping these activations is necessary if
+                    optimizations or EP transformations will later remove QuantizeLinear/DequantizeLinear
+                    operators from the model.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
@@ -435,7 +454,11 @@ def quantize_static(
         qdq_ops = list(QDQRegistry.keys())
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
-    model = load_model_with_shape_infer(Path(model_input))
+    model = (
+        save_and_reload_model_with_shape_infer(model_input)
+        if isinstance(model_input, onnx.ModelProto)
+        else load_model_with_shape_infer(Path(model_input))
+    )
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -485,6 +508,15 @@ def quantize_static(
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        if isinstance(model_input, onnx.ModelProto):
+            output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            onnx.save_model(
+                model_input,
+                output_path,
+                save_as_external_data=True,
+            )
+            model_input = output_path
+
         calibrator = create_calibrator(
             Path(model_input),
             op_types_to_quantize,
@@ -493,7 +525,19 @@ def quantize_static(
             use_external_data_format=use_external_data_format,
             extra_options=calib_extra_options,
         )
-        calibrator.collect_data(calibration_data_reader)
+
+        stride = extra_options.get("CalibStridedMinMax", None)
+        if stride:
+            total_data_size = len(calibration_data_reader)
+            if total_data_size % stride != 0:
+                raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+
+            for start in range(0, total_data_size, stride):
+                end_index = start + stride
+                calibration_data_reader.set_range(start_index=start, end_index=end_index)
+                calibrator.collect_data(calibration_data_reader)
+        else:
+            calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_data()
         if not isinstance(tensors_range, TensorsData):
             raise TypeError(
@@ -523,8 +567,6 @@ def quantize_static(
             model,
             per_channel,
             reduce_range,
-            mode,
-            True,  # static
             weight_type,
             activation_type,
             tensors_range,
@@ -548,8 +590,8 @@ def quantize_static(
 
 
 def quantize_dynamic(
-    model_input: Path,
-    model_output: Path,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     op_types_to_quantize=None,
     per_channel=False,
     reduce_range=False,
@@ -562,7 +604,7 @@ def quantize_dynamic(
     """Given an onnx model, create a quantized onnx model and save it into a file
 
     Args:
-        model_input: file path of model to quantize
+        model_input: file path of model or ModelProto to quantize
         model_output: file path of quantized model
         op_types_to_quantize:
             specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
@@ -611,7 +653,11 @@ def quantize_dynamic(
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model_with_shape_infer(Path(model_input))
+    model = (
+        save_and_reload_model_with_shape_infer(model_input)
+        if isinstance(model_input, onnx.ModelProto)
+        else load_model_with_shape_infer(Path(model_input))
+    )
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
@@ -644,15 +690,15 @@ def quantize_dynamic(
 
 
 def quantize(
-    model_input: Path,
-    model_output: Path,
+    model_input: Union[str, Path, onnx.ModelProto],
+    model_output: Union[str, Path],
     quant_config: QuantConfig,
 ):
     """Quantize a model with QuantConfig.
 
     Args:
-        model_input (Path): Path to the model to quantize.
-        model_output (Path): Path to save the quantized model.
+        model_input (str | Path | ModelProto): Path to the model or ModelProto to quantize.
+        model_output (str | Path): Path to save the quantized model.
         quant_config (QuantConfig): Quantization Configuration.
     """
 

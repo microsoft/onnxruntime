@@ -558,7 +558,9 @@ async function main() {
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu || webnn) {
+
+      // When using BrowserStack with Safari, we need NOT to use 'localhost' as the hostname.
+      if (!(browser.startsWith('BS_') && browser.includes('Safari'))) {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
@@ -567,9 +569,15 @@ async function main() {
         chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
-        chromiumFlags.push('--enable-experimental-web-platform-features');
+        chromiumFlags.push('--enable-features=WebMachineLearningNeuralNetwork');
+      }
+      if (process.argv.includes('--karma-debug')) {
+        karmaArgs.push('--log-level debug');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      if (args.userDataDir) {
+        karmaArgs.push(`--user-data-dir="${args.userDataDir}"`);
+      }
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
@@ -605,7 +613,7 @@ async function main() {
           // == The Problem ==
           // every time when a test is completed, it will be added to the recovery page list.
           // if we run the test 100 times, there will be 100 previous tabs when we launch Edge again.
-          // this run out of resources quickly and fails the futher test.
+          // this run out of resources quickly and fails the further test.
           // and it cannot recover by itself because every time it is terminated forcely or crashes.
           // and the auto recovery feature has no way to disable by configuration/commandline/registry
           //
@@ -668,7 +676,7 @@ async function main() {
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
-        return 'Firefox';
+        return 'FirefoxTest';
       case 'electron':
         return 'Electron';
       case 'safari':
