@@ -20,6 +20,9 @@ This app uses the [generate() Java API](https://github.com/microsoft/onnxruntime
 
 ### Model Download
 This app downloads the [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model from Hugging Face. To use a different model, such as the [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct/tree/main), change the path links to refer to your chosen model. If using a model with imaging capabilities, use the [MultiModalProcessor class]() in place of the [Tokenizer class]() and update the prompt template accordingly.
+
+**NOTE:** The accuracy of outputs may depend upon when the model being used was trained (for example, Phi-3 was trained using data from 2021). As a result,  if you ask about current events, the output will be incorrect.
+
 ```java
 final String baseUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/";
 List<String> files = Arrays.asList(
@@ -45,6 +48,7 @@ if (urlFilePairs.isEmpty()) {
     return;
 }
 ```
+
 ### Status while model is downloading
 Downloading the packages for the app on your mobile device takes ~10-15 minutes depending on which device you are using. The progress bar indicates what percent of the downloads are completed. 
 ```java
@@ -75,7 +79,7 @@ String promptQuestion = userMsgEdt.getText().toString();
 String promptQuestion_formatted = "<system>You are a helpful AI assistant. Answer in two paragraphs or less<|end|><|user|>"+promptQuestion+"<|end|>\n<assistant|>";
 Log.i("GenAI: prompt question", promptQuestion_formatted);
 ```
-You can also include limits such as a max_length or length_penalty to your liking. 
+You can also include limits such as a max_length or length_penalty to encourage the model to produce shorter responses. 
 ```java
 generatorParams.setSearchOption("length_penalty", 1000);
 generatorParams.setSearchOption("max_length", 500);
@@ -94,7 +98,7 @@ Clone the [ONNX Runtime Inference Examples](https://github.com/microsoft/onnxrun
 On your Android Mobile device, go to "Settings > About Phone > Software information" and tap the "Build Number" tile repeatedly until you see the message “You are now in developer mode”. In "Developer Options", turn on Wireless or USB debugging.
 
 ### Open Project in Android Studio
-Open the Phi-3 mobile app in Android Studio (onnxruntime-inference-examples/mobile/examples/phi-3/android/app).
+Open the Phi-3 mobile app in Android Studio (file path: [onnxruntime-inference-examples/mobile/examples/phi-3/android/app](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/phi-3/android/app)).
 
 ### Connect Device
 To run the app on a device, follow the instructions from the Running Devices tab on the right side panel. You can connect through Wi-Fi or USB.
