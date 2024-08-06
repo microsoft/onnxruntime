@@ -17,7 +17,7 @@ public:
   virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
     size_t cnt = 0;
     OrtIndexedSubGraph** indexed_subgraph = nullptr;
-    ep_impl_->GetCapability(ep_impl_, reinterpret_cast<const OrtGraphViewer*>(&graph_viewer), &cnt, &indexed_subgraph);
+    if (ep_impl_->GetCapability) ep_impl_->GetCapability(ep_impl_, reinterpret_cast<const OrtGraphViewer*>(&graph_viewer), &cnt, &indexed_subgraph);
 
     if (cnt == 0) return IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
 

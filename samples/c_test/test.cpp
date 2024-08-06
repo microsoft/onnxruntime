@@ -26,8 +26,8 @@ int main() {
     OrtSessionOptions* so = nullptr;
     THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
 
-    TestCompileBasedEp(g_ort, p_env, so);
-    //TestKernelBasedEp(g_ort, p_env, so);
+    //TestCompileBasedEp(g_ort, p_env, so);
+    TestKernelBasedEp(g_ort, p_env, so);
 
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
