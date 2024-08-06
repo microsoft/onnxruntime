@@ -11,7 +11,7 @@ nav_order: 1
 This is a [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Android example application using [ONNX Runtime mobile](https://onnxruntime.ai/docs/tutorials/mobile/) and [ONNX Runtime Generate() API](https://github.com/microsoft/onnxruntime-genai) with support for efficiently running generative AI models. This tutorial will walk you through how to build and run the Phi-3 app on your own mobile device so you can get started incorporating Phi-3 into your own mobile developments.  
 
 ## Model Capabilities
-[Phi-3 Mini-4k-Instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) is a small language model used for language understanding, math, code, long context, logical reasoning, and more showcasing a robust and state-of-the-art performance among models with less than 13 billion parameters.
+[Phi-3 Mini-4k-Instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) is a small language model that is used for language understanding, math, code, long context, logical reasoning, and more and showcases a robust and state-of-the-art performance among models with less than 13 billion parameters.
 
 ## Important Features
 
