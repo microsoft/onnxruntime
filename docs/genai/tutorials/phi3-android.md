@@ -99,7 +99,7 @@ Open the Phi-3 mobile app in Android Studio (onnxruntime-inference-examples/mobi
 ### Connect Device
 To run the app on a device, follow the instructions from the Running Devices tab on the right side panel. You can connect through Wi-Fi or USB.
 ![WiFi Instructions](../../../images/phi3_MobileTutorial_RunDevice.png)
-#### Pair over Wi-Fi
+You can easily pair new devices over Wi-Fi using a QR code:
 ![WiFi Instructions](../../../images/phi3_MobileTutorial_WiFi.png)
 
 ### Manage Devices
