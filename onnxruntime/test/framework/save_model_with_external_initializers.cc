@@ -111,6 +111,7 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
   Graph::OffsetAlignmentInfo align_info;
   align_info.align_offset = true;
+  align_info.align_threshold = 0;
   ASSERT_STATUS_OK(LoadSaveAndCompareModel(ORT_TSTR("testdata/model_with_orig_ext_data.onnx"), ORT_TSTR("model_with_orig_ext_data.onnx.data"), ORT_TSTR("testdata/model_with_new_external_initializers.onnx"), ORT_TSTR("model_with_new_external_initializers.bin"), 0, align_info));
 }
 
