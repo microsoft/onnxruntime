@@ -1874,7 +1874,7 @@ class TestGQA(unittest.TestCase):
         print("-------- TEST GQA INTERACTIVE ---------")
         batches = [1]
         seqs = (
-           [(2, 128), (128, 129), (32, 128), (256, 2048)]
+            [(2, 128), (128, 129), (32, 128), (256, 2048)]
             if pipeline_mode
             else [
                 (1, 128),

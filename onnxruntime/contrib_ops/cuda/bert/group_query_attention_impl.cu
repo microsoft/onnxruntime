@@ -362,28 +362,27 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                              const int max_threads_per_block) {
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
   const int* seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr
-                                                                      : reinterpret_cast<const int*>(data.seqlens_k);
+                                                                              : reinterpret_cast<const int*>(data.seqlens_k);
 
   assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
-        parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
+         parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   bool is_past_kv_bnsh_format = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   return LaunchConcatKVInPlace(parameters.batch_size,
-                              parameters.kv_num_heads,
-                              parameters.head_size,
-                              max_sequence_length,
-                              seqlens_k,
-                              nullptr, // total_seqlens_k would be wrong to use here
-                              parameters.sequence_length,
-                              reinterpret_cast<const T*>(new_key),
-                              reinterpret_cast<const T*>(new_value),
-                              data.present_key,
-                              data.present_value,
-                              is_past_kv_bnsh_format,
-                              is_new_kv_bnsh_format,
-                              stream,
-                              max_threads_per_block);
-
+                               parameters.kv_num_heads,
+                               parameters.head_size,
+                               max_sequence_length,
+                               seqlens_k,
+                               nullptr,  // total_seqlens_k would be wrong to use here
+                               parameters.sequence_length,
+                               reinterpret_cast<const T*>(new_key),
+                               reinterpret_cast<const T*>(new_value),
+                               data.present_key,
+                               data.present_value,
+                               is_past_kv_bnsh_format,
+                               is_new_kv_bnsh_format,
+                               stream,
+                               max_threads_per_block);
 }
 
 // Kernel for use with memory efficient kernel... kv_in is grouped and of bnsh or bsnh... kv_out is ungrouped and bsnh
@@ -815,7 +814,7 @@ Status EfficientAttention(
     constexpr int thr_per_blk = 256;
     int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
     repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_buff, parameters.sequence_length,
-                                                            batch_size);
+                                                           batch_size);
   }
   int* seqlens_k = data.seqlens_k_buff;
 

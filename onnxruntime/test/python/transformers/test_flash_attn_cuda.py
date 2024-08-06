@@ -2392,7 +2392,6 @@ class TestGQA(unittest.TestCase):
             packed=packed,
         )
 
-
     @parameterized.expand(gqa_interactive_one_batch_memory_efficient_attention_test_cases())
     def test_gqa_interactive_one_batch_memory_efficient_attention(self, _, config, rotary, rotary_interleaved, packed):
         if not has_memory_efficient():
