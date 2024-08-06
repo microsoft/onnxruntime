@@ -116,7 +116,7 @@ Status MatMulKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::P
   return Status::OK();
 }
 
-Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer) {
+Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) {
   // const auto& logger = Logger();
   const auto& node = Node();
   ncnn::Layer& layer = Layer();
@@ -155,6 +155,7 @@ Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer) 
     // InnerProduct.weight_data, but overriding InnerProduct_vulkan::create_pipeline to do that would be non-trivial.
     inner_product.weight_data = std::move(transposed_data);
 
+    value_indexes.Add(*input_defs[1]);
   } else {
     ORT_NOT_IMPLEMENTED("Requires gemm");
   }

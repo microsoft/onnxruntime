@@ -103,7 +103,7 @@ Status VulkanKernel::SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexe
 
   RETURN_IF_NCNN_ERROR(ncnn_layer_->load_param(params_));
 
-  ORT_RETURN_IF_ERROR(SetupConstantInitializers(graph_viewer));
+  ORT_RETURN_IF_ERROR(SetupConstantInitializers(graph_viewer, value_indexes));
 
   // we manually set shape hints instead of using load_model as we handle initializers ourselves given they're coming
   // from the ONNX model and not the NCNN model.

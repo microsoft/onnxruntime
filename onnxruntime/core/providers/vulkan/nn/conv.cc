@@ -22,7 +22,7 @@ Status ConvKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::Par
   return Status::OK();
 }
 
-Status ConvKernel::SetupConstantInitializers(const GraphViewer& /*graph_viewer*/) {
+Status ConvKernel::SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ValueIndexes& /*value_indexes*/) {
   // auto& layer = Layer();
 
   // update the ncnn::Mat values in the base NCNN layer for any constant initializers

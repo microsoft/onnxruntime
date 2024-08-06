@@ -6,7 +6,8 @@
 #include "include/ncnn/layer.h"
 #include "include/ncnn/command.h"
 
-#include "core/common/gsl.h"
+#include "gsl/gsl"
+
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/graph/constants.h"
