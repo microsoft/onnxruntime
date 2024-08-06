@@ -104,6 +104,7 @@ jobs:
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=ON \
+                CMAKE_HIP_ARCHITECTURES=gfx90a \
               --mpi_home /opt/ompi \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
@@ -188,6 +189,7 @@ jobs:
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=ON \
+                CMAKE_HIP_ARCHITECTURES=gfx90a \
               --mpi_home /opt/ompi \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
