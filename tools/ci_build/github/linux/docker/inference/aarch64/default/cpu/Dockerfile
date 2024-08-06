@@ -5,7 +5,7 @@
 ARG BASEIMAGE=arm64v8/almalinux:8
 FROM $BASEIMAGE
 
-ENV PATH /opt/rh/gcc-toolset-12/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV PATH=/opt/rh/gcc-toolset-12/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
