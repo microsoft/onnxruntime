@@ -19,7 +19,7 @@ Learn how to build and run ONNX models on mobile with built-in pre and post proc
 
 ## Object detection with YOLOv8
 
-You can find the full source code for the [Android](https://github.com/microsoft/ app in the ONNX Runtime inference examples repository.
+You can find the full source code for the [Android](https://github.com/microsoft/) app in the ONNX Runtime inference examples repository.
 
 ### Build the ONNX model with built-in pre and post processing
 
