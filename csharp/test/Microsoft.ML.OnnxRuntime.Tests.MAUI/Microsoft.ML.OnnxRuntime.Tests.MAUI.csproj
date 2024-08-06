@@ -1,18 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+	<!-- ORT specific high level properties -->
 	<PropertyGroup>
 		<IsWindowsBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</IsWindowsBuild>
 		<IsAndroidBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">true</IsAndroidBuild>
 		<IsIOSBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">true</IsIOSBuild>
 		<IsMacCatalystBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacCatalystBuild>
 		<OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
-		<PrebuiltRuntimesDir>$(OnnxRuntimeRoot)\build\microsoft.ml.onnxruntime.1.18.1\runtimes</PrebuiltRuntimesDir>
-		<!--
-		set this so Microsoft.ML.OnnxRuntime.Tests.Common.csproj lets us do the include of the native library
-		as it may come from a local build or a nuget package. This saves duplicating the include logic.
-		-->
-		<SkipNativeLibInclude>true</SkipNativeLibInclude>
 	</PropertyGroup>
 
+	<!-- General app properties -->
 	<PropertyGroup>
 		<TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
@@ -60,7 +56,28 @@
 		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
 	</PropertyGroup>
 
-	<!-- set to the default directories that a build would create. adjust for local testing as needed. -->
+	<!--
+	Setup directories to find ORT native binary.
+
+	You can use a released Microsoft.ML.OnnxRuntime nuget package or a recent build from
+	https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly if testing C# changes.
+	The native nuget package contains Windows, Android, macOS, mac-catalyst and iOS builds.
+
+	Unzip the nupkg file in the /build directory to create /build/microsoft.ml.onnxruntime.1.18.1 directory.
+	Adjust the version number as needed.
+
+	If testing changes to the native library, build locally with the `<dash><dash>build_csharp` flag so that
+	OnnxRuntimeBuildDirectory is set to the build output directory.	Adjust the build path if necessary.
+	-->
+	<PropertyGroup>
+		<PrebuiltRuntimesDir>$(OnnxRuntimeRoot)\build\microsoft.ml.onnxruntime.1.18.1\runtimes</PrebuiltRuntimesDir>
+		<!--
+		set this so Microsoft.ML.OnnxRuntime.Tests.Common.csproj lets us do the include of the native library
+		as it may come from a local build or a nuget package. This saves duplicating the include logic.
+		-->
+		<SkipNativeLibInclude>true</SkipNativeLibInclude>
+	</PropertyGroup>
+
 	<PropertyGroup Condition="'$(IsWindowsBuild)' == 'true'">
 		<OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\Windows</OnnxRuntimeBuildDirectory>
 		<NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
@@ -85,59 +102,6 @@
 		<PrebuiltFramework>$(PrebuiltRuntimesDir)\ios\native\onnxruntime.xcframework</PrebuiltFramework>
 	</PropertyGroup>
 
-	<ItemGroup>
-		<!-- App Icon -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
-
-		<!-- Splash Screen -->
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
-
-		<!-- Images -->
-		<MauiImage Include="Resources\Images\*" />
-		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
-
-		<!-- Custom Fonts -->
-		<MauiFont Include="Resources\Fonts\*" />
-
-		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
-		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
-			<Link>InferenceTest.cs</Link>
-		</Compile>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
-			<Link>OrtIoBindingAllocationTest.cs</Link>
-		</Compile>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
-			<Link>TensorTests.cs</Link>
-		</Compile>
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference
-			Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-			name="Microsoft.ML.OnnxRuntime" />
-		<ProjectReference
-			Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
-			name="Microsoft.ML.OnnxRuntime.Tests.Common" />
-		<ProjectReference
-			Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
-			name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
-	</ItemGroup>
-
-	<!--
-	Use a released Microsoft.ML.OnnxRuntime nuget package or a recent build from
-	https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly if testing C# changes.
-	The native nuget package contains Windows, Android, macOS, mac-catalyst and iOS builds.
-
-	Unzip the nupkg file in the /build directory to create /build/microsoft.ml.onnxruntime.1.18.1 directory.
-	Adjust the version number in PrebuiltRuntimesDir as needed.
-
-	If testing changes to the native library, build locally and adjust the build path if needed.
-	Build paths assume no manual override of the default build output directory.
-	-->
 	<ItemGroup Condition="'$(IsWindowsBuild)' == 'true'">
 		<!-- local build -->
 		<None Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
@@ -146,7 +110,7 @@
 			<Visible>true</Visible>
 		</None>
 
-		<!-- prebuilt -->
+		<!-- build from package -->
 		<None Condition="!Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
 			  Include="$(PrebuiltWinDir)\*.*">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -227,10 +191,7 @@
 		</NativeReference>
 	</ItemGroup>
 
-	<!--
-	Property debug output - makes finding/fixing any issues with the the conditions easy.
-	Current checks are for local builds
-	-->
+	<!-- Property debug output - makes finding/fixing any issues with the conditions easy. -->
 	<PropertyGroup>
 		<!-- local builds-->
 		<HaveOrtDll>false</HaveOrtDll>
@@ -264,6 +225,48 @@
 		<Message Text="Prebuilt AAR=$(HaveAAR)" />
 		<Message Text="Prebuilt xcframework=$(HaveFramework)" />
 	</Target>
+
+	<ItemGroup>
+		<!-- App Icon -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+		<!-- Splash Screen -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+		<!-- Images -->
+		<MauiImage Include="Resources\Images\*" />
+		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
+
+		<!-- Custom Fonts -->
+		<MauiFont Include="Resources\Fonts\*" />
+
+		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
+			<Link>InferenceTest.cs</Link>
+		</Compile>
+		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
+			<Link>OrtIoBindingAllocationTest.cs</Link>
+		</Compile>
+		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
+			<Link>TensorTests.cs</Link>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference
+			Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+			name="Microsoft.ML.OnnxRuntime" />
+		<ProjectReference
+			Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
+			name="Microsoft.ML.OnnxRuntime.Tests.Common" />
+		<ProjectReference
+			Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
+			name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.2" />
