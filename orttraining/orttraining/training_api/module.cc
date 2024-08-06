@@ -416,8 +416,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   // The inference model will be reconstructed from the eval model.
   if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
     eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
-  }
-  else if (std::holds_alternative<gsl::span<const uint8_t>>(model_identifiers.eval_model)) {
+  } else if (std::holds_alternative<gsl::span<const uint8_t>>(model_identifiers.eval_model)) {
     eval_model_buffer_ = std::get<gsl::span<const uint8_t>>(model_identifiers.eval_model);
   }
 }
@@ -666,8 +665,7 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   ONNX_NAMESPACE::ModelProto eval_model;
   if (eval_model_path_.has_value()) {
     ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
-  }
-  else if (eval_model_buffer_.has_value()) {
+  } else if (eval_model_buffer_.has_value()) {
     int eval_model_buffer_size = static_cast<int>(eval_model_buffer_.value().size());
     const void* eval_model_buffer_ptr = static_cast<const void*>(eval_model_buffer_.value().data());
     ORT_THROW_IF_ERROR(Model::LoadFromBytes(eval_model_buffer_size, eval_model_buffer_ptr, eval_model));
