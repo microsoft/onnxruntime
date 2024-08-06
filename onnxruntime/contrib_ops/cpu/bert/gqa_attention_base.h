@@ -50,7 +50,6 @@ class GQAAttentionBase {
                         Tensor* present_key,                        // present K output tensor (if separating present KV)
                         Tensor* present_value,                      // present V output tensor (if separating present KV)
                         const Tensor* seqlens_k,                    // past sequence lengths tensor
-                        // const Tensor* seqlens_q,                    // past sequence lengths tensor
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
@@ -83,17 +82,16 @@ class GQAAttentionBase {
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(),
-                             /*seqlens_q->Data<int32_t>(),*/ batch_size, sequence_length, seqlen_past_kv_cache,
-                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data,
-                             past_present_share_buffer, packed_qkv, is_interactive, is_prompt, tp);
+    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
+                             sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
+                             present_key_data, past_present_share_buffer, packed_qkv, is_interactive, is_prompt, tp);
 
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(attention_probs), v, seqlens_k->Data<int32_t>(),
-                            /*seqlens_q->Data<int32_t>(),*/ batch_size, sequence_length, seqlen_past_kv_cache,
-                            seqlen_present_kv_cache, head_size, hidden_size, past_value_data, present_value_data,
-                            past_present_share_buffer, packed_qkv, is_interactive, is_prompt, tp);
+                            batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
+                            hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
+                            is_interactive, is_prompt, tp);
 
     return Status::OK();
   }
@@ -107,7 +105,6 @@ class GQAAttentionBase {
                              const T* Q,                            // Q data. Its size is BxNxSxH
                              const T* K,                            // k data. Its size is BxNxLxH
                              const int32_t* seqlens_k,              // total - 1 sequence lengths tensor
-                            //  const int32_t* seqlens_q,              // (optional) new sequence lengths tensor
                              const size_t batch_size,                        // batch size of self-attention
                              const size_t sequence_length,                   // sequence length of self-attention (S)
                              const size_t past_buffer_sequence_length,       // sequence length of past state
@@ -223,7 +220,6 @@ class GQAAttentionBase {
                                const T* attention_probs,              // Attention probs with size BxNxSxT
                                const T* V,                            // V value with size BxN_kvxSxH
                                const int32_t* seqlens_k,              // total - 1 sequence lengths tensor
-                              //  const int32_t* seqlens_q,              // (optional) new sequence lengths tensor
                                const size_t batch_size,                        // batch size
                                const size_t sequence_length,                   // sequence length
                                const size_t past_buffer_sequence_length,       // sequence length in past state

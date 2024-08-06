@@ -1104,11 +1104,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(5,
                "seqlens_k",
-               // For prompt, the value is number of tokens (excluding padding) - 1.
-               "First case: 1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).",
-              //  "Second case: 2D tensor of shape (2, batch_size) where the first row is past sequence lengths and the"
-              //  "second row is total sequence lengths. This allows for arbitrarily long inputs with past"
-              //  "context, which is useful for interactive decoding and system prompt preprocessing.",
+               "1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).",
                "M")
         .Input(6,
                "total_sequence_length",
@@ -1125,12 +1121,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D tensor with shape (max_sequence_length, head_size / 2).",
                "T",
                OpSchema::Optional)
-        // .Input(9,
-        //        "seqlens_q",
-        //        "1D Tensor of shape (batch_size). Equivalent to new sequence lengths. Used for interactive decoding and"
-        //        "system prompt preprocessing.",
-        //         "M",
-        //         OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",

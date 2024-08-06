@@ -48,7 +48,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
-  // const Tensor* seqlens_q = context->Input<Tensor>(9);
 
   GroupQueryAttentionParameters parameters = {};
   constexpr float scale = 1.0f;
@@ -63,7 +62,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 num_heads_,
                                                                 kv_num_heads_,
                                                                 seqlens_k,
-                                                                // seqlens_q,
                                                                 total_seqlen,
                                                                 scale));
 
@@ -196,7 +194,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,
-                        seqlens_k,/* seqlens_q,*/ parameters, allocator, context);
+                        seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

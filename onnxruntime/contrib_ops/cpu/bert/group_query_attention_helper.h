@@ -22,7 +22,6 @@ Status CheckInputs(const Tensor* query,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                  //  const Tensor* seqlens_q,
                    const Tensor* total_seqlen,
                    float scale) {
   // Note: Here S* is past_cache_sequence_length, S+ is seqlen_present_kv_cache
@@ -274,7 +273,6 @@ Status CheckInputs(const Tensor* query,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                  //  const Tensor* seqlens_q,
                    const Tensor* total_seqlen,
                    float scale,
                    int max_threads_per_block) {
@@ -282,7 +280,7 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k,/* seqlens_q,*/ total_seqlen, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
 }
 }  // namespace group_query_attention_helper
 }  // namespace contrib
