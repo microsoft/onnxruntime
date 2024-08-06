@@ -51,10 +51,11 @@ struct RightPaddingBatchHook {
 
     // When seqstart_q_ptr is provided we interpret it as new sequence length, we use it to calculate past sequence length.
     // Used primarily in interactive mode in GQA.
-    if (p.seqstart_q_ptr && p.seqlen_k_ptr) {
-      const int past_seqlen = p.seqlen_k_ptr[batch_id] - p.seqstart_q_ptr[batch_id];
-      p.num_keys = past_seqlen + p.num_queries;
-    } else if (p.seqlen_k_ptr) {
+    // if (p.seqstart_q_ptr && p.seqlen_k_ptr) {
+    //   const int past_seqlen = p.seqlen_k_ptr[batch_id] - p.seqstart_q_ptr[batch_id];
+    //   p.num_keys = past_seqlen + p.num_queries;
+    // } else
+    if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
     }
 

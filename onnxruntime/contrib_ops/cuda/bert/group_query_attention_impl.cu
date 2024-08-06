@@ -71,7 +71,8 @@ __global__ void ConcatNewToPastKV(const int new_seqlen,
                                   const T* new_kv,
                                   T* present_kv,
                                   const int* seqlens_k,
-                                  const int* seqlens_q,
+                                  const bool past_only,
+                                  // const int* seqlens_q,
                                   const bool is_bsnh) {  // refers to past; otherwise bnsh
   const int h = threadIdx.x;
   const int n = threadIdx.y;
@@ -91,7 +92,9 @@ __global__ void ConcatNewToPastKV(const int new_seqlen,
   // present_kv:  BTNH or BNTH, where T = P + L
 
   // prompt, token, and interactive decoding cases
-  const int past_seqlen = seqlens_k == nullptr ? 0 : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]);
+  // const int past_seqlen = seqlens_k == nullptr ? 0 : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]);
+  const int past_seqlen = seqlens_k == nullptr ? 0 : seqlens_k[b] + 1 - new_seqlen;
+  // const int past_seqlen = is_interactive ? seqlens_k[b] + 1 - new_seqlen : (seqlens_k == nullptr ? 0 : seqlens_k[b]);
 
   int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
   if (s < past_seqlen) {
@@ -99,7 +102,7 @@ __global__ void ConcatNewToPastKV(const int new_seqlen,
     const int past_head_stride = is_bsnh ? H : past_buffer_seqlen * H;
     const int in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
     present_kv[out_offset] = past_kv[in_offset];
-  } else if (s < past_seqlen + new_seqlen) {
+  } else if (!past_only && s < past_seqlen + new_seqlen) {
     // Note: new KV always BSNH
     const int new_batch_stride = new_seqlen * num_heads * H;
     const int new_row_stride = num_heads * H;
@@ -119,7 +122,8 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
                                        const T* new_kv,
                                        T* present_kv,
                                        const int* seqlens_k,
-                                       const int* seqlens_q,
+                                       const bool past_only,
+                                      //  const int* seqlens_q,
                                        const bool is_bsnh) {
   int i = threadIdx.x + (blockDim.x * blockIdx.x);
   if (i < H * num_heads) {
@@ -138,7 +142,9 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
     // present_kv:  BTNH or BNTH, where T = P + L
 
     // prompt, token, and interactive decoding cases
-    const int past_seqlen = seqlens_k == nullptr ? 0 : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]);
+    // const int past_seqlen = seqlens_k == nullptr ? 0 : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]);
+    const int past_seqlen = seqlens_k == nullptr ? 0 : seqlens_k[b] + 1 - new_seqlen;
+    // const int past_seqlen = is_interactive ? seqlens_k[b] + 1 - new_seqlen : (seqlens_k == nullptr ? 0 : seqlens_k[b]);
 
     int out_offset = b * present_batch_stride + s * row_stride + n * present_head_stride + h;
     if (s < past_seqlen) {
@@ -146,7 +152,7 @@ __global__ void ConcatNewToPastKVLarge(const int new_seqlen,
       const int past_head_stride = is_bsnh ? H : past_buffer_seqlen * H;
       const int in_offset = b * past_batch_stride + s * row_stride + n * past_head_stride + h;
       present_kv[out_offset] = past_kv[in_offset];
-    } else if (s < past_seqlen + new_seqlen) {
+    } else if (!past_only && s < past_seqlen + new_seqlen) {
       const int new_batch_stride = new_seqlen * num_heads * H;
       const int new_row_stride = num_heads * H;
       const int new_head_stride = H;
@@ -166,14 +172,19 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                const int max_threads_per_block,
                                const bool past_only = false) {
   const int batch_size = parameters.batch_size;
-  const int kv_sequence_length = past_only ? 0 : parameters.sequence_length;
+  const int kv_sequence_length = parameters.sequence_length;
   const int past_sequence_length = parameters.seqlen_past_kv_cache;
   const int present_sequence_length = parameters.seqlen_present_kv_cache;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
   const int* seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr : reinterpret_cast<const int*>(data.seqlens_k);
-  const int* seqlens_q = parameters.is_interactive ? reinterpret_cast<const int*>(data.seqlens_q) : nullptr;
+  // const int* seqlens_q = parameters.is_interactive ? reinterpret_cast<const int*>(data.seqlens_q) : nullptr;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
+
+  // std::cout << "kv_sequence_length: " << kv_sequence_length << std::endl;
+  // std::cout << "past_only: " << past_only << std::endl;
+  // std::cout << "past_sequence_length: " << past_sequence_length << std::endl;
+  // std::cout << "present_sequence_length: " << present_sequence_length << std::endl;
 
   assert(past_kv_format == AttentionQkvFormat::Q_K_V_BSNH || past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
   const int H = head_size / 4;  // divide by 4 so kernel can operate on 4 float16 elements at a time.
@@ -186,7 +197,8 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                                           reinterpret_cast<const float2*>(new_key),
                                                           reinterpret_cast<float2*>(data.present_key),
                                                           seqlens_k,
-                                                          seqlens_q,
+                                                          // seqlens_q,
+                                                          past_only,
                                                           past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
     ConcatNewToPastKV<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
                                                           past_sequence_length,
@@ -194,7 +206,8 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                                           reinterpret_cast<const float2*>(new_value),
                                                           reinterpret_cast<float2*>(data.present_value),
                                                           seqlens_k,
-                                                          seqlens_q,
+                                                          // seqlens_q,
+                                                          past_only,
                                                           past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   } else {
     int steps = (H * kv_num_heads + 255) / 256;
@@ -208,7 +221,8 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                                                reinterpret_cast<const float2*>(new_key),
                                                                reinterpret_cast<float2*>(data.present_key),
                                                                seqlens_k,
-                                                               seqlens_q,
+                                                               // seqlens_q,
+                                                               past_only,
                                                                past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
     ConcatNewToPastKVLarge<float2><<<grid, block, 0, stream>>>(kv_sequence_length,
                                                                past_sequence_length,
@@ -218,7 +232,8 @@ Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameter
                                                                reinterpret_cast<const float2*>(new_value),
                                                                reinterpret_cast<float2*>(data.present_value),
                                                                seqlens_k,
-                                                               seqlens_q,
+                                                               // seqlens_q,
+                                                               past_only,
                                                                past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
   }
   return CUDA_CALL(cudaGetLastError());
@@ -230,7 +245,7 @@ __global__ void ConcatKVInPlace(const int max_seqlen,
                                 T* kv_buff,
                                 const T* new_kv,
                                 const int* seqlens_k,
-                                const int* seqlens_q,
+                                // const int* seqlens_q,
                                 const int* total_seqlens_k,
                                 const bool is_past_kv_bnsh_format,
                                 const bool is_new_kv_bnsh_format) {
@@ -243,9 +258,11 @@ __global__ void ConcatKVInPlace(const int max_seqlen,
   const int kv_num_heads = blockDim.y;
   const int H = blockDim.x;
 
-  const int past_seq_len = (total_seqlens_k != nullptr) ? (total_seqlens_k[b] - new_seqlen)
-                               : (seqlens_k == nullptr ? 0
-                               : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]));
+  const int past_seq_len = seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen);
+
+  // const int past_seq_len = (total_seqlens_k != nullptr) ? (total_seqlens_k[b] - new_seqlen)
+  //                              : (seqlens_k == nullptr ? 0
+  //                              : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]));
 
   int out_offset = is_past_kv_bnsh_format
                        ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
@@ -265,7 +282,7 @@ __global__ void ConcatKVInPlaceLarge(const int max_seqlen,
                                      T* kv_buff,
                                      const T* new_kv,
                                      const int* seqlens_k,
-                                     const int* seqlens_q,
+                                    //  const int* seqlens_q,
                                      const int* total_seqlens_k,
                                      const bool is_past_kv_bnsh_format,
                                      const bool is_new_kv_bnsh_format) {  // refers to kv buff; otherwise bnsh
@@ -276,9 +293,13 @@ __global__ void ConcatKVInPlaceLarge(const int max_seqlen,
     const int s = blockIdx.y;
     const int b = blockIdx.z;
     const int new_seqlen = gridDim.y;
-    const int past_seq_len = (total_seqlens_k != nullptr) ? (total_seqlens_k[b] - new_seqlen)
-                               : (seqlens_k == nullptr ? 0
-                               : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]));
+
+    const int past_seq_len = seqlens_k == nullptr ? 0 : (seqlens_k[b] + 1 - new_seqlen);
+
+
+    // const int past_seq_len = (total_seqlens_k != nullptr) ? (total_seqlens_k[b] - new_seqlen)
+    //                            : (seqlens_k == nullptr ? 0
+    //                            : (seqlens_q == nullptr ? seqlens_k[b] : seqlens_k[b] + 1 - seqlens_q[b]));
 
     int out_offset = is_past_kv_bnsh_format
                          ? INDEX_4D(kv_num_heads, max_seqlen, H, b, n, s + past_seq_len, h)
@@ -361,15 +382,15 @@ Status LaunchConcatKVInPlace(int batch_size,
                              int head_size,
                              int max_sequence_length,
                              const int* seqlens_k,
-                             const int* seqlens_q,
+                            //  const int* seqlens_q,
                              const int* total_seqlens_k,
                              int new_seq_len,
                              const T* new_key,
                              const T* new_value,
                              T* present_key,
                              T* present_value,
-                             bool is_past_kv_bnsh_format,
-                             bool is_new_kv_bnsh_format,
+                             const bool is_past_kv_bnsh_format,
+                             const bool is_new_kv_bnsh_format,
                              cudaStream_t stream,
                              const int max_threads_per_block) {
   static_assert(sizeof(T) == 2);
@@ -383,7 +404,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                                                         reinterpret_cast<float2*>(present_key),
                                                         reinterpret_cast<const float2*>(new_key),
                                                         seqlens_k,
-                                                        seqlens_q,
+                                                        // seqlens_q,
                                                         total_seqlens_k,
                                                         is_past_kv_bnsh_format,
                                                         is_new_kv_bnsh_format);
@@ -391,7 +412,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                                                         reinterpret_cast<float2*>(present_value),
                                                         reinterpret_cast<const float2*>(new_value),
                                                         seqlens_k,
-                                                        seqlens_q,
+                                                        // seqlens_q,
                                                         total_seqlens_k,
                                                         is_past_kv_bnsh_format,
                                                         is_new_kv_bnsh_format);
@@ -405,7 +426,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                                                              reinterpret_cast<float2*>(present_key),
                                                              reinterpret_cast<const float2*>(new_key),
                                                              seqlens_k,
-                                                             seqlens_q,
+                                                            //  seqlens_q,
                                                              total_seqlens_k,
                                                              is_past_kv_bnsh_format,
                                                              is_new_kv_bnsh_format);
@@ -415,7 +436,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                                                              reinterpret_cast<float2*>(present_value),
                                                              reinterpret_cast<const float2*>(new_value),
                                                              seqlens_k,
-                                                             seqlens_q,
+                                                            //  seqlens_q,
                                                              total_seqlens_k,
                                                              is_past_kv_bnsh_format,
                                                              is_new_kv_bnsh_format);
@@ -498,7 +519,7 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
   const int* seqlens_k = (parameters.is_prompt && !parameters.is_interactive) ? nullptr
                                                                       : reinterpret_cast<const int*>(data.seqlens_k);
-  const int* seqlens_q = parameters.is_interactive ? reinterpret_cast<const int*>(data.seqlens_q) : nullptr;
+  // const int* seqlens_q = parameters.is_interactive ? reinterpret_cast<const int*>(data.seqlens_q) : nullptr;
 
   assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
         parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -509,8 +530,8 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                               parameters.head_size,
                               max_sequence_length,
                               seqlens_k,
-                              seqlens_q,
-                              nullptr,  // total_seqlens_k would be wrong to use here
+                              // seqlens_q,
+                              nullptr, // total_seqlens_k would be wrong to use here
                               parameters.sequence_length,
                               reinterpret_cast<const T*>(new_key),
                               reinterpret_cast<const T*>(new_value),
@@ -651,20 +672,22 @@ Status LaunchGetSeqlensTotal(int32_t* seqlens_k, int32_t* seqlens_k_buff, const 
   return CUDA_CALL(cudaGetLastError());
 }
 
-__global__ void GetSeqlensInteractive(const int32_t* seqlens_k, const int32_t* seqlens_q, int32_t* seqlens_k_buff,
-                                      const int batch_size) {
+__global__ void GetSeqlensInteractive(const int32_t* seqlens_k,/* const int32_t* seqlens_q,*/ int32_t* seqlens_k_buff,
+                                      const int batch_size, const int sequence_length) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   if (tid < batch_size) {
-    seqlens_k_buff[tid] = seqlens_k[tid] + 1 - seqlens_q[tid];
+    seqlens_k_buff[tid] = seqlens_k[tid] + 1 - sequence_length;
   }
 }
 
 // Calculate past sequence length for each batch entry for flash attention kernel
-Status LaunchGetSeqlensInteractive(const int32_t* seqlens_k, const int32_t* seqlens_q, int32_t* seqlens_k_buff,
-                                   const int batch_size, cudaStream_t stream, const int max_threads_per_block) {
+Status LaunchGetSeqlensInteractive(const int32_t* seqlens_k,/* const int32_t* seqlens_q,*/ int32_t* seqlens_k_buff,
+                                   const int batch_size, const int sequence_length, cudaStream_t stream,
+                                   const int max_threads_per_block) {
   const int threads = max_threads_per_block;
   const int blocks = (batch_size + threads - 1) / threads;
-  GetSeqlensInteractive<<<blocks, threads, 0, stream>>>(seqlens_k, seqlens_q, seqlens_k_buff, batch_size);
+  GetSeqlensInteractive<<<blocks, threads, 0, stream>>>(seqlens_k,/* seqlens_q,*/ seqlens_k_buff, batch_size,
+                                                        sequence_length);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -729,14 +752,15 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
   return CUDA_CALL(cudaGetLastError());
 }
 
-__global__ void SeqlensToPosIdsInteractive(const int32_t* seqlens_k, const int32_t* seqlens_q, int64_t* position_ids,
+__global__ void SeqlensToPosIdsInteractive(const int32_t* seqlens_k,/* const int32_t* seqlens_q,*/ int64_t* position_ids,
                                            const int seqlen, const int batch_size) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   int b = tid / seqlen;
   int s = tid % seqlen;
   if (b < batch_size) {
     const int total_seqlen = seqlens_k[b] + 1;
-    const int past_seqlen = total_seqlen - seqlens_q[b];
+    // const int past_seqlen = total_seqlen - seqlens_q[b];
+    const int past_seqlen = total_seqlen - seqlen;
     if (past_seqlen + s < total_seqlen) {
       position_ids[tid] = past_seqlen + s;
     } else {
@@ -768,14 +792,14 @@ __global__ void SeqlensToPosIdsToken(const int32_t* seqlens_k, int64_t* position
 
 // Convert seqlens_k to position_ids
 Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters, const int32_t* seqlens_k,
-                             const int32_t* seqlens_q, int64_t* position_ids, cudaStream_t stream,
+                             /*const int32_t* seqlens_q,*/ int64_t* position_ids, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int seqlen = parameters.sequence_length;
   const int batch_size = parameters.batch_size;
   const int threads = max_threads_per_block;
   const int blocks = (batch_size * seqlen + threads - 1) / threads;
   if (parameters.is_interactive) {
-    SeqlensToPosIdsInteractive<<<blocks, threads, 0, stream>>>(seqlens_k, seqlens_q, position_ids, seqlen, batch_size);
+    SeqlensToPosIdsInteractive<<<blocks, threads, 0, stream>>>(seqlens_k,/* seqlens_q,*/ position_ids, seqlen, batch_size);
   } else if (parameters.is_prompt) {
     SeqlensToPosIdsPrompt<<<blocks, threads, 0, stream>>>(seqlens_k, position_ids, seqlen, batch_size);
   } else {
@@ -820,12 +844,13 @@ Status FlashAttention(
   }
 
   void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
-  if (parameters.is_interactive && sequence_length > 1) {
+  if (parameters.is_interactive) {
     ORT_RETURN_IF_ERROR(LaunchGetSeqlensInteractive(reinterpret_cast<const int32_t*>(data.seqlens_k),
-                                                    reinterpret_cast<const int32_t*>(data.seqlens_q),
+                                                    // reinterpret_cast<const int32_t*>(data.seqlens_q),
                                                     reinterpret_cast<int32_t*>(data.seqlens_k_buff), batch_size,
-                                                    stream, max_threads_per_block));
+                                                    sequence_length, stream, max_threads_per_block));
     seqlens_k = reinterpret_cast<void*>(data.seqlens_k_buff);
+    // std::cout << "Interactive" << std::endl;
   } else if (!parameters.is_interactive && parameters.is_prompt) {
     // set seqlens_k to zeros... flash api uses seqlens_k to indicate where to append key and value
     // user should use seqlens_k to index into output to get new tokens
@@ -836,9 +861,12 @@ Status FlashAttention(
       constexpr int thr_per_blk = 256;
       int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
       repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_buff, 0, batch_size);
-      seqlens_k = data.seqlens_k_buff;
+      seqlens_k = reinterpret_cast<void*>(data.seqlens_k_buff);
     }
   }
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
 
   if (!parameters.kv_share_buffer) {  // copy past kv to present kv
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, nullptr, nullptr, stream, max_threads_per_block,
@@ -864,8 +892,8 @@ Status FlashAttention(
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
   // }
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
+  // DUMP_TENSOR_INIT();
+  // DUMP_TENSOR("flash attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
 }
@@ -921,7 +949,7 @@ Status EfficientAttention(
     auto q_buffer = reinterpret_cast<T*>(data.rotary_buffer);
     auto k_buffer = q_buffer + q_size;
     auto position_ids_buff = reinterpret_cast<int64_t*>(k_buffer + k_size);
-    ORT_RETURN_IF_ERROR(LaunchSeqlensToPosIds(parameters, data.seqlens_k, data.seqlens_q, position_ids_buff, stream,
+    ORT_RETURN_IF_ERROR(LaunchSeqlensToPosIds(parameters, data.seqlens_k,/* data.seqlens_q,*/ position_ids_buff, stream,
                                               max_threads_per_block));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("position_ids", position_ids_buff, batch_size, sequence_length);
@@ -1009,7 +1037,7 @@ Status EfficientAttention(
   p.causal = true;
   p.scale = scale;
   p.seqlen_k_ptr = seqlens_k;  // Note: seqlens_k is total sequence length for efficient
-  p.seqstart_q_ptr = parameters.is_interactive ? reinterpret_cast<int*>(data.seqlens_q) : nullptr;
+  // p.seqstart_q_ptr = parameters.is_interactive ? reinterpret_cast<int*>(data.seqlens_q) : nullptr;
   p.seqstart_k_ptr = nullptr;
   p.query = query;
   p.key = key;
@@ -1091,7 +1119,7 @@ template Status LaunchConcatKVInPlace<half>(int batch_size,
                                             int head_size,
                                             int max_sequence_length,
                                             const int* seqlens_k,
-                                            const int* seqlens_q,
+                                            // const int* seqlens_q,
                                             const int* total_seqlens_k,
                                             int new_seq_len,
                                             const half* new_key,
@@ -1108,7 +1136,7 @@ template Status LaunchConcatKVInPlace<BFloat16>(int batch_size,
                                                 int head_size,
                                                 int max_sequence_length,
                                                 const int* seqlens_k,
-                                                const int* seqlens_q,
+                                                // const int* seqlens_q,
                                                 const int* total_seqlens_k,
                                                 int new_seq_len,
                                                 const BFloat16* new_key,

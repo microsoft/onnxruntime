@@ -48,7 +48,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
-  const Tensor* seqlens_q = context->Input<Tensor>(9);
+  // const Tensor* seqlens_q = context->Input<Tensor>(9);
 
   GroupQueryAttentionParameters parameters = {};
   constexpr float scale = 1.0f;
@@ -63,7 +63,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 num_heads_,
                                                                 kv_num_heads_,
                                                                 seqlens_k,
-                                                                seqlens_q,
+                                                                // seqlens_q,
                                                                 total_seqlen,
                                                                 scale));
 
@@ -121,25 +121,22 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.transposed = true;
     auto* tp = context->GetOperatorThreadPool();
     // Generate position ids
-    const int pos_ids_size = parameters.is_interactive ? batch_size * sequence_length : (parameters.is_prompt ? 1 : batch_size);
+    const int pos_ids_size = (parameters.is_prompt && !parameters.is_interactive) ? 1 : batch_size * sequence_length;
     std::vector<int64_t> pos_ids(pos_ids_size);
-    if (parameters.is_interactive) {
+    if (parameters.is_prompt) {
+      pos_ids[0] = static_cast<int64_t>(0);
+    } else {
+      // Note: As of now, interactive decoding supports only batch size 1 and token generation supports only sequence length 1.
       for (int b = 0; b < batch_size; b++) {
         for (int s = 0; s < sequence_length; s++) {
           const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
-          const int past_seqlen = total_seqlen - seqlens_q->Data<int32_t>()[b];
+          const int past_seqlen = total_seqlen - sequence_length;
           if (past_seqlen + s < total_seqlen) {
             pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen + s);
           } else {
             pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
           }
         }
-      }
-    } else if (parameters.is_prompt) {
-      pos_ids[0] = static_cast<int64_t>(0);
-    } else {
-      for (int b = 0; b < batch_size; b++) {
-        pos_ids[b] = static_cast<int64_t>(seqlens_k->Data<int32_t>()[b]);
       }
     }
     // Initialize separate buffers for rotary embeddings
@@ -199,7 +196,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.Get<Tensor>().Data<T>(), packed_qkv ? nullptr : K.Get<Tensor>().Data<T>(),
                         packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(), past_key, past_value, output, present_k, present_v,
-                        seqlens_k, seqlens_q, parameters, allocator, context);
+                        seqlens_k,/* seqlens_q,*/ parameters, allocator, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

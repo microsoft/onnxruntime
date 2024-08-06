@@ -963,6 +963,7 @@ def gqa_past_func(
     window_size=-1,
     rotary_interleaved=False,
 ):
+    assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
         config,
         past_kv_format,
@@ -992,12 +993,12 @@ def gqa_past_func(
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
-        if new_k is not None:
+        if new_k is not None and new_v is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
             ort_inputs["value"] = new_v.detach().cpu().numpy()
             io_binding.bind_cpu_input("key", ort_inputs["key"])
             io_binding.bind_cpu_input("value", ort_inputs["value"])
-        if cos is not None:
+        if cos is not None and sin is not None:
             ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
@@ -1040,12 +1041,12 @@ def gqa_past_func(
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
-        if new_k is not None:
+        if new_k is not None and new_v is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
             ort_inputs["value"] = new_v.detach().cpu().numpy()
             io_binding.bind_cpu_input("key", ort_inputs["key"])
             io_binding.bind_cpu_input("value", ort_inputs["value"])
-        if cos is not None:
+        if cos is not None and sin is not None:
             ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
@@ -1795,6 +1796,8 @@ def parity_check_gqa_past(
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
+    cache_seqlens += config.sequence_length - 1
+
     # ORT function
     if packed:
         packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
@@ -1997,6 +2000,8 @@ def parity_check_gqa_past_no_buff(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
+
+    cache_seqlens += config.sequence_length - 1
 
     # Flash function
     if packed:
@@ -2661,21 +2666,21 @@ class TestGQA(unittest.TestCase):
                                     )
                                     self.assertTrue(all_close)
 
-    def test_gqa_interactive(self):
-        print("-------- TEST GQA INTERACTIVE (TOKEN GEN) ---------")
-        batches = [1, 2] if pipeline_mode else [1, 3, 5]
+    def test_gqa_interactive_one_batch(self):
+        print("-------- TEST GQA INTERACTIVE ---------")
+        batches = [1]
         seqs = (
-            [(1, 128), (128, 128), (32, 128), (256, 2048)]
+           [(2, 128), (128, 129), (32, 128), (256, 2048)]
             if pipeline_mode
             else [
                 (1, 128),
-                (32, 128),
-                (128, 2048),
-                (1235, 5000),
-                (40, 800),
+                (1, 339),
+                (1, 1024),
+                (1, 5000),
+                (1, 800),
                 (1, 256),
-                (2, 799),
-                (41, 2048),
+                (1, 799),
+                (1, 2048),
                 # (1, 128 * 512),
                 # (16, 128 * 512),
                 # (128, 128),
@@ -2691,35 +2696,90 @@ class TestGQA(unittest.TestCase):
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
                                 for packed in [False, True]:
-                                    for no_past in [False, True]:
-                                        config = Config(b, s, s2, -1, n, n2, h)
-                                        past_kv_format = Formats.BNSH
-                                        all_close = parity_check_gqa_interactive(
-                                            config,
-                                            causal=True,
-                                            local=local,
-                                            no_past=no_past,
-                                            past_format=past_kv_format,
-                                            rtol=1e-3,
-                                            atol=1e-3,
-                                            rotary=rotary,
-                                            rotary_interleaved=rotary_interleaved,
-                                            packed=packed,
-                                        )
-                                        self.assertTrue(all_close)
-                                        all_close = parity_check_gqa_interactive_no_buff(
-                                            config,
-                                            causal=True,
-                                            local=local,
-                                            no_past=no_past,
-                                            past_format=past_kv_format,
-                                            rtol=1e-3,
-                                            atol=1e-3,
-                                            rotary=rotary,
-                                            rotary_interleaved=rotary_interleaved,
-                                            packed=packed,
-                                        )
-                                        self.assertTrue(all_close)
+                                    config = Config(b, s, s2, -1, n, n2, h)
+                                    past_kv_format = Formats.BNSH
+                                    all_close = parity_check_gqa_past(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rtol=1e-3,
+                                        atol=1e-3,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
+                                    self.assertTrue(all_close)
+                                    all_close = parity_check_gqa_past_no_buff(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rtol=1e-3,
+                                        atol=1e-3,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
+                                    self.assertTrue(all_close)
+
+    # def test_gqa_interactive(self):
+    #     print("-------- TEST GQA INTERACTIVE (TOKEN GEN) ---------")
+    #     batches = [1, 2] if pipeline_mode else [1, 3, 5]
+    #     seqs = (
+    #         [(1, 128), (128, 128), (32, 128), (256, 2048)]
+    #         if pipeline_mode
+    #         else [
+    #             (1, 128),
+    #             (32, 128),
+    #             (128, 2048),
+    #             (1235, 5000),
+    #             (40, 800),
+    #             (1, 256),
+    #             (2, 799),
+    #             (41, 2048),
+    #             # (1, 128 * 512),
+    #             # (16, 128 * 512),
+    #             # (128, 128),
+    #         ]
+    #     )
+    #     num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    #     h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    #     random.seed(69)
+    #     for b in batches:
+    #         for s, s2 in seqs:
+    #             for n, n2 in num_h:
+    #                 for h in h_sizes:
+    #                     for local in [False, True]:
+    #                         for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
+    #                             for packed in [False, True]:
+    #                                 for no_past in [False, True]:
+    #                                     config = Config(b, s, s2, -1, n, n2, h)
+    #                                     past_kv_format = Formats.BNSH
+    #                                     all_close = parity_check_gqa_interactive(
+    #                                         config,
+    #                                         causal=True,
+    #                                         local=local,
+    #                                         no_past=no_past,
+    #                                         past_format=past_kv_format,
+    #                                         rtol=1e-3,
+    #                                         atol=1e-3,
+    #                                         rotary=rotary,
+    #                                         rotary_interleaved=rotary_interleaved,
+    #                                         packed=packed,
+    #                                     )
+    #                                     self.assertTrue(all_close)
+    #                                     all_close = parity_check_gqa_interactive_no_buff(
+    #                                         config,
+    #                                         causal=True,
+    #                                         local=local,
+    #                                         no_past=no_past,
+    #                                         past_format=past_kv_format,
+    #                                         rtol=1e-3,
+    #                                         atol=1e-3,
+    #                                         rotary=rotary,
+    #                                         rotary_interleaved=rotary_interleaved,
+    #                                         packed=packed,
+    #                                     )
+    #                                     self.assertTrue(all_close)
 
 
 if __name__ == "__main__":

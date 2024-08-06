@@ -21,7 +21,7 @@ struct GroupQueryAttentionData {
   const T* past_key = nullptr;
   const T* past_value = nullptr;
   int* seqlens_k = nullptr;
-  int* seqlens_q = nullptr;
+  // int* seqlens_q = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   // Flash buffers
@@ -63,7 +63,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                              int head_size,
                              int max_sequence_length,     // max sequence length of present_key or present_value.
                              const int* seqlens_k,        // it is not used when total_seqlens_k is available.
-                             const int* seqlens_q,        // it is not used when total_seqlens_k is available.
+                            //  const int* seqlens_q,        // it is not used when total_seqlens_k is available.
                              const int* total_seqlens_k,  // optional, nullptr means it is not available.
                              int new_seq_len,
                              const T* new_key,

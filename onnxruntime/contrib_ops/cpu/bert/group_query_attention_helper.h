@@ -22,7 +22,7 @@ Status CheckInputs(const Tensor* query,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                   const Tensor* seqlens_q,
+                  //  const Tensor* seqlens_q,
                    const Tensor* total_seqlen,
                    float scale) {
   // Note: Here S* is past_cache_sequence_length, S+ is seqlen_present_kv_cache
@@ -174,15 +174,6 @@ Status CheckInputs(const Tensor* query,
                            "seqlens_k must be shape (batch_size).");
   }
 
-  bool is_interactive = seqlens_q != nullptr;
-  if (is_interactive) {
-    const auto& seqlens_q_dim = seqlens_q->Shape().GetDims();
-    if (seqlens_q_dim[0] != batch_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "seqlens_q must be shape (batch_size) when it is present.");
-    }
-  }
-
   // Set present sequence length from input total_seqlen tensor
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -225,6 +216,15 @@ Status CheckInputs(const Tensor* query,
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
+  }
+
+  bool is_interactive = false;
+  if (sequence_length > 1 && sequence_length != total_sequence_length) {
+    if (batch_size != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "batch_size must be 1 when sequence_length > 1 and past context is given.");
+    }
+    is_interactive = true;
   }
 
   bool is_prompt;
@@ -274,7 +274,7 @@ Status CheckInputs(const Tensor* query,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                   const Tensor* seqlens_q,
+                  //  const Tensor* seqlens_q,
                    const Tensor* total_seqlen,
                    float scale,
                    int max_threads_per_block) {
@@ -282,7 +282,7 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, seqlens_q, total_seqlen, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k,/* seqlens_q,*/ total_seqlen, scale);
 }
 }  // namespace group_query_attention_helper
 }  // namespace contrib

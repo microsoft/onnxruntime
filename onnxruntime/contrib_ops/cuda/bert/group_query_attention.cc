@@ -75,7 +75,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
-  const Tensor* seqlens_q = context->Input<Tensor>(9);
+  // const Tensor* seqlens_q = context->Input<Tensor>(9);
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -93,7 +93,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 num_heads_,
                                                                 kv_num_heads_,
                                                                 seqlens_k,
-                                                                seqlens_q,
+                                                                // seqlens_q,
                                                                 total_seqlen,
                                                                 is_past_bsnh_,
                                                                 scale_,
@@ -209,7 +209,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // seqlens_k buffer
   size_t seqlens_k_bytes = 0;
-  seqlens_k_bytes = 2 * sizeof(int) * parameters.batch_size;
+  seqlens_k_bytes = sizeof(int) * parameters.batch_size;
   auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
 
   std::vector<int64_t> present_dims;
@@ -233,7 +233,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.seqlens_k = const_cast<int*>(seqlens_k->Data<int>());
-  data.seqlens_q = (nullptr == seqlens_q) ? nullptr : const_cast<int*>(seqlens_q->Data<int>());
+  // data.seqlens_q = (nullptr == seqlens_q) ? nullptr : const_cast<int*>(seqlens_q->Data<int>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   if (data.past_key == data.present_key) {

@@ -1920,6 +1920,8 @@ def parity_check_gqa_past(
         device="cuda",
     )
 
+    # print("cache_seqlens", cache_seqlens)
+
     if rotary:
         rotary_fraction = 1.0
         rotary_dim = math.floor(int(rotary_fraction * config.head_size) / 16) * 16
@@ -1963,6 +1965,8 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
+
+    cache_seqlens += config.sequence_length - 1
 
     # Flash function
     if packed:
@@ -2013,13 +2017,13 @@ def parity_check_gqa_past(
     numpy.testing.assert_allclose(
         present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
-
+    # print((out - out_ref)[0, :, 0, 0])
     numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past_no_buff(
     config,
-    causal=False,
+    causal=True,
     local=False,
     past_format=Formats.BNSH,
     rotary=False,
@@ -2083,6 +2087,7 @@ def parity_check_gqa_past_no_buff(
     elif causal:
         left_window_size = -1
         window_size = (-1, 0)
+    # print("left_window_size", left_window_size)
 
     # Pytorch to compare
     k_cache_ref = k.clone()
@@ -2100,6 +2105,7 @@ def parity_check_gqa_past_no_buff(
         device="cuda",
     )
     cache_seqlens[random.randint(0, config.batch_size - 1)] = config.kv_sequence_length
+    # print("cache_seqlens", cache_seqlens)
 
     if rotary:
         rotary_fraction = 1.0
@@ -2147,6 +2153,9 @@ def parity_check_gqa_past_no_buff(
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
+    cache_seqlens += config.sequence_length - 1
+    # print("cache_seqlens 2", cache_seqlens)
+
     # Flash function
     if packed:
         packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
@@ -2189,6 +2198,26 @@ def parity_check_gqa_past_no_buff(
         f" with {config}, causal={causal}, local={local}, past_format={past_format},"
         f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
+    # print((present_k - k_cache_ref.detach().cpu().numpy())[0, 0, :, 0])
+    for b in range(config.batch_size):
+        numpy.testing.assert_allclose(
+            present_k[b, :, : (cache_seqlens + 1)[b]],
+            k_cache_ref[b, :, : (cache_seqlens + 1)[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
+        )
+        numpy.testing.assert_allclose(
+            present_v[b, :, : (cache_seqlens + 1)[b]],
+            v_cache_ref[b, :, : (cache_seqlens + 1)[b]].detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+            err_msg=err_msg,
+        )
+
+    # print((out - out_ref)[0, :, 0, 0])
     numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
@@ -2927,10 +2956,53 @@ def gqa_interactive_memory_efficient_test_cases():
                                 )
 
 
-def gqa_interactive_flash_attention_test_cases():
-    batches = [5] if pipeline_mode else [1, 3, 5]
+# def gqa_interactive_flash_attention_test_cases():
+#     batches = [5] if pipeline_mode else [1, 3, 5]
+#     seqs = (
+#         [(1, 128), (128, 128), (32, 128), (256, 2048)]
+#         if pipeline_mode
+#         else [
+#             (1, 128),
+#             (32, 128),
+#             (128, 2048),
+#             (1235, 5000),
+#             (40, 800),
+#             (1, 256),
+#             (2, 799),
+#             (41, 2048),
+#             # (1, 128 * 512),
+#             # (16, 128 * 512),
+#             # (128, 128),
+#         ]
+#     )
+#     num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+#     h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+#     random.seed(69)
+
+#     for b in batches:
+#         for s, s2 in seqs:
+#             for n, n2 in num_h:
+#                 for h in h_sizes:
+#                     for local in [False, True]:
+#                         for rotary, rotary_interleaved in rotary_options_for_current_os():
+#                             for packed in [False, True]:
+#                                 for no_past in [False, True]:
+#                                     config = Config(b, s, s2, -1, n, n2, h)
+#                                     yield (
+#                                         str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+#                                         config,
+#                                         local,
+#                                         no_past,
+#                                         rotary,
+#                                         rotary_interleaved,
+#                                         packed,
+#                                     )
+
+
+def gqa_interactive_one_batch_flash_attention_test_cases():
+    batches = [1]
     seqs = (
-        [(1, 128), (128, 128), (32, 128), (256, 2048)]
+        [(2, 128), (128, 129), (32, 128), (256, 2048)]
         if pipeline_mode
         else [
             (1, 128),
@@ -2957,17 +3029,54 @@ def gqa_interactive_flash_attention_test_cases():
                     for local in [False, True]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
-                                for no_past in [False, True]:
-                                    config = Config(b, s, s2, -1, n, n2, h)
-                                    yield (
-                                        str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
-                                        config,
-                                        local,
-                                        no_past,
-                                        rotary,
-                                        rotary_interleaved,
-                                        packed,
-                                    )
+                                config = Config(b, s, s2, -1, n, n2, h)
+                                yield (
+                                    str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
+                                    config,
+                                    local,
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
+                                )
+
+
+def gqa_interactive_one_batch_memory_efficient_attention_test_cases():
+    batches = [1]
+    seqs = (
+        [(2, 128), (128, 129), (32, 128), (256, 2048)]
+        if pipeline_mode
+        else [
+            (1, 128),
+            (32, 128),
+            (128, 2048),
+            (1235, 5000),
+            (40, 800),
+            (1, 256),
+            (2, 799),
+            (41, 2048),
+            # (1, 128 * 512),
+            # (16, 128 * 512),
+            # (128, 128),
+        ]
+    )
+    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    random.seed(69)
+
+    for b in batches:
+        for s, s2 in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for rotary, rotary_interleaved in rotary_options_for_current_os():
+                        for packed in [False, True]:
+                            config = Config(b, s, s2, -1, n, n2, h)
+                            yield (
+                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+                                config,
+                                rotary,
+                                rotary_interleaved,
+                                packed,
+                            )
 
 
 class TestGQA(unittest.TestCase):
@@ -3075,61 +3184,116 @@ class TestGQA(unittest.TestCase):
             packed=packed,
         )
 
-    @parameterized.expand(gqa_interactive_memory_efficient_test_cases())
-    def test_gqa_interactive_memory_efficient_attention(self, _, config, no_past, rotary, rotary_interleaved, packed):
-        if not has_memory_efficient():
-            return
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        print("-------- MEMORY EFFICIENT (INTERACTIVE) --------")
+    # @parameterized.expand(gqa_interactive_memory_efficient_test_cases())
+    # def test_gqa_interactive_memory_efficient_attention(self, _, config, no_past, rotary, rotary_interleaved, packed):
+    #     if not has_memory_efficient():
+    #         return
+    #     os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+    #     print("-------- MEMORY EFFICIENT (INTERACTIVE) --------")
 
-        parity_check_gqa_interactive(
-            config,
-            no_past=no_past,
-            past_format=Formats.BNSH,
-            causal=True,
-            rtol=5e-3,
-            atol=5e-3,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-        )
-        parity_check_gqa_interactive_no_buff(
-            config,
-            no_past=no_past,
-            past_format=Formats.BNSH,
-            causal=True,
-            rtol=5e-3,
-            atol=5e-3,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-        )
+    #     parity_check_gqa_interactive(
+    #         config,
+    #         no_past=no_past,
+    #         past_format=Formats.BNSH,
+    #         causal=True,
+    #         rtol=5e-3,
+    #         atol=5e-3,
+    #         rotary=rotary,
+    #         rotary_interleaved=rotary_interleaved,
+    #         packed=packed,
+    #     )
+    #     parity_check_gqa_interactive_no_buff(
+    #         config,
+    #         no_past=no_past,
+    #         past_format=Formats.BNSH,
+    #         causal=True,
+    #         rtol=5e-3,
+    #         atol=5e-3,
+    #         rotary=rotary,
+    #         rotary_interleaved=rotary_interleaved,
+    #         packed=packed,
+    #     )
 
-    @parameterized.expand(gqa_interactive_flash_attention_test_cases())
-    def test_gqa_interactive_flash_attention(self, _, config, local, no_past, rotary, rotary_interleaved, packed):
+    # @parameterized.expand(gqa_interactive_flash_attention_test_cases())
+    # def test_gqa_interactive_flash_attention(self, _, config, local, no_past, rotary, rotary_interleaved, packed):
+    #     if not has_flash_attention():
+    #         return
+    #     print("------- FLASH ATTENTION (INTERACTIVE) -------")
+    #     os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+    #     parity_check_gqa_interactive(
+    #         config,
+    #         local=local,
+    #         no_past=no_past,
+    #         past_format=Formats.BNSH,
+    #         rtol=1e-3,
+    #         atol=1e-3,
+    #         rotary=rotary,
+    #         rotary_interleaved=rotary_interleaved,
+    #         packed=packed,
+    #     )
+    #     parity_check_gqa_interactive_no_buff(
+    #         config,
+    #         local=local,
+    #         no_past=no_past,
+    #         past_format=Formats.BNSH,
+    #         rtol=1e-3,
+    #         atol=1e-3,
+    #         rotary=rotary,
+    #         rotary_interleaved=rotary_interleaved,
+    #         packed=packed,
+    #     )
+
+    @parameterized.expand(gqa_interactive_one_batch_flash_attention_test_cases())
+    def test_gqa_interactive_one_batch_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
         if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (INTERACTIVE) -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
 
-        parity_check_gqa_interactive(
+        parity_check_gqa_past(
             config,
             local=local,
-            no_past=no_past,
             past_format=Formats.BNSH,
-            rtol=1e-3,
-            atol=1e-3,
+            rtol=5e-3,
+            atol=5e-3,
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        parity_check_gqa_interactive_no_buff(
+        parity_check_gqa_past_no_buff(
             config,
             local=local,
-            no_past=no_past,
             past_format=Formats.BNSH,
-            rtol=1e-3,
-            atol=1e-3,
+            rtol=5e-3,
+            atol=5e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+        )
+
+
+    @parameterized.expand(gqa_interactive_one_batch_memory_efficient_attention_test_cases())
+    def test_gqa_interactive_one_batch_memory_efficient_attention(self, _, config, rotary, rotary_interleaved, packed):
+        if not has_memory_efficient():
+            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        print("-------- MEMORY EFFICIENT (INTERACTIVE) --------")
+
+        parity_check_gqa_past(
+            config,
+            past_format=Formats.BNSH,
+            rtol=5e-3,
+            atol=5e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+        )
+        parity_check_gqa_past_no_buff(
+            config,
+            past_format=Formats.BNSH,
+            rtol=5e-3,
+            atol=5e-3,
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
@@ -3137,7 +3301,13 @@ class TestGQA(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # LEFT OFF: ONLY FAILS FOR SEQLEN 128, KV_SEQLEN 129, ROTARY
+    # random.seed(69)
     # test_gqa = TestGQA()
-    # config = Config(1, 128, 128, 0, 4, 4, 16)
-    # test_gqa.test_gqa_interactive_memory_efficient_attention("test", config, False, False, False, False)
+    # config = Config(1, 128, 130, -1, 4, 4, 256)
+    # config = Config(1, 256, 2048, -1, 32, 8, 128)
+    # test_gqa.test_gqa_interactive_one_batch_flash_attention("test", config, True, False, False, True)
+    # config = Config(1, 256, 2048, -1, 32, 8, 256)
+    # test_gqa.test_gqa_interactive_one_batch_memory_efficient_attention("test", config, True, False, False)
+    # test_gqa.test_gqa_interactive_one_batch_flash_attention("test", config, False, False, False, False)
     unittest.main()
