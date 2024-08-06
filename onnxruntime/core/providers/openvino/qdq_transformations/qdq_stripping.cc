@@ -583,7 +583,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
   // Handle Qs in the NodeUnit
   if (!node_unit.GetQNodes().empty()) {
-    for (auto i = 0 ; i < node_unit.GetQNodes().size() ; i++) {
+    for (size_t i = 0 ; i < node_unit.GetQNodes().size() ; i++) {
       const auto& q_node = node_unit.GetQNodes().at(i);
 
       SkipReason reason;
