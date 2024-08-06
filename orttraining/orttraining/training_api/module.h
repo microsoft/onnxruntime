@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include "core/session/inference_session.h"
 #include "orttraining/training_api/utils.h"
 
@@ -116,7 +117,7 @@ struct Module {
   size_t GetTrainingModelOutputCount() const noexcept;
 
   // Returns the output count for eval graph
-  size_t GetEvalModelOutputCount() const noexcept;
+  size_t GetEvalModelOutputCount() const;
 
   // Returns the output names for train graph
   std::string GetTrainingModelOutputName(size_t index) const;
@@ -140,17 +141,18 @@ struct Module {
 #if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path.
+  // This function modifies the graph stored with the eval session & marks the module as done training.
   // If the parameter state is not available; i.e. the module was created using the nominal checkpoint,
   // and the state has not been loaded yet, then this function will return an error.
   Status ExportModelForInferencing(const std::string& inference_model_path,
-                                   gsl::span<const std::string> graph_output_names) const;
+                                   gsl::span<const std::string> graph_output_names);
 #endif
 
   // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;
 
   // Returns the user input count for eval graph
-  size_t GetEvalModelInputCount() const noexcept;
+  size_t GetEvalModelInputCount() const;
 
   // Returns the user input name for train graph at given index
   std::string GetTrainingModelInputName(size_t index) const;
@@ -162,11 +164,12 @@ struct Module {
   std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
 
   // Returns the input definitions of the Eval model
-  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const;
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
+  bool finished_training_ = false;
 
   struct TrainInputNames {
    private:
@@ -197,7 +200,6 @@ struct Module {
   CheckpointState* state_;  // Non owning pointer to the state.
 
   bool accumulate_gradient_ = false;
-  std::optional<std::string> eval_model_path_;
   size_t eval_user_input_count_{0U};
 };
 

@@ -336,8 +336,9 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * an inference model if it knows the inference graph outputs. The input inference graph outputs
    * are used to prune the eval model so that the inference model's outputs align with the provided outputs.
    * The exported model is saved at the path provided and can be used for inferencing with Ort::Session.
-   * \note Note that the function re-loads the eval model from the path provided to Ort::TrainingSession
-   * and expects that this path still be valid.
+   * \note Note that the function modifies the eval model graph in-place, so after this method is called, the
+   * OrtTrainingSession can no longer be used for training. To resume training from this point, save the checkpoint
+   * state and create a new OrtTrainingSession with the updated eval model.
    *
    * \param[in] inference_model_path Path where the inference model should be serialized to.
    * \param[in] graph_output_names Names of the outputs that are needed in the inference model.

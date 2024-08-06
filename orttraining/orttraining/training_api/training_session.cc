@@ -37,7 +37,7 @@ size_t TrainingSession::GetTrainingModelOutputCount() const noexcept {
   return module_->GetTrainingModelOutputCount();
 }
 
-size_t TrainingSession::GetEvalModelOutputCount() const noexcept {
+size_t TrainingSession::GetEvalModelOutputCount() const {
   return module_->GetEvalModelOutputCount();
 }
 
@@ -45,7 +45,7 @@ std::string TrainingSession::GetTrainingModelOutputName(size_t index) const noex
   return module_->GetTrainingModelOutputName(index);
 }
 
-std::string TrainingSession::GetEvalModelOutputName(size_t index) const noexcept {
+std::string TrainingSession::GetEvalModelOutputName(size_t index) const {
   return module_->GetEvalModelOutputName(index);
 }
 
@@ -53,7 +53,7 @@ size_t TrainingSession::GetTrainingModelInputCount() const noexcept {
   return module_->GetTrainingModelInputCount();
 }
 
-size_t TrainingSession::GetEvalModelInputCount() const noexcept {
+size_t TrainingSession::GetEvalModelInputCount() const {
   return module_->GetEvalModelInputCount();
 }
 
@@ -61,7 +61,7 @@ std::string TrainingSession::GetTrainingModelInputName(size_t index) const noexc
   return module_->GetTrainingModelInputName(index);
 }
 
-std::string TrainingSession::GetEvalModelInputName(size_t index) const noexcept {
+std::string TrainingSession::GetEvalModelInputName(size_t index) const {
   return module_->GetEvalModelInputName(index);
 }
 

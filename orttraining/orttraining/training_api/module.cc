@@ -3,6 +3,8 @@
 
 #include "orttraining/training_api/module.h"
 
+#include <memory>
+
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/execution_provider.h"
@@ -54,9 +56,9 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   GraphViewer graph_viewer(inference_graph);
   const auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t idx = node_indices.size(); idx > 0; --idx) {
-    const NodeIndex node_index = idx - 1;
+    const NodeIndex node_index = node_indices[idx - 1];
     auto* node = inference_graph.GetNode(node_index);
-    if (!reachable_nodes.count(node)) {
+    if (node && !reachable_nodes.count(node)) {
       graph_utils::RemoveNodeOutputEdges(inference_graph, *node);
       inference_graph.RemoveNode(node_index);
     }
@@ -414,10 +416,6 @@ Module::Module(const ModelIdentifiers& model_identifiers,
 
   // Keep a copy of the eval model path to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
-  // TODO(askhade): Find a fix to export model for inference when the eval model is loaded from a buffer.
-  if (std::holds_alternative<std::optional<std::string>>(model_identifiers.eval_model)) {
-    eval_model_path_ = std::get<std::optional<std::string>>(model_identifiers.eval_model);
-  }
 }
 
 Module::~Module() {
@@ -428,7 +426,9 @@ size_t Module::GetTrainingModelOutputCount() const noexcept {
   return train_output_names_.size();
 }
 
-size_t Module::GetEvalModelOutputCount() const noexcept {
+size_t Module::GetEvalModelOutputCount() const {
+  ORT_ENFORCE(!finished_training_,
+              "Exporting for inference has modified the eval model. Cannot retrieve EvalModel output count. ");
   return eval_output_names_.size();
 }
 
@@ -438,6 +438,8 @@ std::string Module::GetTrainingModelOutputName(size_t index) const {
 }
 
 std::string Module::GetEvalModelOutputName(size_t index) const {
+  ORT_ENFORCE(!finished_training_,
+              "Exporting for inference has modified the eval model. Cannot retrieve EvalModel output name. ");
   ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-",
               eval_output_names_.size(), "). Actual: ", index);
   return eval_output_names_.at(index);
@@ -613,6 +615,9 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
 }
 
 Status Module::LazyResetGrad() {
+  ORT_RETURN_IF(finished_training_,
+                "Cannot train after exporting for inferencing. ",
+                "To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   accumulate_gradient_ = false;
   return Status::OK();
 }
@@ -620,6 +625,9 @@ Status Module::LazyResetGrad() {
 Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot perform TrainStep with a nominal state. Please load the model parameters first.");
+  ORT_RETURN_IF(finished_training_,
+                "Cannot train after exporting for inferencing. ",
+                "To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   std::vector<std::shared_ptr<Parameter>> params;
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
@@ -642,6 +650,9 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot perform EvalStep with a nominal state. Please load the model parameters first.");
+  ORT_RETURN_IF(finished_training_,
+                "Cannot evaluate after exporting for inferencing. ",
+                "To continue training from this point, please save the checkpoint and create a new TrainingSession.");
   ORT_ENFORCE(nullptr != eval_sess_, "Evaluation session not initialized.");
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
@@ -655,26 +666,40 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 //                      the build is minimal or not. This will require to read the ort_format eval model,
 //                      transform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
-                                         gsl::span<const std::string> graph_output_names) const {
+                                         gsl::span<const std::string> graph_output_names) {
   ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
                 "Cannot export the model with a nominal state. Please load the model parameters first.");
-  ORT_RETURN_IF(!eval_sess_ || !eval_model_path_.has_value(),
-                "Eval model was not provided. Cannot export a model for inferencing.");
+  ORT_RETURN_IF(!eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
 
-  ONNX_NAMESPACE::ModelProto eval_model;
-  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_.value()), eval_model));
+  class EvalSessionWrapper : public InferenceSession {
+   public:
+    using InferenceSession::InferenceSession;
 
-  // Clone the eval mode into an inference onnxruntime::Model.
-  std::shared_ptr<Model> inference_model;
-  ORT_RETURN_IF_ERROR(Model::Load(eval_model, inference_model, nullptr, logging::LoggingManager::DefaultLogger()));
+    Graph& GetMutableGraph() const {
+      return model_->MainGraph();
+    }
+
+    Model& GetMutableModel() {
+      return *model_;
+    }
+  };
+
+  // Once finished_training is set to true, will no longer be able to train or evaluate with this module
+  // since the eval session graph will have been modified.
+  finished_training_ = true;
+
+  EvalSessionWrapper& eval_sess_wrapper = static_cast<EvalSessionWrapper&>(*eval_sess_);
+
+  Model& inference_model = eval_sess_wrapper.GetMutableModel();
+  Graph& inference_graph = eval_sess_wrapper.GetMutableGraph();
 
   // The cloned model's outputs are transformed such that the model has outputs as defined by graph_output_names
   // Any nodes not contributing to the inference outputs will be pruned.
-  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model->MainGraph(), graph_output_names));
+  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_graph, graph_output_names));
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(),
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_graph,
                                                        state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
@@ -683,9 +708,9 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
         ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
     PathString inference_model_pathstring = ToPathString(inference_model_path);
     ORT_THROW_IF_ERROR(
-        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
+        Model::SaveWithExternalInitializers(inference_model, inference_model_pathstring, external_data_name, 64));
   } else {
-    ORT_THROW_IF_ERROR(Model::Save(*inference_model, ToPathString(inference_model_path)));
+    ORT_THROW_IF_ERROR(Model::Save(inference_model, ToPathString(inference_model_path)));
   }
   // Save the model at the desired location.
   return Status::OK();
@@ -696,18 +721,24 @@ size_t Module::GetTrainingModelInputCount() const noexcept {
   return train_input_names_.UserInputNames().size();
 }
 
-size_t Module::GetEvalModelInputCount() const noexcept {
+size_t Module::GetEvalModelInputCount() const {
+  ORT_ENFORCE(!finished_training_,
+              "Exporting for inference has modified the eval model. Cannot retrieve EvalModel input count. ");
   return eval_user_input_count_;
 }
 
 std::string Module::GetTrainingModelInputName(size_t index) const {
   ORT_ENFORCE(index < train_input_names_.UserInputNames().size(),
-              "Train input name index out of range. Expected in range [0-", train_input_names_.UserInputNames().size(), "). Actual: ",
+              "Train input name index out of range. Expected in range [0-",
+              train_input_names_.UserInputNames().size(),
+              "). Actual: ",
               index);
   return train_input_names_.UserInputNames()[index];
 }
 
 std::string Module::GetEvalModelInputName(size_t index) const {
+  ORT_ENFORCE(!finished_training_,
+              "Exporting for inference has modified the eval model. Cannot retrieve EvalModel input name. ");
   ORT_ENFORCE(index < eval_user_input_count_,
               "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
               index);
@@ -718,7 +749,9 @@ std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() 
   return train_sess_->GetModelInputs();
 }
 
-std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
+std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const {
+  ORT_ENFORCE(!finished_training_,
+              "Exporting for inference has modified the eval model. Cannot retrieve EvalModel inputs. ");
   return eval_sess_->GetModelInputs();
 }
 
