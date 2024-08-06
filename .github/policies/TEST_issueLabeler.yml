@@ -17,7 +17,7 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\bcuda\b/i'
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
                       isRegex: True
                   - bodyContains:
                       pattern: '/\bcuda\b/i'
