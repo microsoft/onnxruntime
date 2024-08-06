@@ -8,25 +8,8 @@
 
 namespace onnxruntime {
 
-/*
- * It matches following pattern:
- *     Pad
- *      |
- *   Conv/MaxPool/AveragePool
- */
-bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  // if Pad has input axis, don't fuse it.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Pad", {1, 2, 11, 13, 18, 19}) ||
-      node.GetOutputEdgesCount() != 1 ||
-      node.InputDefs().size() > 3) {
-    return false;
-  }
-
-  if (graph.NodeProducesGraphOutput(node)) {
-    return false;
-  }
-
-  const Node& child_node = *node.OutputNodesBegin();
+bool VerifyNonCastChild(const Node& child_node)
+{
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {1, 7, 10, 11, 19}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
@@ -51,6 +34,41 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
 
   // This pass currently assumed that this attribute already exists on the child node
   if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
+    return false;
+  }
+
+  return true;
+}
+
+void Update_Pad_Attribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size)
+{
+  auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
+  uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
+
+  for (uint32_t pads_index = 2, child_index = 0; pads_index < pads_size / 2; pads_index++, child_index++) {
+    child_pads->Set(child_index, child_pads->Get(child_index) + pads_values[pads_index]);
+    uint32_t mirrored_child_index = child_index + (child_pads_size / 2);
+    uint32_t mirrored_pad_index = pads_index + (pads_size / 2);
+    child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
+  }
+}
+    /*
+ * It matches following pattern:
+ *     Pad
+ *      |
+ *    Cast (Optional)
+ *      |
+ *   Conv/MaxPool/AveragePool
+ */
+bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
+  // if Pad has input axis, don't fuse it.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Pad", {1, 2, 11, 13, 18, 19}) ||
+      node.GetOutputEdgesCount() != 1 ||
+      node.InputDefs().size() > 3) {
+    return false;
+  }
+
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
@@ -83,7 +101,20 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
     }
   }
 
-  return true;
+  const Node& child_node = *node.OutputNodesBegin();
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Cast", { 1, 6, 9, 13 }))
+  {
+    if (child_node.GetOutputEdgesCount() != 1) {
+      return false;
+    }
+
+    if (graph.NodeProducesGraphOutput(child_node)) {
+      return false;
+    }
+    return VerifyNonCastChild(*child_node.OutputNodesBegin());
+  } else {
+    return VerifyNonCastChild(child_node);
+  }
 }
 
 /*
@@ -115,7 +146,32 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   }
 
   Node& child_node = *graph.GetNode(pad_node.OutputNodesBegin()->Index());
-  auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
+  
+  if (child_node.OpType() == "Cast") {
+    if (pad_node.SinceVersion() >= 11) {
+      if (pad_node.InputDefs().size() > 2) {
+        auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, pad_node.InputDefs()[2]->Name());
+        Initializer new_pad_constant_value{static_cast<ONNX_NAMESPACE::TensorProto_DataType>(child_node.GetAttributes().at("to").i()),
+                                       pad_constant_value_proto->name(),
+                                       pad_constant_value_proto->dims()};
+        // Create new initializers of Pad
+        ONNX_NAMESPACE::TensorProto new_pad_constant_value_tensor_proto;
+        new_pad_constant_value.ToProto(new_pad_constant_value_tensor_proto);
+
+        // Replace initializers of Pad node
+        graph.RemoveInitializedTensor(pad_node.InputDefs()[2]->Name());
+        graph.AddInitializedTensor(new_pad_constant_value_tensor_proto);
+      }
+    } else {
+      // Pad only supports float data type for constant value in opset < 11
+      // therefore can't be casted to any other data type
+      return Status::OK();
+    }
+    Update_Pad_Attribute(*graph.GetNode(child_node.OutputNodesBegin()->Index()), pads_values, pads_size);
+  } else {
+    Update_Pad_Attribute(child_node, pads_values, pads_size);
+  }
+  /*auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
   uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
 
   for (uint32_t pads_index = 2, child_index = 0; pads_index < pads_size / 2; pads_index++, child_index++) {
@@ -123,7 +179,7 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
     uint32_t mirrored_child_index = child_index + (child_pads_size / 2);
     uint32_t mirrored_pad_index = pads_index + (pads_size / 2);
     child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
-  }
+  }*/
 
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
