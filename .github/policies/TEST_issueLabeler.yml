@@ -46,3 +46,14 @@ configuration:
             then:
               - addLabel:
                   label: api:Java
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bjavascript\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bjavascript\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: api:JavaScript
