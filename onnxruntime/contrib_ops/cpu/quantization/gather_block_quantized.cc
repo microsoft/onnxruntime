@@ -57,12 +57,12 @@ class GatherBlockQuantized : public OpKernel {
                                const T2* scales_ptr,
                                const T1* zero_points_ptr,
                                T2* output_ptr,
-                               int64_t gather_M,
-                               int64_t gather_N,
-                               int64_t gather_axis_dim,
-                               int64_t gather_block,
-                               int64_t quantize_axis_dim,
-                               int64_t quantize_N,
+                               const int64_t gather_M,
+                               const int64_t gather_N,
+                               const int64_t gather_axis_dim,
+                               const int64_t gather_block,
+                               const int64_t quantize_axis_dim,
+                               const int64_t quantize_N,
                                concurrency::ThreadPool* tp) const;
 
  private:
@@ -131,12 +131,12 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
                                                              const T2* scales_ptr,
                                                              const T1* zero_points_ptr,
                                                              T2* output_ptr,
-                                                             int64_t gather_M,
-                                                             int64_t gather_N,
-                                                             int64_t gather_axis_dim,
-                                                             int64_t gather_block,
-                                                             int64_t quantize_axis_dim,
-                                                             int64_t quantize_N,
+                                                             const int64_t gather_M,
+                                                             const int64_t gather_N,
+                                                             const int64_t gather_axis_dim,
+                                                             const int64_t gather_block,
+                                                             const int64_t quantize_axis_dim,
+                                                             const int64_t quantize_N,
                                                              concurrency::ThreadPool* tp) const {
   auto data_full_block = gather_axis_dim * gather_block;
   auto quantize_full_block = quantize_axis_dim * quantize_N;
@@ -164,7 +164,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     // TODO(fajin): use SIMD
     size_t output_idx = static_cast<size_t>(output_idx_base);
     size_t data_idx = static_cast<size_t>(data_idx_base);
-    for (size_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
+    for (size_t i = 0; i < static_cast<size_t>(gather_block); ++i, ++output_idx, ++data_idx) {
       auto data_val = static_cast<int32_t>(data_ptr[data_idx >> 1].GetElem(data_idx & 1));
 
       size_t x = data_idx / quantize_full_block;
