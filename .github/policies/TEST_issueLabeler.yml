@@ -89,10 +89,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\bcore-?ml\b/i'
+                      pattern: '/\bcore\s*ml\b/i'
                       isRegex: True
                   - bodyContains:
-                      pattern: '/\bcore-?ml\b/i'
+                      pattern: '/\bcore\s*ml\b/i'
                       isRegex: True
             then:
               - addLabel:
@@ -155,10 +155,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\brockchip\b/i'
+                      pattern: '/\brockchip(?:npu)?\b/i'
                       isRegex: True
                   - bodyContains:
-                      pattern: '/\brockchip\b/i'
+                      pattern: '/\brockchip(?:npu)?\b/i'
                       isRegex: True
             then:
               - addLabel:
@@ -272,17 +272,6 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\bopen\s*vino\b/i'
-                      isRegex: True
-                  - bodyContains:
-                      pattern: '/\bopen\s*vino\b/i'
-                      isRegex: True
-            then:
-              - addLabel:
-                  label: ep:OpenVINO
-          - if:
-              - or:
-                  - titleContains:
                       pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
                       isRegex: True
                   - bodyContains:
@@ -294,10 +283,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b|\btransformers\.js\b)/i'
                       isRegex: True
                   - bodyContains:
-                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b|\btransformers\.js\b)/i'
                       isRegex: True
             then:
               - addLabel:
@@ -312,10 +301,10 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/(\bhugging-?\s*face\b)/i'
+                      pattern: '/\btransformers(?!\.js)\b/i'
                       isRegex: True
                   - bodyContains:
-                      pattern: '/(\bhugging-?\s*face\b)/i'
+                      pattern: '/\btransformers(?!\.js)\b/i'
                       isRegex: True
             then:
               - addLabel:
