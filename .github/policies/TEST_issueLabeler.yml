@@ -24,3 +24,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:CUDA
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: api:CSharp
