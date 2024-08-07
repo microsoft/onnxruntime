@@ -14,13 +14,9 @@ configuration:
                     - isLabeled
         then:
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/\bcuda\b/i'
-                      isRegex: True
-                  - bodyContains:
-                      pattern: '/\bcuda\b/i'
-                      isRegex: True
+              - titleContains:
+                  pattern: '/\bcuda\b/i'
+                  isRegex: True
             then:
               - addLabel:
                   label: ep:CUDA
