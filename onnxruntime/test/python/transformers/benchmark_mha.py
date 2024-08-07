@@ -88,9 +88,11 @@ class MultiHeadAttentionConfig:
         enable_cuda_graph: bool = False,
         dtype=torch.float,
         use_kv_cache: bool = False,
+        has_past_input: bool = False,
         share_past_present_buffer: bool = False,
         input_format: int = InputFormats.Q_K_V_BSNH_BSNH_BSNH,
         verbose: bool = False,
+        has_bias: bool = False,
     ):
         self.operator = "MultiHeadAttention"
         self.batch_size = batch_size
@@ -103,15 +105,25 @@ class MultiHeadAttentionConfig:
         self.causal = causal
         self.softmax_scale = softmax_scale or (1.0 / (head_size**0.5))
 
+        # Support the case that there is no past but need present output (for prompt case).
+        self.has_past_input = has_past_input
+        if has_past_input:
+            assert use_kv_cache
+        else:  # no past input
+            assert past_sequence_length == 0
+
+        self.has_present_output = use_kv_cache
+
         self.use_kv_cache = use_kv_cache
         if not use_kv_cache:
             assert past_sequence_length == 0
         else:
             assert self.kv_sequence_length == self.sequence_length
 
-        if input_format == InputFormats.Q_K_V_BSNH_BNSH_BNSH:
-            # cross attention does not have past state
-            assert not use_kv_cache
+        # Only BSNH input format supports past state.
+        if input_format != InputFormats.Q_K_V_BSNH_BSNH_BSNH:
+            assert not self.has_past_input
+            assert not self.has_present_output
 
         # Derived values
         self.total_sequence_length = self.kv_sequence_length + past_sequence_length
@@ -130,6 +142,7 @@ class MultiHeadAttentionConfig:
         self.is_packed_qkv = input_format == InputFormats.QKV_BSN3H
         self.is_packed_kv = input_format == InputFormats.Q_KV_BSNH_BSN2H
         self.verbose = verbose
+        self.has_bias = has_bias
 
     def __repr__(self):
         return (
@@ -140,7 +153,8 @@ class MultiHeadAttentionConfig:
             f"causal={self.causal}), softmax_scale={self.softmax_scale}, use_kv_cache={self.use_kv_cache}, "
             f"share_past_present_buffer={self.share_past_present_buffer}, "
             f"provider={self.provider}, device={self.device}, enable_cuda_graph={self.enable_cuda_graph}, "
-            f"dtype={self.dtype}, input_format={InputFormats.input_format_str(self.input_format)}"
+            f"dtype={self.dtype}, input_format={InputFormats.input_format_str(self.input_format)}, "
+            f"has_bias={self.has_bias}"
         )
 
     def shape_dict(self, input_format=None):
@@ -176,15 +190,22 @@ class MultiHeadAttentionConfig:
                 "value": (self.batch_size, self.num_heads, self.sequence_length, self.head_size),
             }
 
-        if self.use_kv_cache:
-            assert input_format != InputFormats.Q_K_V_BSNH_BNSH_BNSH, "cross attention shall not have past state"
+        if self.has_past_input:
             shapes = {
                 **shapes,
                 "past_key": (self.batch_size, self.num_heads, self.past_buffer_length, self.head_size),
                 "past_value": (self.batch_size, self.num_heads, self.past_buffer_length, self.head_size),
+            }
+
+        if self.has_present_output:
+            shapes = {
+                **shapes,
                 "present_key": (self.batch_size, self.num_heads, self.present_buffer_length, self.head_size),
                 "present_value": (self.batch_size, self.num_heads, self.present_buffer_length, self.head_size),
             }
+
+        if self.has_bias:
+            shapes["bias"] = (3 * self.num_heads * self.head_size,)
 
         return shapes
 
@@ -221,19 +242,26 @@ class MultiHeadAttentionConfig:
                 "value": ("batch_size", self.num_heads, "sequence_length", self.head_size),
             }
 
-        if self.use_kv_cache:
-            assert input_format != InputFormats.Q_K_V_BSNH_BNSH_BNSH, "cross attention shall not have past state"
+        if self.has_past_input:
             shapes = {
                 **shapes,
                 "past_key": ("batch_size", self.num_heads, "past_buffer_length", self.head_size),
                 "past_value": ("batch_size", self.num_heads, "past_buffer_length", self.head_size),
+            }
+
+        if self.has_present_output:
+            shapes = {
+                **shapes,
                 "present_key": ("batch_size", self.num_heads, "present_buffer_length", self.head_size),
                 "present_value": ("batch_size", self.num_heads, "present_buffer_length", self.head_size),
             }
 
+        if self.has_bias:
+            shapes["bias"] = (3 * self.num_heads * self.head_size,)
+
         return shapes
 
-    def random_inputs(self, seed: int = 123):
+    def random_inputs(self, seed: int = 123, no_bias_k_v: bool = False):
         device = self.device
         dtype = self.dtype
 
@@ -246,6 +274,14 @@ class MultiHeadAttentionConfig:
         q = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
         k = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
         v = torch.empty(shape, device=device, dtype=dtype).normal_(mean=0, std=0.1)
+
+        bias_q = torch.empty((self.num_heads * self.head_size,), device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        bias_k = torch.empty((self.num_heads * self.head_size,), device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        bias_v = torch.empty((self.num_heads * self.head_size,), device=device, dtype=dtype).normal_(mean=0, std=0.1)
+        if no_bias_k_v:
+            bias_k = torch.zeros_like(bias_k)
+            bias_v = torch.zeros_like(bias_v)
+
         k_bnsh = k.transpose(1, 2)
         v_bnsh = v.transpose(1, 2)
 
@@ -277,7 +313,7 @@ class MultiHeadAttentionConfig:
                 "value": v_bnsh.contiguous(),
             }
 
-        if self.use_kv_cache:
+        if self.has_past_input:
             feeds = {
                 **feeds,
                 "past_key": torch.empty(shape_dict["past_key"], device=device, dtype=dtype).normal_(mean=0, std=0.1),
@@ -285,6 +321,9 @@ class MultiHeadAttentionConfig:
                     mean=0, std=0.1
                 ),
             }
+
+        if self.has_bias:
+            feeds["bias"] = torch.concat([bias_q, bias_k, bias_v], dim=0).reshape(shape_dict["bias"]).contiguous()
 
         return feeds
 
@@ -299,15 +338,29 @@ class MultiHeadAttentionConfig:
         else:
             inputs, outputs = ["query", "key", "value"], ["output"]
 
-        if self.use_kv_cache:
-            return [*inputs, "past_key", "past_value"], [*outputs, "present_key", "present_value"]
-        else:
-            return inputs, outputs
+        if self.has_bias:
+            inputs = [*inputs, "bias"]
+
+        if self.has_past_input:
+            inputs = [*inputs, "past_key", "past_value"]
+
+        if self.has_present_output:
+            outputs = [*outputs, "present_key", "present_value"]
+
+        return inputs, outputs
 
 
 def fill_optional_mha_inputs(input_names):
     inputs = ["query", "key", "value", "bias", "key_padding_mask", "relative_position_bias", "past_key", "past_value"]
-    return input_names[:-2] + [""] * (len(inputs) - len(input_names)) + input_names[-2:]
+
+    # Remove optional inputs that are not in input_names with empty string
+    inputs_with_optional = [input if input in input_names else "" for input in inputs]
+
+    # Remove empty string at the end of the list.
+    while inputs_with_optional[-1] == "":
+        inputs_with_optional.pop(-1)
+
+    return inputs_with_optional
 
 
 def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig, use_symbolic_shape=False):
@@ -317,7 +370,7 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig, use
     nodes = [
         helper.make_node(
             "MultiHeadAttention",
-            fill_optional_mha_inputs(input_names) if config.use_kv_cache else input_names,
+            fill_optional_mha_inputs(input_names),
             output_names,
             "MultiHeadAttention_0",
             num_heads=config.num_heads,
@@ -331,11 +384,13 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig, use
     inputs = [
         helper.make_tensor_value_info(input_name, float_type, list(shape_dict[input_name]))
         for input_name in input_names
+        if input_name
     ]
 
     outputs = [
         helper.make_tensor_value_info(output_name, float_type, list(shape_dict[output_name]))
         for output_name in output_names
+        if output_name
     ]
 
     graph = helper.make_graph(
@@ -355,6 +410,7 @@ def create_ort_session(
     session_options=None,
     attention_kernel=SdpaKernel.DEFAULT,
     use_symbolic_shape: bool = True,
+    use_tf32: bool = True,
 ) -> CudaSession:
     if config.verbose:
         print(f"create session for {vars(config)}")
@@ -364,6 +420,7 @@ def create_ort_session(
         device_id = torch.cuda.current_device() if isinstance(config.device, str) else config.device.index
         provider_options = CudaSession.get_cuda_provider_options(device_id, config.enable_cuda_graph)
         provider_options["sdpa_kernel"] = int(attention_kernel)
+        provider_options["use_tf32"] = int(use_tf32)
         providers = [(config.provider, provider_options), "CPUExecutionProvider"]
     else:
         providers = ["CPUExecutionProvider"]
@@ -373,9 +430,11 @@ def create_ort_session(
 
 
 def create_session(
-    config: MultiHeadAttentionConfig, session_options=None, attention_kernel=SdpaKernel.DEFAULT
+    config: MultiHeadAttentionConfig, session_options=None, attention_kernel=SdpaKernel.DEFAULT, use_tf32: bool = True
 ) -> CudaSession:
-    ort_session = create_ort_session(config, session_options, attention_kernel, use_symbolic_shape=False)
+    ort_session = create_ort_session(
+        config, session_options, attention_kernel, use_symbolic_shape=False, use_tf32=use_tf32
+    )
     cuda_session = CudaSession(ort_session, config.device, config.enable_cuda_graph)
     shape_dict = config.shape_dict()
     cuda_session.allocate_buffers(shape_dict)
@@ -385,8 +444,8 @@ def create_session(
 class OrtMultiHeadAttention:
     """A wrapper of ORT MultiHeadAttention to test relevance and performance."""
 
-    def __init__(self, config: MultiHeadAttentionConfig, session_options=None):
-        self.ort_session = create_session(config, session_options)
+    def __init__(self, config: MultiHeadAttentionConfig, session_options=None, use_tf32: bool = True):
+        self.ort_session = create_session(config, session_options, use_tf32=use_tf32)
         self.feed_dict = config.random_inputs()
 
     def infer(self):

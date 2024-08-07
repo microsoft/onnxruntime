@@ -980,6 +980,52 @@ TEST(QDQTransformerTests, ReshapeDropQDQ) {
   RunReshapeDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 12}, false, 21);  // Use int16 ONNX QDQ ops
 }
 
+// Runs a test case that checks if Q/DQ nodes are *not* dropped from DQ -> MaxPool -> Q if the quantization scale is
+// negative.
+template <typename QuantType>
+static void RunMaxPoolNegativeScaleDropQDQTestCase() {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    const std::vector<int64_t> input_shape = {1, 17, 17, 3};
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+
+    constexpr float scale = -0.003f;
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* maxpool_output = builder.MakeIntermediate();
+
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, scale, zero_point, input_arg_dq);
+
+    Node& maxpool_node = builder.AddNode("MaxPool", {input_arg_dq}, {maxpool_output});
+    maxpool_node.AddAttribute("auto_pad", "VALID");
+    maxpool_node.AddAttribute("kernel_shape", std::vector<int64_t>({2, 2}));
+
+    builder.AddQuantizeLinearNode<QuantType>(maxpool_output, scale, zero_point, output_arg);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["MaxPool"], 1);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  };
+
+  constexpr int opset = 21;
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are *not* dropped from DQ -> MaxPool -> Q for negative scale. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, MaxpoolDontDropQDQForNegativeScale) {
+  RunMaxPoolNegativeScaleDropQDQTestCase<int8_t>();
+  RunMaxPoolNegativeScaleDropQDQTestCase<uint8_t>();
+  RunMaxPoolNegativeScaleDropQDQTestCase<int16_t>();
+  RunMaxPoolNegativeScaleDropQDQTestCase<uint16_t>();
+}
+
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
 template <typename QuantType>
 static void RunSqueezeUnsqueezeDropQDQTestCase(const std::string& squeeze_type,

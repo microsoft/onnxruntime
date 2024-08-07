@@ -239,6 +239,8 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
     std::string error_msg;
     bool rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, error_msg);
     if (!rt) {
+      // TODO(adrianlizarraga): Return a Status with the error message so that aggregated logs show a more
+      // specific validation error (instead of "failed to add node").
       LOGS(logger_, WARNING) << error_msg;
     }
     return rt;
@@ -617,6 +619,12 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
     auto dst = gsl::make_span(reinterpret_cast<int8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
     auto src = gsl::make_span(reinterpret_cast<const Int4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
     ORT_RETURN_IF_NOT(Int4x2::Unpack(dst, src), "Failed to unpack Tensor<Int4x2> for QNN");
+
+    // NOTE: Masking off top 4 bits to workaround a QNN INT4 accuracy bug.
+    // Docs explicitly state that masking off top 4 bits should not be required.
+    for (size_t i = 0; i < dst.size(); i++) {
+      dst[i] &= 0x0F;  // -3 (0b1111_1101) becomes 13 (0b0000_1101)
+    }
   } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
     const size_t num_elems = shape.Size();

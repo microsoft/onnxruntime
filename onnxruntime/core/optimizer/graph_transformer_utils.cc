@@ -189,7 +189,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -281,6 +282,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                       onnxruntime::kCudaExecutionProvider,
                                                                       onnxruntime::kRocmExecutionProvider,
                                                                       onnxruntime::kDmlExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                          onnxruntime::kRocmExecutionProvider,
+                                                                          onnxruntime::kAclExecutionProvider,
+                                                                          onnxruntime::kArmNNExecutionProvider,
+                                                                          onnxruntime::kJsExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
                                                                                onnxruntime::kCudaExecutionProvider,
                                                                                onnxruntime::kRocmExecutionProvider,
@@ -309,14 +315,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 p_buffered_tensors));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_dml_eps));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_js_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_rocm_acl_armnn_js_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
@@ -419,7 +426,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
@@ -444,7 +452,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  apply_context,
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool));
+                                                                                 intra_op_thread_pool,
+                                                                                 p_buffered_tensors));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
