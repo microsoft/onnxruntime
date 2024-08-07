@@ -121,21 +121,6 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
     }
   }
 
-  // validate indices
-  auto gather_axis_dim = data_shape[narrow<size_t>(p.gather_axis)];
-  auto N = indices_shape.Size();
-  const auto* indices_data = p.indices_tensor->Data<Tind>();
-
-  // TODO(fajin): use SIMD
-  for (int64_t i = 0; i < N; ++i) {
-    auto idx = static_cast<int64_t>(indices_data[i]);
-    if (idx < -gather_axis_dim || idx >= gather_axis_dim) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
-    }
-  }
-
   return Status::OK();
 }
 
@@ -162,6 +147,10 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     int64_t gather_N_idx = gather_MN_idx % gather_N;
 
     int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
+    ORT_ENFORCE(indices_val >= -gather_axis_dim && indices_val < gather_axis_dim,
+                "indices element out of data bounds, idx=", indices_val,
+                " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
+
     indices_val = indices_val < 0 ? indices_val + gather_axis_dim : indices_val;
     int64_t output_idx_base = gather_MN_idx * gather_block;
     int64_t data_idx_base = gather_M_idx * data_full_block + indices_val * gather_block;
@@ -244,22 +233,22 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   const int64_t quantize_N = data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  const auto* data_ptr = p.data_tensor->Data<T1>();
-  const auto* indices_ptr = p.indices_tensor->Data<Tind>();
-  const auto* zero_points_ptr = p.zero_points_tensor ? p.zero_points_tensor->Data<T1>() : nullptr;
+  const auto* data_ptr = p.data_tensor->template Data<T1>();
+  const auto* indices_ptr = p.indices_tensor->template Data<Tind>();
+  const auto* zero_points_ptr = p.zero_points_tensor ? p.zero_points_tensor->template Data<T1>() : nullptr;
   const auto dequantized_type = p.scales_tensor->GetElementType();
 
   if (dequantized_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    const auto* scales_ptr = p.scales_tensor->Data<float>();
-    auto* output_ptr = p.output_tensor->MutableData<float>();
+    const auto* scales_ptr = p.scales_tensor->template Data<float>();
+    auto* output_ptr = p.output_tensor->template MutableData<float>();
 
     return CopyDataAndDequantize<float>(data_ptr, indices_ptr, scales_ptr, zero_points_ptr,
                                         output_ptr, gather_M, gather_N, gather_axis_dim, gather_block,
                                         quantize_axis_dim, quantize_N,
                                         tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
-    const auto* scales_ptr = p.scales_tensor->Data<MLFloat16>();
-    auto* output_ptr = p.output_tensor->MutableData<MLFloat16>();
+    const auto* scales_ptr = p.scales_tensor->template Data<MLFloat16>();
+    auto* output_ptr = p.output_tensor->template MutableData<MLFloat16>();
 
     return CopyDataAndDequantize<MLFloat16>(data_ptr, indices_ptr, scales_ptr, zero_points_ptr,
                                             output_ptr, gather_M, gather_N, gather_axis_dim, gather_block,
