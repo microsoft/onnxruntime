@@ -80,8 +80,6 @@ const createDequantizeLinearProgramInfo =
       const isPacked = inputType === DataType.int8 || inputType === DataType.uint8;
       const inputShape = isPacked ? [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)] : inputs[0].dims;
       const scaleShape = inputs[1].dims;
-      const input = inputVariable('input', isPacked ? DataType.uint32 : inputType, inputShape.length);
-      const scale = inputVariable('scale', dataType, scaleShape.length);
       const zeroPointInput = inputs.length > 2 ? inputs[2] : undefined;
       const zeroPointShape = zeroPointInput ?
           (isPacked ? [Math.ceil(ShapeUtil.size(zeroPointInput.dims) / 4)] : zeroPointInput.dims) :
@@ -92,11 +90,14 @@ const createDequantizeLinearProgramInfo =
       const perAxisQuantization = perLayerQuantization === false && scaleShape.length === 1;
       // Left unnecessary commented-out assignment for documentation
       // const blockQuantization = perLayerQuantization === false && perAxisQuantization === false;
-      const component = perLayerQuantization ? 1 : getMaxComponent(ShapeUtil.size(outputShape));
-      const zeroPoint = zeroPointInput ?
+      const maxComponents = getMaxComponents(outputSize);
+      const useComponent = perLayerQuantization && !isPacked;
+      const component = useComponent ? maxComponents : 1;
+      const input = inputVariable('input', isPacked ? DataType.uint32 : inputType, inputShape.length, component);
+      const scale = inputVariable('scale', dataType, scaleShape.length);      const zeroPoint = zeroPointInput ?
           inputVariable('zero_point', isPacked ? DataType.uint32 : inputType, zeroPointShape!.length) :
           undefined;
-      const output = outputVariable('output', dataType, outputShape.length);
+      const output = outputVariable('output', dataType, outputShape.length, component);
       const inputVariables = [input, scale];
       if (zeroPoint) {
         inputVariables.push(zeroPoint);
@@ -132,8 +133,7 @@ const createDequantizeLinearProgramInfo =
           ${(() => {
         if (perLayerQuantization) {
           // scale input is a scalar ()
-          return `
-              let scale_value= ${scale.getByOffset('0')}`;
+          return `let scale_value= ${scale.getByOffset('0')}`;
         } else if (perAxisQuantization) {
           // scale input is a 1D tensor
           return `
@@ -191,14 +191,13 @@ const createDequantizeLinearProgramInfo =
             }
           }
         } else {
-          return `
-          let zero_point_value: ${isPacked ? (isSigned ? 'i32' : 'u32') : tensorTypeToWsglStorageType(inputType)} = 0;`;
+          return `let zero_point_value = ${isPacked ? (isSigned ? 'i32' : 'u32') : input.type.value}(0);`;
         }
       })()};
       // Compute and write output
       ${
           output.setByOffset(
-              'global_idx', `${tensorTypeToWsglStorageType(dataType)}(x_value - zero_point_value) * scale_value`)};
+              'global_idx', `${output.type.value}(x_value - zero_point_value) * scale_value`)};
       }`;
       return {
         name: 'DequantizeLinear',
