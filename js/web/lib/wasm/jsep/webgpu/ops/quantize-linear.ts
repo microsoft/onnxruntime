@@ -195,7 +195,7 @@ const createDequantizeLinearProgramInfo =
         })()};
       // Compute and write output
       ${output.setByOffset('global_idx', `${output.type.value}(x_value - zero_point_value) * scale_value`)};
-      }`
+      }`;
       };
       return {
         name: 'DequantizeLinear',
