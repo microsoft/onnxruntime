@@ -38,7 +38,7 @@ variables:
   - name: RocmVersion
     value: 6.2
   - name: RocmVersionPatchSuffix
-    value: ".0"
+    value: ""
 
 jobs:
 - job: Linux_Build
