@@ -186,13 +186,9 @@ configuration:
               - addLabel:
                   label: ep:SNPE
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
-                      isRegex: True
-                  - bodyContains:
-                      pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
-                      isRegex: True
+              - titleContains:
+                  pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
+                  isRegex: True
             then:
               - addLabel:
                   label: ep:TensorRT
@@ -307,13 +303,9 @@ configuration:
               - addLabel:
                   label: platform:web
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/(\bwindows\b|\bwinrt\b|\bwinml\b)/i'
-                      isRegex: True
-                  - bodyContains:
-                      pattern: '/(\bwindows\b|\bwinrt\b|\bwinml\b)/i'
-                      isRegex: True
+              - titleContains:
+                  pattern: '/(\bwindows\b|\bwinrt\b|\bwinml\b)/i'
+                  isRegex: True
             then:
               - addLabel:
                   label: platform:windows
@@ -329,13 +321,9 @@ configuration:
               - addLabel:
                   label: model:transformer
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/(quant|\bqdq\b)/i'
-                      isRegex: True
-                  - bodyContains:
-                      pattern: '/(quant|\bqdq\b)/i'
-                      isRegex: True
+              - titleContains:
+                  pattern: '/(quant|\bqdq\b)/i'
+                  isRegex: True
             then:
               - addLabel:
                   label: quantization
