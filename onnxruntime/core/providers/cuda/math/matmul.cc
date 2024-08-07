@@ -122,7 +122,7 @@ float ComputeScale(cudaStream_t& stream, const Tensor* tensor, const float std_q
 {
   const int32_t num_coef = tensor->Shape().Size();
   MLFloat16* scale_coef = (MLFloat16*)malloc(num_coef * sizeof(MLFloat16));
-  ComputeStdDevCoefficientsForScale<MLFloat16>(stream, tensor, num_coef, scale_coef);
+  ComputeStdDevCoefficientsForScale(stream, tensor, num_coef, scale_coef);
 
   float std_coef = ComputeStandardDeviation(scale_coef, num_coef);
   free(scale_coef);

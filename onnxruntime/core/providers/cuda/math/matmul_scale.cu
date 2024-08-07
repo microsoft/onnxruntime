@@ -23,11 +23,10 @@ __global__ void ComputeStdDevCoefficientsForScaleKernel(const CudaT* tensor_data
 
 // h_scale_coef is an array of size num_coef allocated by the caller on the host.
 // It will also be subsequently freed by the caller.
-template <typename T>
-void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, T* h_scale_coef)
+void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, MLFloat16* h_scale_coef)
 {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  const CudaT* tensor_data = reinterpret_cast<const CudaT*>(tensor->Data<T>());
+  typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
+  const CudaT* tensor_data = reinterpret_cast<const CudaT*>(tensor->Data<MLFloat16>());
   int blocksPerGrid = static_cast<int>((num_coef + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
   CudaT* d_scale_coef; // Device memory
@@ -39,11 +38,6 @@ void ComputeStdDevCoefficientsForScale(cudaStream_t stream, const Tensor* tensor
 
   cudaFree(d_scale_coef);  // Free device memory
 }
-
-template void ComputeStdDevCoefficientsForScale<float>    (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, float*     h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<double>   (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, double*    h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<BFloat16> (cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, BFloat16*  h_scale_coef);
-template void ComputeStdDevCoefficientsForScale<MLFloat16>(cudaStream_t stream, const Tensor* tensor, const int32_t num_coef, MLFloat16* h_scale_coef);
 
 }  // namespace cuda
 }  // namespace onnxruntime
