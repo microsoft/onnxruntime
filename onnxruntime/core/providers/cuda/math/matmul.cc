@@ -134,12 +134,24 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
   (void)(ptr);
 }
 
-Status ComputeUsingFp8(cudaStream_t& stream, OpKernelContext* ctx, MatMulComputeHelper& helper, AllocatorPtr allocator,
-  const cublasLtEpilogue_t& epilogue_, const cudaDeviceProp& device_prop, bool transa, bool transb, float alpha)
+Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
+  cudaStream_t& stream,  const cudaDeviceProp& device_prop,
+  AllocatorPtr allocator, const cublasLtEpilogue_t& epilogue, bool trans_A, bool trans_B, float alpha)
 {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
   Tensor* Y = ctx->Output(0, helper.OutputShape());
+
+  // Ignore the transpose flag if rank of input being 1.
+  // Be noted: numpy.transpose on vector does not change anything.
+  bool transa = trans_A;
+  bool transb = trans_B;
+  if (left_X->Shape().NumDimensions() == 1) {
+    transa = false;
+  }
+  if (right_X->Shape().NumDimensions() == 1) {
+    transb = false;
+  }
 
   cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -293,7 +305,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
 CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy));
 #endif
 
-  cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue_, sizeof(epilogue_));
+  cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue));
 
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulPreferenceAttributes_t#cublasltmatmulpreferenceattributes-t
   // The workspace should be allocated once from OpKernelContext assuming only one cuda function
@@ -321,7 +333,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(y_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
-      ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
       ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1],
       ", shape_B=", shape_B[0], "x", shape_B[1],
@@ -365,7 +377,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(y_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
-      ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
       ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1],
       ", shape_B=", shape_B[0], "x", shape_B[1],
@@ -575,8 +587,26 @@ template Status FuncMatMul<MLFloat16>(
     bool trans_batch_B,
     Tensor* Y);
 
+
+template <>
+Status MatMul<MLFloat16>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
+  if (use_fp8_)
+  {
+    cudaStream_t stream = Stream(ctx);
+    auto& device_prop = GetDeviceProp();
+    return ComputeUsingFp8(ctx, helper, stream, device_prop, allocator_, epilogue_, trans_A_, trans_B_, alpha_);
+  }
+
+  return ComputeDefaultImpl(ctx, helper);
+}
+
 template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
+  return ComputeDefaultImpl(ctx, helper);
+}
+
+template <typename T>
+Status MatMul<T>::ComputeDefaultImpl(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* left_X = ctx->Input<Tensor>(0);
@@ -605,13 +635,6 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
-
-  if (use_fp8_)
-  {
-    cudaStream_t stream = Stream(ctx);
-    return ComputeUsingFp8(stream, ctx, helper, allocator_, epilogue_, device_prop, transa, transb, alpha_);
-  }
-
 
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(

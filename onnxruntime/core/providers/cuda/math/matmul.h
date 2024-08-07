@@ -49,6 +49,8 @@ class MatMul final : public CudaKernel {
   const bool use_fp8_;
   AllocatorPtr allocator_;
   cublasLtEpilogue_t epilogue_;
+
+  Status ComputeDefaultImpl(OpKernelContext* context, MatMulComputeHelper& helper) const;
 };
 
 template <typename T>
