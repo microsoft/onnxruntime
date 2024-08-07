@@ -145,3 +145,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:OpenVINO
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bqnn\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bqnn\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:QNN
