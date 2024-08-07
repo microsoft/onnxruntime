@@ -356,7 +356,10 @@ OrtReleaseBinding:_p,\
 OrtGetLastError:_pp,\
 JsepOutput:pp_p,\
 JsepGetNodeName:pp,\
-JsepOutput:pp_p")
+JsepOutput:pp_p,\
+jsepCopy:_pp_,\
+jsepCopyAsync:_pp_,\
+jsepDownload:_pp_")
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
       "SHELL:-s SIGNATURE_CONVERSIONS='${SIGNATURE_CONVERSIONS}'"
