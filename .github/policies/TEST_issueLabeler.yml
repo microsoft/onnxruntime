@@ -17,7 +17,7 @@ configuration:
           - if:
               - titleContains:
                   pattern: '/\bjava\b/i'
-                  isRegEx: true
+                  isRegEx: True
             then:
               - addLabel:
                   label: api:Java
