@@ -92,7 +92,13 @@ def _build_for_apple_sysroot(
 
     # macos requires different framework structure:
     # https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/FrameworkAnatomy.html
-    if sysroot == "macosx" or sysroot == "macabi":
+    #
+    # We need to update the CI that builds the nuget package to be able to handle symlinks in the xcframework. That is
+    # non-trivial as it needs to move from running on Windows to running on Linux or macOS. Short term the mac-catalyst
+    # xcframework will have the incorrect structure.
+    #
+    # if sysroot == "macosx" or sysroot == "macabi":
+    if sysroot == "macosx":
         # create headers and resources directory
         header_dir = os.path.join(framework_dir, "Versions", "A", "Headers")
         resource_dir = os.path.join(framework_dir, "Versions", "A", "Resources")
