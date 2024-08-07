@@ -211,3 +211,58 @@ configuration:
             then:
               - addLabel:
                   label: ep:tvm
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bvitis(?:ai)?\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bvitis(?:ai)?\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:VitisAI
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bwebgpu\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bwebgpu\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:WebGPU
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bwebnn\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bwebnn\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:WebNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bxnn\s*pack\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bxnn\s*pack\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:Xnnpack
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bjetson\b|\bjetpack\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: platform:jetson
