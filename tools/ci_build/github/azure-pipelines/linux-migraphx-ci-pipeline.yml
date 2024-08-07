@@ -66,7 +66,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
-      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
+      Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
     inputs:
