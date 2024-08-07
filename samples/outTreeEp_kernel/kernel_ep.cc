@@ -57,8 +57,12 @@ KernelEp::KernelEp(const char* ep_type, const KernelEpInfo& ep_info) : info(ep_i
     OrtExecutionProvider::RegisterKernels = [](OrtKernelRegistry* kernel_registry) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         //Ort::Custom::OrtLiteCustomOp* op = Ort::Custom::CreateLiteCustomOp("Relu", "kernel_ep", MyRelu);
+
+        OrtTypeConstraints* type_constraints = nullptr;
+        api->CreateOrtTypeConstraints(&type_constraints);
+        api->AddTypeConstraint(type_constraints, "T", ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
         OrtCustomOp* op = new MyRelu();
-        api->OrtKernelRegistry_RegisterKernel(kernel_registry, op);
+        api->OrtKernelRegistry_RegisterKernel(kernel_registry, op, type_constraints);
     };
 }
 

@@ -41,6 +41,7 @@
 #include "core/common/string_helper.h"
 #include "core/framework/provider_factory_adapter.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/ort_type_constraints.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -116,7 +117,7 @@ using namespace onnxruntime;
   auto tensor = v->GetMutable<onnxruntime::Tensor>();
 
 // TODO(leca): try: namespace onnxruntime { KernelCreateInfo CreateKernelCreateInfo2(..); }, then define this function inside onnxruntime namespace
-KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op);
+KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op, OrtTypeConstraints* type_constraints);
 
 ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction logging_function,
                     _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid,
@@ -2435,10 +2436,20 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op) {
+ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints) {
   KernelRegistry* kr = reinterpret_cast<KernelRegistry*>(kernel_registry);
-  KernelCreateInfo kci = CreateKernelCreateInfo2("", custom_op);
+  KernelCreateInfo kci = CreateKernelCreateInfo2("", custom_op, type_constraints);
   return ToOrtStatus(kr->Register(std::move(kci)));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints) {
+  *type_constraints = new OrtTypeConstraints();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type) {
+  type_constraints->AddTypeConstraint(type_symbol, type);
+  return nullptr;
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -2831,6 +2842,8 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtNode_GetOutputSize,
     &OrtApis::OrtNode_GetIthOutputName,
     &OrtApis::OrtKernelRegistry_RegisterKernel,
+    &OrtApis::CreateOrtTypeConstraints,
+    &OrtApis::AddTypeConstraint,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

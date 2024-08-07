@@ -25,6 +25,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
+#include "core/framework/ort_type_constraints.h"
 
 // NOTE: OrtKernelContext is used by both custom ops and compiled kernels.
 // In a minimal build, ORT_EXTENDED_MINIMAL_BUILD is used to enable EPs like CoreML/NNAPI which use compiled kernels,
@@ -1335,9 +1336,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 //namespace onnxruntime {
 class FuncManager;
 class OpKernelInfo;
-onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op) {
+onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op, OrtTypeConstraints* type_constraints) {
   const size_t input_count = op->GetInputTypeCount(op);
-  const size_t output_count = op->GetOutputTypeCount(op);
 
   onnxruntime::KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
@@ -1363,25 +1363,10 @@ onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain,
     }
   }
 
-  for (size_t i = 0; i < input_count; i++) {
-    const auto input_type = op->GetInputType(op, i);
-    const auto input_name = "Input" + std::to_string(i);
-    if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
-    } else {
-      def_builder.TypeConstraint(input_name,
-                                 onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
-    }
-  }
-
-  for (size_t i = 0; i < output_count; i++) {
-    const auto output_type = op->GetOutputType(op, i);
-    const auto output_name = "Output" + std::to_string(i);
-    if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
-    } else {
-      def_builder.TypeConstraint(output_name,
-                                 onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
+  const std::unordered_map<std::string, std::set<ONNXTensorElementDataType>>& tc = type_constraints->GetTypeConstraints();
+  for (const auto& [type_symbol, types] : tc) {
+    for (const auto& type : types) {
+      def_builder.TypeConstraint(type_symbol, onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->AsTensorType());
     }
   }
 

@@ -14,92 +14,91 @@
 namespace onnxruntime {
 
 namespace {
-//bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
-//                           std::string& mismatch_reason) {
-//  const bool is_type_compatible = std::any_of(
-//      enabled_types.begin(), enabled_types.end(),
-//      [&actual_type](const DataTypeImpl* expected_type) {
-//        bool rc = expected_type->IsCompatible(actual_type);  // for easier debugging
-//        return rc;
-//      });
-//
-//  if (!is_type_compatible) {
-//    std::ostringstream ostr;
-//    ostr << "This op has been implemented only for the following types (";
-//    for (const auto& enabled_type : enabled_types) {
-//      ostr << DataTypeImpl::ToString(enabled_type) << ",";
-//    }
-//    ostr << "),";
-//    const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(actual_type));
-//    ostr << " but the node in the model has the following type (" << actual_type_str << ")";
-//    mismatch_reason = ostr.str();
-//    return false;
-//  }
-//
-//  return true;
-//}
+bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
+                           std::string& mismatch_reason) {
+  const bool is_type_compatible = std::any_of(
+      enabled_types.begin(), enabled_types.end(),
+      [&actual_type](const DataTypeImpl* expected_type) {
+        bool rc = expected_type->IsCompatible(actual_type);  // for easier debugging
+        return rc;
+      });
+
+  if (!is_type_compatible) {
+    std::ostringstream ostr;
+    ostr << "This op has been implemented only for the following types (";
+    for (const auto& enabled_type : enabled_types) {
+      ostr << DataTypeImpl::ToString(enabled_type) << ",";
+    }
+    ostr << "),";
+    const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(actual_type));
+    ostr << " but the node in the model has the following type (" << actual_type_str << ")";
+    mismatch_reason = ostr.str();
+    return false;
+  }
+
+  return true;
+}
 
 // match the kernel using type info from the Node's args
-bool MatchKernelDefTypes(const Node&, const std::unordered_map<std::string, std::vector<MLDataType>>&, const IKernelTypeStrResolver&, std::string&) { return true; }
-//bool MatchKernelDefTypes(const Node& node,
-//                         const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
-//                         const IKernelTypeStrResolver& kernel_type_str_resolver,
-//                         std::string& mismatch_reason) {
-//  const auto actual_inputs = node.InputDefs();
-//  const auto actual_outputs = node.OutputDefs();
-//  const auto& actual_input_arg_counts = node.InputArgCount();
-//  const auto actual_input_arg_offsets = [&actual_input_arg_counts]() {
-//    InlinedVector<int> offsets{};
-//    offsets.reserve(actual_input_arg_counts.size());
-//    // std::exclusive_scan() is not supported until GCC 9.3
-//    // std::exclusive_scan(actual_input_arg_counts.begin(), actual_input_arg_counts.end(),
-//    //                     std::back_inserter(offsets), 0);
-//    int current_offset = 0;
-//    for (size_t i = 0; i < actual_input_arg_counts.size(); ++i) {
-//      offsets.push_back(current_offset);
-//      current_offset += actual_input_arg_counts[i];
-//    }
-//    return offsets;
-//  }();
-//
-//  // for each type constraint
-//  //   map type constraint to arg
-//  //   check arg type against type constraint enabled types
-//  for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
-//    gsl::span<const ArgTypeAndIndex> constraint_args{};
-//    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args));
-//
-//    for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
-//      const NodeArg* arg;
-//      if (arg_type == ArgType::kInput) {
-//        if (formal_arg_idx >= actual_input_arg_counts.size() ||
-//            actual_input_arg_counts[formal_arg_idx] == 0) {
-//          arg = nullptr;
-//        } else {
-//          const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
-//          ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
-//          arg = actual_inputs[first_arg_idx];
-//        }
-//      } else {
-//        arg = formal_arg_idx < actual_outputs.size() ? actual_outputs[formal_arg_idx] : nullptr;
-//      }
-//
-//      if (arg && arg->Exists()) {
-//        const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
-//        ORT_ENFORCE(type_proto != nullptr);
-//
-//        if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
-//          return false;
-//        }
-//
-//        // found a match, don't need to check other args with this constraint
-//        break;
-//      }
-//    }
-//  }
-//
-//  return true;
-//}
+bool MatchKernelDefTypes(const Node& node,
+                         const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
+                         const IKernelTypeStrResolver& kernel_type_str_resolver,
+                         std::string& mismatch_reason) {
+  const auto actual_inputs = node.InputDefs();
+  const auto actual_outputs = node.OutputDefs();
+  const auto& actual_input_arg_counts = node.InputArgCount();
+  const auto actual_input_arg_offsets = [&actual_input_arg_counts]() {
+    InlinedVector<int> offsets{};
+    offsets.reserve(actual_input_arg_counts.size());
+    // std::exclusive_scan() is not supported until GCC 9.3
+    // std::exclusive_scan(actual_input_arg_counts.begin(), actual_input_arg_counts.end(),
+    //                     std::back_inserter(offsets), 0);
+    int current_offset = 0;
+    for (size_t i = 0; i < actual_input_arg_counts.size(); ++i) {
+      offsets.push_back(current_offset);
+      current_offset += actual_input_arg_counts[i];
+    }
+    return offsets;
+  }();
+
+  // for each type constraint
+  //   map type constraint to arg
+  //   check arg type against type constraint enabled types
+  for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
+    gsl::span<const ArgTypeAndIndex> constraint_args{};
+    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args));
+
+    for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
+      const NodeArg* arg;
+      if (arg_type == ArgType::kInput) {
+        if (formal_arg_idx >= actual_input_arg_counts.size() ||
+            actual_input_arg_counts[formal_arg_idx] == 0) {
+          arg = nullptr;
+        } else {
+          const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
+          ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
+          arg = actual_inputs[first_arg_idx];
+        }
+      } else {
+        arg = formal_arg_idx < actual_outputs.size() ? actual_outputs[formal_arg_idx] : nullptr;
+      }
+
+      if (arg && arg->Exists()) {
+        const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
+        ORT_ENFORCE(type_proto != nullptr);
+
+        if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
+          return false;
+        }
+
+        // found a match, don't need to check other args with this constraint
+        break;
+      }
+    }
+  }
+
+  return true;
+}
 
 bool MatchKernelDefTypes(const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
                          const KernelRegistry::TypeConstraintMap& type_constraints) {
