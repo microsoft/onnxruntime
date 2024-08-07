@@ -94,7 +94,7 @@ jobs:
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
             env; \
@@ -180,7 +180,7 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/Release \
-          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntimerocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
