@@ -26,7 +26,7 @@ configuration:
           - addReply:
               reply: "Applying stale label due to no activity in 30 days"
           - addLabel:
-              reply: stale
+              label: stale
       - description: Close open, unassigned issues labeled stale that have not been updated in the last 30 days
         frequencies:
           - daily:
