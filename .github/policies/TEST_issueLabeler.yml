@@ -134,3 +134,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:oneDNN
+        - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bopen\s*vino\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bopen\s*vino\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:OpenVINO
