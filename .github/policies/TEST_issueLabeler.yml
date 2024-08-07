@@ -79,3 +79,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:ArmNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bcann\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bcann\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:CANN
