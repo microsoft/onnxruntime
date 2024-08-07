@@ -49,6 +49,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   const size_t rank = input_shape.size();
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   NodeAttrHelper helper(node);
   int32_t axis = helper.Get("axis", 0);

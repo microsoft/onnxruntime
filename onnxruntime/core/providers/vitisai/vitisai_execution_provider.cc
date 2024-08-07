@@ -44,7 +44,7 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
 void VitisAIExecutionProvider::CreateKernelRegistry() {
   for (const auto& domain : get_domains_vitisaiep()) {
     for (const auto* op : domain->custom_ops_) {
-      vitisai_optypes_.insert(op->GetName(op));
+      vitisai_optypes_.insert(domain->domain_ + ":" + op->GetName(op));
     }
   }
 }
@@ -58,8 +58,15 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   // All preconditions are supposed to have happened.
   if (p_ep_ctx_model_) {
     auto& graph = p_ep_ctx_model_->MainGraph();
-    for (const auto* p_node : graph.Nodes()) {
-      ep_context_node_ptrs.push_back(p_node);
+    if (has_create_ep_context_nodes()) {
+      auto nodes = create_ep_context_nodes(graph, **execution_providers_);
+      if (nodes.has_value()) {
+        ep_context_node_ptrs.assign(nodes->begin(), nodes->end());
+      }
+    } else {
+      for (const auto* p_node : graph.Nodes()) {
+        ep_context_node_ptrs.push_back(p_node);
+      }
     }
   }
   return ep_context_node_ptrs;
@@ -100,7 +107,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
   auto& ep_ctx_graph = p_ep_ctx_model_->MainGraph();
   if (!ep_ctx_embed_mode_) {
     auto ep_ctx_cache_path_str = GetEPContextCacheFileLocation(ep_ctx_model_file_loc_, model_path_str_);
-    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc);
+    std::ofstream ep_ctx_cache_ofs(ep_ctx_cache_path_str.c_str(), std::ios::trunc | std::ios::binary);
     if (!ep_ctx_cache_ofs.is_open()) {
       ORT_THROW("Failed to open a file to write EP context cache: ", ep_ctx_cache_path_str.c_str());
     }
@@ -136,7 +143,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
       info_["cacheDir"] = cache_dir;
       info_["cacheKey"] = cache_key;
       LOGS_DEFAULT(VERBOSE) << "Trying getting compilation cache from " << PathToUTF8String(ep_ctx_model_file_loc_);
-      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, false);
+      auto ep_ctx_payload = RetrieveEPContextCache(graph_viewer.GetGraph(), ep_ctx_model_file_loc_, true);
       restore_backend_compilation_cache(cache_dir, cache_key, ep_ctx_payload, graph_viewer.ModelPath().string());
     } else {
       if (fs::exists(ep_ctx_model_file_loc_) && fs::is_regular_file(ep_ctx_model_file_loc_) && ep_ctx_enabled_) {
@@ -187,6 +194,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     auto& attrs = fused_node_graph.fused_node.get().GetAttributes();
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
+    (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
     compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
@@ -204,7 +212,7 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     };
     node_compute_funcs.push_back(compute_info);
   }
-  if (ep_ctx_enabled_ && p_ep_ctx_model_) {
+  if (ep_ctx_enabled_ && p_ep_ctx_model_ && !has_create_ep_context_nodes()) {
     FulfillEPContextEnablement(fused_nodes_and_graphs);
   }
   return Status::OK();

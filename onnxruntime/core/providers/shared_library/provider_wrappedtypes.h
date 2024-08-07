@@ -146,6 +146,7 @@ struct AttributeProto final {
 };
 
 struct GraphProto final {
+  static std::unique_ptr<GraphProto> Create() { return g_host->GraphProto__construct(); }
   static void operator delete(void* p) { g_host->GraphProto__operator_delete(reinterpret_cast<GraphProto*>(p)); }
   void operator=(const GraphProto& v) { return g_host->GraphProto__operator_assign(this, v); }
 

@@ -40,6 +40,10 @@
 #include <cudnn.h>  // for CUDNN_MAJOR
 #endif
 
+#if defined(USE_COREML)
+#include "core/providers/coreml/coreml_provider_factory.h"
+#endif
+
 #include <pybind11/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -1161,7 +1165,30 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if !defined(__APPLE__)
     LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
-    return onnxruntime::CoreMLProviderFactoryCreator::Create(0)->CreateProvider();
+    uint32_t coreml_flags = 0;
+
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      const ProviderOptions& options = it->second;
+      auto flags = options.find("flags");
+      if (flags != options.end()) {
+        const auto& flags_str = flags->second;
+
+        if (flags_str.find("COREML_FLAG_USE_CPU_ONLY") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_ONLY;
+        }
+
+        if (flags_str.find("COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
+        }
+
+        if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
+        }
+      }
+    }
+
+    return onnxruntime::CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)

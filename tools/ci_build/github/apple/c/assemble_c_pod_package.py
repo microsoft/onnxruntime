@@ -16,6 +16,7 @@ from package_assembly_utils import (  # noqa: E402
     PackageVariant,
     copy_repo_relative_to_dir,
     gen_file_from_template,
+    get_podspec_values,
     load_json_config,
 )
 
@@ -66,23 +67,25 @@ def assemble_c_pod_package(
         print("Warning: staging directory already exists", file=sys.stderr)
 
     # copy the necessary files to the staging directory
-    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True)
-    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True)
+    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True, symlinks=True)
+    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True, symlinks=True)
     copy_repo_relative_to_dir(["LICENSE"], staging_dir)
+
+    (ios_deployment_target, macos_deployment_target, weak_framework) = get_podspec_values(framework_info)
 
     # generate the podspec file from the template
     variable_substitutions = {
         "DESCRIPTION": pod_config["description"],
         # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
-        "IOS_DEPLOYMENT_TARGET": framework_info["iphonesimulator"]["APPLE_DEPLOYMENT_TARGET"],
-        "MACOSX_DEPLOYMENT_TARGET": framework_info.get("macosx", {}).get("APPLE_DEPLOYMENT_TARGET", ""),
+        "IOS_DEPLOYMENT_TARGET": ios_deployment_target,
+        "MACOSX_DEPLOYMENT_TARGET": macos_deployment_target,
         "LICENSE_FILE": "LICENSE",
         "NAME": pod_name,
         "ORT_C_FRAMEWORK": framework_dir.name,
         "ORT_C_HEADERS_DIR": public_headers_dir.name,
         "SUMMARY": pod_config["summary"],
         "VERSION": pod_version,
-        "WEAK_FRAMEWORK": framework_info["iphonesimulator"]["WEAK_FRAMEWORK"],
+        "WEAK_FRAMEWORK": weak_framework,
     }
 
     podspec_template = _script_dir / "c.podspec.template"

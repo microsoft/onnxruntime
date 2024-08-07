@@ -79,7 +79,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (is_quantized_tensor) {
     ORT_RETURN_IF_ERROR(utils::GetQnnDataType(true, type_proto, qnn_data_type));
     float scale = 0.0f;
-    int zero_point = 0;
+    int32_t zero_point = 0;
     float rmax = 1.0f;
     float rmin = 1.0f;
     ORT_RETURN_IF_ERROR(utils::GetQuantParams(rmin,
