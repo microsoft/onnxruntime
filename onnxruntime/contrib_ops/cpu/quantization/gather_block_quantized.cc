@@ -162,18 +162,18 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     }
 
     // TODO(fajin): use SIMD
-    size_t output_idx = static_cast<size_t>(output_idx_base);
-    size_t data_idx = static_cast<size_t>(data_idx_base);
-    for (size_t i = 0; i < static_cast<size_t>(gather_block); ++i, ++output_idx, ++data_idx) {
-      auto data_val = static_cast<int32_t>(data_ptr[data_idx >> 1].GetElem(data_idx & 1));
+    int64_t output_idx = output_idx_base;
+    int64_t data_idx = data_idx_base;
+    for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
+      auto data_val = static_cast<int32_t>(data_ptr[data_idx >> 1].GetElem(narrow<size_t>(data_idx & 1)));
 
-      size_t x = data_idx / quantize_full_block;
-      size_t y = data_idx % quantize_full_block / quantize_N;
-      size_t z = data_idx % quantize_N;
-      size_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
+      int64_t x = data_idx / quantize_full_block;
+      int64_t y = data_idx % quantize_full_block / quantize_N;
+      int64_t z = data_idx % quantize_N;
+      int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
       auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
       auto zp_val = static_cast<int32_t>(zero_points_ptr
-                                             ? zero_points_ptr[scale_idx >> 1].GetElem(scale_idx & 1)
+                                             ? zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1))
                                              : 0);
 
       output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
