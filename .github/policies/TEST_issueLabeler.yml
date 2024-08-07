@@ -16,7 +16,7 @@ configuration:
         then:
           - if:
               - titleContains:
-                  pattern: /(\bc\s*sharp\b|\bc#)/i
+                  pattern: /\bc\s*sharp\b|\bc#/i
                   isRegEx: true
             then:
               - addLabel:
