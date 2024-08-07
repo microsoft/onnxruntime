@@ -72,17 +72,6 @@ configuration:
           - if:
               - or:
                   - titleContains:
-                      pattern: '/\bcore-?ml\b/i'
-                      isRegEx: true
-                  - bodyContains:
-                      pattern: '/\bcore-?ml\b/i'
-                      isRegEx: true
-            then:
-              - addLabel:
-                  label: ep:CoreML
-          - if:
-              - or:
-                  - titleContains:
                       pattern: '/\bcuda\b/i'
                       isRegex: True
                   - bodyContains:
