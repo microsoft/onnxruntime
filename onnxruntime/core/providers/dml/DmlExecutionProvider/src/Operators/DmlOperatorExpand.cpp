@@ -30,7 +30,7 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
+                1, // minDimensionCount
                 0);
         
         TensorDesc outputTensorDesc = 
@@ -41,7 +41,7 @@ public:
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                NchwDimensionCount, // minDimensionCount
+                1, // minDimensionCount
                 0
             );
 

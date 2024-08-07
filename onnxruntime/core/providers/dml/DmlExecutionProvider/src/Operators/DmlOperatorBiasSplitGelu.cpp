@@ -17,7 +17,7 @@ public:
 
         // Broadcast bias to have the same dimensions as the input
         std::vector<uint32_t> inputTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
-        DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, inputTensorShape);
+        DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, inputTensorShape, std::nullopt, NchwDimensionCount);
 
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs.size() == 2);
         ML_CHECK_VALID_ARGUMENT(m_outputTensorDescs.size() == 1);
