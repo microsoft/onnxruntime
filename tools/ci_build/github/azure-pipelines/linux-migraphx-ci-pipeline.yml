@@ -184,7 +184,6 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            export CACHE_DIR=/tmp; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -197,7 +196,6 @@ jobs:
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
               --enable_nccl \
-              --update \
               --build_dir /build \
               --build \
               --parallel \
