@@ -15,10 +15,9 @@ configuration:
                     - isLabeled
         then:
           - if:
-              - or:
-                  - titleContains:
-                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
-                      isRegEx: true
+              - titleContains:
+                  pattern: '/(\bc\s*sharp\b|\bc#)/i'
+                  isRegEx: true
             then:
               - addLabel:
                   label: api:CSharp
