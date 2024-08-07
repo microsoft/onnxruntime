@@ -516,7 +516,7 @@ stages:
     - stage: Python_Packaging_Windows_x64_QNN
       dependsOn: []
       jobs:
-        - template: py-win-x64-qnn.yml
+        - template: py-win-arm64ec-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
