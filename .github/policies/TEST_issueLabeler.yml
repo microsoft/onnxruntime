@@ -19,9 +19,6 @@ configuration:
                   - titleContains:
                       pattern: '/(\bc\s*sharp\b|\bc#)/i'
                       isRegEx: true
-                  - bodyContains:
-                      pattern: '/(\bc\s*sharp\b|\bc#)/i'
-                      isRegEx: true
             then:
               - addLabel:
                   label: api:CSharp
