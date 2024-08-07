@@ -197,7 +197,6 @@ jobs:
               --nccl_home /opt/rocm \
               --enable_nccl \
               --build_dir /build \
-              --build \
               --parallel \
               --build_wheel \
               --skip_submodule_sync \
