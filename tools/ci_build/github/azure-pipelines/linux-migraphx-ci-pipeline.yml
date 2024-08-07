@@ -114,8 +114,10 @@ jobs:
               --update \
               --build_dir /build \
               --build \
+              --build_shared_lib \
               --parallel \
               --build_wheel \
+              --enable_onnx_tests \
               --skip_submodule_sync \
               --use_cache \
               --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest; \
@@ -197,6 +199,7 @@ jobs:
               --nccl_home /opt/rocm \
               --enable_nccl \
               --build_dir /build \
+              --build_shared_lib \
               --parallel \
               --build_wheel \
               --skip_submodule_sync \
