@@ -1082,7 +1082,6 @@ def generate_nuspec(args):
     generate_metadata(lines, args)
     generate_files(lines, args)
     lines.append("</package>")
-    print(lines)
     return lines
 
 
