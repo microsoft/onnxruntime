@@ -146,33 +146,9 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   }
 
   Node& child_node = *graph.GetNode(pad_node.OutputNodesBegin()->Index());
-
   if (child_node.OpType() == "Cast") {
-    if (pad_node.SinceVersion() >= 11) {
-      if (pad_node.InputDefs().size() > 2) {
-        auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, pad_node.InputDefs()[2]->Name());
-        ONNX_NAMESPACE::TensorProto_DataType cast_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(child_node.GetAttributes().at("to").i());
-        Initializer new_pad_constant_value{cast_data_type, pad_constant_value_proto->name(), pad_constant_value_proto->dims()};
-        // Create new initializers of Pad
-        ONNX_NAMESPACE::TensorProto new_pad_constant_value_tensor_proto;
-        new_pad_constant_value.ToProto(new_pad_constant_value_tensor_proto);
-
-        // Replace initializers of Pad node
-        graph.RemoveInitializedTensor(pad_node.InputDefs()[2]->Name());
-        graph.AddInitializedTensor(new_pad_constant_value_tensor_proto);
-
-        // Update the type of the constant node arg
-        auto* constant_node_arg = graph.GetNodeArg(new_pad_constant_value_tensor_proto.name());
-        auto* type_proto = constant_node_arg->TypeAsProto();
-        ONNX_NAMESPACE::TypeProto t{*type_proto};
-        t.mutable_tensor_type()->set_elem_type(new_pad_constant_value_tensor_proto.data_type());
-        graph.SetNodeArgType(*graph.GetNodeArg(new_pad_constant_value_tensor_proto.name()), t);
-      }
-    } else {
-      // Pad only supports float data type for constant value in opset < 11
-      // therefore can't be casted to any other data type
-      return Status::OK();
-    }
+    // We don't need to cast the pad_constant_value because this fusion requires that constant_pad_value
+    // to be zero. See PadFusion::SatisfyCondition for details.
     Update_Pad_Attribute(*graph.GetNode(child_node.OutputNodesBegin()->Index()), pads_values, pads_size);
   } else {
     Update_Pad_Attribute(child_node, pads_values, pads_size);
@@ -180,6 +156,8 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
 
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
+  
+  // Un-pad the output shape of Cast node
   if (child_node.OpType() == "Cast") {
     auto* cast_output_node_arg = child_node.MutableOutputDefs()[0];
     cast_output_node_arg->SetShape(*pad_node.MutableInputDefs()[0]->Shape());
