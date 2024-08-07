@@ -345,5 +345,41 @@
         ]
       }
     ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[3]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]

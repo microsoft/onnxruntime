@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
 
 export interface DequantizeLinerAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -92,6 +92,7 @@ const createDequantizeLinearProgramInfo =
       const perAxisQuantization = perLayerQuantization === false && scaleShape.length === 1;
       // Left unnecessary commented-out assignment for documentation
       // const blockQuantization = perLayerQuantization === false && perAxisQuantization === false;
+      const component = perLayerQuantization ? 1 : getMaxComponent(ShapeUtil.size(outputShape));
       const zeroPoint = zeroPointInput ?
           inputVariable('zero_point', isPacked ? DataType.uint32 : inputType, zeroPointShape!.length) :
           undefined;
@@ -190,7 +191,8 @@ const createDequantizeLinearProgramInfo =
             }
           }
         } else {
-          return `let zero_point_value: ${tensorTypeToWsglStorageType(inputType)} = 0;`;
+          return `
+          let zero_point_value: ${isPacked ? (isSigned ? 'i32' : 'u32') : tensorTypeToWsglStorageType(inputType)} = 0;`;
         }
       })()};
       // Compute and write output
