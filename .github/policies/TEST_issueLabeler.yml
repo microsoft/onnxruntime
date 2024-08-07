@@ -16,8 +16,8 @@ configuration:
         then:
           - if:
               - titleContains:
-                  pattern: '\bc\s*sharp\b|\bc#'
+                  pattern: '/\bcuda\b/i'
                   isRegEx: true
             then:
               - addLabel:
-                  label: api:CSharp
+                  label: ep:CUDA
