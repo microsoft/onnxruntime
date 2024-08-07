@@ -550,4 +550,6 @@ ORT_API_STATUS_IMPL(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_
 ORT_API_STATUS_IMPL(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints);
 
 ORT_API_STATUS_IMPL(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
+
+ORT_API_STATUS_IMPL(ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
 }  // namespace OrtApis

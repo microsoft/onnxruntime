@@ -4746,6 +4746,8 @@ struct OrtApi {
   ORT_API2_STATUS(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints);
 
   ORT_API2_STATUS(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
+
+  ORT_API2_STATUS(ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
 };  // struct OrtApi
 
 /*

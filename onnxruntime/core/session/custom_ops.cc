@@ -1403,6 +1403,5 @@ onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain,
   };
 
   return onnxruntime::KernelCreateInfo(def_builder.Build(), kernel_create_fn);
-//  return onnxruntime::KernelCreateInfo(def_builder.Build(), nullptr);
 }
 //} // namespace onnxruntime

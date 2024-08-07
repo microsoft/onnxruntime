@@ -2443,12 +2443,18 @@ ORT_API_STATUS_IMPL(OrtApis::OrtKernelRegistry_RegisterKernel, OrtKernelRegistry
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints) {
-  *type_constraints = new OrtTypeConstraints();
+  std::unique_ptr<OrtTypeConstraints> otc = std::make_unique<OrtTypeConstraints>();
+  *type_constraints = otc.release();
   return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type) {
   type_constraints->AddTypeConstraint(type_symbol, type);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints) {
+  delete type_constraints;
   return nullptr;
 }
 
@@ -2844,6 +2850,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,
     &OrtApis::AddTypeConstraint,
+    &OrtApis::ReleaseOrtTypeConstraints,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

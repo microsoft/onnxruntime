@@ -63,6 +63,7 @@ KernelEp::KernelEp(const char* ep_type, const KernelEpInfo& ep_info) : info(ep_i
         api->AddTypeConstraint(type_constraints, "T", ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
         OrtCustomOp* op = new MyRelu();
         api->OrtKernelRegistry_RegisterKernel(kernel_registry, op, type_constraints);
+        api->ReleaseOrtTypeConstraints(type_constraints);
     };
 }
 
