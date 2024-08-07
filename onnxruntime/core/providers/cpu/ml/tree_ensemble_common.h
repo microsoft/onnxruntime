@@ -322,7 +322,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     w.i = target_class_ids[i];
     w.value = target_class_weights_as_tensor.empty() ? static_cast<ThresholdType>(target_class_weights[i])
                                                      : target_class_weights_as_tensor[i];
-    if (leaf.truenode_or_weight.weight_data.n_weights == 0) { 
+    if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
     }
