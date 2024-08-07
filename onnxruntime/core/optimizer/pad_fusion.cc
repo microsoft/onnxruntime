@@ -153,7 +153,6 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
 
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
   graph_utils::ReplaceNodeInput(child_node, 0, *pad_node.MutableInputDefs()[0]);
-  
   // Un-pad the output shape of Cast node
   if (child_node.OpType() == "Cast") {
     auto* cast_output_node_arg = child_node.MutableOutputDefs()[0];
