@@ -117,7 +117,7 @@ accumulate_blklen64_r1c1blk1_avx2(
         __m256 scale_b_8_ps = _mm256_broadcast_ss(scale_b);
 
         acc0 = _mm256_fmadd_ps(sum_ps, _mm256_mul_ps(scale_a_8_ps, scale_b_8_ps), acc0);
-#if !defined(__GNUC__) || (__GNUC__ > 9)
+#if !defined(__GNUC__) || (__GNUC__ > 10)
     }
 #endif
 }
