@@ -1,7 +1,6 @@
 name: Issue Triage
 description: Assign label to issues 
 resource: repository
-
 configuration:
   resourceManagementConfiguration:
     eventResponderTasks:
@@ -15,9 +14,13 @@ configuration:
                     - isLabeled
         then:
           - if:
-              - titleContains:
-                  pattern: '/\bjava\b/i'
-                  isRegEx: True
+              - or:
+                  - titleContains:
+                      pattern: '/\bcuda\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bcuda\b/i'
+                      isRegex: True
             then:
               - addLabel:
-                  label: api:Java
+                  label: ep:CUDA
