@@ -41,7 +41,7 @@ if ($xcframeworks.Count -eq 1) {
   $xcframework = $xcframeworks[0]
   $target_dir = "$nuget_artifacts_dir\onnxruntime-ios-xcframework"
   # remove version info from filename and use required filename format
-  $target_file = "$target_dir\onnxruntime_ios.xcframework.zip"
+  $target_file = "$target_dir\onnxruntime.xcframework.zip"
   New-Item -Path $target_dir -ItemType directory
 
   Write-Output "Copy-Item $($xcframework.FullName) $target_file"
