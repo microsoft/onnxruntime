@@ -1851,11 +1851,11 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
                           0.56804454f, 0.92559665f, 0.07103606f};
 
   std::vector<int64_t> Y_dims = {5, 1, 2};
-  std::vector<float> Y_data = {-1.1730184e-04f, -3.1204990e-04f,
-                               -2.9978977e-04f, -1.0602647e-03f,
-                               -3.8115133e-04f, -2.0684483e-03f,
-                               -2.5120965e-04f, -2.9920202e-03f,
-                               3.0980256e-05f, -3.5933927e-03f};
+  std::vector<float> Y_data = {-1.1725388e-04f, -3.1192770e-04f,
+                               -2.9967332e-04f, -1.0598592e-03f,
+                               -3.8101958e-04f, -2.0676597e-03f,
+                               -2.5116475e-04f, -2.9908563e-03f,
+                               3.0859868e-05f, -3.5919433e-03f};
 
   OrtValue ml_value;
   CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], X_dims, X, &ml_value);

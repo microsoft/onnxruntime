@@ -1761,6 +1761,17 @@ MlasLoadFloat32x4(const float* Buffer)
 }
 
 MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasPartialLoadFloat32x4(const float* Buffer, const int N)
+{
+    float temp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    for (int ii = 0; ii < N; ++ii) {
+        temp[ii] = Buffer[ii];
+    }
+    return MlasLoadFloat32x4(temp);
+}
+
+MLAS_FORCEINLINE
 void
 MlasStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 {
@@ -1777,6 +1788,17 @@ MlasStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
 #else
     *((MLAS_FLOAT32X4*)Buffer) = Vector;
 #endif
+}
+
+MLAS_FORCEINLINE
+void
+MlasPartialStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector, const int N)
+{
+    float temp[4];
+    MlasStoreFloat32x4(temp, Vector);
+    for (int ii = 0; ii < N; ++ii) {
+        Buffer[ii] = temp[ii];
+    }
 }
 
 MLAS_FORCEINLINE
@@ -2070,6 +2092,25 @@ MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return __lsx_vfdiv_s(Vector1, Vector2);
 #else
     return Vector1 / Vector2;
+#endif
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT32X4
+MlasGreaterThanEqualFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
+{
+#if defined(MLAS_NEON_INTRINSICS)
+    return vreinterpretq_f32_u32(vcgeq_f32(Vector1, Vector2));
+#elif defined(MLAS_SSE2_INTRINSICS)
+    return _mm_cmpge_ps(Vector1, Vector2);
+#elif defined(MLAS_WASM_SIMD_INTRINSICS)
+    return wasm_f32x4_ge(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return MLAS_FLOAT32X4(vec_cmpge(Vector1, Vector2));
+#elif defined(MLAS_LSX_INTRINSICS)
+    return (MLAS_FLOAT32X4)__lsx_vfcmp_cle_s(Vector2, Vector1);
+#else
+    return Vector1 >= Vector2;
 #endif
 }
 
