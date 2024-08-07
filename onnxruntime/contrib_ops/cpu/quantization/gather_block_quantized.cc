@@ -162,15 +162,15 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     }
 
     // TODO(fajin): use SIMD
-    int64_t output_idx = output_idx_base;
-    int64_t data_idx = data_idx_base;
-    for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
+    size_t output_idx = static_cast<size_t>(output_idx_base);
+    size_t data_idx = static_cast<size_t>(data_idx_base);
+    for (size_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
       auto data_val = static_cast<int32_t>(data_ptr[data_idx >> 1].GetElem(data_idx & 1));
 
-      int64_t x = data_idx / quantize_full_block;
-      int64_t y = data_idx % quantize_full_block / quantize_N;
-      int64_t z = data_idx % quantize_N;
-      int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
+      size_t x = data_idx / quantize_full_block;
+      size_t y = data_idx % quantize_full_block / quantize_N;
+      size_t z = data_idx % quantize_N;
+      size_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
       auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
       auto zp_val = static_cast<int32_t>(zero_points_ptr
                                              ? zero_points_ptr[scale_idx >> 1].GetElem(scale_idx & 1)
@@ -216,7 +216,7 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //  3> get the corresponding block in data tensor: data_blk = data[blk_i / gather_N, axis_i, :],
   //  4> pick the element from the block: value_i = data_blk[blk_ele_i]
   const int64_t gather_block = data_shape.SizeFromDimension(SafeInt<size_t>(p.gather_axis) + 1);
-  const int64_t gather_axis_dim = data_shape[p.gather_axis];
+  const int64_t gather_axis_dim = data_shape[narrow<size_t>(p.gather_axis)];
   const int64_t gather_M = data_shape.SizeToDimension(narrow<size_t>(p.gather_axis));
   const int64_t gather_N = p.indices_tensor->Shape().Size();
   // re-shape the data tensor to [quantize_M, quantize_axis_dim, quantize_N]
@@ -229,7 +229,7 @@ Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   //      data_i % (quantize_axis_dim * quantize_N) / quantize_N,
   //      data_i % quantize_N)
   //  4> get scale index: (x, y / block_size_, z)
-  const int64_t quantize_axis_dim = data_shape[p.quantize_axis];
+  const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)];
   const int64_t quantize_N = data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
