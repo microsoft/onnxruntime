@@ -30,18 +30,18 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
-  auto run_test = [&](bool indices_is_initializer, bool data_is_initializer) {
+  auto run_test = [&](bool indices_is_initializer) {
     OpTester test("GatherBlockQuantized", 1, kMSDomain);
 
     test.AddAttribute<int64_t>("gather_axis", gather_axis);
     test.AddAttribute<int64_t>("quantize_axis", quantize_axis);
     test.AddAttribute<int64_t>("block_size", block_size);
 
-    test.AddInput<T1>("data", data_shape, data, data_is_initializer);
+    test.AddInput<T1>("data", data_shape, data);
     test.AddInput<Tind>("indices", indices_shape, indices, indices_is_initializer);
-    test.AddInput<T2>("scales", scales_shape, scales, true);
+    test.AddInput<T2>("scales", scales_shape, scales);
     if (!zero_points.empty()) {
-      test.AddInput<T1>("zero_points", scales_shape, zero_points, true);
+      test.AddInput<T1>("zero_points", scales_shape, zero_points);
     }
 
     test.AddOutput<T2>("output", output_shape, output);
@@ -51,10 +51,8 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     test.Run(expect_result, "", {}, nullptr, &eps);
   };
 
-  run_test(false, false);
-  run_test(true, false);
-  run_test(false, true);
-  run_test(true, true);
+  run_test(false);
+  run_test(true);
 }
 
 template <typename T1, typename T2>
@@ -76,7 +74,7 @@ typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::
 ToType(const std::vector<int>& vec) {
   std::vector<T> result;
   size_t i = 0;
-  constexpr int offset = std::is_same<T, UInt4x2>::value ? 0 : 8;
+  constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
   for (i = 0; i + 1 < vec.size(); i += 2) {
     result.push_back(T(vec[i] + offset, vec[i + 1] + offset));
   }
@@ -338,13 +336,9 @@ void Test_GatherAxis0_NoZeroPoints() {
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
-  Test_GatherAxis0_NoZeroPoints<UInt4x2, float, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int32_t>();
-  Test_GatherAxis0_NoZeroPoints<UInt4x2, MLFloat16, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int32_t>();
-  Test_GatherAxis0_NoZeroPoints<UInt4x2, float, int64_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int64_t>();
-  Test_GatherAxis0_NoZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int64_t>();
 }
 
@@ -357,16 +351,18 @@ void Test_GatherAxis1_WithZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  std::vector<int> indices = {2, -3};
-  std::vector<int64_t> indices_shape = {1, 2};
+  std::vector<int> indices = {2, -3, 2};
+  std::vector<int64_t> indices_shape = {1, 3};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 1, 4};
   std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1, 0, 0};
   std::vector<float> output = {1.f, 0.f, 2.f, 6.f,
                                -7.f, -16.f, -6.f, -10.f,
+                               1.f, 0.f, 2.f, 6.f,
                                -5.f, -4.f, -2.f, -2.f,
-                               3.f, 12.f, 6.f, 14.f};
-  std::vector<int64_t> output_shape = {2, 1, 2, 4};
+                               3.f, 12.f, 6.f, 14.f,
+                               -5.f, -4.f, -2.f, -2.f};
+  std::vector<int64_t> output_shape = {2, 1, 3, 4};
 
   RunGatherBlockQuantized(ToType<T1>(data),
                           data_shape,

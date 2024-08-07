@@ -158,21 +158,21 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
   auto scale_full_block = (quantize_axis_dim + block_size_ - 1) / block_size_ * quantize_N;
 
   auto lambda = [&](int64_t gather_MN_idx, std::unordered_map<int64_t, int64_t>& cache) {
-    int64_t gather_M_idx = (gather_MN_idx + gather_N - 1) / gather_N;
+    int64_t gather_M_idx = gather_MN_idx / gather_N;
     int64_t gather_N_idx = gather_MN_idx % gather_N;
 
     int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
     indices_val = indices_val < 0 ? indices_val + gather_axis_dim : indices_val;
     int64_t output_idx_base = gather_MN_idx * gather_block;
+    int64_t data_idx_base = gather_M_idx * data_full_block + indices_val * gather_block;
 
-    if (auto it = cache.find(indices_val); it != cache.end()) {
-      int64_t output_src_idx = it->second * gather_block;
+    if (auto it = cache.find(data_idx_base); it != cache.end()) {
+      int64_t output_src_idx = it->second;
       memcpy(output_ptr + output_idx_base, output_ptr + output_src_idx, narrow<size_t>(gather_block * sizeof(T2)));
       return;
     }
 
     // TODO(fajin): use SIMD
-    int64_t data_idx_base = gather_M_idx * data_full_block + indices_val * gather_block;
     int64_t output_idx = output_idx_base;
     int64_t data_idx = data_idx_base;
     for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
@@ -181,7 +181,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t x = data_idx / quantize_full_block;
       int64_t y = data_idx % quantize_full_block / quantize_N;
       int64_t z = data_idx % quantize_N;
-      int64_t scale_idx = x * scale_full_block + y * quantize_N + z;
+      int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
       auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
       auto zp_val = static_cast<int32_t>(zero_points_ptr
                                              ? zero_points_ptr[scale_idx >> 1].GetElem(scale_idx & 1)
@@ -190,7 +190,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
     }
 
-    cache[indices_val] = output_idx_base;
+    cache[data_idx_base] = output_idx_base;
   };
 
   concurrency::ThreadPool::TryParallelFor(
@@ -198,7 +198,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       SafeInt<ptrdiff_t>(gather_M) * gather_N,
       static_cast<double>(gather_block * 3),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        // cache dequantized gather_block. Key is indices_val. Value is the output_idx_base.
+        // cache dequantized gather_block. Key is data_idx_base. Value is the output_idx_base.
         // cache is per thread to avoid contention.
         std::unordered_map<int64_t, int64_t> cache;
 
