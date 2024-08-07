@@ -112,3 +112,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:DML
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bmi\s*graph\s*x\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bmi\s*graph\s*x\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:MIGraphX
