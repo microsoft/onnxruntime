@@ -101,3 +101,14 @@ configuration:
             then:
               - addLabel:
                   label: ep:CoreML
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bdirect\s*ml\b|\bdml\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bdirect\s*ml\b|\bdml\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:DML
