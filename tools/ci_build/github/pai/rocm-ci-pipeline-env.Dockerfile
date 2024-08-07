@@ -76,7 +76,6 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 # Install Pytorch
 RUN export MAJOR=$(cut -d '.' -f 1 <<< "$ROCM_VERSION") && \
     export MINOR=$(cut -d '.' -f 2 <<< "$ROCM_VERSION") && \
-    export PATCH=$(cut -d '.' -f 3 <<< "$ROCM_VERSION") && \
     pip install torch==2.1.2 torchvision==0.16.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${MAJOR}.${MINOR}/ && \
     pip install torch-ort --no-dependencies
 
