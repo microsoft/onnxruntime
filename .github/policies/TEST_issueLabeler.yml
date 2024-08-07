@@ -156,3 +156,58 @@ configuration:
             then:
               - addLabel:
                   label: ep:QNN
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\brockchip\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\brockchip\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:RockchipNPU
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\brocm\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\brocm\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:ROCm
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bsnpe\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bsnpe\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:SNPE
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\btensor\s*rt\b|\btrt\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:TensorRT
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\btvm\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\btvm\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:tvm
