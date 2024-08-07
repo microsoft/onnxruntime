@@ -266,3 +266,47 @@ configuration:
             then:
               - addLabel:
                   label: platform:jetson
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bdot\s*net\b|\bnuget\b|\.net\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bdot\s*net\b|\bnuget\b|\.net\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: .NET
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/\bopen\s*vino\b/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/\bopen\s*vino\b/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: ep:OpenVINO
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bobj(?:ective)?-?c\b|\bnnapi\b|\bmobile\b|\bandroid\b|\bios\b|\bxamarin\b|\bmaui\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: platform:mobile
+          - if:
+              - or:
+                  - titleContains:
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      isRegex: True
+                  - bodyContains:
+                      pattern: '/(\bwebgl\b|\bweb-?gpu\b|\bwasm\b|\bonnxruntime-node\b|\bonnxruntime-web\b|\bonnxruntime-react-native\b|\bnpm\b)/i'
+                      isRegex: True
+            then:
+              - addLabel:
+                  label: platform:web
