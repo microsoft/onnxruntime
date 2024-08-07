@@ -407,6 +407,15 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+
+          tests_registered += RegisterSingleTest(1, 1, 5, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 1, 64, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 4, 5, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 4, 64, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 5, 5, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 5, 64, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 8, 5, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 8, 64, ComputeType, WithThreadpool, Symmetric, false);
         }
       }
     }

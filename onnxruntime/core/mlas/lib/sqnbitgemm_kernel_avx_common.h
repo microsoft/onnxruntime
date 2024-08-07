@@ -246,8 +246,6 @@ PackQuantB(
     );
 }
 
-//#include <iostream>
-
 static void
 ComputePackBlkSum(
   size_t BlkLen,
@@ -277,9 +275,14 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-          // BlockSum is a width 16 row major matrix
-          const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        if (BlkLen == 32 && SubBlkLen == 128) {
+            const size_t dst_offset = n * BlockCountK + k_blk;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        } else {
+            // BlockSum is a width 16 row major matrix
+            const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        }
         if (BlkLen == 16) {  // TODO
 
         } else if (BlkLen >= SubBlkLen) {
