@@ -40,14 +40,15 @@ $xcframeworks = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filte
 if ($xcframeworks.Count -eq 1) {
   $xcframework = $xcframeworks[0]
   $target_dir = "$nuget_artifacts_dir\onnxruntime-ios-xcframework"
-  $target_file = "$target_dir\onnxruntime_ios_xcframework.zip"  # remove version info from filename
+  # remove version info from filename and use required filename format
+  $target_file = "$target_dir\onnxruntime_ios.xcframework.zip"
   New-Item -Path $target_dir -ItemType directory
 
   Write-Output "Copy-Item $($xcframework.FullName) $target_file"
   Copy-Item $xcframework.FullName $target_file
 }
 elseif ($xcframeworks.Count -gt 1) {
-  Write-Error "Expected at most one onnxruntime_xcframework*.zip file but got: [$xcframeworks]"
+  Write-Error "Expected at most one onnxruntime_ios_xcframework*.zip file but got: [$xcframeworks]"
 }
 
 
