@@ -128,7 +128,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
   let min = MIN_CLIP.get(tensorDataTypeEnumToString(inputs[0].dataType));
   let max = MAX_CLIP.get(tensorDataTypeEnumToString(inputs[0].dataType));
   if (inputs.length >= 2 && inputs[1].data !== 0) {
-    switch (inputs[0].dataType) {
+    switch (inputs[1].dataType) {
       case DataType.float:
         min = inputs[1].getFloat32Array()[0];
         break;
@@ -144,7 +144,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
   }
 
   if (inputs.length >= 3 && inputs[2].data !== 0) {
-    switch (inputs[0].dataType) {
+    switch (inputs[2].dataType) {
       case DataType.float:
         max = inputs[2].getFloat32Array()[0];
         break;
