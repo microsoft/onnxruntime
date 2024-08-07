@@ -134,7 +134,7 @@ configuration:
             then:
               - addLabel:
                   label: ep:oneDNN
-        - if:
+          - if:
               - or:
                   - titleContains:
                       pattern: '/\bopen\s*vino\b/i'
