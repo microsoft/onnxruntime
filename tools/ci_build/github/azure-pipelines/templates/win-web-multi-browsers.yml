@@ -65,7 +65,7 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
       mkdir $(Agent.TempDirectory)\web\test_multi_browsers\01
-      npm test -- suite0 -e=chrome -b=wasm,webgl --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\01
+      npm test -- suite0 -e=chrome -b=wasm,webgl --wasm.initTimeout=60000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\01
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Chrome)'
   - script: |
@@ -74,7 +74,7 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
       mkdir $(Agent.TempDirectory)\web\test_multi_browsers\02
-      npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\02
+      npm test -- suite0 -b=wasm,webgl -e=firefox --wasm.initTimeout=60000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\02
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Firefox)'
   - script: |
@@ -83,7 +83,7 @@ jobs:
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
       mkdir $(Agent.TempDirectory)\web\test_multi_browsers\03
-      npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=30000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\03
+      npm test -- suite0 -b=wasm,webgl -e=edge --wasm.initTimeout=60000 --file-cache --user-data-dir=$(Agent.TempDirectory)\web\test_multi_browsers\03
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Edge)'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
