@@ -22,6 +22,8 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
   if (!data_.IsDataTypeString()) {
     memset(data_.MutableDataRaw(), 0, data_.SizeInBytes());
   }
+
+  LOGS_DEFAULT(VERBOSE) << "::Initializer created for " << name_ << " , size=" << data_.SizeInBytes();
 }
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path) {
@@ -47,6 +49,8 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
            std::make_shared<CPUAllocator>());
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path, tensor_proto, w));
   data_ = std::move(w);
+
+  LOGS_DEFAULT(VERBOSE) << "::Initializer created for " << name_ << " , size=" << data_.SizeInBytes();
 }
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)

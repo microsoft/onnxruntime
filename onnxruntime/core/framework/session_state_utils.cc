@@ -141,6 +141,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 
   if (external_data_loader != nullptr) {
+    LOGS_DEFAULT(WARNING) << ":: before LoadExtDataToTensorFromTensorProto: " << p_tensor->Location().ToString() << ", " << alloc->Info().ToString();
+
     ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
                                                                   *external_data_loader, *p_tensor));
   } else if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
@@ -345,6 +347,8 @@ common::Status SaveInitializedTensors(
         buffered_tensors.erase(iter);
       }
 
+      LOGS_DEFAULT(VERBOSE) << ":: Deserializing tensor " << name << " [" << ort_value_index << "] at " << alloc->Info().ToString();
+
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
                                          default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
                                          use_device_allocator_for_initializers, p_tensor);
@@ -353,6 +357,8 @@ common::Status SaveInitializedTensors(
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
       }
+
+      LOGS_DEFAULT(VERBOSE) << ":: Done deserializing tensor " << name;
     }
 
     // 'name' is a reference to a string within the TensorProto that save_tensor_func may free

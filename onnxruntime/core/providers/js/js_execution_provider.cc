@@ -703,9 +703,9 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, co
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
-    return std::make_unique<js::JsCustomAllocator>();
+    return std::make_unique<js::WebGpuAllocator>();
   },
-                                                    0, false);  // TODO(leca): REVIEW: need JsCPUAllocator?
+                                                    0, false);
   return std::vector<AllocatorPtr>{CreateAllocator(customAllocatorCreationInfo)};
 }
 
@@ -764,8 +764,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
 }
 
 std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader() const {
-  // return std::make_unique<js::ExternalDataLoader>();
-  return nullptr;
+  return std::make_unique<js::ExternalDataLoader>();
 }
 
 JsExecutionProvider::~JsExecutionProvider() {
