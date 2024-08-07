@@ -116,7 +116,7 @@ Status MatMulKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::P
   return Status::OK();
 }
 
-Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) {
+Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& /*value_indexes*/) {
   // const auto& logger = Logger();
   const auto& node = Node();
   ncnn::Layer& layer = Layer();
@@ -136,7 +136,7 @@ Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, 
     // there's no existing way to access the ORT CPU EP allocator to use it with the Mat allocations, but it probably
     // doesn't matter given a) we shouldn't need to transpose too many intializers and b) the memory is freed once
     // we upload to GPU, all of which happens during model loading.
-    ncnn::Mat transposed_data(cur_M, cur_K);
+    ncnn::Mat transposed_data(/* w */ cur_K, /* h */ cur_M);
     float* dst_data = static_cast<float*>(transposed_data.data);
 
     for (size_t x = 0; x < cur_K; x++) {
@@ -154,11 +154,12 @@ Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, 
     // pipeline. Ideally we do the packing into InnerProduct_vulkan.weight_data_packed directly and never use
     // InnerProduct.weight_data, but overriding InnerProduct_vulkan::create_pipeline to do that would be non-trivial.
     inner_product.weight_data = std::move(transposed_data);
-
-    value_indexes.Add(*input_defs[1]);
   } else {
     ORT_NOT_IMPLEMENTED("Requires gemm");
   }
+
+  // if there are constant initializers that are NOT directly added to the layer we need to add the to value_indexes
+  // here so they get assigned an index number.
 
   return Status::OK();
 }
@@ -174,8 +175,9 @@ Status MatMulKernel::UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Opt
 Status MatMulKernel::CreatePipeline() {
   ORT_RETURN_IF_ERROR(VulkanKernel::CreatePipeline());
   if (use_inner_product_) {
-    ncnn::InnerProduct& inner_product = static_cast<ncnn::InnerProduct&>(Layer());
-    inner_product.weight_data.release();
+    // This happens in InnerProduct_vulkan::create_pipeline when lightmode is on (it is by default)
+    // ncnn::InnerProduct& inner_product = static_cast<ncnn::InnerProduct&>(Layer());
+    // inner_product.weight_data.release();
   } else {
     ORT_NOT_IMPLEMENTED("Requires gemm");
   }

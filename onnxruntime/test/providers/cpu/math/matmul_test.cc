@@ -52,6 +52,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {1, 3, 5, 33, 43, 53, 5, 23, 41, 85, 111, 137, 9, 43, 77, 137, 179, 221}});
 
   test_cases.push_back(
+      {"test 2D",
+       {3, 4},
+       {4, 3},
+       {3, 3},
+       {42, 48, 54, 114, 136, 158, 186, 224, 262}});
+
+  test_cases.push_back(
       {"test left 1D",
        {2},
        {3, 2, 1},
@@ -78,13 +85,6 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {3},
        {},
        {5}});
-
-  test_cases.push_back(
-      {"test 2D",
-       {3, 4},
-       {4, 3},
-       {3, 3},
-       {42, 48, 54, 114, 136, 158, 186, 224, 262}});
 
   test_cases.push_back(
       {"test 2D special",

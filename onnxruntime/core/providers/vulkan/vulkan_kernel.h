@@ -70,7 +70,8 @@ class VulkanKernel {
 
   virtual Status SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ValueIndexes& /*value_indexes*/) {
     // Populate ncnn::Mat members of the specific NCNN Layer derived class with constant initializers if applicable.
-    // Add any constant initializers to value_indexes.
+    // Add any constant initializers that are NOT directly provided to the kernel to value_indexes as they need to be
+    // passed in as an input.
     return Status::OK();
   }
 
