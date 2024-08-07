@@ -23,13 +23,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-const removeLastZeroOfArray = (arr: number[]): number[] => {
-  if (arr[arr.length - 1] === 0) {
-    arr.pop();
-  }
-  return arr;
-};
-
 const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
     input: TensorView, attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
   const isChannelsLast = attributes.format === 'NHWC';
@@ -38,11 +31,9 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
     inputShapeAsChannelFirst.splice(1, 0, inputShapeAsChannelFirst.pop()!);  // Move channel to the second position.
   }
   const hasDilations = Object.hasOwnProperty.call(attributes, 'dilations');
-  let kernelShape = removeLastZeroOfArray(attributes.kernelShape.slice());
-  let strides = removeLastZeroOfArray(attributes.strides.slice());
-  let dilations: number[] =
-      removeLastZeroOfArray(hasDilations ? (attributes as MaxPoolAttributes).dilations.slice() : []);
-
+  const kernelShape = attributes.kernelShape.slice();
+  const strides = attributes.strides.slice();
+  const dilations: number[] = hasDilations ? (attributes as MaxPoolAttributes).dilations.slice() : [];
   const pads = attributes.pads.slice();
   PoolConvUtil.adjustPoolAttributes(isGlobalOperator, inputShapeAsChannelFirst, kernelShape, strides, dilations, pads);
 
