@@ -39,7 +39,8 @@ class QnnBackendManager {
                     std::string&& qnn_saver_path,
                     uint32_t device_id,
                     QnnHtpDevice_Arch_t htp_arch,
-                    uint32_t soc_model)
+                    uint32_t soc_model,
+                    bool enable_htp_weight_sharing)
       : backend_path_(backend_path),
         profiling_level_etw_(profiling_level_etw),
         profiling_level_(profiling_level),
@@ -48,7 +49,8 @@ class QnnBackendManager {
         qnn_saver_path_(qnn_saver_path),
         device_id_(device_id),
         htp_arch_(htp_arch),
-        soc_model_(soc_model) {
+        soc_model_(soc_model),
+        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -262,6 +264,7 @@ class QnnBackendManager {
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn
