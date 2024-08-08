@@ -18,11 +18,10 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* past_value,
                    const Tensor* cos_cache,
                    const Tensor* sin_cache,
-                   void* parameters,
+                   GroupQueryAttentionParameters* parameters,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale) {
   // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
@@ -195,13 +194,7 @@ Status CheckInputs(const Tensor* query,
                            "seqlens_k must be shape (batch_size).");
   }
 
-  // Set present sequence length and kv_share_buffer from input total_seqlen tensor
-  if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "total_sequence_length tensor must be of one element.");
-  }
-  int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
-  int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
+  int present_sequence_length = parameters->kv_share_buffer ? past_sequence_length : past_sequence_length + sequence_length;
 
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
@@ -213,13 +206,13 @@ Status CheckInputs(const Tensor* query,
                              "head_size shall be a multiple of 16. Got head_size % 16 == ",
                              head_size % 16);
     }
-    if (cos_dims[0] < total_sequence_length) {
+    if (cos_dims[0] < present_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be not be less than total_sequence_length.");
+                             "cos_cache dimension 0 should be not be less than present_sequence_length.");
     }
-    if (sin_dims[0] < total_sequence_length) {
+    if (sin_dims[0] < present_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be not be less than total_sequence_length.");
+                             "sin_cache dimension 0 should be not be less than present_sequence_length.");
     }
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -239,29 +232,21 @@ Status CheckInputs(const Tensor* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  bool is_prompt = (sequence_length == total_sequence_length);
-  if (!is_prompt && sequence_length != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "sequence_length shall be 1 when it is not prompt.");
-  }
-
   if (parameters != nullptr) {
-    GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
-    output_parameters->batch_size = batch_size;
-    output_parameters->sequence_length = sequence_length;                  // sequence length of Q
-    output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
-    output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
-    output_parameters->hidden_size = q_hidden_size;
-    output_parameters->num_heads = num_heads;
-    output_parameters->head_size = head_size;
-    output_parameters->kv_hidden_size = kv_hidden_size;
-    output_parameters->kv_num_heads = kv_num_heads;
-    output_parameters->rotary_dim = rotary_dim;
-    output_parameters->is_packed_qkv = is_packed_qkv;
-    output_parameters->is_prompt = is_prompt;
-    output_parameters->scale = scale;
-    output_parameters->qkv_format = qkv_format;
-    output_parameters->past_kv_format = past_kv_format;
+    parameters->batch_size = batch_size;
+    parameters->sequence_length = sequence_length;                  // sequence length of Q
+    parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
+    parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
+    parameters->hidden_size = q_hidden_size;
+    parameters->num_heads = num_heads;
+    parameters->head_size = head_size;
+    parameters->kv_hidden_size = kv_hidden_size;
+    parameters->kv_num_heads = kv_num_heads;
+    parameters->rotary_dim = rotary_dim;
+    parameters->is_packed_qkv = is_packed_qkv;
+    parameters->scale = scale;
+    parameters->qkv_format = qkv_format;
+    parameters->past_kv_format = past_kv_format;
   }
 
   return Status::OK();
@@ -274,11 +259,10 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* past_value,
                    const Tensor* cos_cache,
                    const Tensor* sin_cache,
-                   void* parameters,
+                   GroupQueryAttentionParameters* parameters,
                    int num_heads,
                    int kv_num_heads,
                    const Tensor* seqlens_k,
-                   const Tensor* total_seqlen,
                    bool is_past_bsnh,
                    float scale,
                    int max_threads_per_block) {
@@ -286,7 +270,7 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, is_past_bsnh, scale);
 }
 
 }  // namespace group_query_attention_helper

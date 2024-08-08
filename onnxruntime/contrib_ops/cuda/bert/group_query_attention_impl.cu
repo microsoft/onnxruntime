@@ -614,6 +614,31 @@ Status LaunchSeqlensToPosIds(contrib::GroupQueryAttentionParameters& parameters,
   return CUDA_CALL(cudaGetLastError());
 }
 
+__global__ void AllZeroesKernel(int* tensor, int size, bool* all_zeroes) {
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
+  if (tid == 0) {
+    *all_zeroes = true;
+  }
+  __syncthreads();
+  if (tid < size) {
+    if (tensor[tid] != 0) {
+      *all_zeroes = false;
+    }
+  }
+}
+
+Status AllZeroes(bool& all_zeroes, const int* tensor, int size, cudaStream_t stream, const int max_threads_per_block) {
+  const dim3 grid(1, 1, 1);
+  // TODO(aciddelgado): unlikely but could have a bigger batch_size than max_threads
+  const dim3 block(size, 1, 1);
+  bool* d_all_zeroes;
+  cudaMalloc(&d_all_zeroes, sizeof(bool));
+  AllZeroesKernel<<<grid, block, 0, stream>>>(const_cast<int*>(tensor), size, d_all_zeroes);
+  cudaMemcpy(&all_zeroes, d_all_zeroes, sizeof(bool), cudaMemcpyDeviceToHost);
+  cudaFree(d_all_zeroes);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Launch Kernels
 
 #if USE_FLASH_ATTENTION
@@ -638,6 +663,14 @@ Status FlashAttention(
   void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
   void* key;
   void* value;
+
+  bool is_all_zeroes;
+  ORT_RETURN_IF_ERROR(AllZeroes(is_all_zeroes, data.seqlens_k, batch_size, stream, max_threads_per_block));
+  parameters.is_prompt = parameters.kv_share_buffer ? sequence_length > 1 || (sequence_length == 1 && is_all_zeroes) : (sequence_length == parameters.seqlen_present_kv_cache);
+  if (!parameters.is_prompt && sequence_length != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence_length shall be 1 when it is not prompt.");
+  }
 
   if (!parameters.is_packed_qkv) {
     key = reinterpret_cast<void*>(const_cast<T*>(data.key));
@@ -713,6 +746,14 @@ Status EfficientAttention(
   const void* query;
   const void* key;
   const void* value;
+
+  bool is_all_zeroes;
+  ORT_RETURN_IF_ERROR(AllZeroes(is_all_zeroes, data.seqlens_k, batch_size, stream, max_threads_per_block));
+  parameters.is_prompt = parameters.kv_share_buffer ? sequence_length > 1 || (sequence_length == 1 && is_all_zeroes) : (sequence_length == present_sequence_length);
+  if (!parameters.is_prompt && sequence_length != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence_length shall be 1 when it is not prompt.");
+  }
 
   if (!parameters.is_packed_qkv) {
     query = reinterpret_cast<const void*>(data.query);

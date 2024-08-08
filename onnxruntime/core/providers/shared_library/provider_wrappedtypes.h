@@ -1082,6 +1082,8 @@ struct OpKernelContext final {
 
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
 
+  bool OutputTensorAllocated(int index) { return g_host->OpKernelContext__OutputTensorAllocated(this, index); }
+
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
