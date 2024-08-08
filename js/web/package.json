@@ -36,6 +36,7 @@
   ],
   "devDependencies": {
     "@chiragrupani/karma-chromium-edge-launcher": "^2.2.2",
+    "@petamoriken/float16": "^3.8.7",
     "@types/chai": "^4.3.4",
     "@types/emscripten": "^1.39.6",
     "@types/flatbuffers": "^1.10.0",
