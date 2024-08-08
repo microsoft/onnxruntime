@@ -50,7 +50,7 @@ stages:
           -t onnxruntime_ortmodule_distributed_tests_image \
           -x " \
             --config RelWithDebInfo \
-            --use_cuda --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 \
+            --use_cuda --cuda_version=12.1 --cuda_home=/usr/local/cuda-12.1 --cudnn_home=/usr/local/cuda-12.1 \
             --enable_training \
             --update --build \
             --build_wheel \
@@ -102,7 +102,7 @@ stages:
           -t onnxruntime_ortmodule_distributed_tests_image \
           -x " \
             --config RelWithDebInfo \
-            --use_cuda --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 \
+            --use_cuda --cuda_version=12.1 --cuda_home=/usr/local/cuda-12.1 --cudnn_home=/usr/local/cuda-12.1 \
             --update --build \
             --build_wheel \
             --use_mpi \
