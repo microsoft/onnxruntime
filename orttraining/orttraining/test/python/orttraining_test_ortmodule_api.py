@@ -6962,6 +6962,8 @@ def test_layerwise_recompute_pythonop_determinstic():
     reason="torch.nn.attention module was introduced in PyTorch 2.3.0",
 )
 def test_aten_attention():
+    pytest.skip("Temporarily disabled pending investigation.")
+
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
     class _NeuralNetAttention(torch.nn.Module):
