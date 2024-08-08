@@ -112,27 +112,31 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   // Get shape and type of the tensor, and allocate the empty tensor
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::unique_ptr<Tensor> p_tensor;
-  if (m != nullptr) {
-    p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
-    if (m->GetLen() < p_tensor->SizeInBytes()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
-                             p_tensor->SizeInBytes(), ", Got ", m->GetLen());
-    }
-  } else {
-    if (use_device_allocator_for_initializers) {
-      void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
-      p_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
+  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>();
+
+  // for external initializer we will use mmap so don't need to allocate memory in advance
+  if (!utils::HasExternalData(tensor_proto)) {
+    if (m != nullptr) {
+      p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
+      if (m->GetLen() < p_tensor->SizeInBytes()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
+                               p_tensor->SizeInBytes(), ", Got ", m->GetLen());
+      }
     } else {
-      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
-      // (may expand it if there isn't a chunk that can be allotted to the memory request).
-      // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+      if (use_device_allocator_for_initializers) {
+        void* tensor_buffer = nullptr;
+        ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
+        p_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
+      } else {
+        // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+        // (may expand it if there isn't a chunk that can be allotted to the memory request).
+        // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
+        p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+      }
     }
   }
 
-  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
+  if (alloc->Info().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
     if (utils::HasExternalData(tensor_proto)) {
       // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
@@ -155,16 +159,20 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
 
     // deserialize to CPU first for non-CPU allocator, then copy
-    std::unique_ptr<Tensor> p_deserialize_tensor;
-    if (use_device_allocator_for_initializers) {
-      void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
-      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
-    } else {
-      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
-      // (may expand it if there isn't a chunk that can be allotted to the memory request).
-      // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+    std::unique_ptr<Tensor> p_deserialize_tensor = std::make_unique<Tensor>();
+
+    // for external initializer we will use mmap so don't need to allocate memory in advance
+    if (!utils::HasExternalData(tensor_proto)) {
+      if (use_device_allocator_for_initializers) {
+        void* tensor_buffer = nullptr;
+        ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
+        p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
+      } else {
+        // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+        // (may expand it if there isn't a chunk that can be allotted to the memory request).
+        // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
+        p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
+      }
     }
 
     OrtCallback ext_data_deleter;
