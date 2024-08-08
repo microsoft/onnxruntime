@@ -118,16 +118,21 @@ float ComputeStandardDeviation(const U* elems, const int32_t size)
   return std::sqrt(variance);
 }
 
-float ComputeScale(cudaStream_t& stream, const Tensor* tensor, const float std_quant)
+Status ComputeScale(cudaStream_t& stream, const Tensor* tensor, const float std_quant, float& scale)
 {
   const int32_t num_coef = tensor->Shape().Size();
   MLFloat16* scale_coef = (MLFloat16*)malloc(num_coef * sizeof(MLFloat16));
-  ComputeStdDevCoefficientsForScale(stream, tensor, num_coef, scale_coef);
+  auto status = ComputeStdDevCoefficientsForScale(stream, tensor, num_coef, scale_coef);
+  if (! status.IsOK())
+    return status;
 
   float std_coef = ComputeStandardDeviation(scale_coef, num_coef);
   free(scale_coef);
 
-  return std_quant / std_coef;
+  // If the standard deviation is 0, just use a scale of 1
+  scale = fabs(std_coef) < 1e-5 ? 1.0f : std_quant / std_coef;
+
+  return status;
 }
 
 void NoOpDeleter(void* [[maybe_unused]] ptr) {
@@ -271,8 +276,13 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   free(quant_float);
 
   // Get the weights of the model
-  float scale_a = ComputeScale(stream, left_X, std_quant);
-  float scale_b = ComputeScale(stream, right_X, std_quant);
+  float scale_a, scale_b;
+  auto status = ComputeScale(stream, left_X, std_quant, scale_a);
+  if (! status.IsOK())
+    return status;
+  status = ComputeScale(stream, right_X, std_quant, scale_b);
+  if (! status.IsOK())
+    return status;
   float scale_y = 1.0f;
 
   void* scale_a_data = &scale_a;
