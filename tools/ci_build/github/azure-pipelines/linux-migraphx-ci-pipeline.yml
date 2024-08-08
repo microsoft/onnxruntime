@@ -181,6 +181,7 @@ jobs:
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro \
           --workdir /build/Release \
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
