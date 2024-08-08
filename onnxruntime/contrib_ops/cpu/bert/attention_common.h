@@ -103,8 +103,8 @@ struct GroupQueryAttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;
-  bool is_interactive;  // indicates whether seqlens_k is 1 or 2 dimensional. 2-d case enables interactive decoding
-  bool is_prompt;       // determines if seqlens_k is past or kv sequence length tensor
+  bool is_interactive;  // indicates whether we have past context and seqlen > 1
+  bool is_prompt;       // indicates whether this is first decoding step
   bool do_rotary;
   bool rotary_interleaved;
   float scale;
