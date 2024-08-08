@@ -9,10 +9,6 @@
 /onnxruntime/core/graph/contrib_ops/quantization_defs.* @microsoft/onnxruntime-mlas
 /onnxruntime/core/mlas/** @microsoft/onnxruntime-mlas
 
-# build pipelines and workflows
-/tools/ci_build/github/azure-pipelines @microsoft/onnxruntime-es
-/.github/workflows @microsoft/onnxruntime-es
-
 # Dependencies
 requirements-dev.txt @microsoft/onnxruntime-admin
 requirements-doc.txt @microsoft/onnxruntime-admin
