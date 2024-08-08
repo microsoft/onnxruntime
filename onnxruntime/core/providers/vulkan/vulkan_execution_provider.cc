@@ -66,7 +66,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onn
   const utils::OnGroupClosedFn on_group_closed_fn = nullptr;
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported_fn, on_group_closed_fn,
-                                            gen_metadef_name, "Vulkan", kVulkanExecutionProvider,
+                                            gen_metadef_name, "Vulkan", kVulkanExecutionProvider, nullptr,
                                             /* drop constant_initializers */ false);  // TBD if we can/should
 
   return result;

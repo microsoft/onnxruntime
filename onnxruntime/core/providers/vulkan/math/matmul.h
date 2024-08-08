@@ -35,7 +35,7 @@ class MatMulKernel : VulkanKernel {
 
   Status SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
 
-  Status SetupConstantInitializers(const GraphViewer& graph_viewer) override;
+  Status SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) override;
 
   Status UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) override;
 
