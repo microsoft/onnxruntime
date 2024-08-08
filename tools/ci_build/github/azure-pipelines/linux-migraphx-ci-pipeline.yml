@@ -147,7 +147,7 @@ jobs:
   pool: AMD-GPU
   dependsOn:
   - Linux_Build
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
 
   steps:
   - task: DownloadPipelineArtifact@2
