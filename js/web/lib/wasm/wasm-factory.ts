@@ -175,6 +175,45 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   if (isTimeout) {
     throw new Error(`WebAssembly backend initializing failed due to timeout: ${timeout}ms`);
   }
+
+  // add stats/diagnostics functions
+  Object.defineProperty(flags, 'stats', {
+    get: () => {
+      const module = wasm!;
+      const stats = {wasmHeapTotal: module.HEAP8.byteLength} as Record<string, unknown>;
+
+      if (wasm?._OrtGetMemoryStats) {
+        const stack = module.stackSave();
+        const pointer = module.stackAlloc(40);
+        // eslint-disable-next-line no-bitwise
+        const index = pointer >> 2;
+
+        try {
+          module._OrtGetMemoryStats!(pointer);
+          const mallInfo = {
+            arena: module.HEAPU32[index],
+            ordblks: module.HEAPU32[index + 1],
+            smblks: module.HEAPU32[index + 2],
+            hblks: module.HEAPU32[index + 3],
+            hblkhd: module.HEAPU32[index + 4],
+            usmblks: module.HEAPU32[index + 5],
+            fsmblks: module.HEAPU32[index + 6],
+            uordblks: module.HEAPU32[index + 7],
+            fordblks: module.HEAPU32[index + 8],
+            keepcost: module.HEAPU32[index + 9]
+          };
+
+          stats.mallInfo = mallInfo;
+        } finally {
+          module.stackRestore(stack);
+        }
+      }
+      return stats;
+    },
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
 };
 
 export const getInstance = (): OrtWasmModule => {

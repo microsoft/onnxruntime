@@ -294,6 +294,29 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 
+#ifdef ORT_ENABLE_WEBASSEMBLY_MEMORY_STATS
+
+/**
+ * Get the memory statistics of the WebAssembly module.
+ * @param memory_stats [out] a pointer to a buffer to accept the memory statistics.
+ *
+ * struct s_mallinfo {
+ * 	 int arena;       // non-mmapped space allocated from system
+ * 	 int ordblks;     // number of free chunks
+ * 	 int smblks;      // always 0
+ * 	 int hblks;       // always 0
+ * 	 int hblkhd;      // space in mmapped regions
+ * 	 int usmblks;     // maximum total allocated space
+ * 	 int fsmblks;     // always 0
+ * 	 int uordblks;    // total allocated space
+ * 	 int fordblks;    // total free space
+ * 	 int keepcost;    // releasable (via malloc_trim) space
+ * };
+ */
+void EMSCRIPTEN_KEEPALIVE OrtGetMemoryStats(void* memory_stats);
+
+#endif
+
 // Training API Section
 
 #ifdef ENABLE_TRAINING_APIS

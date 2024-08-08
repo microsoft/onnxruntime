@@ -179,6 +179,7 @@ module.exports = {
           '_OrtGetLastError',
           '_OrtGetOutputName',
           '_OrtGetTensorData',
+          '_OrtGetMemoryStats',
           '_OrtInit',
           '_OrtReleaseBinding',
           '_OrtReleaseRunOptions',

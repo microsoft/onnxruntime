@@ -487,6 +487,38 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              : nullptr;
 }
 
+#ifdef ORT_ENABLE_WEBASSEMBLY_MEMORY_STATS
+
+// https://www.man7.org/linux/man-pages/man3/mallinfo.3.html
+
+// https://github.com/emscripten-core/emscripten/blob/9bb322f8a7ee89d6ac67e828b9c7a7022ddf8de2/tests/mallinfo.cpp
+
+struct s_mallinfo {
+  int arena;    /* non-mmapped space allocated from system */
+  int ordblks;  /* number of free chunks */
+  int smblks;   /* always 0 */
+  int hblks;    /* always 0 */
+  int hblkhd;   /* space in mmapped regions */
+  int usmblks;  /* maximum total allocated space */
+  int fsmblks;  /* always 0 */
+  int uordblks; /* total allocated space */
+  int fordblks; /* total free space */
+  int keepcost; /* releasable (via malloc_trim) space */
+};
+
+static_assert(sizeof(s_mallinfo) == 40, "size of s_mallinfo should be 40 bytes.");
+
+extern "C" {
+extern s_mallinfo mallinfo();
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtGetMemoryStats(void* memory_stats) {
+  s_mallinfo info = mallinfo();
+  memcpy(memory_stats, &info, sizeof(s_mallinfo));
+}
+
+#endif
+
 // Training API Section
 
 #ifdef ENABLE_TRAINING_APIS

@@ -165,6 +165,9 @@ export interface OrtInferenceAPIs {
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
 
   _OrtEndProfiling(sessionHandle: number): number;
+
+  // optional APIs
+  _OrtGetMemoryStats?(memoryInfoOffset: number): void;
 }
 
 export interface OrtTrainingAPIs {

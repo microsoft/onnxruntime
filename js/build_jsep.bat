@@ -22,7 +22,7 @@ if ["%~1"]==["d"] (
 )
 if ["%~1"]==["r"] (
     set CONFIG=Release
-    set CONFIG_EXTRA_FLAG=--enable_wasm_api_exception_catching --disable_rtti --enable_wasm_profiling
+    set CONFIG_EXTRA_FLAG=--enable_wasm_api_exception_catching --disable_rtti --enable_wasm_profiling --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_MEMORY_STATS=1
     goto :arg2
 )
 echo Invalid configuration "%~1", must be "d"(Debug) or "r"(Release)
