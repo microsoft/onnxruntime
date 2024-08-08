@@ -1106,11 +1106,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "seqlens_k",
                // For prompt, the value is number of tokens (excluding padding) - 1.
                "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
-               "M")
+               "M",
+               OpSchema::Optional)
         .Input(6,
                "total_sequence_length",
                "Scalar tensor of total sequence length (past + new).",
-               "M")
+               "M",
+               OpSchema::Optional)
         .Input(7,
                "cos_cache",
                "2D tensor with shape (max_sequence_length, head_size / 2).",
