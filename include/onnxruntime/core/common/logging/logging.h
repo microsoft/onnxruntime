@@ -154,13 +154,13 @@ class LoggingManager final {
                                        Severity min_severity, bool filter_user_data, int max_vlog_level = -1);
 
   /**
-     Gets the default logger instance if set. Throws if no default logger is currently registered.
+     Gets the default logger instance if set.
      @remarks
      Creating a LoggingManager instance with is_default_instance == true registers a default logger.
      Note that the default logger is only valid until the LoggerManager that registered it is destroyed.
-     @returns The default logger if available.
+     @returns The default logger if available, or a dummy logger doing nothing.
   */
-  static const Logger& DefaultLogger();
+  static const Logger& DefaultLogger() noexcept;
 
   /**
     Return a boolean indicating if the default logger has been initialized
@@ -256,6 +256,14 @@ class LoggingManager final {
 class Logger {
  public:
   /**
+     Allow a dummy logger to exist, which will log nothing.
+  */
+  explicit Logger() : logging_manager_(nullptr),
+                      min_severity_(Severity::kINFO),
+                      filter_user_data_(false),
+                      max_vlog_level_(0) {}
+
+  /**
      Initializes a new instance of the Logger class.
      @param loggingManager The logging manager.
      @param id The identifier for messages coming from this Logger.
@@ -300,7 +308,7 @@ class Logger {
      @returns True if a message with these values will be logged.
   */
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept {
-    return (severity >= min_severity_ && (data_type != DataType::USER || !filter_user_data_));
+    return logging_manager_ && (severity >= min_severity_ && (data_type != DataType::USER || !filter_user_data_));
   }
 
   /**
@@ -315,7 +323,9 @@ class Logger {
      @param message The log message.
   */
   void Log(const Capture& message) const {
-    logging_manager_->Log(id_, message);
+    if (logging_manager_) {
+      logging_manager_->Log(id_, message);
+    }
   }
 
   /**
@@ -323,7 +333,9 @@ class Logger {
     @param Profiling Event Record
   */
   void SendProfileEvent(profiling::EventRecord& eventRecord) const {
-    logging_manager_->SendProfileEvent(eventRecord);
+    if (logging_manager_) {
+      logging_manager_->SendProfileEvent(eventRecord);
+    }
   }
 
  private:
@@ -334,13 +346,13 @@ class Logger {
   int max_vlog_level_;
 };
 
-inline const Logger& LoggingManager::DefaultLogger() {
-  if (s_default_logger_ == nullptr) {
-    // fail early for attempted misuse. don't use logging macros as we have no logger.
-    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
+inline const Logger& LoggingManager::DefaultLogger() noexcept {
+  if (s_default_logger_) {
+    return *s_default_logger_;
+  } else {
+    static Logger dummy_logger;
+    return dummy_logger;
   }
-
-  return *s_default_logger_;
 }
 
 inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
