@@ -583,7 +583,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
   // Handle Qs in the NodeUnit
   if (!node_unit.GetQNodes().empty()) {
-    for (size_t i = 0 ; i < node_unit.GetQNodes().size() ; i++) {
+    for (size_t i = 0; i < node_unit.GetQNodes().size(); i++) {
       const auto& q_node = node_unit.GetQNodes().at(i);
 
       SkipReason reason;
@@ -598,7 +598,7 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
       } else {
         // convert this Q to float
         output_args.push_back(&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
-                                                node_unit_outputs.at(i)));
+                                                 node_unit_outputs.at(i)));
       }
     }
   } else {
