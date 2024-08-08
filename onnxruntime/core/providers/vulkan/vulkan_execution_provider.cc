@@ -71,6 +71,120 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onn
 
   return result;
 }
+
+// NetPrivate::do_forward_layer.
+// has logic to release buffers, but not clear how/where synchronization of the release with the GPU execution happens
+int do_forward_layer(const ncnn::Layer* layer, std::vector<ncnn::VkMat>& blob_mats_gpu, ncnn::VkCompute& cmd,
+                     const ncnn::Option& opt) {
+  using namespace ncnn;
+
+  if (layer->one_blob_only) {
+    // load bottom blob
+    int bottom_blob_index = layer->bottoms[0];
+    int top_blob_index = layer->tops[0];
+
+    VkMat& bottom_blob_ref = blob_mats_gpu[bottom_blob_index];
+    VkMat bottom_blob;
+
+    if (opt.lightmode) {
+      // deep copy for inplace forward if data is shared
+      if (layer->support_inplace && *bottom_blob_ref.refcount != 1) {
+        cmd.record_clone(bottom_blob_ref, bottom_blob, opt);
+        // NCNN_LOGE("clone %p[+%lu] %p[+%lu]", bottom_blob_ref.buffer(), bottom_blob_ref.buffer_offset(),
+        //            bottom_blob.buffer(), bottom_blob.buffer_offset());
+      }
+    }
+
+    if (bottom_blob.dims == 0) {
+      bottom_blob = bottom_blob_ref;
+    }
+
+    // forward
+    if (opt.lightmode && layer->support_inplace) {
+      VkMat& bottom_top_blob = bottom_blob;
+      int ret = layer->forward_inplace(bottom_top_blob, cmd, opt);
+      if (ret != 0)
+        return ret;
+
+      // store top blob
+      blob_mats_gpu[top_blob_index] = bottom_top_blob;
+    } else {
+      VkMat top_blob;
+      int ret = layer->forward(bottom_blob, top_blob, cmd, opt);
+      if (ret != 0)
+        return ret;
+
+      // store top blob
+      blob_mats_gpu[top_blob_index] = top_blob;
+    }
+
+    if (opt.lightmode) {
+      // delete after taken in light mode
+      blob_mats_gpu[bottom_blob_index].release();
+    }
+  } else {
+    // load bottom blobs
+    std::vector<VkMat> bottom_blobs(layer->bottoms.size());
+    for (size_t i = 0; i < layer->bottoms.size(); i++) {
+      int bottom_blob_index = layer->bottoms[i];
+
+      VkMat& bottom_blob_ref = blob_mats_gpu[bottom_blob_index];
+      bottom_blobs[i].release();
+
+      if (opt.lightmode) {
+        // deep copy for inplace forward if data is shared
+        if (layer->support_inplace && *bottom_blob_ref.refcount != 1) {
+          cmd.record_clone(bottom_blob_ref, bottom_blobs[i], opt);
+          // NCNN_LOGE("clone %p[+%lu] %p[+%lu]", bottom_blob_ref.buffer(), bottom_blob_ref.buffer_offset(),
+          //            bottom_blobs[i].buffer(), bottom_blobs[i].buffer_offset());
+        }
+      }
+
+      if (bottom_blobs[i].dims == 0) {
+        bottom_blobs[i] = bottom_blob_ref;
+      }
+    }
+
+    // forward
+    if (opt.lightmode && layer->support_inplace) {
+      std::vector<VkMat>& bottom_top_blobs = bottom_blobs;
+      int ret = layer->forward_inplace(bottom_top_blobs, cmd, opt);
+      if (ret != 0)
+        return ret;
+
+      // store top blobs
+      for (size_t i = 0; i < layer->tops.size(); i++) {
+        int top_blob_index = layer->tops[i];
+
+        blob_mats_gpu[top_blob_index] = bottom_top_blobs[i];
+      }
+    } else {
+      std::vector<VkMat> top_blobs(layer->tops.size());
+      int ret = layer->forward(bottom_blobs, top_blobs, cmd, opt);
+      if (ret != 0)
+        return ret;
+
+      // store top blobs
+      for (size_t i = 0; i < layer->tops.size(); i++) {
+        int top_blob_index = layer->tops[i];
+
+        blob_mats_gpu[top_blob_index] = top_blobs[i];
+      }
+    }
+
+    if (opt.lightmode) {
+      for (size_t i = 0; i < layer->bottoms.size(); i++) {
+        int bottom_blob_index = layer->bottoms[i];
+
+        // delete after taken in light mode
+        blob_mats_gpu[bottom_blob_index].release();
+      }
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& info)
@@ -99,7 +213,7 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   ncnn_options_.use_int8_packed = false;
   ncnn_options_.use_int8_storage = false;
   ncnn_options_.use_int8_arithmetic = false;
-  ncnn_options_.use_packing_layout = false;
+  ncnn_options_.use_packing_layout = false;  // <-- required
   ncnn_options_.use_image_storage = false;
 }
 
@@ -175,6 +289,14 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       }
     }
 
+    // TODO: This is insufficient as it doesn't currently handle the case where the ORT input is a constant initializer
+    // and the NCNN layer doesn't have a member for that. We could maybe extend the NCNN layer classes to handle that
+    // but that could get quite extensive.
+    //
+    // An alternative would be to create a base std::vector<ncnn::VkMat> `values` which includes the constant
+    // initializers that need to be provided as an input to the NCNN layer. At the start of execution we could copy
+    // that vector. Potentially significantly inefficient if there are a lot of initializers that fall into this
+    // category. The VulkanKernel would need to handle uploading the data to create the VkMat in this step.
     ORT_RETURN_IF_ERROR(UploadConstantInitializers(*model));
 
     // ModelMetadefIdGenerator is broken if this happens
@@ -222,8 +344,8 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         ++input_idx;
       }
 
-      // TODO: Do we need to wait on the inputs being copied?
-      // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait());
+      // Do we need to wait on the inputs being copied?
+      // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait()); <--
 
       for (const auto& kernels : model.layers) {
         const auto& layer = kernels->Layer();
@@ -259,6 +381,12 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           }
         }
       }
+
+      /*
+      for (const auto& kernels : model.layers) {
+        const auto& layer = kernels->Layer();
+        RETURN_IF_NCNN_ERROR(do_forward_layer(&layer, values, cmd, ncnn_options_));
+      } */
 
       // copy data to output tensors.
       std::vector<ncnn::Mat> ncnn_outputs;

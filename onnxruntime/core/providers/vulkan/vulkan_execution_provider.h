@@ -68,6 +68,12 @@ class VulkanExecutionProvider : public IExecutionProvider {
   const ncnn::Option& NcnnOptions() const { return ncnn_options_; }
 
  private:
+  // TODO: If we want to support concurrent execution we need to figure out an efficient way to manage the
+  // VkMat instances for constant initializers as the NCNN execution has a std::vector<ncnn::VkMat> for all the values.
+  // We'd need to create that on a per-request basis which would mean copying the VkMat info for all the constant
+  // initializers.
+  bool ConcurrentRunSupported() const override { return false; }
+
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                 const IKernelLookup& kernel_lookup) const override;
 

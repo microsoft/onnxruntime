@@ -116,8 +116,11 @@ Status VulkanKernel::SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexe
   // set input/output values indexes in the Layer's bottoms and tops.
   for (const NodeArg*& def : node_.InputDefs()) {
     auto entry = value_indexes.find(def->Name());
-    assert(entry != value_indexes.end());  // should be impossible for an input value to not be in the map
-    ncnn_layer_->bottoms.push_back(entry->second);
+
+    // constant initializers that were added to the kernel directly do not have entries
+    if (entry != value_indexes.end()) {
+      ncnn_layer_->bottoms.push_back(entry->second);
+    }
   }
 
   for (const NodeArg*& def : node_.OutputDefs()) {
