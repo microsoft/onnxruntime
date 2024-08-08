@@ -33,7 +33,7 @@ FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<con
 }
 
 Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger) const {
-  for (const onnxruntime::NodeArg* graph_input : graph.GetInputs()) {
+  for (const onnxruntime::NodeArg* graph_input : graph.GetInputsIncludingInitializers()) {
     // Get the current input's type and shape
     const auto* input_type = graph_input->TypeAsProto();
     const auto* input_shape = graph_input->Shape();
@@ -90,6 +90,11 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
         } else {
           // Set the dimension override
           new_dimension->set_dim_value(dimension_override);
+
+          if (graph.IsInitializedTensor(graph_input->Name())) {
+            graph.OverrideInitializedTensorDim(graph_input->Name(), dim_index, dimension_override);
+          }
+
           shape_modified = true;
         }
       }
