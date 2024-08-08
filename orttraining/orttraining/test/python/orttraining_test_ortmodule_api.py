@@ -6046,7 +6046,7 @@ def test_e2e_padding_elimination():
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     class OneLayer(torch.nn.Module):
@@ -6775,7 +6775,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
             del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
 
 
-def test_layerwise_recompute_pythonop_determinstic():
+def test_layerwise_recompute_pythonop_deterministic():
 
     original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
 
@@ -6889,7 +6889,7 @@ def test_layerwise_recompute_pythonop_determinstic():
     os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "0"
     ort_model1 = ORTModule(copy.deepcopy(pt_model))
 
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
