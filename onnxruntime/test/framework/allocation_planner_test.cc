@@ -2078,6 +2078,7 @@ TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
   ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
 
   int gather_count = 0;
+  ASSERT_GT(plan->execution_plan.size(), 1) << "Number of execution plans should be greater than 1";
   for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
     if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
       const Node* node = sess.GetSessionState().GetGraphViewer().GetNode(plan->execution_plan[1]->steps_[i]->GetNodeIndex());

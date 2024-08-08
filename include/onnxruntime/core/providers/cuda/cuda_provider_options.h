@@ -38,5 +38,6 @@ struct OrtCUDAProviderOptionsV2 {
   int prefer_nhwc = 0;                                                                                         // make the CUDA EP NHWC preferred
   int use_ep_level_unified_stream = 0;                                                                         // flag specifying if ep level stream is used or not
   int use_tf32 = 1;                                                                                            // use TF32
+  int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
 };

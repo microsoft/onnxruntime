@@ -111,7 +111,7 @@ stages:
         cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
           $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
         pushd $(Build.BinariesDirectory)/artifacts_staging
-        zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
+        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
           onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
         popd
       displayName: "Build Apple xcframework"

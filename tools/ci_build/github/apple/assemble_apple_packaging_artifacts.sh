@@ -23,10 +23,13 @@ ORT_POD_VERSION=${4:?${USAGE_TEXT}}
 POD_ARCHIVE_BASENAME="pod-archive-${POD_NAME}-${ORT_POD_VERSION}.zip"
 PODSPEC_BASENAME="${POD_NAME}.podspec"
 
+echo "Contents of ${BINARIES_STAGING_DIR}/${POD_NAME}:"
+ls -lR "${BINARIES_STAGING_DIR}/${POD_NAME}"
+
 pushd "${BINARIES_STAGING_DIR}/${POD_NAME}"
 
 # assemble the files in the artifacts staging directory
-zip -r "${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME}" ./* --exclude "${PODSPEC_BASENAME}"
+zip -r -y "${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME}" ./* --exclude "${PODSPEC_BASENAME}"
 cp "${PODSPEC_BASENAME}" "${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}"
 
 popd

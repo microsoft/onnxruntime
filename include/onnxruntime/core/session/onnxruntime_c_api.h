@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 19
+#define ORT_API_VERSION 20
 
 #ifdef __cplusplus
 extern "C" {

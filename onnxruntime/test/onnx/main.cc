@@ -438,6 +438,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_cuda) {
 #ifdef USE_CUDA
       OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.device_id = device_id;
       cuda_options.do_copy_in_default_stream = true;
       cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner

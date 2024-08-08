@@ -104,6 +104,8 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    const Tensor* tensor_zero_point = nullptr;
+    has_zp_input_ = info.TryGetConstantInput(3, &tensor_zero_point);
 #ifdef ORT_NEURAL_SPEED
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
@@ -139,6 +141,7 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
 
+  bool has_zp_input_{false};
 #if defined(ORT_NEURAL_SPEED)
 
   bool is_asym_{false};
@@ -207,10 +210,10 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else   // defined(ORT_NEURAL_SPEED)
-
+#else  // defined(ORT_NEURAL_SPEED)
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+  const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
   if (input_idx == InputIndex::B) {
-    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
     if (!MlasIsSQNBitGemmAvailable(nbits_, block_size_, compute_type)) {
       return Status::OK();
     }
@@ -220,12 +223,20 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get());
-    if (prepacked_weights) {
-      prepacked_weights->buffers_.push_back(std::move(packed_b_));
-      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-    }
+    MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, qptr, packed_b_.get(), nullptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
+  } else if (compute_type == CompInt8) {
+#ifdef MLAS_TARGET_AMD64_IX86
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      auto sptr = tensor.Data<float>();
+      MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), sptr, has_zp_input_, nullptr, nullptr);
+      is_packed = false;
+    } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+      auto zptr = tensor.Data<uint8_t>();
+      MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), nullptr, has_zp_input_, zptr, nullptr);
+      is_packed = false;
+    }
+#endif
   }
 #endif  // defined(ORT_NEURAL_SPEED)
 
@@ -332,9 +343,9 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       const auto* bias_data = bias == nullptr ? nullptr : bias->Data<float>();
 
       IAllocatorUniquePtr<std::byte> workspace{};
-      if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
-                                                                         nbits_, block_size_, compute_type);
-          workspace_size > 0) {
+      const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(
+          M, N, K, batch_count, nbits_, block_size_, compute_type);
+      if (workspace_size > 0) {
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
         workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
@@ -344,14 +355,18 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       for (size_t i = 0; i < batch_count; ++i) {
         data[i].A = a_data + helper.LeftOffsets()[i];
         data[i].lda = lda;
-        data[i].QuantBData = packed_b_.get();
+#ifdef MLAS_TARGET_AMD64_IX86
+        if (compute_type == CompInt8) {
+          data[i].QuantBDataWorkspace = packed_b_.get();
+        }
+#endif
+        data[i].PackedQuantBData = static_cast<std::byte*>(packed_b_.get());
         data[i].QuantBScale = scales_data;
         data[i].QuantBZeroPoint = zero_points_data;
         data[i].Bias = bias_data;
         data[i].C = y_data + helper.OutputOffsets()[i];
         data[i].ldc = N;
       }
-
       MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
                           thread_pool);
 

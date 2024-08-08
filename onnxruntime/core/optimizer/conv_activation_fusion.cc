@@ -58,16 +58,11 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
 }
 
 bool ConvFusionDataTypeCheck(const Node& conv_node) {
-  // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
+  // TODO(hasesh): The CPU EP only supports float type for the Conv+Activation
   // and the Conv+Add+Relu fusions.
   // Assess the support level for the other compatible EPs and if they also
   // only support float, remove the EP check altogether.
   const std::string_view node_ep = conv_node.GetExecutionProviderType();
-  if (node_ep == kCudaExecutionProvider) {
-    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-      return false;
-    }
-  }
   if (node_ep == kCpuExecutionProvider) {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT) &&
@@ -120,7 +115,9 @@ class ConvActivationSelector : public NodeSelector {
     }
 
     // check EP type and activation
-    if (node_ep == kCudaExecutionProvider || node_ep == kRocmExecutionProvider) {
+    if (node_ep == kCudaExecutionProvider) {
+      return std::nullopt;
+    } else if (node_ep == kRocmExecutionProvider) {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
@@ -138,43 +135,6 @@ class ConvActivationSelector : public NodeSelector {
     NodesToOptimizeIndicesBuilder builder{};
     builder.target_node = node.Index();
     builder.output_nodes.push_back(next_node->Index());
-    return builder.Build();
-  }
-};
-
-class ConvAddRelu : public NodeSelector {
- public:
-  ConvAddRelu() = default;
-
-  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
-    const std::string_view node_ep = node.GetExecutionProviderType();
-    // only for CUDA EP
-    if (node_ep != kCudaExecutionProvider) {
-      return std::nullopt;
-    }
-
-    if (!ConvFusionDataTypeCheck(node)) {
-      return std::nullopt;
-    }
-
-    const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
-    if (!add_node ||
-        !graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {6, 7, 13, 14}) ||
-        add_node->GetExecutionProviderType() != node_ep) {
-      return std::nullopt;
-    }
-
-    const auto* relu_node = GetLoneConsumerNode(graph_viewer, *add_node);
-    if (!relu_node ||
-        !graph_utils::IsSupportedOptypeVersionAndDomain(*relu_node, "Relu", {6, 13, 14}) ||
-        relu_node->GetExecutionProviderType() != node_ep) {
-      return std::nullopt;
-    }
-
-    NodesToOptimizeIndicesBuilder builder{};
-    builder.target_node = node.Index();
-    builder.output_nodes = {add_node->Index(),
-                            relu_node->Index()};
     return builder.Build();
   }
 };
@@ -304,22 +264,9 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
 #endif
 }
 
-void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
-  const auto name = "ConvAddRelu";
-  auto action = std::make_unique<actions::FuseConvAddRelu>();
-#if !defined(ORT_MINIMAL_BUILD)
-  auto selector = std::make_unique<selectors::ConvAddRelu>();
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}},
-                                     std::move(selector), std::move(action));
-#else
-  registry.RegisterAction(name, std::move(action));
-#endif
-}
-
 SelectorActionRegistry CreateSelectorActionRegistry() {
   SelectorActionRegistry registry{};
   RegisterConvActivationFusionRules(registry);
-  RegisterConvAddReluFusionRules(registry);
   return registry;
 }
 

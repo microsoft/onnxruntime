@@ -118,6 +118,44 @@ def load_json_config(json_config_file: pathlib.Path):
         return json.load(config)
 
 
+def get_podspec_values(framework_info):
+    """
+    Get the podspec deployement targets and weak framework info from the dictionary that load_json_config returned.
+    Looks for iphonesimulator, iphoneos and macos settings.
+    Handles missing platforms and checks consistency.
+    Returns empty string for deployment target if that platofrm is not enabled.
+
+    :return (ios_deployment_target, macos_deployment_target, weak_framework)
+    """
+    ios_deployment_target = ""
+    macos_deployment_target = ""
+    weak_framework = ""  # should be the same for all platforms
+    # get info, allowing for a subset of platforms to be specified
+    for framework in ("iphonesimulator", "iphoneos", "macosx"):
+        if framework not in framework_info:
+            continue
+
+        target = framework_info[framework]["APPLE_DEPLOYMENT_TARGET"]
+        weak = framework_info[framework]["WEAK_FRAMEWORK"]
+
+        if not weak_framework:
+            weak_framework = weak
+        else:
+            # should be consistent
+            assert weak == weak_framework
+
+        if framework == "macosx":
+            macos_deployment_target = target
+        else:
+            if not ios_deployment_target:
+                ios_deployment_target = target
+            else:
+                # should be consistent
+                assert ios_deployment_target == target
+
+    return (ios_deployment_target, macos_deployment_target, weak_framework)
+
+
 def get_ort_version():
     """
     Gets the ONNX Runtime version string from the repo.

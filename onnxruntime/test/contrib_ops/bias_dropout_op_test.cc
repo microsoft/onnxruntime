@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // BiasDropout kernel is only implemented for CUDA/ROCM
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if (defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)) || defined(USE_ROCM)
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4389)

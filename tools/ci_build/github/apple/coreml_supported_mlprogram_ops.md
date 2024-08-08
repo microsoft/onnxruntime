@@ -24,7 +24,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Reshape||
 |ai.onnx:Resize|See [resize_op_builder.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/coreml/builders/impl/resize_op_builder.cc) implementation. There are too many permutations to describe the valid combinations.|
 |ai.onnx.Slice|starts/ends/axes/steps must be constant initializers.|
-|ai.onnx:Split||
+|ai.onnx:Split|If provided, `splits` must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
 |ai:onnx:Tanh||

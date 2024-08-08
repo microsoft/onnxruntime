@@ -321,6 +321,7 @@ stages:
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
         Repository: onnxruntimeubi8packagestest_torch
+        UseImageCacheContainerRegistry: false
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1

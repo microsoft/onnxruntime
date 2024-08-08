@@ -409,6 +409,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
+                    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)

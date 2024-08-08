@@ -82,6 +82,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
   bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
+  bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
 
 #ifndef DISABLE_CONTRIB_OPS

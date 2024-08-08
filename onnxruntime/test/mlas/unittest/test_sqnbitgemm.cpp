@@ -55,8 +55,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t K,
                 const float* A,
                 size_t lda,
-                const void* QuantBData,
-                const void* PackedQuantBData,
+                const void* /*QuantBData*/,
+                const void* PackedQuantBDataWorkspace,
                 const float* QuantBScale,
                 const void* QuantBZeroPoint,
                 const float* Bias,
@@ -71,7 +71,12 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBData = PackedQuantBData != nullptr ? PackedQuantBData : QuantBData;
+#ifdef MLAS_TARGET_AMD64_IX86
+    if (ComputeType == CompInt8) {
+      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+    }
+#endif
+    params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
@@ -213,10 +218,17 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
-          std::cout << data[row * ncols + col] << "\t";
+          std::cout << data[row * ncols + col] << ", ";
         }
         std::cout << "\n";
       }
+    };
+
+    auto print_matrix_col = [](size_t nrows, size_t ncols, size_t col, const float* data) {
+      for (size_t row = 0; row < nrows; ++row) {
+        std::cout << data[row * ncols + col] << ", ";
+      }
+      std::cout << "\n";
     };
 
     std::cout << "A:\n";
@@ -258,13 +270,24 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
-    void* PackedQuantBData = nullptr;
+    void* PackedQuantBDataWorkspace = nullptr;
     if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
         PackedQuantBDataSize > 0) {
-      PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
-      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBData,
+      PackedQuantBDataWorkspace = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
+      bool has_zp_input = QuantBZeroPoint != nullptr;
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData, PackedQuantBDataWorkspace,
+                                   QuantBScale, has_zp_input, QuantBZeroPoint,
                                    GetMlasThreadPool());
     }
+
+    CallGemm(M, N, K,
+             A, /* lda */ K,
+             QuantBData, PackedQuantBDataWorkspace, QuantBScale, QuantBZeroPoint,
+             Bias,
+             C, /* ldc */ N,
+             Workspace,
+             ComputeType,
+             Threadpool);
 
     if (ComputeType == CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
@@ -274,15 +297,6 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       FAIL() << "Test is not implemented for compute type "
              << ComputeType << " (" << ComputeTypeName(ComputeType) << ")";
     }
-
-    CallGemm(M, N, K,
-             A, /* lda */ K,
-             QuantBData, PackedQuantBData, QuantBScale, QuantBZeroPoint,
-             Bias,
-             C, /* ldc */ N,
-             Workspace,
-             ComputeType,
-             Threadpool);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {
@@ -382,7 +396,6 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
             tests_registered += RegisterSingleTest(1, b, b, ComputeType, WithThreadpool, Symmetric, false);
           }
           tests_registered += RegisterSingleTest(43, 500, 401, ComputeType, WithThreadpool, Symmetric, true);
-
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(1, 2, 16, ComputeType, WithThreadpool, Symmetric, false);
           tests_registered += RegisterSingleTest(1, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);

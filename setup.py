@@ -196,6 +196,7 @@ try:
                 to_preload_cann = []
 
                 cuda_dependencies = [
+                    "libcuda.so.1",
                     "libcublas.so.11",
                     "libcublas.so.12",
                     "libcublasLt.so.11",
