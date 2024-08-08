@@ -76,8 +76,6 @@ class VulkanExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  common::Status OnSessionInitializationEnd() override;
-
   ncnn::Option ncnn_options_;
 
   // TODO: ownership is currently in a global in NCNN code. TBD if we want to move it to be local to this instance.
@@ -91,6 +89,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
   // Allocators for copying 'blobs' (model input/output) to/from the device. used during inference.
   ncnn::VkStagingAllocator staging_allocator_;
   ncnn::VkBlobAllocator blob_allocator_;
+
   std::unique_ptr<ncnn::PipelineCache> pipeline_cache_;
 
   // vulkan::VulkanDataTransferImpl data_transfer_;

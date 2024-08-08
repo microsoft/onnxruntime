@@ -4,8 +4,10 @@
 #include "core/providers/vulkan/vulkan_kernel.h"
 
 #include "core/common/logging/logging.h"
+
 #include "core/providers/vulkan/activation/activations.h"
 #include "core/providers/vulkan/math/binary_elementwise.h"
+#include "core/providers/vulkan/math/matmul.h"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -23,10 +25,21 @@ struct KernelRegistration {
   CreateFn create_fn;
 };
 
+#define REGISTER_KERNEL_SIMPLE(op)                       \
+  {                                                      \
+    #op, { op##Kernel::IsSupported, op##Kernel::Create } \
+  }
+
+#define REGISTER_KERNEL(op, impl_class, create_fn)          \
+  {                                                         \
+    #op, { impl_class::IsSupported, impl_class::create_fn } \
+  }
+
 std::unordered_map<std::string, KernelRegistration> kernel_registrations = {
-    {"Add", {vulkan::BinaryElementwiseKernel::IsSupported, vulkan::BinaryElementwiseKernel::CreateAdd}},
-    {"Mul", {vulkan::BinaryElementwiseKernel::IsSupported, vulkan::BinaryElementwiseKernel::CreateMul}},
-    {"Sigmoid", {vulkan::SigmoidKernel::IsSupported, vulkan::SigmoidKernel::Create}},
+    REGISTER_KERNEL(Add, BinaryElementwiseKernel, CreateAdd),
+    REGISTER_KERNEL_SIMPLE(MatMul),
+    REGISTER_KERNEL(Mul, BinaryElementwiseKernel, CreateMul),
+    REGISTER_KERNEL_SIMPLE(Sigmoid),
 };
 
 Status CreateNcnnLayer(const std::string_view layer_name, std::unique_ptr<ncnn::Layer>& layer) {
@@ -90,7 +103,7 @@ Status VulkanKernel::SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexe
 
   RETURN_IF_NCNN_ERROR(ncnn_layer_->load_param(params_));
 
-  ORT_RETURN_IF_ERROR(SetupConstantInitializers(graph_viewer, *ncnn_layer_));
+  ORT_RETURN_IF_ERROR(SetupConstantInitializers(graph_viewer));
 
   // we manually set shape hints instead of using load_model as we handle initializers ourselves given they're coming
   // from the ONNX model and not the NCNN model.
@@ -98,7 +111,7 @@ Status VulkanKernel::SetupNcnnLayer(const GraphViewer& graph_viewer, ValueIndexe
   ncnn_layer_->bottom_shapes = input_shapes;
   ncnn_layer_->top_shapes = output_shapes;
 
-  RETURN_IF_NCNN_ERROR(ncnn_layer_->create_pipeline(vulkan_ep_.NcnnOptions()));
+  ORT_RETURN_IF_ERROR(CreatePipeline());
 
   // set input/output values indexes in the Layer's bottoms and tops.
   for (const NodeArg*& def : node_.InputDefs()) {

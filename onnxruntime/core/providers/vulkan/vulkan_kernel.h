@@ -49,6 +49,8 @@ class VulkanKernel {
   }
 
   const onnxruntime::Node& Node() const { return node_; }
+
+  ncnn::Layer& Layer() { return *ncnn_layer_; }
   const ncnn::Layer& Layer() const { return *ncnn_layer_; }
 
  protected:
@@ -66,8 +68,15 @@ class VulkanKernel {
     return Status::OK();
   }
 
-  virtual Status SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ncnn::Layer& /*layer*/) {
+  virtual Status SetupConstantInitializers(const GraphViewer& /*graph_viewer*/) {
     // populate the ncnn::Mat members of the specific NCNN Layer derived class with constant initializers if applicable
+    return Status::OK();
+  }
+
+  // override if there are CPU based ncnn::Mat members in the NCNN base layer that can be freed after the pipeline
+  // is created
+  virtual Status CreatePipeline() {
+    RETURN_IF_NCNN_ERROR(ncnn_layer_->create_pipeline(vulkan_ep_.NcnnOptions()));
     return Status::OK();
   }
 

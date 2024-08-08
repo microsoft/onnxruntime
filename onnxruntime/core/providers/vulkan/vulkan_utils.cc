@@ -175,141 +175,142 @@ ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator) {
   return vkmat;
 }
 
-ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
-                                     const ncnn::VulkanDevice& device,
-                                     const ncnn::Option& options) {
-  ncnn::VkMat vkmat;
 
-  // get initial values with elempack = 1
-  InitMatFromTensor(tensor, vkmat, /* align */ true);
-
-  vkmat.allocator = &allocator;
-  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
-  // and there's no real value having a `ncnn::VkMat TensorToVkMat(Tensor& tensor)` overload to avoid the const_cast
-  // when writing.
-  vkmat.data = static_cast<ncnn::VkBufferMemory*>(const_cast<void*>(tensor.DataRaw()));
-
-  // now adjust based on VkCompute::record_upload if elempack differs
-  int elempack = vkmat.elempack;
-
-  int w = vkmat.w;
-  int h = vkmat.h;
-  int c = vkmat.c;
-
-  // VkCompute::record_upload
-  int dims = vkmat.dims;
-  int elemcount = 0;
-  if (dims == 1) elemcount = elempack * w;
-  if (dims == 2) elemcount = elempack * h;
-  if (dims == 3 || dims == 4) elemcount = elempack * c;
-
-  int dst_elempack = 1;
-  if (options.use_shader_pack8)
-    dst_elempack = elemcount % 8 == 0 ? 8 : (elemcount % 4 == 0 ? 4 : 1);
-  else
-    dst_elempack = elemcount % 4 == 0 ? 4 : 1;
-
-  if (dst_elempack == 1) {
-    return vkmat;  // same as source so nothing else to do to the VkMat values in our usage
-  }
-
-  // vkdev->convert_packing(dst_staging, dst, dst_elempack, *this, opt);
-  // ->
-  // VulkanDevice::convert_packing(const VkMat& src, VkMat& dst, int dst_elempack, VkCompute& cmd, const Option& _opt)
-
-  // 0:auto 1:fp32 2:fp16p 3:fp16s
-
-  int cast_type_to_index = options.use_fp16_storage ? 2 : options.use_fp16_packed ? 1
-                                                                                  : 0;
-  // 0:pack1 1:pack4 2:pack8. not needed - we just use dst_elempack.
-  // int packing_type_to_index = dst_elempack == 1 ? 0 : dst_elempack == 4 ? 1
-  //                                                                      : 2;
-
-  // see if we're going to convert types when packing. may be relevant if we enable auto conversion from fp32 to fp16
-  int cast_type_from_index;
-  if (vkmat.elembits() == 32) {
-    cast_type_from_index = 0;
-  } else {  // if (src.elembits() == 16)
-    if (cast_type_to_index != 0) {
-      cast_type_from_index = cast_type_to_index;
-    } else if (device.info.support_fp16_storage()) {
-      cast_type_from_index = 2;
-    } else {  // if (info.support_fp16_packed())
-      cast_type_from_index = 1;
-    }
-  }
-
-  // const ncnn::Packing_vulkan* uop = d->get_utility_operator(0, 0, cast_type_from_index, cast_type_to_index, packing_type_to_index);
-  // uop->forward(src, dst, cmd, opt);
-  // ->
-  // int Packing_vulkan::forward(const VkMat& vkmat, VkMat& top_blob, VkCompute& cmd, const Option& opt) const
-
-  do {
-    // use_padding is always false on this path
-    // if (!use_padding) {
-    // identity if use_padding not allowed
-    if (dims == 1 && w * elempack % dst_elempack != 0) {
-      break;
-    }
-    if (dims == 2 && h * elempack % dst_elempack != 0) {
-      break;
-    }
-    if ((dims == 3 || dims == 4) && c * elempack % dst_elempack != 0) {
-      break;
-    }
-    // }
-
-    size_t out_elemsize = 0;  // always set below as dst_elempack can only be 1, 4 or 8
-    if (cast_type_to_index == 0) {
-      if (options.use_fp16_storage) {
-        out_elemsize = dst_elempack * 2u;
-      } else if (options.use_fp16_packed) {
-        if (dst_elempack == 8) out_elemsize = 8 * 2u;
-        if (dst_elempack == 4) out_elemsize = 4 * 2u;
-        if (dst_elempack == 1) out_elemsize = 4u;
-      } else {
-        out_elemsize = dst_elempack * 4u;
-      }
-    } else if (cast_type_to_index == 1) {
-      out_elemsize = dst_elempack * 4u;
-    } else if (cast_type_to_index == 2) {
-      if (dst_elempack == 8) out_elemsize = 8 * 2u;
-      if (dst_elempack == 4) out_elemsize = 4 * 2u;
-      if (dst_elempack == 1) out_elemsize = 4u;
-    } else {  // if (cast_type_to == 3)
-      out_elemsize = dst_elempack * 2u;
-    }
-
-    assert(vkmat.cstep % dst_elempack == 0);
-
-    vkmat.elemsize = out_elemsize;
-    vkmat.elempack = dst_elempack;
-    vkmat.cstep /= dst_elempack;
-
-    const auto round_to_dst_elempack_multiple = [elempack, dst_elempack](int value) {
-      return (value * elempack + dst_elempack - 1) / dst_elempack;
-    };
-
-    // NCNN only supports 4D so we
-    switch (dims) {
-      case 1:
-        vkmat.w = round_to_dst_elempack_multiple(w);
-        break;
-      case 2:
-        vkmat.h = round_to_dst_elempack_multiple(h);
-        break;
-      case 3:
-      case 4:
-        vkmat.c = round_to_dst_elempack_multiple(c);
-        break;
-      default:
-        // this should be impossible unless there's a bug in ORT code
-        ORT_THROW("NCNN only supports 4D.");
-    }
-  } while (false);
-
-  return vkmat;
-}
+//ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
+//                                     const ncnn::VulkanDevice& device,
+//                                     const ncnn::Option& options) {
+//  ncnn::VkMat vkmat;
+//
+//  // get initial values with elempack = 1
+//  InitMatFromTensor(tensor, vkmat, /* align */ true);
+//
+//  vkmat.allocator = &allocator;
+//  // we need to set the `data` member which is non-const, so the ugly const_cast is necessary if we're reading
+//  // and there's no real value having a `ncnn::VkMat TensorToVkMat(Tensor& tensor)` overload to avoid the const_cast
+//  // when writing.
+//  vkmat.data = static_cast<ncnn::VkBufferMemory*>(const_cast<void*>(tensor.DataRaw()));
+//
+//  // now adjust based on VkCompute::record_upload if elempack differs
+//  int elempack = vkmat.elempack;
+//
+//  int w = vkmat.w;
+//  int h = vkmat.h;
+//  int c = vkmat.c;
+//
+//  // VkCompute::record_upload
+//  int dims = vkmat.dims;
+//  int elemcount = 0;
+//  if (dims == 1) elemcount = elempack * w;
+//  if (dims == 2) elemcount = elempack * h;
+//  if (dims == 3 || dims == 4) elemcount = elempack * c;
+//
+//  int dst_elempack = 1;
+//  if (options.use_shader_pack8)
+//    dst_elempack = elemcount % 8 == 0 ? 8 : (elemcount % 4 == 0 ? 4 : 1);
+//  else
+//    dst_elempack = elemcount % 4 == 0 ? 4 : 1;
+//
+//  if (dst_elempack == 1) {
+//    return vkmat;  // same as source so nothing else to do to the VkMat values in our usage
+//  }
+//
+//  // vkdev->convert_packing(dst_staging, dst, dst_elempack, *this, opt);
+//  // ->
+//  // VulkanDevice::convert_packing(const VkMat& src, VkMat& dst, int dst_elempack, VkCompute& cmd, const Option& _opt)
+//
+//  // 0:auto 1:fp32 2:fp16p 3:fp16s
+//
+//  int cast_type_to_index = options.use_fp16_storage ? 2 : options.use_fp16_packed ? 1
+//                                                                                  : 0;
+//  // 0:pack1 1:pack4 2:pack8. not needed - we just use dst_elempack.
+//  // int packing_type_to_index = dst_elempack == 1 ? 0 : dst_elempack == 4 ? 1
+//  //                                                                      : 2;
+//
+//  // see if we're going to convert types when packing. may be relevant if we enable auto conversion from fp32 to fp16
+//  int cast_type_from_index;
+//  if (vkmat.elembits() == 32) {
+//    cast_type_from_index = 0;
+//  } else {  // if (src.elembits() == 16)
+//    if (cast_type_to_index != 0) {
+//      cast_type_from_index = cast_type_to_index;
+//    } else if (device.info.support_fp16_storage()) {
+//      cast_type_from_index = 2;
+//    } else {  // if (info.support_fp16_packed())
+//      cast_type_from_index = 1;
+//    }
+//  }
+//
+//  // const ncnn::Packing_vulkan* uop = d->get_utility_operator(0, 0, cast_type_from_index, cast_type_to_index, packing_type_to_index);
+//  // uop->forward(src, dst, cmd, opt);
+//  // ->
+//  // int Packing_vulkan::forward(const VkMat& vkmat, VkMat& top_blob, VkCompute& cmd, const Option& opt) const
+//
+//  do {
+//    // use_padding is always false on this path
+//    // if (!use_padding) {
+//    // identity if use_padding not allowed
+//    if (dims == 1 && w * elempack % dst_elempack != 0) {
+//      break;
+//    }
+//    if (dims == 2 && h * elempack % dst_elempack != 0) {
+//      break;
+//    }
+//    if ((dims == 3 || dims == 4) && c * elempack % dst_elempack != 0) {
+//      break;
+//    }
+//    // }
+//
+//    size_t out_elemsize = 0;  // always set below as dst_elempack can only be 1, 4 or 8
+//    if (cast_type_to_index == 0) {
+//      if (options.use_fp16_storage) {
+//        out_elemsize = dst_elempack * 2u;
+//      } else if (options.use_fp16_packed) {
+//        if (dst_elempack == 8) out_elemsize = 8 * 2u;
+//        if (dst_elempack == 4) out_elemsize = 4 * 2u;
+//        if (dst_elempack == 1) out_elemsize = 4u;
+//      } else {
+//        out_elemsize = dst_elempack * 4u;
+//      }
+//    } else if (cast_type_to_index == 1) {
+//      out_elemsize = dst_elempack * 4u;
+//    } else if (cast_type_to_index == 2) {
+//      if (dst_elempack == 8) out_elemsize = 8 * 2u;
+//      if (dst_elempack == 4) out_elemsize = 4 * 2u;
+//      if (dst_elempack == 1) out_elemsize = 4u;
+//    } else {  // if (cast_type_to == 3)
+//      out_elemsize = dst_elempack * 2u;
+//    }
+//
+//    assert(vkmat.cstep % dst_elempack == 0);
+//
+//    vkmat.elemsize = out_elemsize;
+//    vkmat.elempack = dst_elempack;
+//    vkmat.cstep /= dst_elempack;
+//
+//    const auto round_to_dst_elempack_multiple = [elempack, dst_elempack](int value) {
+//      return (value * elempack + dst_elempack - 1) / dst_elempack;
+//    };
+//
+//    // NCNN only supports 4D so we
+//    switch (dims) {
+//      case 1:
+//        vkmat.w = round_to_dst_elempack_multiple(w);
+//        break;
+//      case 2:
+//        vkmat.h = round_to_dst_elempack_multiple(h);
+//        break;
+//      case 3:
+//      case 4:
+//        vkmat.c = round_to_dst_elempack_multiple(c);
+//        break;
+//      default:
+//        // this should be impossible unless there's a bug in ORT code
+//        ORT_THROW("NCNN only supports 4D.");
+//    }
+//  } while (false);
+//
+//  return vkmat;
+//}
 
 }  // namespace vulkan
 }  // namespace onnxruntime

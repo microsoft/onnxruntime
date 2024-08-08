@@ -100,22 +100,7 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   ncnn_options_.use_int8_arithmetic = false;
   ncnn_options_.use_packing_layout = false;
   ncnn_options_.use_image_storage = false;
-}
 
-common::Status VulkanExecutionProvider::OnSessionInitializationEnd() {
-  // after session state initialization is done we switch from VkWeightStagingAllocator/VkWeightAllocator to
-  // VkStagingAllocator/VkBlobAllocator
-  // NOTE: We currently only support usage of the Vulkan EP in a single InferenceSession so we can use the approach
-  //       of switching allocators based on IExecutionProvider::OnSessionInitializationEnd being called.
-  //
-  // TODO: If we're using Compile we could create a different ncnn::Option instance with the weight allocators
-  //       instead of doing a switch here
-
-  // data_transfer_.SetSessionInitialized();
-  ncnn_options_.staging_vkallocator = &staging_allocator_;
-  ncnn_options_.blob_vkallocator = &blob_allocator_;
-
-  return Status::OK();
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
@@ -208,6 +193,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // undo the indirection to the public API that is required for external operators
       // this is an OpKernelContextInternal if we need that
       auto& ctx = *reinterpret_cast<OpKernelContext*>(context);
+
       auto model_iter = models_.find(ctx.GetNodeName());
       ORT_ENFORCE(model_iter != models_.end(), "Model for compiled node was not found!");
 

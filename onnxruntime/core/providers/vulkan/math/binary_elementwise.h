@@ -25,6 +25,7 @@ class BinaryElementwiseKernel : VulkanKernel {
     return true;
   }
 
+// this setup is to avoid a big if/else if based on the node.OpType() string.
 #define BEK_CREATE(name, ncnn_op_type)                                                        \
   static std::unique_ptr<VulkanKernel> Create##name(const VulkanExecutionProvider& vulkan_ep, \
                                                     const GraphViewer& graph_viewer,          \
