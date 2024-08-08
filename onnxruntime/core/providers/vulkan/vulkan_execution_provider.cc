@@ -201,8 +201,15 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
       pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)} {
   ncnn_options_.use_vulkan_compute = true;
 
-  ncnn_options_.staging_vkallocator = &weight_staging_allocator_;
-  ncnn_options_.blob_vkallocator = &weight_allocator_;
+  // this was the setup when using static kernels to try and ensure we use these allocators for weight upload only.
+  // with the compiling setup we plug these in explicitly during UploadConstantInitializers.
+  // ncnn_options_.staging_vkallocator = &weight_staging_allocator_;
+  // ncnn_options_.blob_vkallocator = &weight_allocator_;
+
+  ncnn_options_.staging_vkallocator = &staging_allocator_;
+  ncnn_options_.blob_vkallocator = &blob_allocator_;
+  ncnn_options_.workspace_vkallocator = &blob_allocator_;
+
   ncnn_options_.pipeline_cache = pipeline_cache_.get();
 
   // start with fp32
@@ -213,7 +220,7 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   ncnn_options_.use_int8_packed = false;
   ncnn_options_.use_int8_storage = false;
   ncnn_options_.use_int8_arithmetic = false;
-  ncnn_options_.use_packing_layout = false;  // <-- required
+  ncnn_options_.use_packing_layout = false;
   ncnn_options_.use_image_storage = false;
 }
 
@@ -347,46 +354,45 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // Do we need to wait on the inputs being copied?
       // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait()); <--
 
-      for (const auto& kernels : model.layers) {
-        const auto& layer = kernels->Layer();
-        if (layer.support_inplace) {
-          if (layer.one_blob_only) {
-            ncnn::VkMat& input = values[layer.bottoms[0]];
-            RETURN_IF_NCNN_ERROR(layer.forward_inplace(input, cmd, ncnn_options_));
-            values[layer.tops[0]] = input;  // copy VkMat info to output. copy of pointer/refcount not data.
-          } else {
-            // couldn't find any NCNN layers that support multiple inputs and inplace
-            ORT_NOT_IMPLEMENTED("Inplace with multiple inputs not supported.");
-          }
-        } else {
-          if (layer.one_blob_only) {
-            RETURN_IF_NCNN_ERROR(layer.forward(values[layer.bottoms[0]], values[layer.tops[0]], cmd, ncnn_options_));
-          } else {
-            std::vector<ncnn::VkMat> inputs, outputs;
+      // for (const auto& kernels : model.layers) {
+      //   const auto& layer = kernels->Layer();
+      //   if (layer.support_inplace) {
+      //     if (layer.one_blob_only) {
+      //       ncnn::VkMat& input = values[layer.bottoms[0]];
+      //       RETURN_IF_NCNN_ERROR(layer.forward_inplace(input, cmd, ncnn_options_));
+      //       values[layer.tops[0]] = input;  // copy VkMat info to output. copy of pointer/refcount not data.
+      //     } else {
+      //       // couldn't find any NCNN layers that support multiple inputs and inplace
+      //       ORT_NOT_IMPLEMENTED("Inplace with multiple inputs not supported.");
+      //     }
+      //   } else {
+      //     if (layer.one_blob_only) {
+      //       RETURN_IF_NCNN_ERROR(layer.forward(values[layer.bottoms[0]], values[layer.tops[0]], cmd, ncnn_options_));
+      //     } else {
+      //       std::vector<ncnn::VkMat> inputs, outputs;
 
-            inputs.reserve(layer.bottoms.size());
-            outputs.reserve(layer.tops.size());
+      //      inputs.reserve(layer.bottoms.size());
+      //      outputs.reserve(layer.tops.size());
 
-            for (int idx : layer.bottoms) {
-              inputs.push_back(values[idx]);
-            }
+      //      for (int idx : layer.bottoms) {
+      //        inputs.push_back(values[idx]);
+      //      }
 
-            outputs.resize(layer.tops.size());
+      //      outputs.resize(layer.tops.size());
 
-            RETURN_IF_NCNN_ERROR(layer.forward(inputs, outputs, cmd, ncnn_options_));
+      //      RETURN_IF_NCNN_ERROR(layer.forward(inputs, outputs, cmd, ncnn_options_));
 
-            for (size_t i = 0; i < outputs.size(); ++i) {
-              values[layer.tops[i]] = outputs[i];
-            }
-          }
-        }
-      }
+      //      for (size_t i = 0; i < outputs.size(); ++i) {
+      //        values[layer.tops[i]] = outputs[i];
+      //      }
+      //    }
+      //  }
+      //}
 
-      /*
       for (const auto& kernels : model.layers) {
         const auto& layer = kernels->Layer();
         RETURN_IF_NCNN_ERROR(do_forward_layer(&layer, values, cmd, ncnn_options_));
-      } */
+      }
 
       // copy data to output tensors.
       std::vector<ncnn::Mat> ncnn_outputs;
