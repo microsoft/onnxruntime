@@ -4032,7 +4032,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
-  size_t external_offset = 0;
+  int64_t external_offset = 0;
 
   // Add the initializers to the result graph.
   const auto& model_path = ModelPath();
@@ -4065,16 +4065,16 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       }
 
       // update external_offset for alignment
-      if (align_info.align_offset && tensor_bytes_size > align_info.align_threshold) {
+      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
         // Align to the larger of the page size or the allocation granularity
-        size_t alignment_factor = std::max(static_cast<size_t>(4096), align_info.allocation_granularity);
+        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
         // Align to the next page or alloc granularity boundary
-        size_t new_external_offset = static_cast<size_t>(
-                                         std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
-                                     alignment_factor;
+        int64_t new_external_offset = static_cast<int64_t>(
+                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                      alignment_factor;
 
         // padding tensor with zeros for alignment
-        for (size_t index = external_offset; index != new_external_offset; ++index) {
+        for (int64_t index = external_offset; index != new_external_offset; ++index) {
           external_stream << '0';
         }
 

@@ -1148,10 +1148,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // Having a low threshold will waste file space for small initializers.
     // Only when tensor's data is > the page_align_threshold it will be force aligned.
     // Default to 1MB.
-    size_t align_threshold = 1048576;
+    int64_t align_threshold = 1048576;
     // The allocation Granularity for mmap() support.
     // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
-    size_t allocation_granularity = 65536;
+    int64_t allocation_granularity = 65536;
   };
 
   /** Gets the GraphProto representation of this Graph
