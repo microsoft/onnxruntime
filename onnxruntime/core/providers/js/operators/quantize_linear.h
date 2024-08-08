@@ -25,7 +25,6 @@ class DequantizeLinear : public JsKernel {
                                }),
                                static_cast<int32_t>(axis), static_cast<int32_t>(block_size));
   }
-
 };
 
 }  // namespace js
