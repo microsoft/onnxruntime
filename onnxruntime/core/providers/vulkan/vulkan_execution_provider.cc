@@ -284,23 +284,24 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       preallocated_outputs.reserve(num_outputs);
 
       int output_idx = 0;
-      for (const auto* def : fused_node.OutputDefs()) {
-        if (def->Exists()) {
-          const auto* tensorproto_shape = def->Shape();
-          TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*tensorproto_shape);
-          if (shape.Size() != -1) {
-            Tensor& output = *ctx.Output(output_idx, shape);
-            ncnn_outputs[output_idx] = TensorToMat(output);
-            preallocated_outputs.insert(output_idx);
-          }
-        }
+      // for (const auto* def : fused_node.OutputDefs()) {
+      //   if (def->Exists()) {
+      //     const auto* tensorproto_shape = def->Shape();
+      //     TensorShape shape = utils::GetTensorShapeFromTensorShapeProto(*tensorproto_shape);
+      //     if (shape.Size() != -1) {
+      //       Tensor& output = *ctx.Output(output_idx, shape);
+      //       ncnn_outputs[output_idx] = TensorToMat(output);
+      //       preallocated_outputs.insert(output_idx);
+      //     }
+      //   }
 
-        ++output_idx;
-      }
+      //  ++output_idx;
+      //}
 
       output_idx = 0;
       for (size_t idx : model.output_indexes) {
         ncnn::Mat before = ncnn_outputs[output_idx];
+        // we need a customized record_download to write directly to the ORT output
         cmd.record_download(values[idx], ncnn_outputs[output_idx], ncnn_options_);
 
         ORT_ENFORCE(before.data == nullptr || before.data == ncnn_outputs[output_idx].data,
