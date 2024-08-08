@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class WeightOnlyQuantConfig:
-    def __init__(self, algorithm: str, quant_format: QuantFormat, ops_to_quantize: list[str] | None = None):
+    def __init__(self, algorithm: str, quant_format: QuantFormat, ops_to_quantize: set[str] | None = None):
         """This is the Base class for Weight Only Quant Configuration.
 
         Args:
@@ -39,11 +39,11 @@ class WeightOnlyQuantConfig:
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
             ops_to_quantize (optional):
-                list of operator types to quantize.
+                set of operator types to quantize.
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
-        self.ops_to_quantize = ops_to_quantize if not ops_to_quantize else ["MatMul"]
+        self.ops_to_quantize = ops_to_quantize if not ops_to_quantize else {"MatMul"}
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -51,7 +51,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         ratios=None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: list[str] | None = None,
+        ops_to_quantize: set[str] | None = None,
     ):
         """
         This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
@@ -65,7 +65,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
-                list of operator types to quantize.
+                set of operator types to quantize.
         """
         assert quant_format == QuantFormat.QOperator, "RTN only supports QOperator format"
 
@@ -89,7 +89,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         mse=False,
         perchannel=True,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: list[str] | None = None,
+        ops_to_quantize: set[str] | None = None,
     ):
         """
         This is a class for GPTQ algorithm Weight Only Quant Configuration.
@@ -113,7 +113,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
-                list of operator types to quantize.
+                set of operator types to quantize.
         """
         assert quant_format == QuantFormat.QOperator, "GPTQ only supports QOperator format"
 
@@ -137,7 +137,7 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         bits=4,
         axis=1,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: list[str] | None = None,
+        ops_to_quantize: set[str] | None = None,
     ):
         """
         This is a class for HQQ algorithm Weight Only Quant Configuration.
@@ -155,7 +155,7 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
-                list of operator types to quantize.
+                set of operator types to quantize.
         """
         assert quant_format == QuantFormat.QOperator, "HQQ only supports QOperator format"
 
@@ -176,7 +176,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: list[str] | None = None,
+        ops_to_quantize: set[str] | None = None,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -195,7 +195,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
-                list of operator types to quantize.
+                set of operator types to quantize.
         """
         super().__init__(algorithm="DEFAULT", quant_format=quant_format, ops_to_quantize=ops_to_quantize)
         self.block_size = block_size
@@ -353,8 +353,15 @@ class HQQWeightOnlyQuantizer:
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
-        If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node.
-        If QOperator format, return MatMulNbits. If QDQ format, return DeQuantizeLinear + MatMul.
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
         """
         if node.op_type != "MatMul":
             return [node]  # only care about MatMul for now
@@ -485,11 +492,15 @@ class DefaultWeightOnlyQuantizer:
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
-        If the node is [MatMul, Gather] with fp32 or fp16 const weight, quantize the weight with int4,
-        and return the new node.
-        If QOperator format, return [MatMulNbits, GatherBlockQuantized].
-        If QDQ format, return [DeQuantizeLinear + MatMul,
-        Gather (qdata) + Gather (scales) + Gather (optional) + DequantizeLinear (not supported yet)].
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
         """
 
         if node.op_type != "MatMul":
@@ -585,15 +596,19 @@ class DefaultWeightOnlyQuantizer:
 # TODO(fajin): change class name
 class MatMul4BitsQuantizer:
     """
-    Perform 4b quantization of constant weights for nodes [MatMul, Gather].
+    Target node:        QOperator node:            QDQ nodes:
+    MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+    Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+
+    Perform 4b quantization of constant weights for target nodes.
     If algo_config.quant_format is QOperator:
-      - nodes are replaced by the corresponding contrib op nodes [MatMulNBits, GatherBlockQuantized].
+      - nodes are replaced by the corresponding QOperator nodes.
       - quantized weights are stored in the contrib ops.
     If algo_config.quant_format is QDQ:
-      - the quantized weight is stored in a DeQuantizeLinear node.
-      - The nodes are replaced by the corresponding [DequantizeLinear + MatMul,
-        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) + DequantizeLinear].
-      - currently only support MatMul.
+      - the quantized weight is stored in a standard onnx node. For MatMul, it is DequantizeLinear. For Gather,
+        it is the three Gathers, one for quantized data, one for scales and one for optional zero points.
+      - The nodes are replaced by the corresponding QDQ nodes.
+      - currently Gather is not supported in QDQ because Gather does not support int4 yet.
     Note:
       - for quantized gather, the memory usage of "DequantizeLinear + Gather" is the same as the original Gather
         during runtime. Therefor it is not recommended.
@@ -607,7 +622,7 @@ class MatMul4BitsQuantizer:
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: list[str] | None = None,
+        ops_to_quantize: set[str] | None = None,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -667,8 +682,6 @@ class MatMul4BitsQuantizer:
             if node.name in self.nodes_to_exclude:
                 logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = [node]
-            elif self.algo_config is not None and self.algo_config.algorithm == "HQQ":
-                out_nodes = self.node_quantizer.quantize(node, graph_stack)
             else:
                 out_nodes = self.node_quantizer.quantize(node, graph_stack)
             new_nodes.extend(out_nodes)
@@ -860,7 +873,7 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
     quant_format = QuantFormat[args.quant_format]
-    ops_to_quantize = [args.ops_to_quantize] if isinstance(args.ops_to_quantize, str) else args.ops_to_quantize
+    ops_to_quantize = set(args.ops_to_quantize)
 
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")
