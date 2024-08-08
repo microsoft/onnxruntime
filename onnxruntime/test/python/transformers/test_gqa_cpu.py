@@ -121,8 +121,12 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
             else:
                 x_rot = torch.cat((real, imag), dim=-1)
         else:
-            cos_x = cos[:, 0:seq_len, :, :]
-            sin_x = sin[:, 0:seq_len, :, :]
+            batch_size = x.shape[0]
+            cos_x = torch.zeros((batch_size, seq_len, 1, cos.shape[3]), device=x.device)
+            sin_x = torch.zeros((batch_size, seq_len, 1, sin.shape[3]), device=x.device)
+            for b in range(x.shape[0]):
+                cos_x[b] = cos[0, pos[b] : pos[b] + seq_len, :, :]
+                sin_x[b] = sin[0, pos[b] : pos[b] + seq_len, :, :]
             real = cos_x * x1 - sin_x * x2
             imag = sin_x * x1 + cos_x * x2
             if interleaved:
@@ -704,7 +708,6 @@ def gqa_prompt_func(
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
-        # TODO: do we need io binding for cpu input?
         io_binding.bind_cpu_input("query", ort_inputs["query"])
         io_binding.bind_input(
             "past_key", "cpu", 0, numpy.float32, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
@@ -774,6 +777,7 @@ def gqa_past_func(
     window_size=-1,
     rotary_interleaved=False,
 ):
+    assert seqlens_k is not None
     onnx_model_str = create_group_query_attention_graph_past(
         config,
         past_kv_format,
@@ -803,12 +807,12 @@ def gqa_past_func(
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
-        if new_k is not None:
+        if new_k is not None and new_v is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
             ort_inputs["value"] = new_v.detach().cpu().numpy()
             io_binding.bind_cpu_input("key", ort_inputs["key"])
             io_binding.bind_cpu_input("value", ort_inputs["value"])
-        if cos is not None:
+        if cos is not None and sin is not None:
             ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
@@ -851,12 +855,12 @@ def gqa_past_func(
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
-        if new_k is not None:
+        if new_k is not None and new_v is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
             ort_inputs["value"] = new_v.detach().cpu().numpy()
             io_binding.bind_cpu_input("key", ort_inputs["key"])
             io_binding.bind_cpu_input("value", ort_inputs["value"])
-        if cos is not None:
+        if cos is not None and sin is not None:
             ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
             ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
@@ -1432,7 +1436,6 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length - config.sequence_length + 1,
@@ -1479,6 +1482,8 @@ def parity_check_gqa_past(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
+
+    cache_seqlens += config.sequence_length - 1
 
     # ORT function
     if packed:
@@ -1633,7 +1638,6 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
     k_cache_ref = torch.cat((k_cache_ref, new_k), 1)
     v_cache_ref = torch.cat((v_cache_ref, new_v), 1)
-    # cache_seqlens = torch.tensor([config.past_sequence_length], device="cpu").repeat(config.batch_size)
     cache_seqlens = torch.randint(
         0,
         config.kv_sequence_length,
@@ -1683,6 +1687,8 @@ def parity_check_gqa_past_no_buff(
     if past_format == Formats.BNSH:
         k_cache_ref = k_cache_ref.transpose(1, 2)
         v_cache_ref = v_cache_ref.transpose(1, 2)
+
+    cache_seqlens += config.sequence_length - 1
 
     # Flash function
     if packed:
@@ -1840,6 +1846,61 @@ class TestGQA(unittest.TestCase):
                                 for packed in [False, True]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
+                                    past_kv_format = Formats.BNSH
+                                    all_close = parity_check_gqa_past(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rtol=1e-3,
+                                        atol=1e-3,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
+                                    self.assertTrue(all_close)
+                                    all_close = parity_check_gqa_past_no_buff(
+                                        config,
+                                        local=local,
+                                        past_format=past_kv_format,
+                                        rtol=1e-3,
+                                        atol=1e-3,
+                                        rotary=rotary,
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed,
+                                    )
+                                    self.assertTrue(all_close)
+
+    def test_gqa_interactive_one_batch(self):
+        print("-------- TEST GQA INTERACTIVE ---------")
+        batches = [1]
+        seqs = (
+            [(2, 128), (128, 129), (32, 128), (256, 2048)]
+            if pipeline_mode
+            else [
+                (1, 128),
+                (1, 339),
+                (1, 1024),
+                (1, 5000),
+                (1, 800),
+                (1, 256),
+                (1, 799),
+                (1, 2048),
+                # (1, 128 * 512),
+                # (16, 128 * 512),
+                # (128, 128),
+            ]
+        )
+        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        random.seed(69)
+        for b in batches:
+            for s, s2 in seqs:
+                for n, n2 in num_h:
+                    for h in h_sizes:
+                        for local in [False, True]:
+                            for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
+                                for packed in [False, True]:
+                                    config = Config(b, s, s2, -1, n, n2, h)
                                     past_kv_format = Formats.BNSH
                                     all_close = parity_check_gqa_past(
                                         config,
