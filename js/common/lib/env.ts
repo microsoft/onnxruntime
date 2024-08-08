@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env as envImpl} from './env-impl.js';
+import {TryGetTypeIfDeclared} from './type-helper.js';
 
 export declare namespace Env {
   export type WasmPathPrefix = string;
@@ -154,7 +155,7 @@ export declare namespace Env {
     /**
      * Set or get the profiling configuration.
      */
-    profiling?: {
+    profiling: {
       /**
        * Set or get the profiling mode.
        *
@@ -169,6 +170,9 @@ export declare namespace Env {
       ondata?: (data: WebGpuProfilingData) => void;
     };
     /**
+     * @deprecated Create your own GPUAdapter instance and set {@link adapter} property if you want to use an WebGPU
+     * adapter with specific power preference.
+     *
      * Set or get the power preference.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
@@ -180,6 +184,9 @@ export declare namespace Env {
      */
     powerPreference?: 'low-power'|'high-performance';
     /**
+     * @deprecated Create your own GPUAdapter instance and set property {@link adapter} if you want to use an WebGPU
+     * adapter with force fallback adapter.
+     *
      * Set or get the force fallback adapter flag.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
@@ -191,31 +198,42 @@ export declare namespace Env {
      */
     forceFallbackAdapter?: boolean;
     /**
-     * Set or get the adapter for WebGPU.
+     * Set the GPU adapter for WebGPU. The value will be used for the underlying WebGPU backend to create GPU device.
      *
-     * Setting this property only has effect before the first WebGPU inference session is created. The value will be
-     * used as the GPU adapter for the underlying WebGPU backend to create GPU device.
+     * Setting this property only has effect before either property {@link device} has been accessed or the first WebGPU
+     * inference session is created.
      *
-     * If this property is not set, it will be available to get after the first WebGPU inference session is created. The
-     * value will be the GPU adapter that created by the underlying WebGPU backend.
+     * When setting this property, the value should be a `GPUAdapter` object. If the value is not a `GPUAdapter` object,
+     * an error will be thrown.
      *
-     * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
-     * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
-     *
-     * see comments on {@link Tensor.GpuBufferType}
+     * If this property is not set, the WebGPU backend will create a new GPU adapter just before creating the first
+     * WebGPU inference session.
      */
-    adapter: unknown;
+    set adapter(value: TryGetTypeIfDeclared<'GPUAdapter'>);
     /**
-     * Get the device for WebGPU.
+     * Set or get the GPU device for WebGPU.
      *
-     * This property is only available after the first WebGPU inference session is created.
+     * There are several scenarios of accessing this property:
+     * - Set a value before the first WebGPU inference session is created. The value will be used by the WebGPU backend
+     * to perform calculations. This operation can only be done once.
+     * - Set a value after the first WebGPU inference session is created. This operation is invalid and will cause an
+     * error to be thrown.
+     * - Get the value before the first WebGPU inference session is created. This will try to create a new GPUDevice
+     * instance. Use {@link adapter} if set or create a new GPU adapter to create a new GPU device. A `Promise` that
+     * resolves to a `GPUDevice` object will be returned. This operation can only be done once.
+     * - Get the value after the first WebGPU inference session is created. This will return a resolved `Promise` to the
+     * `GPUDevice` object used by the WebGPU backend. This operation can be done multiple times.
      *
-     * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
-     * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
+     * When setting this property, the value should be a `GPUDevice` object. If the value is not a `GPUDevice` object,
+     * an error will be thrown.
      *
-     * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     * When getting this property, the value will be a `Promise` that resolves to a `GPUDevice` object.
+     *
+     * If this property is neither set nor get, the WebGPU backend will create a new GPU device just before creating the
+     * first WebGPU inference session. You can still get the value after that.
      */
-    readonly device: unknown;
+    get device(): Promise<TryGetTypeIfDeclared<'GPUDevice'>>;
+    set device(value: TryGetTypeIfDeclared<'GPUDevice'>);
     /**
      * Set or get whether validate input content.
      *
