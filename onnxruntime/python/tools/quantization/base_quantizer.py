@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
-from typing import Any, Dict
 
 import numpy as np
 import onnx
@@ -15,6 +14,8 @@ try:
 except ImportError:
     # old version of onnx.
     to_array_extended = None
+
+from typing import Any, Dict
 
 from .calibrate import TensorData
 from .onnx_model import ONNXModel
@@ -230,7 +231,16 @@ class BaseQuantizer:
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
             bias_scale = input_scale * weight_scale * beta
 
-            quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+            quantized_data = (np.asarray(bias_data) / bias_scale).round()
+            if (quantized_data < np.iinfo(np.int32).min).any() or (quantized_data > np.iinfo(np.int32).max).any():
+                print(
+                    "The bias_scale might be too small to quantize bias "
+                    + str(bias_name)
+                    + " in "
+                    + onnx.helper.tensor_dtype_to_string(self.weight_qType)
+                    + "."
+                )
+            quantized_data = quantized_data.astype(np.int32)
 
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
