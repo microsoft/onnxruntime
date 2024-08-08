@@ -191,6 +191,7 @@ class SymbolicShapeInference:
             "Where": self._infer_symbolic_compute_ops,
             "ZipMap": self._infer_ZipMap,
             "Neg": self._infer_symbolic_compute_ops,
+            "STFT": self._infer_stft,
             # contrib ops:
             "Attention": self._infer_Attention,
             "BiasAdd": self._infer_BiasAdd,
@@ -935,6 +936,55 @@ class SymbolicShapeInference:
                 self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                 get_shape_from_sympy_shape(sympy_shape),
             )
+        )
+
+    def _infer_stft(self, node):
+        # ref: https://github.com/onnx/onnx/blob/main/onnx/defs/math/defs.cc#L3471
+        one_sided = get_attribute(node, "onesided", 1)
+        signal_shape = self._get_shape(node, 0)
+        signal_dim = self._get_shape_rank(node, 0)
+
+        # The frame step is a required input.
+        # Its value is needed to compute the number output nDFTs, so return early is missing.
+        frame_step = self._get_int_or_float_values(node)[1]
+        if frame_step is None:
+            return
+        window_shape = self._get_shape(node, 2)
+
+        dft_size = -1
+        # If we cannot read the frame_length, we cannot infer shape but frame_length is optional
+        # return...
+        frame_length = self._get_int_or_float_values(node)[3]
+        if frame_length is None:
+            return
+
+        if window_shape is None and frame_length is None:
+            # STFT expects to have at least one of these inputs set: [window, frame_length],
+            # but they may not be available at shape inference time
+            return
+        elif window_shape is not None and frame_length is not None:
+            dft_size = frame_length
+        elif frame_length is not None:
+            dft_size = frame_length
+
+        if one_sided:
+            dft_unique_bins = (dft_size >> 1) + 1
+        else:
+            dft_unique_bins = dft_size
+        n_dfts = ((signal_dim - dft_size) / frame_step) + 1
+
+        # The output has the following shape: [batch_size][frames][dft_unique_bins][2]
+        batch_size = signal_shape[0]
+
+        result_shape = []
+        result_shape.append(batch_size)
+        result_shape.append(n_dfts)
+        result_shape.append(dft_unique_bins)
+        result_shape.append(2)
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], output_dtype, get_shape_from_sympy_shape(result_shape))
         )
 
     def _infer_ConcatFromSequence(self, node):  # noqa: N802
