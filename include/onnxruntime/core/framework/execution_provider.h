@@ -91,6 +91,12 @@ class IExecutionProvider {
 
   /**
    * Returns an external data loader object that implements methods to load data from external sources.
+   *
+   * By default, framework will handle external data loading by loading the data into CPU memory and then copying
+   * it to the target device if required. So in most cases, it's not necessary to override this method. Specifically,
+   * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
+   * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
+   * CPU memory usage.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;

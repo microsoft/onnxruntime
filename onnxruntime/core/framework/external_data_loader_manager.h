@@ -10,7 +10,7 @@
 namespace onnxruntime {
 
 // The external data loader manager manages all registered external data loaders to allow custom
-// external data loading implemented by excution providers.
+// external data loading implemented by execution providers.
 class ExternalDataLoaderManager {
  public:
   ExternalDataLoaderManager() = default;
