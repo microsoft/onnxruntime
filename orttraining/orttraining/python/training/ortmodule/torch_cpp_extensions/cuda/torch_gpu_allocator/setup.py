@@ -23,7 +23,7 @@ with fileinput.FileInput(filename, inplace=True) as file:
             line = line.replace("___gpu_allocator_header___", gpu_allocator_header)  # noqa: PLW2901
         sys.stdout.write(line)
 
-extra_compile_args = {"cxx": ["-O3"]}
+extra_compile_args = {"cxx": ["-O3", "-std=c++17"]}
 if not use_rocm:
     nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
     if nvcc_extra_args:

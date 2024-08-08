@@ -19,7 +19,7 @@ filenames = [
 ]
 
 use_rocm = bool(os.environ["ONNXRUNTIME_ROCM_VERSION"])
-extra_compile_args = {"cxx": ["-O3"]}
+extra_compile_args = {"cxx": ["-O3", "-std=c++17"]}
 if not use_rocm:
     nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
     if nvcc_extra_args:
