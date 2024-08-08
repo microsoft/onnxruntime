@@ -29,8 +29,23 @@ logger = logging.getLogger(__name__)
 
 
 class WeightOnlyQuantConfig:
-    def __init__(self, algorithm: str, quant_format: QuantFormat, ops_to_quantize: set[str] | None = None):
-        """This is the Base class for Weight Only Quant Configuration.
+    """
+    Default quantization axes for an operator.
+    The keys list all the supported operators.
+    """
+    DEFAULT_QUANT_AXES = {"MatMul": 0, "Gather": 1}
+
+    """Default operators to quantize"""
+    DEFAULT_QUANT_OPS = {"MatMul"}
+
+    def __init__(
+        self,
+        algorithm: str,
+        quant_format: QuantFormat,
+        ops_to_quantize: set[str] | None = None,
+        quant_axes: dict[str, int] | None = None,
+    ):
+        """This is the Base class for Weight Only blockwise quantization Configuration.
 
         Args:
             algorithm:
@@ -39,11 +54,16 @@ class WeightOnlyQuantConfig:
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
             ops_to_quantize (optional):
-                set of operator types to quantize.
+                set of operator types to quantize. Default {MatMul}
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
-        self.ops_to_quantize = ops_to_quantize if not ops_to_quantize else {"MatMul"}
+        self.ops_to_quantize = self.DEFAULT_QUANT_OPS if not ops_to_quantize else ops_to_quantize
+        self.quant_axes = self.DEFAULT_QUANT_AXES if not quant_axes else quant_axes
+
+        assert self.ops_to_quantize.issubset(self.DEFAULT_QUANT_AXES.keys()), "Unsupported operator types to quantize"
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -138,6 +158,7 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         axis=1,
         quant_format=QuantFormat.QOperator,
         ops_to_quantize: set[str] | None = None,
+        quant_axes: dict[str, int] | None = None,
     ):
         """
         This is a class for HQQ algorithm Weight Only Quant Configuration.
@@ -156,6 +177,8 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
                 set of operator types to quantize.
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
         assert quant_format == QuantFormat.QOperator, "HQQ only supports QOperator format"
 
@@ -163,6 +186,7 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             algorithm="HQQ",
             quant_format=quant_format,
             ops_to_quantize=ops_to_quantize,
+            quant_axes=quant_axes,
         )
         self.block_size = block_size
         self.bits = bits
@@ -177,6 +201,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         accuracy_level: int | None = None,
         quant_format=QuantFormat.QOperator,
         ops_to_quantize: set[str] | None = None,
+        quant_axes: dict[str, int] | None = None,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -196,8 +221,15 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 Defaults to QuantFormat.QOperator.
             ops_to_quantize (optional):
                 set of operator types to quantize.
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
-        super().__init__(algorithm="DEFAULT", quant_format=quant_format, ops_to_quantize=ops_to_quantize)
+        super().__init__(
+            algorithm="DEFAULT",
+            quant_format=quant_format,
+            ops_to_quantize=ops_to_quantize,
+            quant_axes=quant_axes,
+            )
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.bits = 4
@@ -223,7 +255,7 @@ class HQQWeightOnlyQuantizer:
         zero,
         min_max: list[int],
         axis: int = 0,
-        opt_params: dict = None,  # noqa: RUF013
+        opt_params: dict | None = None,  # noqa: RUF013
         verbose=False,
     ):
         import torch
@@ -241,14 +273,10 @@ class HQQWeightOnlyQuantizer:
         scale = scale.to(dtype)
         zero = zero.to(dtype)
 
-        if lp_norm == 1:
-
-            def shrink_op(x, beta):
+        def shrink_op(x, beta, p=lp_norm):
+            if p == 1:
                 return torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
-
-        else:
-
-            def shrink_op(x, beta, p=lp_norm):
+            else:
                 return torch.sign(x) * torch.nn.functional.relu(
                     torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x) + 1e-8, p - 1)
                 )
@@ -457,7 +485,7 @@ class DefaultWeightOnlyQuantizer:
         self.config = config
 
     def int4_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """4b quantize fp32 weight to a blob"""
+        """4b quantize fp32 weight to int4 using C++ kernels."""
 
         if len(fp32weight.shape) != 2:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
@@ -490,24 +518,10 @@ class DefaultWeightOnlyQuantizer:
 
         return (packed, scales, zero_point)
 
-    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
-        """
-        Target node:        QOperator node:            QDQ nodes:
-        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
-        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
-        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
-        return the new nodes.
-        If QOperator format, return the corresponding QOperator nodes.
-        If QDQ format, return the corresdponging QDQ nodes.
-        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
-        not supported yet because Gather does not support int4 data.
-        """
-
-        if node.op_type != "MatMul":
-            return [node]  # only care about MatMul for now
-
-        logger.info(f"start to quantize {node.name} ...")
-        qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
+    def quantize_matmul(
+        self, node: NodeProto, graph_stack: list[GraphProto], qtype: TensorProto.DataType
+    ) -> list[NodeProto]:
+        """Quantize weight B of MatMul node to int4."""
         input_b = node.input[1]
         b_tensor, b_graph = get_initializer(input_b, graph_stack)
         if b_tensor is None:
@@ -589,8 +603,41 @@ class DefaultWeightOnlyQuantizer:
             )
             output_nodes.extend([dq_node, matmul_node])
 
-        logger.info(f"complete quantization of {node.name} ...")
         return output_nodes
+
+    def quantize_gather(
+        self, node: NodeProto, graph_stack: list[GraphProto], qtype: TensorProto.DataType
+    ) -> list[NodeProto]:
+        """Quantize weight data of Gather node to int4."""
+        data = node.input[0]
+        return []
+
+    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+        """
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
+        """
+        if node.op_type not in self.config.ops_to_quantize:
+            return [node]
+
+        logger.info(f"start to quantize {node.name} ...")
+
+        qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
+        if node.op_type == "MatMul":
+            results = self.quantize_matmul(node, graph_stack, qtype)
+        elif node.op_type == "Gather":
+            results = self.quantize_gather(node, graph_stack)
+
+        logger.info(f"complete quantization of {node.name} ...")
+
+        return results
 
 
 # TODO(fajin): change class name
@@ -623,6 +670,7 @@ class MatMul4BitsQuantizer:
         nodes_to_exclude=None,
         quant_format=QuantFormat.QOperator,
         ops_to_quantize: set[str] | None = None,
+        quant_axes: dict[str, int] | None = None,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -641,6 +689,7 @@ class MatMul4BitsQuantizer:
                 accuracy_level=accuracy_level,
                 quant_format=quant_format,
                 ops_to_quantize=ops_to_quantize,
+                quant_axes=quant_axes,
             )
         self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
@@ -794,6 +843,13 @@ class MatMul4BitsQuantizer:
 def ort_convert_str_to_bool(value):
     return value.lower() in ("true", "1")
 
+# Custom function to parse str:int pairs
+def parse_key_value_pair(s):
+    try:
+        key, value = s.split(":")
+        return key, int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Must be in the format key:int")
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -861,6 +917,14 @@ set of 4b integers with a scaling factor and an optional offset.
         choices=["MatMul", "Gather"],
         help="ops_to_quantize {MatMul, Gather}. Operators to quantize. Default is MatMul.",
     )
+    parser.add_argument(
+        '--quant_axes',
+        type=parse_key_value_pair,
+        nargs='*',
+        help="Key-value pairs in op_type:axis_to_quantize separated by space."
+        "Specify the axis to quantize for an op. Default {MatMul:0, Gather:1}"
+        "Example: --quant_axes MatMul:0 Gather:1",
+    )
 
     return parser.parse_args()
 
@@ -874,6 +938,7 @@ if __name__ == "__main__":
     output_model_path = args.output_model
     quant_format = QuantFormat[args.quant_format]
     ops_to_quantize = set(args.ops_to_quantize)
+    quant_axes = dict(args.quant_axes) if args.quant_axes else None
 
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")
@@ -886,7 +951,8 @@ if __name__ == "__main__":
     model = onnx.load(input_model_path)
     if args.quant_method == "hqq":
         quant_config = HQQWeightOnlyQuantConfig(
-            block_size=args.block_size, bits=args.bits, ops_to_quantize=ops_to_quantize
+            block_size=args.block_size, bits=args.bits, ops_to_quantize=ops_to_quantize,
+            quant_axes=quant_axes
         )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
@@ -895,6 +961,7 @@ if __name__ == "__main__":
             accuracy_level=args.accuracy_level,
             quant_format=quant_format,
             ops_to_quantize=ops_to_quantize,
+            quant_axes=quant_axes,
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(ops_to_quantize=ops_to_quantize)
