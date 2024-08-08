@@ -1,3 +1,12 @@
+trigger:
+  branches:
+    include:
+    - main
+pr:
+  branches:
+    include:
+    - main
+
 parameters:
 - name: DoBuildWithDebugInfo
   displayName: Create additional build with debug information?

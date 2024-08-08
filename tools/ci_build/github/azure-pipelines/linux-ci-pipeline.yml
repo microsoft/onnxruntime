@@ -16,7 +16,6 @@ pr:
   branches:
     include:
     - main
-    - rel-*
   paths:
     exclude:
     - docs/**
@@ -243,7 +242,7 @@ stages:
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
 
-      
+
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
