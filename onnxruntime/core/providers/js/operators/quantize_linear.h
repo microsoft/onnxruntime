@@ -11,22 +11,21 @@ namespace js {
 class DequantizeLinear : public JsKernel {
  public:
   DequantizeLinear(const OpKernelInfo& info) : JsKernel(info) {
-    if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
+    int64_t axis;
+    int64_t block_size;
+    if (!info.GetAttr<int64_t>("axis", &axis).IsOK()) {
       axis_ = 1;
     }
-    if (!info.GetAttr<int64_t>("block_size", &block_size_).IsOK()) {
+    if (!info.GetAttr<int64_t>("block_size", &block_size).IsOK()) {
       block_size_ = 0;
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(DequantizeLinear, ({
                                  "axis" : $1,
                                  "blockSize" : $2
                                }),
-                               static_cast<int32_t>(axis_), static_cast<int32_t>(block_size_));
+                               static_cast<int32_t>(axis), static_cast<int32_t>(block_size));
   }
 
- private:
-  int64_t axis_;
-  int64_t block_size_;
 };
 
 }  // namespace js
