@@ -352,42 +352,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       }
 
       // Do we need to wait on the inputs being copied?
-      // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait()); <--
-
-      // for (const auto& kernels : model.layers) {
-      //   const auto& layer = kernels->Layer();
-      //   if (layer.support_inplace) {
-      //     if (layer.one_blob_only) {
-      //       ncnn::VkMat& input = values[layer.bottoms[0]];
-      //       RETURN_IF_NCNN_ERROR(layer.forward_inplace(input, cmd, ncnn_options_));
-      //       values[layer.tops[0]] = input;  // copy VkMat info to output. copy of pointer/refcount not data.
-      //     } else {
-      //       // couldn't find any NCNN layers that support multiple inputs and inplace
-      //       ORT_NOT_IMPLEMENTED("Inplace with multiple inputs not supported.");
-      //     }
-      //   } else {
-      //     if (layer.one_blob_only) {
-      //       RETURN_IF_NCNN_ERROR(layer.forward(values[layer.bottoms[0]], values[layer.tops[0]], cmd, ncnn_options_));
-      //     } else {
-      //       std::vector<ncnn::VkMat> inputs, outputs;
-
-      //      inputs.reserve(layer.bottoms.size());
-      //      outputs.reserve(layer.tops.size());
-
-      //      for (int idx : layer.bottoms) {
-      //        inputs.push_back(values[idx]);
-      //      }
-
-      //      outputs.resize(layer.tops.size());
-
-      //      RETURN_IF_NCNN_ERROR(layer.forward(inputs, outputs, cmd, ncnn_options_));
-
-      //      for (size_t i = 0; i < outputs.size(); ++i) {
-      //        values[layer.tops[i]] = outputs[i];
-      //      }
-      //    }
-      //  }
-      //}
+      // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait()); <-- Don't do this. Results in empty output.
 
       for (const auto& kernels : model.layers) {
         const auto& layer = kernels->Layer();
@@ -404,6 +369,8 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       preallocated_outputs.reserve(num_outputs);
 
       int output_idx = 0;
+      // Can't use this without patching the record_download to not overwrite the provided Mat input.
+      //
       // for (const auto* def : fused_node.OutputDefs()) {
       //   if (def->Exists()) {
       //     const auto* tensorproto_shape = def->Shape();
@@ -420,13 +387,8 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
       output_idx = 0;
       for (size_t idx : model.output_indexes) {
-        ncnn::Mat before = ncnn_outputs[output_idx];
         // we need a customized record_download to write directly to the ORT output
-        cmd.record_download(values[idx], ncnn_outputs[output_idx], ncnn_options_);
-
-        ORT_ENFORCE(before.data == nullptr || before.data == ncnn_outputs[output_idx].data,
-                    "Output data was reallocated.");
-        ++output_idx;
+        cmd.record_download(values[idx], ncnn_outputs[output_idx++], ncnn_options_);
       }
 
       // run the kernels and download the results
