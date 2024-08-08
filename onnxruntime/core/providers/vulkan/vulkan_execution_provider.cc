@@ -410,11 +410,13 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               inputs.push_back(values[idx]);
             }
 
-            for (int idx : layer.tops) {
-              outputs.push_back(values[idx]);
-            }
+            outputs.resize(layer.tops.size());
 
             RETURN_IF_NCNN_ERROR(layer.forward(inputs, outputs, cmd, ncnn_options_));
+
+            for (size_t i = 0; i < outputs.size(); ++i) {
+              values[layer.tops[i]] = outputs[i];
+            }
           }
         }
       }
@@ -445,7 +447,11 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
       output_idx = 0;
       for (size_t idx : model.output_indexes) {
-        cmd.record_download(values[idx], ncnn_outputs[output_idx++], ncnn_options_);
+        ncnn::Mat before = ncnn_outputs[output_idx];
+        cmd.record_download(values[idx], ncnn_outputs[output_idx], ncnn_options_);
+
+        ORT_ENFORCE(before.data == ncnn_outputs[output_idx].data, "Output data was reallocated.");
+        ++output_idx;
       }
 
       // run the kernels and download the results

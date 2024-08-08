@@ -56,6 +56,8 @@ class BinaryElementwiseKernel : VulkanKernel {
 
   Status CreateNcnnKernel(const GraphViewer* graph_viewer, ValueIndexes& value_indexes) override;
 
+  std::string_view GetNcnnLayerName() const override { return "BinaryOp"; }
+
   enum Params {
     kOperationType = 0,  // ncnn::BinaryOp::OperationType
     kWithScalar = 1,     // is the `b` input a scalar?

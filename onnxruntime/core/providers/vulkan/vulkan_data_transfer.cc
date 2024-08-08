@@ -81,7 +81,8 @@ Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst,
     ncnn::VkMat src_vkmat = TensorToVkMatWithPacking(src, *ncnn_options_.blob_vkallocator,
                                                      vulkan_device_, ncnn_options_);
     ncnn::Mat dst_mat = TensorToMat(dst);
-    RETURN_IF_NCNN_ERROR(compute->record_download(src_vkmat, dst_mat, ncnn_options_));
+    // RETURN_IF_NCNN_ERROR(compute->record_download(src_vkmat, dst_mat, ncnn_options_));
+    compute->record_download(src_vkmat, dst_mat, ncnn_options_);
 
   } else if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU) {
     ORT_NOT_IMPLEMENTED("Unclear if this is needed");

@@ -424,6 +424,7 @@ bool SetEpsForAllNodes(Graph& graph,
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
 
+      // compiling EPs
       node.SetExecutionProviderType(provider_type);
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
@@ -432,7 +433,8 @@ bool SetEpsForAllNodes(Graph& graph,
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
-          provider_type == onnxruntime::kSnpeExecutionProvider) {
+          provider_type == onnxruntime::kSnpeExecutionProvider ||
+          provider_type == onnxruntime::kVulkanExecutionProvider) {
         found = true;
         break;
       }
