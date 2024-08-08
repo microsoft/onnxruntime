@@ -3,7 +3,7 @@
 
 #include <emscripten.h>
 
-#include "external_data_loader.h"
+#include "js_external_data_loader.h"
 
 #include "core/framework/tensor.h"
 
@@ -11,9 +11,11 @@ namespace onnxruntime {
 namespace js {
 
 bool ExternalDataLoader::CanLoad(const OrtMemoryInfo& target_memory_info) const {
-  return target_memory_info.device.Type() == OrtDevice::CPU ||
-         (target_memory_info.device.Type() == OrtDevice::GPU &&
-          target_memory_info.name == WEBGPU_BUFFER);
+  return target_memory_info.device.Type() == OrtDevice::CPU
+#if defined(USE_JSEP)
+         || (target_memory_info.device.Type() == OrtDevice::GPU && target_memory_info.name == WEBGPU_BUFFER)
+#endif
+      ;
 }
 
 common::Status ExternalDataLoader::LoadTensor(const Env& env,
@@ -24,9 +26,11 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   ExternalDataLoadType load_type;
   if (tensor.Location().device.Type() == OrtDevice::CPU) {
     load_type = ExternalDataLoadType::CPU;
+#if defined(USE_JSEP)
   } else if (tensor.Location().device.Type() == OrtDevice::GPU &&
              tensor.Location().name == WEBGPU_BUFFER) {
     load_type = ExternalDataLoadType::WEBGPU_BUFFER;
+#endif
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported tensor location: ", tensor.Location().ToString());
   }

@@ -27,7 +27,7 @@ class ExternalDataLoader : public IExternalDataLoader {
                             Tensor& tensor) const override;
 };
 
-// Entry point for loading external data implementation.
+// Entry point for loading external data implementation using inline JavaScript.
 common::Status LoadExternalData(const Env& env,
                                 const std::filesystem::path& data_file_path,
                                 FileOffsetType data_offset,

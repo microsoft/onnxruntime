@@ -11,7 +11,7 @@
 #if defined(__wasm__)
 #include <emscripten.h>
 
-#include "core/providers/js/external_data_loader.h"
+#include "wasm/js_external_data_loader.h"
 
 #endif
 
