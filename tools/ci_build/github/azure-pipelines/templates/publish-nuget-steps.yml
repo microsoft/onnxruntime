@@ -4,11 +4,14 @@ parameters:
   default: false
 - name: download_artifacts_steps
   type: stepList
+- name: stage_name
+  type: string
+  default: 'Publish_NuGet_Package'
 
 stages:
-- stage: Publish_NuGet_Package_And_Report
+- stage: ${{ parameters.stage_name }}
   jobs:
-  - job: Publish_NuGet_Package_And_Report
+  - job: ${{ parameters.stage_name }}
     workspace:
       clean: all
     variables:

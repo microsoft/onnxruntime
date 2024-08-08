@@ -42,7 +42,9 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   int32_t axis = helper.Get("axis", default_axis);
   axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_size));
 
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("softmax", input, axis);
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("softmax", input, axis, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }

@@ -328,13 +328,6 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
     var acc : array<array<${type}, colPerThread>, rowPerThread>;
-
-    // Without this initialization strange values show up in acc.
-    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
-      for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
-        acc[innerRow][innerCol] = 0.0;
-      }
-    }
     ${matmulSnippet}
   }
 `;

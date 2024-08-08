@@ -13,7 +13,7 @@
 // See https://docs.python.org/3/c-api/init.html#non-python-created-threads for details.
 class GilGuard {
  public:
-  GilGuard() : state_(PyGILState_Ensure()){};
+  GilGuard() : state_(PyGILState_Ensure()) {};
   ~GilGuard() { PyGILState_Release(state_); };
 
  private:

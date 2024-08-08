@@ -132,12 +132,6 @@ class CompatRocblasMathModeSetter {
   }
 };
 
-enum AttentionType {
-  kAttention,
-  kMultiHeadAttention,
-  kDecoderMaskedMultiHeadAttention,
-};
-
 enum AttentionMode {
   // Q,K,V,PastK,PastV,PresentK,PresentV
   QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE,

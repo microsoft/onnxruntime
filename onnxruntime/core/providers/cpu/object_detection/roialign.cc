@@ -135,7 +135,7 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
           T w3 = ly * hx;
           T w4 = ly * lx;
 
-          // save weights and indeces
+          // save weights and indices
           PreCalc<T> pc;
           pc.pos1 = y_low * width + x_low;
           pc.pos2 = y_low * width + x_high;
@@ -251,9 +251,9 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
 
             top_data[index] = output_val;
           }  // for pw
-        }    // for ph
-      }      // for c
-    }        // for n
+        }  // for ph
+      }  // for c
+    }  // for n
   });
 }
 }  // namespace

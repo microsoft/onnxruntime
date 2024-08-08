@@ -360,7 +360,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
         max_thr_per_blk));
 
     // NOTE: ORT: seqlens_k Indicates past sequence lengths for token generation case.
-    // we should call fmha with total sequence lenghts
+    // we should call fmha with total sequence lengths
     seqlens_k_tmp = GetScratchBuffer<int>(batch_size * sizeof(int), ctx->GetComputeStream());
     ORT_RETURN_IF_ERROR(LaunchSeqlensInc(hip_stream, seqlens_k_ptr, seqlens_k_tmp.get(), batch_size, sequence_length));
     seqlens_k_ptr = seqlens_k_tmp.get();

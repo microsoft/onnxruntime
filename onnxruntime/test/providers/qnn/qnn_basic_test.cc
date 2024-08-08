@@ -236,6 +236,51 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
   Ort::Session session(*ort_env, ort_model_path, so);
 }
 
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
+  Ort::SessionOptions so;
+
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv.int4_weights.qdq.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  TensorShape input_shape = {1, 3, 8, 8};
+  std::vector<float> input0_data(input_shape.Size(), 0.2f);
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add input0
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), &input_shape[0], input_shape.NumDimensions()));
+  ort_input_names.push_back("input_0");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output shape.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = typeshape.GetShape();
+
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 5, 6, 6));
+}
+#endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
 // Helper function that runs an ONNX model with a NHWC Resize operator to test that
 // type/shape inference succeeds during layout transformation.
 // Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
@@ -790,14 +835,14 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
 
 // Test that models run with various SoC model values
 TEST_F(QnnHTPBackendTests, HTPSocModels) {
-  constexpr std::array<const char*, 3> soc_models = { "",   // No explicit SoC model specified
-                                                      "0",  // "Unknown"
+  constexpr std::array<const char*, 3> soc_models = {"",   // No explicit SoC model specified
+                                                     "0",  // "Unknown"
 #if defined(_M_ARM64)
-                                                      "37" };  // SC8280X
+                                                     "37"};  // SC8280X
 #elif defined(__linux__)
-                                                      "30" };  // SM8350
+                                                     "30"};  // SM8350
 #else
-                                                      "" };
+                                                     ""};
 #endif
 
   for (auto soc_model : soc_models) {

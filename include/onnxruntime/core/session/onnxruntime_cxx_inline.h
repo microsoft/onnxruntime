@@ -1982,7 +1982,9 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
     TensorTypeAndShapeInfo type_shape_info(info);
     auto integer_shape = type_shape_info.GetShape();
     std::vector<const char*> symbolic_shape(integer_shape.size(), {});
-    type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    if (!integer_shape.empty()) {
+      type_shape_info.GetSymbolicDimensions(&symbolic_shape[0], integer_shape.size());
+    }
     Shape shape;
     for (size_t ith = 0; ith < integer_shape.size(); ++ith) {
       if (symbolic_shape[ith] && std::string{symbolic_shape[ith]}.size() > 0) {
@@ -1996,9 +1998,10 @@ inline ShapeInferContext::ShapeInferContext(const OrtApi* ort_api,
   }
 }
 
-inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape) {
+inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shape, ONNXTensorElementDataType type) {
   OrtTensorTypeAndShapeInfo* info = {};
   ORT_CXX_RETURN_ON_API_FAIL(ort_api_->CreateTensorTypeAndShapeInfo(&info));
+  ORT_CXX_RETURN_ON_API_FAIL(ort_api_->SetTensorElementType(info, type));
 
   using InfoPtr = std::unique_ptr<OrtTensorTypeAndShapeInfo, std::function<void(OrtTensorTypeAndShapeInfo*)>>;
 
@@ -2011,7 +2014,7 @@ inline Status ShapeInferContext::SetOutputShape(size_t indice, const Shape& shap
 
   for (const auto dim : shape) {
     if (dim.IsInt()) {
-      integer_dims.push_back(dim.IsInt());
+      integer_dims.push_back(dim.AsInt());
       symbolic_dims.push_back("");
     } else {
       if (!dim.AsSym() || std::string{dim.AsSym()}.empty()) {

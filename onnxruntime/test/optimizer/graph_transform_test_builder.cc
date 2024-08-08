@@ -61,7 +61,7 @@ NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.set_data_type(elem_type);
-  tensor_proto.set_raw_data(raw_data.data(), raw_data.size());
+  utils::SetRawDataInTensorProto(tensor_proto, raw_data.data(), raw_data.size());
 
   for (auto& dim : shape) {
     tensor_proto.add_dims(dim);
@@ -246,14 +246,14 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
       ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_original.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_original.onnx")));
 #endif
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
     if (post_graph_checker) {
       ORT_RETURN_IF_ERROR(post_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_optimized.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_optimized.onnx")));
 #endif
   };
 

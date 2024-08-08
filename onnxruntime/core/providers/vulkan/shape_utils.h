@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include "gsl/gsl"
+
 #include "core/common/logging/logging.h"
 #include "core/graph/node_arg.h"
 
@@ -32,4 +33,4 @@ int64_t ShapeSize(gsl::span<const int64_t> shape);
 // Gets a string representation of `shape`.
 std::string Shape2String(gsl::span<const int64_t> shape);
 
-}  // namespace onnxruntime::coreml
+}  // namespace onnxruntime::vulkan

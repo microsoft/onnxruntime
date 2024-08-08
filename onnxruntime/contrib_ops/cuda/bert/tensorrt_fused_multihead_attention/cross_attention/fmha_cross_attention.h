@@ -41,7 +41,7 @@ struct Gmem_params {
   // Hidden dim per head
   int32_t d;
 
-  // array of length b+1 holding prefix sum of actual sequence lenghts.
+  // array of length b+1 holding prefix sum of actual sequence lengths.
   int32_t* cu_seqlens;
 };
 
@@ -69,7 +69,7 @@ struct Fused_multihead_attention_params_mhca {
   // See https://confluence.nvidia.com/pages/viewpage.action?pageId=302779721 for details.
   bool enable_i2f_trick;
 
-  // array of length b+1 holding prefix sum of actual sequence lenghts
+  // array of length b+1 holding prefix sum of actual sequence lengths
   int32_t* cu_seqlens;
 
   // use C/32 Format.

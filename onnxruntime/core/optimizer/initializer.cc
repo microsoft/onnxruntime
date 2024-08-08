@@ -6,8 +6,7 @@
 #include <functional>
 #include <memory>
 
-#include "core/common/gsl.h"
-#include "core/common/path.h"
+#include <gsl/gsl>
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/platform/env.h"

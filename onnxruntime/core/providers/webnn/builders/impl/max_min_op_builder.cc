@@ -43,22 +43,26 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(op_type == "Max" || op_type == "Min", "MaxMinOpBuilder, unknown op: ", op_type);
 
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   if (input_count == 1) {
     // For 1 input, just concat the single input as workaround.
     // TODO: use identity instead once it's available in WebNN.
     emscripten::val inputs = emscripten::val::array();
     inputs.call<void>("push", input0);
-    output = model_builder.GetBuilder().call<emscripten::val>("concat", inputs, 0);
+    output = model_builder.GetBuilder().call<emscripten::val>("concat", inputs, 0, options);
   } else {
     std::string webnn_op_name = op_type == "Max" ? "max" : "min";
 
     emscripten::val input1 = model_builder.GetOperand(input_defs[1]->Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), input0, input1, options);
 
     for (size_t input_index = 2; input_index < input_count; ++input_index) {
       emscripten::val next_input = model_builder.GetOperand(input_defs[input_index]->Name());
-      output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), output, next_input);
+      emscripten::val next_options = emscripten::val::object();
+      next_options.set("label", node.Name() + "_" + input_defs[input_index]->Name());
+      output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), output, next_input, next_options);
     }
   }
 

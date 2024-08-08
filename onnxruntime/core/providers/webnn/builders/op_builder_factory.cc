@@ -81,6 +81,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateConcatOpBuilder("Concat", op_registrations);
   }
 
+  {  // Dropout
+    CreateDropoutOpBuilder("Dropout", op_registrations);
+  }
+
   {  // Quantize/Dequantize
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
     CreateDequantizeLinearOpBuilder("DequantizeLinear", op_registrations);

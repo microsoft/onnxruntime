@@ -18,7 +18,7 @@ constexpr CudaGraphAnnotation_t kCudaGraphAnnotationSkip = -1;
 constexpr CudaGraphAnnotation_t kCudaGraphAnnotationDefault = 0;
 
 struct CudaGraphSet {
-  CudaGraphSet(){};
+  CudaGraphSet() {};
   ~CudaGraphSet();
 
   void Clear();
@@ -31,7 +31,7 @@ struct CudaGraphSet {
 };
 
 struct CUDAGraphManager {
-  CUDAGraphManager(){};
+  CUDAGraphManager() {};
   CUDAGraphManager(cudaStream_t stream);
   ~CUDAGraphManager();
 

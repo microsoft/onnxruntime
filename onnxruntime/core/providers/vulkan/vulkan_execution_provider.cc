@@ -66,7 +66,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onn
   const utils::OnGroupClosedFn on_group_closed_fn = nullptr;
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported_fn, on_group_closed_fn,
-                                            gen_metadef_name, "Vulkan", kVulkanExecutionProvider);
+                                            gen_metadef_name, "Vulkan", kVulkanExecutionProvider,
+                                            /* drop constant_initializers */ false);  // TBD if we can/should
 
   return result;
 }
@@ -100,7 +101,6 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   ncnn_options_.use_int8_arithmetic = false;
   ncnn_options_.use_packing_layout = false;
   ncnn_options_.use_image_storage = false;
-
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {

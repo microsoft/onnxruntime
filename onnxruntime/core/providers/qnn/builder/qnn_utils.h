@@ -93,13 +93,14 @@ Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
                       float& scale,
-                      int& zero_point);
+                      int32_t& zero_point,
+                      bool symmetric = false);
 
 double Dequantize(int32_t offset, float scale, const double quant_value);
 
 Status Quantize(const double double_value,
                 const float scale,
-                const int zero_point,
+                const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
 
