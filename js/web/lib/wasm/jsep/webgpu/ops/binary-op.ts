@@ -119,9 +119,11 @@ const createBinaryOpProgramShader =
 const createBinaryOpProgramInfo =
     (name: string, cacheKey: string, a: TensorView, b: TensorView, funcCall: BinaryFunctionCall,
      additionalImplementation?: string, outputDataType: number = a.dataType): ProgramInfo => {
-      const isBroadcast = !ShapeUtil.areEqual(a.dims, b.dims);
-      let outputShape = a.dims;
-      let outputSize = ShapeUtil.size(a.dims);
+      const aDims = a.dims.map((x) => Number(x) ?? 1);
+      const bDims = b.dims.map((x) => Number(x) ?? 1);
+      const isBroadcast = !ShapeUtil.areEqual(aDims, bDims);
+      let outputShape = aDims;
+      let outputSize = ShapeUtil.size(aDims);
 
       let vectorize = false;
       let sharedDimensionDivisibleBy4 = false;
@@ -129,16 +131,16 @@ const createBinaryOpProgramInfo =
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
       const cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
-        const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
+        const calculatedShape = BroadcastUtil.calcShape(aDims, bDims, false);
         if (!calculatedShape) {
           throw new Error('Can\'t perform binary op on the given tensors');
         }
-        outputShape = calculatedShape;
+        outputShape = calculatedShape.slice();
         outputSize = ShapeUtil.size(outputShape);
-        const isAOneElement = ShapeUtil.size(a.dims) === 1;
-        const isBOneElement = ShapeUtil.size(b.dims) === 1;
-        const aLastDimDivisibleBy4 = a.dims.length > 0 && a.dims[a.dims.length - 1] % 4 === 0;
-        const bLastDimDivisibleBy4 = b.dims.length > 0 && b.dims[b.dims.length - 1] % 4 === 0;
+        const isAOneElement = ShapeUtil.size(aDims) === 1;
+        const isBOneElement = ShapeUtil.size(bDims) === 1;
+        const aLastDimDivisibleBy4 = aDims.length > 0 && aDims[aDims.length - 1] % 4 === 0;
+        const bLastDimDivisibleBy4 = bDims.length > 0 && bDims[bDims.length - 1] % 4 === 0;
         cacheKeyAux.push(isAOneElement);
         cacheKeyAux.push(isBOneElement);
         cacheKeyAux.push(aLastDimDivisibleBy4);
@@ -146,8 +148,8 @@ const createBinaryOpProgramInfo =
         // check whether vectorize can be enabled
         let sharedDimension = 1;
         for (let i = 1; i < outputShape.length; i++) {
-          const dimA = a.dims[a.dims.length - i] ?? 1;
-          const dimB = b.dims[b.dims.length - i] ?? 1;
+          const dimA = aDims[aDims.length - i];
+          const dimB = bDims[bDims.length - i];
           if (dimA === dimB) {
             sharedDimension *= dimA;
           } else {
@@ -173,14 +175,14 @@ const createBinaryOpProgramInfo =
           inputDependencies: ['rank', 'rank'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, sharedDimensionDivisibleBy4, funcCall,
+            shaderHelper, aDims, bDims, outputShape, vectorize, isBroadcast, sharedDimensionDivisibleBy4, funcCall,
             a.dataType, b.dataType, outputDataType, additionalImplementation),
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},
           programUniforms: [
             {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
-            ...createTensorShapeVariables(a.dims, b.dims, outputShape)
+            ...createTensorShapeVariables(aDims, bDims, outputShape)
           ],
         }),
       };

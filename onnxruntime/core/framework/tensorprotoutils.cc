@@ -1036,9 +1036,9 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
                                  if (!fileData) {
                                    return 2;  // File not found in preloaded files.
                                  }
-                                 const offset = $1 >>> 0;
-                                 const length = $2 >>> 0;
-                                 const buffer = $3 >>> 0;
+                                 const offset = Number($1 >>> 0);
+                                 const length = Number($2 >>> 0);
+                                 const buffer = Number($3 >>> 0);
 
                                  if (offset + length > fileData.byteLength) {
                                    return 3;  // Out of bounds.

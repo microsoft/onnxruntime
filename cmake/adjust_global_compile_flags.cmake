@@ -56,6 +56,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
+    string(APPEND CMAKE_C_FLAGS " -DORT_WASM64")
+    string(APPEND CMAKE_CXX_FLAGS " -DORT_WASM64")
+  endif()
+
   # Build WebAssembly with multi-threads support.
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     string(APPEND CMAKE_C_FLAGS " -pthread -Wno-pthreads-mem-growth")

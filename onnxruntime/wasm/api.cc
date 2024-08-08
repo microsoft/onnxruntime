@@ -27,7 +27,9 @@ enum DataLocation {
 };
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
+#ifndef ORT_WASM64
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
+#endif
 
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
@@ -93,9 +95,10 @@ int OrtInit(int num_threads, int logging_level) {
 #endif
 }
 
-void OrtGetLastError(int* error_code, const char** error_message) {
+int OrtGetLastError(int* error_code, const char** error_message) {
   *error_code = g_last_error_code;
   *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
+  return ORT_OK;
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
@@ -176,8 +179,9 @@ int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
   return CHECK_STATUS(AddSessionConfigEntry, session_options, config_key, config_value);
 }
 
-void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
+int OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
   Ort::GetApi().ReleaseSessionOptions(session_options);
+  return ORT_OK;
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
@@ -195,8 +199,9 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
              : nullptr;
 }
 
-void OrtReleaseSession(OrtSession* session) {
+int OrtReleaseSession(OrtSession* session) {
   Ort::GetApi().ReleaseSession(session);
+  return ORT_OK;
 }
 
 int OrtGetInputOutputCount(OrtSession* session, size_t* input_count, size_t* output_count) {
@@ -225,11 +230,12 @@ char* OrtGetOutputName(OrtSession* session, size_t index) {
              : nullptr;
 }
 
-void OrtFree(void* ptr) {
+int OrtFree(void* ptr) {
   OrtAllocator* allocator = nullptr;
   if (CHECK_STATUS(GetAllocatorWithDefaultOptions, &allocator) == ORT_OK) {
     allocator->Free(allocator, ptr);
   }
+  return ORT_OK;
 }
 
 OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t* dims, size_t dims_length, int data_location) {
@@ -280,7 +286,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length) {
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
@@ -350,14 +356,15 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     *data = p_tensor_raw_data;
   }
 
-  *data_type = static_cast<int>(type);
+  *data_type = static_cast<size_t>(type);
   *dims_length = dims_len;
   *dims = UNREGISTER_AUTO_RELEASE(p_dims);
   return ORT_OK;
 }
 
-void OrtReleaseTensor(OrtValue* tensor) {
+int OrtReleaseTensor(OrtValue* tensor) {
   Ort::GetApi().ReleaseValue(tensor);
+  return ORT_OK;
 }
 
 OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
@@ -392,8 +399,9 @@ int OrtAddRunConfigEntry(OrtRunOptions* run_options,
   return CHECK_STATUS(AddRunConfigEntry, run_options, config_key, config_value);
 }
 
-void OrtReleaseRunOptions(OrtRunOptions* run_options) {
+int OrtReleaseRunOptions(OrtRunOptions* run_options) {
   Ort::GetApi().ReleaseRunOptions(run_options);
+  return ORT_OK;
 }
 
 OrtIoBinding* OrtCreateBinding(OrtSession* session) {
@@ -435,12 +443,14 @@ int EMSCRIPTEN_KEEPALIVE OrtBindOutput(OrtIoBinding* io_binding,
   }
 }
 
-void OrtClearBoundOutputs(OrtIoBinding* io_binding) {
+int OrtClearBoundOutputs(OrtIoBinding* io_binding) {
   Ort::GetApi().ClearBoundOutputs(io_binding);
+  return ORT_OK;
 }
 
-void OrtReleaseBinding(OrtIoBinding* io_binding) {
+int OrtReleaseBinding(OrtIoBinding* io_binding) {
   Ort::GetApi().ReleaseIoBinding(io_binding);
+  return ORT_OK;
 }
 
 int OrtRunWithBinding(OrtSession* session,
@@ -510,8 +520,9 @@ ort_training_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(
              : nullptr;
 }
 
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
   Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
+  return ORT_OK;
 }
 
 ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateSession(const ort_session_options_handle_t options,
@@ -630,8 +641,9 @@ char* EMSCRIPTEN_KEEPALIVE OrtTrainingGetModelInputOutputName(ort_training_sessi
   }
 }
 
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
+int EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
   Ort::GetTrainingApi().ReleaseTrainingSession(training_handle);
+  return ORT_OK;
 }
 
 #endif

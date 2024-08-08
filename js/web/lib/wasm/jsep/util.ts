@@ -162,7 +162,7 @@ export class ShapeUtil {
             // eslint-disable-next-line max-len
             'cannot get valid size from specified dimension range. Most likely the range contains negative values in them.');
       }
-      size *= dims[i];
+      size *= Number(dims[i]);
     }
     return size;
   }
