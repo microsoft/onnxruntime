@@ -80,7 +80,7 @@ def main():
         "Linux CPU CI Pipeline",
         "Linux CPU Minimal Build E2E CI Pipeline",
         "Linux GPU CI Pipeline",
-        "Linux GPU TensorRT CI Pipeline",
+        # "Linux GPU TensorRT CI Pipeline",
         "Linux OpenVINO CI Pipeline",
         "Linux QNN CI Pipeline",
         # mac
@@ -88,8 +88,8 @@ def main():
         # training
         "orttraining-amd-gpu-ci-pipeline",
         "orttraining-linux-ci-pipeline",
-        "orttraining-linux-gpu-ci-pipeline",
-        "orttraining-ortmodule-distributed",
+        # "orttraining-linux-gpu-ci-pipeline",
+        # "orttraining-ortmodule-distributed",
         # checks
         "onnxruntime-python-checks-ci-pipeline",
         "onnxruntime-binary-size-checks-ci-pipeline",

@@ -16,7 +16,6 @@ pr:
   branches:
     include:
     - main
-    - rel-*
   paths:
     exclude:
     - docs/**
