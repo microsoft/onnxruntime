@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ncnn-src/src/gpu.h"
-#include "ncnn-src/src/pipelinecache.h"
-#include "ncnn-src/src/layer.h"
+#include "include/ncnn/gpu.h"
+#include "include/ncnn/pipelinecache.h"
+#include "include/ncnn/layer.h"
 
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
@@ -303,7 +303,8 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         ncnn::Mat before = ncnn_outputs[output_idx];
         cmd.record_download(values[idx], ncnn_outputs[output_idx], ncnn_options_);
 
-        ORT_ENFORCE(before.data == ncnn_outputs[output_idx].data, "Output data was reallocated.");
+        ORT_ENFORCE(before.data == nullptr || before.data == ncnn_outputs[output_idx].data,
+                    "Output data was reallocated.");
         ++output_idx;
       }
 

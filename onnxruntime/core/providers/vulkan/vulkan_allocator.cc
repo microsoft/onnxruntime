@@ -5,7 +5,7 @@
 
 #include <iostream>
 
-#include "ncnn-src/src/allocator.h"
+#include "include/ncnn/allocator.h"
 
 #include "core/framework/ortdevice.h"
 

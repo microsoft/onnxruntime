@@ -3,6 +3,7 @@
 
 #include "core/providers/vulkan/vulkan_kernel.h"
 
+#include "core/common/logging/logging.h"
 #include "core/providers/vulkan/activation/activations.h"
 #include "core/providers/vulkan/math/binary_elementwise.h"
 
@@ -14,6 +15,7 @@ using IsSupportedFn = std::function<bool(const GraphViewer& graph_viewer,
                                          const onnxruntime::Node&,
                                          const logging::Logger& logger)>;
 using CreateFn = std::function<std::unique_ptr<VulkanKernel>(const VulkanExecutionProvider&,
+                                                             const GraphViewer&,
                                                              const onnxruntime::Node&)>;
 
 struct KernelRegistration {
@@ -71,7 +73,7 @@ Status VulkanKernel::Create(const VulkanExecutionProvider& vulkan_ep,
   // temporary sanity check. We should have checked IsSupported before calling Create.
   assert(it != kernel_registrations.end());
 
-  kernel = it->second.create_fn(vulkan_ep, node);
+  kernel = it->second.create_fn(vulkan_ep, graph_viewer, node);
 
   if (!kernel) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create Vulkan kernel for ", node.OpType());

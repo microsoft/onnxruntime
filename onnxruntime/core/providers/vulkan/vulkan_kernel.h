@@ -10,6 +10,10 @@ namespace onnxruntime {
 class Node;
 class VulkanExecutionProvider;
 
+namespace logging {
+class Logger;
+}
+
 namespace vulkan {
 class VulkanKernel {
  public:
@@ -35,7 +39,7 @@ class VulkanKernel {
                        ValueIndexes& value_indexes,
                        std::unique_ptr<VulkanKernel>& kernel);
 
-  Status UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) {
+  virtual Status UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) {
     // TODO: Do we need to support masked options?
     // int uret = layers[i]->upload_model(cmd, get_masked_option(opt_upload, layers[i]->featmask));
 
@@ -72,6 +76,7 @@ class VulkanKernel {
 
   const ncnn::Option& NcnnOptions() const { return vulkan_ep_.NcnnOptions(); }
   const ncnn::VulkanDevice& Device() const { return vulkan_ep_.Device(); }
+  const logging::Logger& Logger() const { return *vulkan_ep_.GetLogger(); }
 
  private:
   const VulkanExecutionProvider& vulkan_ep_;

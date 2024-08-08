@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "ncnn-src/src/layer.h"
-#include "ncnn-src/src/command.h"
+#include "include/ncnn/layer.h"
+#include "include/ncnn/command.h"
 
 #include "core/common/gsl.h"
 #include "core/framework/op_kernel_info.h"

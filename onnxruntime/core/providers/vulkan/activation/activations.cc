@@ -4,7 +4,7 @@
 
 #include "core/providers/vulkan/activation/activations.h"
 
-#include "ncnn-src/src/layer/vulkan/sigmoid_vulkan.h"
+#include "include/ncnn/layer/vulkan/sigmoid_vulkan.h"
 
 #include "core/providers/vulkan/vulkan_utils.h"
 

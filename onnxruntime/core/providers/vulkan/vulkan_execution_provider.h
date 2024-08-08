@@ -6,8 +6,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "ncnn-src/src/command.h"
-#include "ncnn-src/src/option.h"
+#include "include/ncnn/command.h"
+#include "include/ncnn/option.h"
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
