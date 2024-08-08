@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
-import {Tensor} from './tensor.js';
+import {Tensor} from 'onnxruntime-common';
+import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion-type.js';
 
 /**
  * implementation of Tensor.toDataURL()
