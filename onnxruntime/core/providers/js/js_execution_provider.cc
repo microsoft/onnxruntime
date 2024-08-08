@@ -22,7 +22,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "data_transfer.h"
-#include "wasm/js_external_data_loader.h"
+#include "external_data_loader.h"
 
 namespace onnxruntime {
 

@@ -10,9 +10,6 @@
 #include <filesystem>
 #if defined(__wasm__)
 #include <emscripten.h>
-
-#include "wasm/js_external_data_loader.h"
-
 #endif
 
 #include <gsl/gsl>
@@ -1025,12 +1022,12 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     ext_data_buf = buffer.release();
     ext_data_len = raw_data_safe_len;
 
-    ORT_RETURN_IF_ERROR(js::LoadExternalData(env,
-                                             external_data_file_path,
-                                             file_offset,
-                                             ext_data_len,
-                                             js::ExternalDataLoadType::CPU,
-                                             ext_data_buf));
+    ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(env,
+                                                    external_data_file_path,
+                                                    file_offset,
+                                                    ext_data_len,
+                                                    ExternalDataLoadType::CPU,
+                                                    ext_data_buf));
 #else
     // The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
     // manually check file size first.

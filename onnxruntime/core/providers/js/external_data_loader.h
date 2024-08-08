@@ -8,11 +8,6 @@
 namespace onnxruntime {
 namespace js {
 
-enum class ExternalDataLoadType {
-  CPU = 0,
-  WEBGPU_BUFFER = 1,
-};
-
 class ExternalDataLoader : public IExternalDataLoader {
  public:
   ExternalDataLoader() {};
@@ -26,14 +21,6 @@ class ExternalDataLoader : public IExternalDataLoader {
                             SafeInt<size_t> data_length,
                             Tensor& tensor) const override;
 };
-
-// Entry point for loading external data implementation using inline JavaScript.
-common::Status LoadExternalData(const Env& env,
-                                const std::filesystem::path& data_file_path,
-                                FileOffsetType data_offset,
-                                SafeInt<size_t> data_length,
-                                ExternalDataLoadType load_type,
-                                void* tensor_data);
 
 }  // namespace js
 }  // namespace onnxruntime

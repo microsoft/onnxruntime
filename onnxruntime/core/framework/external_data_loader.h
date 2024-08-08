@@ -38,4 +38,23 @@ class IExternalDataLoader {
                                     Tensor& tensor) const;
 };
 
+#if defined(__wasm__)
+
+enum class ExternalDataLoadType {
+  CPU = 0,
+#if defined(USE_JSEP)
+  WEBGPU_BUFFER = 1,
+#endif
+};
+
+// Entry point for loading external data implementation using inline JavaScript.
+common::Status LoadWebAssemblyExternalData(const Env& env,
+                                           const std::filesystem::path& data_file_path,
+                                           FileOffsetType data_offset,
+                                           SafeInt<size_t> data_length,
+                                           ExternalDataLoadType load_type,
+                                           void* tensor_data);
+
+#endif
+
 }  // namespace onnxruntime
