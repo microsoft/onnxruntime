@@ -1087,6 +1087,297 @@ TEST(QDQTransformerTests, UnsqueezeDropQDQ) {
   RunSqueezeUnsqueezeDropQDQTestCase<uint16_t>("Unsqueeze", {1, 3, 2, 2}, {0}, false, 21);
 }
 
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Flatten -> Q.
+template <typename QuantType>
+static void RunFlattenDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                      int64_t axis = 1,
+                                      bool use_contrib_qdq = false,
+                                      int opset = 21) {
+  auto build_test_case = [input_shape, axis, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* flatten_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    Node& flatten_node = builder.AddNode("Flatten", {input_arg_dq}, {flatten_output});
+    flatten_node.AddAttribute("axis", axis);
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(flatten_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Flatten"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Reshape -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, FlattenDropQDQ) {
+  for (int64_t axis : {0, 1, 3}) {
+    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis);
+    RunFlattenDropQDQTestCase<int8_t>({1, 3, 2, 2}, axis, true, 13);    // Use com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, true, 13);   // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, true, 13);  // Use int16 com.microsoft QDQ ops
+    RunFlattenDropQDQTestCase<int16_t>({1, 3, 2, 2}, axis, false);      // Use int16 ONNX QDQ ops
+    RunFlattenDropQDQTestCase<uint16_t>({1, 3, 2, 2}, axis, false);     // Use int16 ONNX QDQ ops
+  }
+}
+
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Expand -> Q.
+template <typename QuantType>
+static void RunExpandDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                     const std::vector<int64_t>& expanded_shape,
+                                     bool use_contrib_qdq = false,
+                                     int opset = 21) {
+  auto build_test_case = [input_shape, expanded_shape, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* expanded_shape_arg = builder.Make1DInitializer(expanded_shape);
+    auto* expand_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Expand", {input_arg_dq, expanded_shape_arg}, {expand_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(expand_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Expand"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Expand -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, ExpandDropQDQ) {
+  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13});
+  RunExpandDropQDQTestCase<int8_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);    // Use com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunExpandDropQDQTestCase<int16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);      // Use int16 ONNX QDQ ops
+  RunExpandDropQDQTestCase<uint16_t>({1, 3, 1, 1}, {1, 3, 7, 13}, false);     // Use int16 ONNX QDQ ops
+}
+
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Tile -> Q.
+template <typename QuantType>
+static void RunTileDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                   const std::vector<int64_t>& repeats,
+                                   bool use_contrib_qdq = false,
+                                   int opset = 21) {
+  auto build_test_case = [input_shape, repeats, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* repeats_arg = builder.Make1DInitializer(repeats);
+    auto* tile_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Tile", {input_arg_dq, repeats_arg}, {tile_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(tile_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Tile"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Tile -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, TileDropQDQ) {
+  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3});
+  RunTileDropQDQTestCase<int8_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);    // Use com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);   // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, true, 13);  // Use int16 com.microsoft QDQ ops
+  RunTileDropQDQTestCase<int16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);      // Use int16 ONNX QDQ ops
+  RunTileDropQDQTestCase<uint16_t>({1, 3, 2, 2}, {1, 1, 3, 3}, false);     // Use int16 ONNX QDQ ops
+}
+
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Slice -> Q.
+template <typename QuantType>
+static void RunSliceDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                    const std::vector<int64_t>& starts,
+                                    const std::vector<int64_t>& ends,
+                                    bool use_contrib_qdq = false,
+                                    int opset = 21) {
+  auto build_test_case = [input_shape, starts, ends, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* starts_arg = builder.Make1DInitializer(starts);
+    auto* ends_arg = builder.Make1DInitializer(ends);
+    auto* slice_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("Slice", {input_arg_dq, starts_arg, ends_arg}, {slice_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(slice_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["Slice"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> Slice -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, SliceDropQDQ) {
+  RunSliceDropQDQTestCase<int8_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4});
+  RunSliceDropQDQTestCase<int8_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);  // Use com.microsoft QDQ ops
+  // Use int16 com.microsoft QDQ ops
+  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);
+  // Use int16 com.microsoft QDQ ops
+  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, true, 13);
+  RunSliceDropQDQTestCase<int16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);   // Use int16 ONNX QDQ ops
+  RunSliceDropQDQTestCase<uint16_t>({1, 3, 5, 5}, {0, 1, 1, 1}, {1, 3, 4, 4}, false);  // Use int16 ONNX QDQ ops
+}
+
+// Runs a test case that checks if Q/DQ nodes are dropped from DQ -> GatherElements -> Q.
+template <typename QuantType>
+static void RunGatherElementsDropQDQTestCase(const std::vector<int64_t>& input_shape,
+                                             const std::vector<int64_t>& indices_shape,
+                                             const std::vector<int64_t>& indices_data,
+                                             bool use_contrib_qdq = false,
+                                             int opset = 21) {
+  auto build_test_case = [input_shape, indices_shape, indices_data, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* indices_arg = builder.MakeInitializer<int64_t>(indices_shape, indices_data);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* gather_elements_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, .003f, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode("GatherElements", {input_arg_dq, indices_arg}, {gather_elements_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(gather_elements_output, .003f, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count["GatherElements"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks that Q/DQ nodes are dropped from DQ -> GatherElements -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, GatherElementsDropQDQ) {
+  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0});
+  // Use com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int8_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);
+  // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);
+  // Use int16 com.microsoft QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, true, 13);
+  RunGatherElementsDropQDQTestCase<int16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);   // Use int16 ONNX QDQ ops
+  RunGatherElementsDropQDQTestCase<uint16_t>({3, 3}, {2, 3}, {1, 2, 0, 2, 0, 0}, false);  // Use int16 ONNX QDQ ops
+}
+
+// Runs a test case whether Q/DQ nodes are dropped from DQ -> Reduce(Min|Max) -> Q.
+template <typename QuantType>
+static void RunReduceExtremumDropQDQTestCase(const std::string& op_type,
+                                             const std::vector<int64_t>& input_shape,
+                                             float qscale,
+                                             bool expect_drop_qdq,
+                                             bool use_contrib_qdq = false,
+                                             int opset = 21) {
+  auto build_test_case = [op_type, input_shape, qscale, use_contrib_qdq](ModelTestBuilder& builder) {
+    constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+    constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, qmin, qmax);
+    auto* output_arg = builder.MakeOutput();
+    QuantType zero_point = 1 + (qmax + qmin) / 2;
+
+    auto* input_arg_dq = builder.MakeIntermediate();
+    auto* reduce_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, qscale, zero_point, input_arg_dq, use_contrib_qdq);
+    builder.AddNode(op_type, {input_arg_dq}, {reduce_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<QuantType>(reduce_output, qscale, zero_point, output_arg, use_contrib_qdq);
+  };
+
+  auto check_graph = [op_type, expect_drop_qdq, use_contrib_qdq](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    EXPECT_EQ(op_to_count[op_type], 1);
+    if (expect_drop_qdq) {
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    } else {
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    }
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+}
+
+// Checks whether Q/DQ nodes are dropped from DQ -> Reduce(Min|Max) -> Q. Uses 8-bit and 16-bit Q/DQ ops.
+TEST(QDQTransformerTests, ReduceExtremumDropQDQ) {
+  // Check that Q/DQ nodes are dropped for positive scale
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, 0.003f, true);
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, 0.003f, true, true, 13);  // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, 0.003f, true);
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, 0.003f, true, true, 13);  // Use com.microsoft QDQ ops
+
+  // Check that Q/DQ nodes are *not* dropped for negative scale
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, -0.003f, false);
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMin", {3, 3}, -0.003f, false, true, 13);  // Use com.microsoft QDQ ops
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, -0.003f, false);
+  RunReduceExtremumDropQDQTestCase<int8_t>("ReduceMax", {3, 3}, -0.003f, false, true, 13);  // Use com.microsoft QDQ ops
+}
+
 TEST(QDQTransformerTests, DoubleQDQ) {
   constexpr uint8_t good_u8_1 = 80;
   constexpr uint8_t good_u8_2 = 40;
