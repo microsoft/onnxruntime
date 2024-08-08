@@ -19,7 +19,7 @@
             "type": "float32"
           },
           {
-            "data": [0.0],
+            "data": [0],
             "dims": [1],
             "type": "uint8"
           }
@@ -90,7 +90,7 @@
             "type": "float32"
           },
           {
-            "data": [0.0],
+            "data": [0],
             "dims": [1],
             "type": "uint8"
           }
@@ -167,7 +167,7 @@
             "type": "float32"
           },
           {
-            "data": [0.0, 0.0],
+            "data": [0, 0],
             "dims": [2],
             "type": "uint8"
           }
@@ -208,7 +208,7 @@
             "type": "float32"
           },
           {
-            "data": [0.0, 0.0],
+            "data": [0, 0],
             "dims": [2],
             "type": "uint8"
           }
