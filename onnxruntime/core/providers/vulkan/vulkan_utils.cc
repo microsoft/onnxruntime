@@ -43,7 +43,7 @@ void InitMatFromTensor(const Tensor& tensor, TMat& mat, bool align_channels = fa
     case 4:
       // Assume NCHW.
       // NCNN doesn't support batches so if the first dim is 1 assume it's the batch size
-      if (mat.c == 1) {
+      if (shape[0] == 1) {
         mat.c = gsl::narrow_cast<int32_t>(shape[1]);
       } else {
         ORT_THROW("Unsupported?");  // TODO: is there a scenario with 4D input where the first dim is not the batch?

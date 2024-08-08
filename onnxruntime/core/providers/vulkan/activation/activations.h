@@ -22,9 +22,6 @@ class SigmoidKernel : VulkanKernel {
     return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, node));
   }
 
-  // static kernel usage.
-  Status ComputeImpl(OpKernelContext& context) const override;
-
  private:
   SigmoidKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)
       : VulkanKernel{vulkan_ep, node} {
@@ -45,28 +42,11 @@ class ClipKernel : VulkanKernel {
   // if we add a Relu6 layer to NCNN we need this to plug in calling that for Clip(0, 6)
   // }
 
-  // static kernel usage.
-  // Status ComputeImpl(OpKernelContext& context) const override;
-
  private:
   ClipKernel(const VulkanExecutionProvider& vulkan_ep,
              const onnxruntime::Node& node)
       : VulkanKernel{vulkan_ep, node} {
   }
-};
-
-class Sigmoid : public OpKernel {
- public:
-  explicit Sigmoid(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_THROW_IF_ERROR(VulkanKernel::Create(info, kernel_));
-  }
-
-  Status Compute(OpKernelContext* context) const override {
-    return kernel_->ComputeImpl(*context);
-  }
-
- private:
-  std::unique_ptr<VulkanKernel> kernel_;
 };
 
 }  // namespace vulkan
