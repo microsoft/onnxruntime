@@ -14,10 +14,10 @@ class DequantizeLinear : public JsKernel {
     int64_t axis;
     int64_t block_size;
     if (!info.GetAttr<int64_t>("axis", &axis).IsOK()) {
-      axis_ = 1;
+      axis = 1;
     }
     if (!info.GetAttr<int64_t>("block_size", &block_size).IsOK()) {
-      block_size_ = 0;
+      block_size = 0;
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(DequantizeLinear, ({
                                  "axis" : $1,
