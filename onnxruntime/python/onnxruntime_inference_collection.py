@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import collections
 import collections.abc
+import onnx
 import os
 import typing
 import warnings
@@ -16,6 +17,39 @@ from onnxruntime.capi import _pybind_state as C
 if typing.TYPE_CHECKING:
     import onnxruntime
 
+HAS_ONNX_REWRITTER = True
+try:
+    from onnxrewriter.rewriter.transformers import rewrite
+    from onnxrewriter.optimizer import optimize
+except:
+    HAS_ONNX_REWRITTER = False
+
+def rewrite_and_optimize_model_bytes(model):
+    assert HAS_ONNX_REWRITTER
+    onnx_model = onnx.ModelProto()
+    onnx_model.ParseFromString(self._model_bytes)
+    onnx_model = optimize(
+        onnx_model,
+        num_iterations=2,
+        onnx_shape_inference=False,
+        function_aware_folding=True,
+    )
+    onnx_model = rewrite(onnx_model)
+
+    return onnx_model.SerializeToString()
+
+def rewrite_and_optimize_model_path(model_path):
+    assert HAS_ONNX_REWRITTER
+    onnx_model = onnx.load(self._model_path)
+    onnx_model = optimize(
+        onnx_model,
+        num_iterations=2,
+        onnx_shape_inference=False,
+        function_aware_folding=True,
+    )
+    onnx_model = rewrite(onnx_model)
+
+    return onnx_model.SerializeToString()
 
 def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     if device_type == "cuda":
@@ -477,9 +511,18 @@ class InferenceSession(Session):
         self._register_ep_custom_ops(session_options, providers, provider_options, available_providers)
 
         if self._model_path:
-            sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
+            self._model_count += 1
+            if HAS_ONNX_REWRITTER:
+                onnx_model = rewrite_and_optimize_model_path(self._model_path)
+                sess = C.InferenceSession(session_options, onnx_model, True, self._read_config_from_model)
+            else:
+                sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
-            sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
+            if HAS_ONNX_REWRITTER:
+                onnx_model = rewrite_and_optimize_model_bytes(self._model_bytes)
+                sess = C.InferenceSession(session_options, onnx_model, False, self._read_config_from_model)
+            else:
+                sess = C.InferenceSession(session_options, onnx_model.SerializeToString(), False, self._read_config_from_model)
 
         if disabled_optimizers is None:
             disabled_optimizers = set()
