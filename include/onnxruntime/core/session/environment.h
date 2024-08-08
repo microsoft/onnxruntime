@@ -88,6 +88,10 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
+  void InsertCustomEp(const char* ep_name, OrtExecutionProviderFactory* ep_factory);
+
+  OrtExecutionProviderFactory* GetOrtExecutionProviderFactory(const std::string& ep_name);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -99,5 +103,6 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
+  std::unordered_map<std::string, std::unique_ptr<OrtExecutionProviderFactory>> custom_ep_factories_;
 };
 }  // namespace onnxruntime

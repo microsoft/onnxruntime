@@ -25,6 +25,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
+#include "core/framework/ort_type_constraints.h"
 
 // NOTE: OrtKernelContext is used by both custom ops and compiled kernels.
 // In a minimal build, ORT_EXTENDED_MINIMAL_BUILD is used to enable EPs like CoreML/NNAPI which use compiled kernels,
@@ -49,9 +50,9 @@ static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv9()
+#define SUPPORTED_TENSOR_TYPES onnxruntime::DataTypeImpl::AllTensorTypesIRv9()
 #else
-#define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
+#define SUPPORTED_TENSOR_TYPES onnxruntime::DataTypeImpl::AllTensorTypesIRv4()
 #endif
 
 #if defined(ORT_MINIMAL_BUILD)
@@ -1332,3 +1333,76 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
 }  // namespace onnxruntime
 #endif  // ENABLE_CUSTOM_OP_API
+
+//namespace onnxruntime {
+class FuncManager;
+class OpKernelInfo;
+onnxruntime::KernelCreateInfo CreateKernelCreateInfo2(const std::string& domain, const OrtCustomOp* op, OrtTypeConstraints* type_constraints) {
+  const size_t input_count = op->GetInputTypeCount(op);
+
+  onnxruntime::KernelDefBuilder def_builder;
+  def_builder.SetName(op->GetName(op))
+      .SetDomain(domain);
+
+  if (op->version >= min_ort_version_with_custom_version) {
+    if (op->GetStartVersion && op->GetEndVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
+    } else if (op->GetStartVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op));
+    } else {
+      def_builder.SinceVersion(1);
+    }
+  } else {
+    def_builder.SinceVersion(1);
+  }
+
+  // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
+  // to work with newer versions (> 12) of the ORT binary.
+  if (op->version > 12) {
+    for (size_t i = 0; i < input_count; i++) {
+      def_builder.InputMemoryType(op->GetInputMemoryType(op, i), gsl::narrow_cast<int>(i));
+    }
+  }
+
+  const std::unordered_map<std::string, std::set<ONNXTensorElementDataType>>& tc = type_constraints->GetTypeConstraints();
+  for (const auto& [type_symbol, types] : tc) {
+    for (const auto& type : types) {
+      def_builder.TypeConstraint(type_symbol, onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->AsTensorType());
+    }
+  }
+
+  if (const char* provider_type = op->GetExecutionProviderType(op)) {
+    def_builder.Provider(provider_type);
+  } else {
+    def_builder.Provider(onnxruntime::kCpuExecutionProvider);
+  }
+
+  if (op->version >= 18 && op->GetMayInplace != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetMayInplace(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.MayInplace(input_index[i], output_index[i]);
+      op->ReleaseMayInplace(input_index, output_index);
+    }
+  }
+
+  if (op->version >= 18 && op->GetAliasMap != nullptr) {
+    int* input_index = nullptr;
+    int* output_index = nullptr;
+    size_t len = op->GetAliasMap(&input_index, &output_index);
+    if (len > 0) {
+      for (size_t i = 0; i < len; i++) def_builder.Alias(input_index[i], output_index[i]);
+      op->ReleaseAliasMap(input_index, output_index);
+    }
+  }
+
+  onnxruntime::KernelCreateFn kernel_create_fn = [op](onnxruntime::FuncManager&, const onnxruntime::OpKernelInfo& info,
+                                         std::unique_ptr<onnxruntime::OpKernel>& out) -> onnxruntime::common::Status {
+    out = std::make_unique<onnxruntime::CustomOpKernel>(info, *op);
+    return onnxruntime::common::Status::OK();
+  };
+
+  return onnxruntime::KernelCreateInfo(def_builder.Build(), kernel_create_fn);
+}
+//} // namespace onnxruntime

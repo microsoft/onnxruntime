@@ -523,4 +523,33 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessi
 ORT_API_STATUS_IMPL(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
 
 ORT_API_STATUS_IMPL(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+ORT_API_STATUS_IMPL(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
+                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
+
+ORT_API_STATUS_IMPL(OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type);
+
+ORT_API_STATUS_IMPL(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* input_size);
+
+ORT_API_STATUS_IMPL(OrtNode_GetIthInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name);
+
+ORT_API_STATUS_IMPL(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size);
+
+ORT_API_STATUS_IMPL(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name);
+
+ORT_API_STATUS_IMPL(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints);
+
+ORT_API_STATUS_IMPL(CreateOrtTypeConstraints, _Outptr_ OrtTypeConstraints** type_constraints);
+
+ORT_API_STATUS_IMPL(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
+
+ORT_API_STATUS_IMPL(ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
 }  // namespace OrtApis
