@@ -347,7 +347,7 @@
       "test_atanh_example",
       "test_atanh",
       // "test_averagepool_1d_default",
-      // "test_averagepool_2d_ceil",
+      "test_averagepool_2d_ceil",
       "test_averagepool_2d_default",
       "test_averagepool_2d_pads_count_include_pad",
       "test_averagepool_2d_pads",
