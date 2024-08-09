@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
+import {DataType, tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
-import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
+import {convertFloat16ToFloat32, MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
@@ -120,13 +120,45 @@ export const cast = (context: ComputeContext, attributes: CastAttributes): void 
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
-  readonly min: number;
-  readonly max: number;
+  readonly min: number|undefined;
+  readonly max: number|undefined;
 }
 
 const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
-  const min = (inputs.length >= 2 && inputs[1].data !== 0) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
-  const max = (inputs.length >= 3 && inputs[2].data !== 0) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
+  let min = MIN_CLIP.get(tensorDataTypeEnumToString(inputs[0].dataType));
+  let max = MAX_CLIP.get(tensorDataTypeEnumToString(inputs[0].dataType));
+  if (inputs.length >= 2 && inputs[1].data !== 0) {
+    switch (inputs[1].dataType) {
+      case DataType.float:
+        min = inputs[1].getFloat32Array()[0];
+        break;
+      case DataType.int32:
+        min = inputs[1].getInt32Array()[0];
+        break;
+      case DataType.float16:
+        min = convertFloat16ToFloat32(inputs[1].getUint16Array())[0];
+        break;
+      default:
+        throw new Error('Unsupport data type');
+    }
+  }
+
+  if (inputs.length >= 3 && inputs[2].data !== 0) {
+    switch (inputs[2].dataType) {
+      case DataType.float:
+        max = inputs[2].getFloat32Array()[0];
+        break;
+      case DataType.int32:
+        max = inputs[2].getInt32Array()[0];
+        break;
+      case DataType.float16:
+        max = convertFloat16ToFloat32(inputs[2].getUint16Array())[0];
+        break;
+      default:
+        throw new Error('Unsupport data type');
+    }
+  }
+
   return createAttributeWithCacheKey({min, max});
 };
 
