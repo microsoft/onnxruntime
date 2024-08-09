@@ -15,7 +15,7 @@ In this tutorial, we will build a simple speaker identification app that learns 
 Here is what the application will look like:
 
 
-<img src="../../../images/iOS_speaker_identification_app.png"  width="30%" height="30%">
+<img src="../../../images/iOS_speaker_identification_app.png" alt="application demo, with buttons for voice, train, and infer." width="30%" height="30%">
 
 ## Introduction
 We will guide you through the process of building an iOS application that can train a simple audio classification model using on-device training techniques. The tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
@@ -30,28 +30,22 @@ In the tutorial, we will:
 
 
 ## Contents
-- [Introduction](#introduction)
-- [Prerequisites](#prerequisites)
-- [Generating the training artifacts](#generating-the-training-artifacts)
-    - [Export the model to ONNX](#export-the-model-to-onnx)
-    - [Define the trainable and non trainable parameters](#define-the-trainable-and-non-trainable-parameters)
-    - [Generate the training artifacts](#generate-the-training-artifacts)
-
-- [Building the iOS application](#building-the-ios-application)
+- [Building an iOS Application](#building-an-ios-application)
+  - [Introduction](#introduction)
+  - [Contents](#contents)
+  - [Prerequisites](#prerequisites)
+  - [Generating the training artifacts](#generating-the-training-artifacts)
+  - [Building the iOS application](#building-the-ios-application)
     - [Xcode Setup](#xcode-setup)
     - [Application Overview](#application-overview)
     - [Training the model](#training-the-model)
-        - [Loading the training artifacts and initializing training session](#loading-the-training-artifacts-and-initializing-training-session)
-        - [Training the model](#training-the-model-1)
-        - [Exporting the trained model](#exporting-the-trained-model)
-
     - [Inference with the trained model](#inference-with-the-trained-model)
     - [Recording Audio](#recording-audio)
     - [Train View](#train-view)
     - [Infer View](#infer-view)
     - [ContentView](#contentview)
-- [Running the iOS application](#running-the-ios-application)
-- [Conclusion](#conclusion)
+  - [Running the iOS application](#running-the-ios-application)
+  - [Conclusion](#conclusion)
 
 
 ## Prerequisites
