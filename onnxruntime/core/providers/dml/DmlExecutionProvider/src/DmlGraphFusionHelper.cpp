@@ -105,21 +105,20 @@ namespace DmlGraphFusionHelper
         ORT_THROW_IF_FAILED(resourceUnknown->QueryInterface(resource));
     }
 
-    std::tuple<std::unique_ptr<std::byte[]>, std::vector<uint8_t>, std::byte*, size_t> UnpackInitializer(
+    std::tuple<std::unique_ptr<std::byte[]>, std::unique_ptr<std::uint8_t[]>, std::byte*, size_t> UnpackInitializer(
         const onnxruntime::Graph& graph,
         const ONNX_NAMESPACE::TensorProto* initializer)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
-        std::vector<uint8_t> unpackedExternalTensor;
+        std::unique_ptr<uint8_t[]> unpackedExternalTensor;
         std::byte* tensorPtr = nullptr;
         size_t tensorByteSize = 0;
 
         // The tensor may be stored as raw data or in typed fields.
         if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
         {
-            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
-            tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
-            tensorByteSize = unpackedExternalTensor.size();
+            THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor, tensorByteSize));
+            tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.get());
         }
         else if (initializer->has_raw_data())
         {

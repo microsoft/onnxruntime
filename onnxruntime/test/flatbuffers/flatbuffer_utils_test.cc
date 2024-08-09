@@ -291,9 +291,10 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
     ASSERT_EQ_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, dims());
 
     if (loaded_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-      std::vector<uint8_t> expected_data, loaded_data;
-      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(expected_initializer, expected_data));
-      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(loaded_initializer, loaded_data));
+      std::unique_ptr<uint8_t[]> expected_data, loaded_data;
+      size_t expected_data_size, loaded_data_size;
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(expected_initializer, expected_data, expected_data_size));
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(loaded_initializer, loaded_data, loaded_data_size));
       ASSERT_EQ(expected_data, loaded_data) << loaded_initializer.name();
     } else {
       // string type tensor

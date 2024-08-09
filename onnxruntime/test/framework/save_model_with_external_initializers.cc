@@ -53,17 +53,17 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
     const ONNX_NAMESPACE::TensorProto* from_external_tensor_proto = initializers_from_external[kInitName];
 
-    std::vector<uint8_t> tensor_proto_data;
+    std::unique_ptr<uint8_t[]> tensor_proto_data;
+    size_t tensor_proto_size;
     model_path = input_onnx;
     external_data_path = (!input_external_init_file.empty()) ? (model_path.parent_path() / input_external_init_file) : std::filesystem::path();
-    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
-    size_t tensor_proto_size = tensor_proto_data.size();
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data, tensor_proto_size));
 
-    std::vector<uint8_t> from_external_tensor_proto_data;
+    std::unique_ptr<uint8_t[]> from_external_tensor_proto_data;
+    size_t from_external_tensor_proto_size;
     model_path = output_onnx;
     external_data_path = model_path.parent_path() / output_external_init_file;
-    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
-    size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data, from_external_tensor_proto_size));
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
       // 'Small' tensors should be embedded in the onnx file.
@@ -74,7 +74,7 @@ Status LoadSaveAndCompareModel(const std::filesystem::path& input_onnx,
     }
 
     ORT_RETURN_IF_NOT(tensor_proto_size == from_external_tensor_proto_size, "size mismatch");
-    ORT_RETURN_IF_NOT(memcmp(tensor_proto_data.data(), from_external_tensor_proto_data.data(), tensor_proto_size) == 0, "data mismatch");
+    EXPECT_EQ(memcmp(tensor_proto_data.get(), from_external_tensor_proto_data.get(), tensor_proto_size), 0);
   }
   // Cleanup.
   ORT_RETURN_IF_NOT(std::filesystem::remove(output_onnx), "delete file failed");

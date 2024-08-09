@@ -509,21 +509,23 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesy
  * @param initializer       given initializer tensor
  * @param model_path        model_path to construct external data dir path. When this is empty, current dir is used.
  * @param unpacked_tensor   the vector holds data from the initializer in byte form
+ * @param unpacked_tensor_size size of the array held by unpacked_tensor
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const std::filesystem::path& model_path,
-                                     std::vector<uint8_t>& unpacked_tensor);
+                                     std::unique_ptr<uint8_t[]>& unpacked_tensor, size_t& unpacked_tensor_size);
 
 /**
  * Unpack the data from an internal initializer tensor, will return error when the given initializer
  * contains external data
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
- * @param unpacked_tensor   the vector holds data from the initializer in byte form
+ * @param unpacked_tensor   the unique_ptr holds data from the initializer in byte form
+ * @param unpacked_tensor_size size of the array held by unpacked_tensor
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                                     std::vector<uint8_t>& unpacked_tensor);
+                                     std::unique_ptr<uint8_t[]>& unpacked_tensor, size_t& unpacked_tensor_size);
 }  // namespace utils
 }  // namespace onnxruntime

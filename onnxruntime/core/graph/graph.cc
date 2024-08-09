@@ -4051,15 +4051,15 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = result.add_initializer();
 
-      std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
-      size_t tensor_bytes_size = raw_data.size();
-      if (tensor_bytes_size < initializer_size_threshold) {
+      std::unique_ptr<uint8_t[]> raw_data;
+      size_t raw_data_size;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data, raw_data_size));
+      if (raw_data_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
       }
 
-      for (size_t index = 0; index != tensor_bytes_size; ++index) {
+      for (size_t index = 0; index != raw_data_size; ++index) {
         external_stream << raw_data[index];
       }
 
@@ -4072,7 +4072,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       offset->set_value(std::to_string(external_offset));
       ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
       length->set_key("length");
-      length->set_value(std::to_string(tensor_bytes_size));
+      length->set_value(std::to_string(raw_data_size));
 
       output_proto->set_name(initializer.name());
       output_proto->set_data_type(initializer.data_type());
@@ -4081,7 +4081,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       }
       output_proto->set_doc_string(initializer.doc_string());
 
-      external_offset += tensor_bytes_size;
+      external_offset += raw_data_size;
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
 #endif
