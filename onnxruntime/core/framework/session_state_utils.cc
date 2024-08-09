@@ -112,7 +112,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   // Get shape and type of the tensor, and allocate the empty tensor
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>();
+  std::unique_ptr<Tensor> p_tensor;
 
   // for external initializer we will use mmap so don't need to allocate memory in advance
   if (!utils::HasExternalData(tensor_proto)) {
@@ -134,9 +134,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
       }
     }
+  } else {
+    p_tensor = std::make_unique<Tensor>(type, TensorShape(), alloc);
   }
 
-  if (alloc->Info().device.Type() == OrtDevice::CPU) {
+  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
     if (utils::HasExternalData(tensor_proto)) {
       // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
@@ -159,7 +161,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
 
     // deserialize to CPU first for non-CPU allocator, then copy
-    std::unique_ptr<Tensor> p_deserialize_tensor = std::make_unique<Tensor>();
+    std::unique_ptr<Tensor> p_deserialize_tensor;
 
     // for external initializer we will use mmap so don't need to allocate memory in advance
     if (!utils::HasExternalData(tensor_proto)) {
@@ -173,6 +175,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
         p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
       }
+    } else {
+      p_deserialize_tensor = std::make_unique<Tensor>(type, TensorShape(), alloc);
     }
 
     OrtCallback ext_data_deleter;
