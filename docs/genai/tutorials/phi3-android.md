@@ -19,7 +19,7 @@ This is a [Phi-3](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) Andro
 This app uses the [generate() Java API](https://github.com/microsoft/onnxruntime-genai/tree/main/src/java/src/main/java/ai/onnxruntime/genai) GenAIException, Generator, GeneratorParams, Model, and TokenizerStream classes (see documentation [here](https://onnxruntime.ai/docs/genai/api/java.html)). The [generate() C API](https://onnxruntime.ai/docs/genai/api/c.html), [generate() C# API](https://onnxruntime.ai/docs/genai/api/csharp.html), and [generate() Python API](https://onnxruntime.ai/docs/genai/api/python.html) are also available.
 
 ### Model Download
-This app downloads the [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model from Hugging Face. To use a different model, such as the [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct/tree/main), change the path links to refer to your chosen model. If using a model with imaging capabilities, use the MultiModalProcessor class in place of the Tokenizer class and update the prompt template accordingly.
+This app downloads the [Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct) model from Hugging Face. To use a different model, such as the [Phi-3-mini-128k-instruct](https://huggingface.co/microsoft/Phi-3-mini-128k-instruct/tree/main), change the path links to refer to your chosen model. If using a model with imaging capabilities, use the [MultiModalProcessor class](https://github.com/microsoft/onnxruntime-genai/blob/main/src/java/src/main/java/ai/onnxruntime/genai/MultiModalProcessor.java) in place of the [Tokenizer class](https://github.com/microsoft/onnxruntime-genai/blob/main/src/java/src/main/java/ai/onnxruntime/genai/Tokenizer.java) and update the prompt template accordingly.
 
 **NOTE:** The accuracy of outputs may depend upon when the model being used was trained (for example, Phi-3 was trained using data from 2021). As a result,  if you ask about current events, the output will be incorrect.
 
@@ -79,7 +79,7 @@ String promptQuestion = userMsgEdt.getText().toString();
 String promptQuestion_formatted = "<system>You are a helpful AI assistant. Answer in two paragraphs or less<|end|><|user|>"+promptQuestion+"<|end|>\n<assistant|>";
 Log.i("GenAI: prompt question", promptQuestion_formatted);
 ```
-You can also include limits such as a max_length or length_penalty to encourage the model to produce shorter responses. 
+You can also include limits such as a max_length or length_penalty to encourage the model to produce shorter responses. More information about each of these parameters can be found in the [Hugging Face Transformers documentation](https://huggingface.co/docs/transformers/main_classes/text_generation).
 ```java
 generatorParams.setSearchOption("length_penalty", 1000);
 generatorParams.setSearchOption("max_length", 500);
@@ -117,6 +117,15 @@ Once your device is connected, run the app by using the play button on the top p
 
 ### Ask questions
 Now that the app is downloaded, you can start asking questions!
-![Example Prompt 1](../../../images/phi3_MobileTutorial_ex1.png)
-![Example Prompt 2](../../../images/phi3_MobileTutorial_ex2.png)
-![Example Prompt 3](../../../images/phi3_MobileTutorial_ex3.png)
+![Example Prompt 1](../../../images/phi3_MobileTutorial_ex1.jpg)
+![Example Prompt 2](../../../images/phi3_MobileTutorial_ex2.jpg)
+![Example Prompt 3](../../../images/phi3_MobileTutorial_ex3.jpg)
+
+## Conclusion
+In conclusion, the Phi-3 model's variants allow it to be easily applied to different Android devices. Now you can get started adding Phi-3 models into your own Android development! 
+
+
+#### Learn more about Phi-3 with ONNX Runtime:
+- [Introducing Phi-3](https://azure.microsoft.com/en-us/blog/introducing-phi-3-redefining-whats-possible-with-slms/)
+- [Phi-3 with ONNX Runtime](https://huggingface.co/blog/Emma-N/enjoy-the-power-of-phi-3-with-onnx-runtime)
+- [ONNX Runtime supports Phi-3 mini models](https://maanavd.github.io/onnxruntime/blogs/accelerating-phi-3)
