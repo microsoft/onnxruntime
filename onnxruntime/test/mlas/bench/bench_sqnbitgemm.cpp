@@ -53,6 +53,7 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
   std::vector<uint8_t> QuantBData(QuantBDataSizeInBytes);
   std::vector<float> QuantBScale(QuantBScaleSize);
   std::vector<uint8_t> QuantBZeroPoint(Symmetric ? 0 : QuantBZeroPointSizeInBytes);
+  bool has_zp_input = !Symmetric;
 
   MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData.data(), QuantBScale.data(),
                                             Symmetric ? nullptr : QuantBZeroPoint.data(),
@@ -71,15 +72,17 @@ void RunSQNBitGemmBenchmark(size_t BlkLen,
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
+                                 QuantBScale.data(), has_zp_input, QuantBZeroPoint.data(),
                                  tp.get());
   }
 
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.QuantBData = PackedQuantBData != nullptr
-                          ? static_cast<const void*>(PackedQuantBData.get())
-                          : static_cast<const void*>(QuantBData.data());
+  if (PackedQuantBData != nullptr)
+    params.QuantBDataWorkspace = static_cast<const void*>(PackedQuantBData.get());
+  else
+    params.QuantBDataWorkspace = static_cast<const void*>(QuantBData.data());
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = HasBias ? Bias.data() : nullptr;
