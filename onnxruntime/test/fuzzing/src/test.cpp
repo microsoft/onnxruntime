@@ -44,7 +44,30 @@ void mutateModelTest(onnx::ModelProto& model_proto,
   //
   std::wstring modelPrefix = L"/ReproMutateModel_";
   if (seed == 0) {
-    seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
+    // seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
+    // Bug 1 - fixed in attention_fusion.cc
+    // attention_past_no_unidir.onnx
+    // seed = 2161642583; // Bug 1
+    // seed = 2647017145; // Bug 2 - fixed
+    // seed = 2913110292; // Bug 3 - fixed 
+    // Bug 4 - fixed with bug 7
+    // /r "C:\Users\jingywa\source\onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\testdata\transform\bert_toy_opset14.onnx" 548860496
+    // Call stack starts from asan_win.cpp
+    // seed = 548860496; // Bug 4
+    // Bug 5 - fixed in unsqueeze_elimination.cc
+    // /r "C:\Users\jingywa\source\onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\testdata\transform\fusion\fuse-conv-add-no-bias.onnx" 3412260231
+    // /t /v "C:\Users\jingywa\source\onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\testdata\transform\fusion\fuse-conv-add-no-bias.onnx" 10 m
+    // Call stack starts from asan_win.cpp
+    // Assertion failed: false && "i < size()", file C:\Users\jingywa\source\onnxruntime\build\Windows\Debug\_deps\abseil_cpp-src\absl/container/inlined_vector.h, line 363
+    seed = 3412260231; // Bug 5 
+    // seed = 191684599; // Bug 6 - fixed in qlinearconv.cc?
+    // Bug 7 - fixed in tensorprotoutils.cc
+    // /r "C:\Users\jingywa\source\onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\testdata\leconv_Opset17.onnx 1858054927
+    // seed = 1858054927; // Bug 7
+
+    // Bug 8 - Need to fix unit test error. 
+    // /r "C:\Users\jingywa\source\onnxruntime\build\Windows\RelWithDebInfo\RelWithDebInfo\testdata\pipeline_vectorize.onnx" 1332387938
+    // seed = 1332387938;
     modelPrefix = L"/MutateModel_";
   }
 

@@ -196,3 +196,14 @@ Package.resolved
 .build/
 .swiftpm/
 repros/
+
+b\
+build\
+b/
+build/
+build*\
+
+build2/
+build3/
+
+b3/
