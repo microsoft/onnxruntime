@@ -2051,6 +2051,9 @@ inline ShapeInferContext::Ints ShapeInferContext::GetAttrInts(const char* attr_n
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_INTS, ints.data(), out, &out));
     return ints;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {i};
   }
 }
@@ -2075,6 +2078,9 @@ inline ShapeInferContext::Floats ShapeInferContext::GetAttrFloats(const char* at
     Ort::ThrowOnError(ort_api_->ReadOpAttr(attr, ORT_OP_ATTR_FLOATS, floats.data(), out, &out));
     return floats;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {f};
   }
 }
@@ -2115,6 +2121,9 @@ inline ShapeInferContext::Strings ShapeInferContext::GetAttrStrings(const char* 
     }
     return strings;
   } else {
+    if (out == 0u) {
+      return {};
+    }
     return {std::string{c}};
   }
 }
