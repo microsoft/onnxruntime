@@ -538,8 +538,14 @@ export class WebGpuBackend {
         } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float16) {
-          // TODO: use Float16Array.
-          new Uint16Array(arrayBuffer, offset, data.length).set(data);
+          if (typeof Float16Array !== 'undefined') {
+            new Float16Array(arrayBuffer, offset, data.length).set(data);
+          } else {
+            // Fallback to Uint16Array when Float16Array polyfill is not available, unit test only.
+            // eslint-disable-next-line no-console
+            console.warn('Unit test only, please make sure the float16 data has been encoded as float 16 bits.');
+            new Uint16Array(arrayBuffer, offset, data.length).set(data);
+          }
         } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);
         } else {
