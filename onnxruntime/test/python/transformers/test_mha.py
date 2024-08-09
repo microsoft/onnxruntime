@@ -14,9 +14,15 @@ from typing import Dict, List, Optional
 
 import numpy
 import torch
-from benchmark_mha import InputFormats, MultiHeadAttentionConfig, OrtMultiHeadAttention, SdpaKernel, create_ort_session
+from benchmark_mha import (
+    AttentionMaskFormat,
+    InputFormats,
+    MultiHeadAttentionConfig,
+    OrtMultiHeadAttention,
+    SdpaKernel,
+    create_ort_session,
+)
 from einops import rearrange
-from parameterized import parameterized
 
 import onnxruntime
 
@@ -67,11 +73,11 @@ def attention_reference(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    scale: Optional[float] = None,
     mask: Optional[torch.Tensor] = None,
+    scale: Optional[float] = None,
     verbose: bool = False,
 ) -> torch.Tensor:
-    """Reference implementation of Dot Product Attention
+    """Reference implementation of SDPA
 
     Args:
         head_size (int): dimension per head
@@ -82,7 +88,7 @@ def attention_reference(
         mask (Optional[torch.Tensor], optional): attention mask. Defaults to None.
 
     Returns:
-        torch.Tensor: result of dot product attention
+        torch.Tensor: result of SDPA
     """
     if scale is None:
         scale = 1.0 / (head_size**0.5)
@@ -93,6 +99,7 @@ def attention_reference(
     assert value.dim() == 4
 
     if verbose:
+        torch.set_printoptions(precision=6, linewidth=200, sci_mode=False)
         print("query(SDPA)", query)
         print("key(SDPA)", key)
         print("value(SDPA)", value)
@@ -101,10 +108,13 @@ def attention_reference(
 
     # Apply multi-head attention.
     attn = torch.einsum("bhmd,bhnd->bhmn", query, key).float() * scale
-    if mask is not None:
-        attn = attn.masked_fill((1 - mask.int()).bool(), float("-inf"))
     if verbose:
         print("QK(SDPA)", attn)
+
+    if mask is not None:
+        attn = attn.masked_fill((1 - mask.int()).bool(), float("-inf"))
+        if verbose:
+            print("masked QK(SDPA)", attn)
 
     attn = attn.softmax(-1)
     if verbose:
@@ -170,6 +180,12 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
     heads = [1, 3, 4, 16]
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
+    mask_formats = [
+        AttentionMaskFormat.Mask_None,
+        AttentionMaskFormat.Mask_1D_Key_SeqLen,
+        AttentionMaskFormat.Mask_2D_Key_PaddingMask,
+    ]
+
     device, dtype, formats = get_provider_support_info(provider, False)
     if comprehensive:
         sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
@@ -179,25 +195,27 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
                     for head_size in head_sizes:
                         for format in formats:
                             for causal in [True, False]:
-                                for has_bias in get_bias_support(format):
-                                    config = MultiHeadAttentionConfig(
-                                        batch_size=batch_size,
-                                        sequence_length=sequence_length,
-                                        num_heads=num_heads,
-                                        head_size=head_size,
-                                        causal=causal,
-                                        past_sequence_length=0,
-                                        kv_sequence_length=sequence_length,
-                                        max_cache_sequence_length=None,
-                                        provider=provider,
-                                        device=device,
-                                        dtype=dtype,
-                                        use_kv_cache=False,
-                                        share_past_present_buffer=False,
-                                        input_format=format,
-                                        has_bias=has_bias,
-                                    )
-                                    yield config
+                                for mask_format in mask_formats:
+                                    for has_bias in get_bias_support(format):
+                                        config = MultiHeadAttentionConfig(
+                                            batch_size=batch_size,
+                                            sequence_length=sequence_length,
+                                            num_heads=num_heads,
+                                            head_size=head_size,
+                                            causal=causal,
+                                            past_sequence_length=0,
+                                            kv_sequence_length=sequence_length,
+                                            max_cache_sequence_length=None,
+                                            provider=provider,
+                                            device=device,
+                                            dtype=dtype,
+                                            use_kv_cache=False,
+                                            share_past_present_buffer=False,
+                                            input_format=format,
+                                            has_bias=has_bias,
+                                            mask_format=mask_format,
+                                        )
+                                        yield config
     else:
         test_cases = max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
         for i in range(test_cases):
@@ -205,6 +223,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
             sequence_length = sequence_lengths[i % len(sequence_lengths)]
             num_heads = heads[i % len(heads)]
             head_size = head_sizes[i % len(head_sizes)]
+            mask_format = mask_formats[i % len(mask_formats)]
             for causal in [True, False]:
                 for format in formats:
                     for has_bias in get_bias_support(format):
@@ -224,6 +243,7 @@ def no_kv_cache_test_cases(provider: str, comprehensive: bool):
                             share_past_present_buffer=False,
                             input_format=format,
                             has_bias=has_bias,
+                            mask_format=mask_format,
                         )
                         yield config
 
@@ -238,6 +258,11 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
     heads = [1, 3, 4, 16]
     head_sizes = [8, 16, 32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
     device, dtype, formats = get_provider_support_info(provider, True)
+    mask_formats = [
+        AttentionMaskFormat.Mask_None,
+        AttentionMaskFormat.Mask_1D_Key_SeqLen,
+        AttentionMaskFormat.Mask_2D_Key_PaddingMask,
+    ]
 
     if comprehensive:
         sequence_lengths = [*sequence_lengths, 2048]  # Large sequence length is slow and need a lot of memory
@@ -248,28 +273,30 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                         for format in formats:
                             for causal in [True, False]:
                                 for has_past_input in [True, False]:
-                                    for has_bias in get_bias_support(format):
-                                        sequence_length = 1 if has_past_input else past_sequence_length
-                                        past_seq_len = past_sequence_length if has_past_input else 0
-                                        config = MultiHeadAttentionConfig(
-                                            batch_size=batch_size,
-                                            sequence_length=sequence_length,
-                                            num_heads=num_heads,
-                                            head_size=head_size,
-                                            causal=causal,
-                                            past_sequence_length=past_seq_len,
-                                            kv_sequence_length=sequence_length,
-                                            max_cache_sequence_length=None,
-                                            provider=provider,
-                                            device=device,
-                                            dtype=dtype,
-                                            use_kv_cache=True,
-                                            has_past_input=has_past_input,
-                                            share_past_present_buffer=False,
-                                            input_format=format,
-                                            has_bias=has_bias,
-                                        )
-                                        yield config
+                                    for mask_format in mask_formats:
+                                        for has_bias in get_bias_support(format):
+                                            sequence_length = 1 if has_past_input else past_sequence_length
+                                            past_seq_len = past_sequence_length if has_past_input else 0
+                                            config = MultiHeadAttentionConfig(
+                                                batch_size=batch_size,
+                                                sequence_length=sequence_length,
+                                                num_heads=num_heads,
+                                                head_size=head_size,
+                                                causal=causal,
+                                                past_sequence_length=past_seq_len,
+                                                kv_sequence_length=sequence_length,
+                                                max_cache_sequence_length=None,
+                                                provider=provider,
+                                                device=device,
+                                                dtype=dtype,
+                                                use_kv_cache=True,
+                                                has_past_input=has_past_input,
+                                                share_past_present_buffer=False,
+                                                input_format=format,
+                                                has_bias=has_bias,
+                                                mask_format=mask_format,
+                                            )
+                                            yield config
     else:
         test_cases = max(len(batch_sizes), len(sequence_lengths), len(heads), len(head_sizes))
         for i in range(test_cases):
@@ -277,6 +304,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
             past_sequence_length = sequence_lengths[i % len(sequence_lengths)]
             num_heads = heads[i % len(heads)]
             head_size = head_sizes[i % len(head_sizes)]
+            mask_format = mask_formats[i % len(mask_formats)]
             for causal in [True, False]:
                 for format in formats:
                     for has_past_input in [True, False]:
@@ -300,6 +328,7 @@ def kv_cache_test_cases(provider: str, comprehensive: bool):
                                 share_past_present_buffer=False,
                                 input_format=format,
                                 has_bias=has_bias,
+                                mask_format=mask_format,
                             )
                             yield config
 
@@ -392,6 +421,23 @@ def causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=No
     return col_idx <= row_idx + sk - sq
 
 
+def merge_padding_and_causal_masks(config):
+
+    q_mask, k_mask, mask = config.right_side_padding_masks()
+    if config.causal:
+        query_padding_mask = q_mask.reshape(config.batch_size, config.sequence_length)
+        key_padding_mask = k_mask.reshape(config.batch_size, config.total_sequence_length)
+        mask = causal_mask(
+            config.sequence_length,
+            config.total_sequence_length,
+            query_padding_mask,
+            key_padding_mask,
+            device=config.device,
+        )
+
+    return mask
+
+
 def parity_check_mha(
     config: MultiHeadAttentionConfig,
     rtol=1e-3,
@@ -406,6 +452,7 @@ def parity_check_mha(
     out = ort_outputs["output"]
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
 
+    ort_input_format = config.input_format
     no_bias_k_v = config.input_format == InputFormats.Q_K_V_BSNH_BNSH_BNSH
     config.input_format = InputFormats.Q_K_V_BSNH_BSNH_BSNH
     ref_inputs = config.random_inputs(no_bias_k_v=no_bias_k_v)
@@ -427,10 +474,7 @@ def parity_check_mha(
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
 
-    mask = None
-    if config.causal:
-        mask = causal_mask(config.sequence_length, config.total_sequence_length, device=config.device)
-
+    mask = merge_padding_and_causal_masks(config)
     k_cache = None
     v_cache = None
     if config.use_kv_cache:
@@ -439,6 +483,26 @@ def parity_check_mha(
         out_ref, k_cache, v_cache = mha_with_past_reference(config, past_k, past_v, q, k, v, mask=mask)
     else:
         out_ref = attention_reference(config.head_size, q, k, v, mask=mask)
+
+    # Fill zeros for the padded kens for comparison.
+    if config.mask_index_q is not None:
+        for i, m in enumerate(config.mask_index_q):
+            out[i, m:, :, :] = 0
+            out_ref[i, m:, :, :] = 0
+
+    if config.mask_index_kv is not None and config.use_kv_cache:
+        assert k_cache is not None
+        assert v_cache is not None
+        present_key = ort_outputs["present_key"]
+        present_value = ort_outputs["present_value"]
+        for i, n in enumerate(config.mask_index_kv):
+            k_cache[i, :, n:, :] = 0
+            present_key[i, :, n:, :] = 0
+            v_cache[i, :, n:, :] = 0
+            present_value[i, :, n:, :] = 0
+
+    # Restore the input format so that it shows up in the error message correctly.
+    config.input_format = ort_input_format
 
     numpy.testing.assert_allclose(
         out.detach().cpu().numpy(),
@@ -540,10 +604,7 @@ def parity_check_mha_multi_threading(
             .transpose(1, 2)
         )
 
-        mask = None
-        if config.causal:
-            mask = causal_mask(config.sequence_length, config.total_sequence_length, device=config.device)
-
+        mask = merge_padding_and_causal_masks(config)
         k_cache = None
         v_cache = None
         if config.use_kv_cache:
@@ -622,13 +683,13 @@ comprehensive_mode = False
 
 
 class TestMultiHeadAttention(unittest.TestCase):
-    @parameterized.expand(mha_test_cases("CUDAExecutionProvider", comprehensive_mode), skip_on_empty=True)
-    def test_mha_cuda(self, config):
-        parity_check_mha(config, rtol=5e-3, atol=5e-3)
+    def run_mha_cuda(self):
+        for config in mha_test_cases("CUDAExecutionProvider", comprehensive_mode):
+            parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
-    @parameterized.expand(mha_test_cases("CPUExecutionProvider", comprehensive_mode), skip_on_empty=True)
-    def test_mha_cpu(self, config):
-        parity_check_mha(config, rtol=5e-3, atol=5e-3)
+    def run_mha_cpu(self):
+        for config in mha_test_cases("CPUExecutionProvider", comprehensive_mode):
+            parity_check_mha(config, rtol=5e-3, atol=5e-3)
 
     def run_mha_cuda_multi_threading(self, attention_kernel):
         for configs in multi_thread_test_cases("CUDAExecutionProvider", comprehensive_mode):
@@ -646,21 +707,21 @@ class TestMultiHeadAttention(unittest.TestCase):
             exception = parity_check_mha_multi_threading(
                 test_inputs, attention_kernel=attention_kernel, max_threads=len(configs)
             )
-            assert exception is None, f"{attention_kernel=}, {vars(configs[0])}, {exception}"
+            assert exception is None, f"Multi-threading failed: {attention_kernel=}, {vars(configs[0])}, {exception}"
 
-    def test_mha_cuda_multi_threading(self):
+    def run_mha_cuda_multi_threading_default(self):
         if get_compute_capability() >= 60:
             self.run_mha_cuda_multi_threading(SdpaKernel.DEFAULT)
 
-    def test_mha_cuda_multi_threading_efficient(self):
+    def run_mha_cuda_multi_threading_efficient(self):
         if comprehensive_mode and get_compute_capability() >= 60:
             self.run_mha_cuda_multi_threading(SdpaKernel.EFFICIENT_ATTENTION)
 
-    def test_mha_cuda_multi_threading_math(self):
+    def run_mha_cuda_multi_threading_math(self):
         if comprehensive_mode and get_compute_capability() >= 60:
             self.run_mha_cuda_multi_threading(SdpaKernel.MATH)
 
-    def test_mha_cuda_multi_threading_trt(self):
+    def run_mha_cuda_multi_threading_trt(self):
         if get_compute_capability() in [75, 80, 86, 89]:
             self.run_mha_cuda_multi_threading(
                 SdpaKernel.TRT_FUSED_ATTENTION
@@ -668,6 +729,15 @@ class TestMultiHeadAttention(unittest.TestCase):
                 | SdpaKernel.TRT_CAUSAL_ATTENTION
                 | SdpaKernel.TRT_CROSS_ATTENTION
             )
+
+    def test_all(self):
+        # Run tests sequentially to avoid out of memory issue.
+        self.run_mha_cpu()
+        self.run_mha_cuda()
+        self.run_mha_cuda_multi_threading_default()
+        self.run_mha_cuda_multi_threading_efficient()
+        self.run_mha_cuda_multi_threading_math()
+        self.run_mha_cuda_multi_threading_trt()
 
 
 if __name__ == "__main__":
