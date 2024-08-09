@@ -6,7 +6,7 @@ import {InferenceSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
-import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from './trace.js';
+import {traceFunc} from './trace.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -20,8 +20,9 @@ export class InferenceSession implements InferenceSessionInterface {
   }
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
+
+  @traceFunc
   async run(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
-    TRACE_FUNC_BEGIN();
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
@@ -119,7 +120,6 @@ export class InferenceSession implements InferenceSessionInterface {
         }
       }
     }
-    TRACE_FUNC_END();
     return returnValue;
   }
 
@@ -132,10 +132,11 @@ export class InferenceSession implements InferenceSessionInterface {
   static create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: SessionOptions):
       Promise<InferenceSessionInterface>;
   static create(buffer: Uint8Array, options?: SessionOptions): Promise<InferenceSessionInterface>;
+
+  @traceFunc
   static async create(
-      arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number,
-      arg3?: SessionOptions): Promise<InferenceSessionInterface> {
-    TRACE_FUNC_BEGIN();
+      arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number, arg3?: SessionOptions):
+      Promise<InferenceSessionInterface> {
     // either load from a file or buffer
     let filePathOrUint8Array: string|Uint8Array;
     let options: SessionOptions = {};
@@ -198,7 +199,6 @@ export class InferenceSession implements InferenceSessionInterface {
     // resolve backend, update session options with validated EPs, and create session handler
     const [backend, optionsWithValidatedEPs] = await resolveBackendAndExecutionProviders(options);
     const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, optionsWithValidatedEPs);
-    TRACE_FUNC_END();
     return new InferenceSession(handler);
   }
 
