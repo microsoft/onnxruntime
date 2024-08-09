@@ -34,7 +34,6 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"GatherElements", {}},
-          {"GatherND", {}},
           {"Reshape", {}},
           {"Expand", {}},
           {"Flatten", {}},

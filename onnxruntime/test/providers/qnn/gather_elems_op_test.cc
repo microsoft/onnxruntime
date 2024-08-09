@@ -148,10 +148,7 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_IndicesInt32) {
 
 // Test GatherElements op on CPU backend:
 // positive, dynamic, int32 indices.
-//
-// TODO: Enable when fix QNN GatherElements bug.
-// Expected output: [[ [3], [3] ]], actual (incorrect) output: [[ [2], [2] ]]
-TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_IndicesInt32_3D) {
+TEST_F(QnnCPUBackendTests, GatherElems_f32_IndicesInt32_3D) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f},
       {1, 2, 1}, {1, 1}, false, 1,
@@ -176,19 +173,9 @@ TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticIndicesInt32) {
       ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Enable when QNN CPU backend supports negative indices.
-// Test GatherElements op on CPU backend:
-// negative, dynamic, int32 indices.
-TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_NegIndicesInt32) {
-  RunCPUGatherElemsOpTest<float, int64_t>(
-      {2, 2}, {1.f, 2.f, 3.f, 4.f}, {2, 2}, {-1, 0, -1, 0}, true, 1,
-      ExpectedEPNodeAssignment::All);
-}
-
-// TODO: Enable when QNN CPU backend supports negative indices.
 // Test GatherElements op on CPU backend:
 // negative, static, int32 indices.
-TEST_F(QnnCPUBackendTests, DISABLED_GatherElems_f32_StaticNegIndicesInt32) {
+TEST_F(QnnCPUBackendTests, GatherElems_f32_StaticNegIndicesInt32) {
   RunCPUGatherElemsOpTest<float, int32_t>(
       {2, 2}, {1.f, 2.f, 3.f, 4.f}, {2, 2}, {-1, 0, -1, 0}, true, 1,
       ExpectedEPNodeAssignment::All);
@@ -238,23 +225,21 @@ TEST_F(QnnHTPBackendTests, GatherElems_u8_StaticIndicesInt64) {
       ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Enable when QNN HTP backend supports negative indices.
 // Test GatherElements op on HTP backend:
-// negative, positive, int32 indices.
-TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_u8_NegIndicesInt32) {
+// negative, static, int32 indices.
+TEST_F(QnnHTPBackendTests, GatherElems_u8_StaticNegIndicesInt32) {
   RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
-      {2, 3}, {1, 2, 0, 2, 0, 0}, false, 1,
+      {2, 3}, {1, 2, -3, 2, 0, 0}, true, 1,
       ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Enable when QNN HTP backend supports negative indices.
 // Test GatherElements op on HTP backend:
-// negative, static, int32 indices.
-TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_u8_StaticNegIndicesInt32) {
-  RunHTPGatherElemsOpTest<float, uint8_t, int32_t>(
+// negative, static, int64 indices.
+TEST_F(QnnHTPBackendTests, GatherElems_u8_StaticNegIndicesInt64) {
+  RunHTPGatherElemsOpTest<float, uint8_t, int64_t>(
       {3, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f},
-      {2, 3}, {1, 2, 0, 2, 0, 0}, true, 1,
+      {2, 3}, {1, -1, -3, 2, 0, 0}, true, 1,
       ExpectedEPNodeAssignment::All);
 }
 
