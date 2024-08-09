@@ -180,6 +180,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
     ${PROVIDERS_QNN}
+    ${PROVIDERS_VULKAN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -1033,4 +1034,13 @@ if (onnxruntime_USE_QNN)
   endif()
 endif()
 
+if (onnxruntime_USE_VULKAN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_vulkan>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
+
+endif() # onnxruntime_ENABLE_STATIC_ANALYSIS

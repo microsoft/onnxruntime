@@ -424,7 +424,10 @@ bool SetEpsForAllNodes(Graph& graph,
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
 
+      // compiling EPs
       node.SetExecutionProviderType(provider_type);
+
+      // compiling execution providers don't have static kernel registrations
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
@@ -432,7 +435,8 @@ bool SetEpsForAllNodes(Graph& graph,
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
-          provider_type == onnxruntime::kSnpeExecutionProvider) {
+          provider_type == onnxruntime::kSnpeExecutionProvider ||
+          provider_type == onnxruntime::kVulkanExecutionProvider) {
         found = true;
         break;
       }
@@ -657,6 +661,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kVulkanExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -712,6 +717,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kVulkanExecutionProvider)
+          execution_provider = DefaultVulkanExecutionProvider();
+        else
+          ORT_THROW("Unknown provider type: ", provider_type);
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

@@ -101,3 +101,7 @@
 #if defined(USE_AZURE)
 #include "core/providers/azure/azure_provider_factory_creator.h"
 #endif
+
+#if defined(USE_VULKAN)
+#include "core/providers/vulkan/vulkan_provider_factory_creator.h"
+#endif

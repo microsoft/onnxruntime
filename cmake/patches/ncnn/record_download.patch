@@ -1,0 +1,163 @@
+diff --git a/src/command.cpp b/src/command.cpp
+index f4ec5667..9fcec0ab 100644
+--- a/src/command.cpp
++++ b/src/command.cpp
+@@ -489,7 +489,7 @@ void VkCompute::record_upload(const Mat& src, VkImageMat& dst, const Option& opt
+     }
+ }
+
+-void VkCompute::record_download(const VkMat& src, Mat& dst, const Option& opt)
++int VkCompute::record_download(const VkMat& src, Mat& dst, const Option& opt)
+ {
+     //     NCNN_LOGE("record_download buffer");
+
+@@ -560,15 +560,54 @@ void VkCompute::record_download(const VkMat& src, Mat& dst, const Option& opt)
+         dst_staging.data->stage_flags = VK_PIPELINE_STAGE_HOST_BIT;
+     }
+
++    // Updated to use the ORT allocated buffer in dst
++    //
+     // create dst
+-    Mat dst_fp16;
+-    dst_fp16.create_like(dst_staging, opt.blob_allocator);
+-    if (dst_fp16.empty())
+-        return;
++    // Mat dst_fp16;
++    // dst_fp16.create_like(dst_staging, opt.blob_allocator);
++
++    // clang-format off
++
++    // sanity check that we don't need the commented out code below
++    const bool need_TYPE_post_cast_float16_to_float32 =
++        ((dst_staging.elemsize == dst_staging.elempack * 2u) &&
++            (vkdev->info.type() == 0 && (opt.use_fp16_storage ||
++                                        (opt.use_fp16_packed && dst_staging.elempack % 4 == 0))));
++
++    if (need_TYPE_post_cast_float16_to_float32)
++    {
++        // TODO: Update the `cast to fp32 (discrete gpu)` branch below to use dst.data (assuming that is possible
++        // and valid).
++        NCNN_LOGE("The output needs to be unpacked and the current implementation doesn't support using the ORT "
++                  "Tensor buffer for that. ");
++        return -300;
++    }
++
++    if (dst_staging.dims == dst.dims &&
++        dst_staging.w == dst.w &&
++        dst_staging.h == dst.h &&
++        dst_staging.d == dst.d &&
++        dst_staging.c == dst.c &&
++        dst_staging.cstep == dst.cstep)
++    {
++        // everything matches and we can use dst directly
++    }
++    else
++    {
++        // this would be unexpected and needs investigation.
++        // if the dst.total() >= dst_staging.total() we may still be able to use dst.data.
++        NCNN_LOGE("Provided Mat for dst was not compatible with dst_staging.");
++        return -300;
++    }
++
++    // clang-format on
++
++    if (dst.empty())
++        return 0;
+
+     // download
+     d->download_post_buffers.push_back(dst_staging);
+-    d->download_post_mats_fp16.push_back(dst_fp16);
++    d->download_post_mats_fp16.push_back(dst); // originally used dst_fp16
+
+     // post memcpy device to dst
+     {
+@@ -580,40 +619,44 @@ void VkCompute::record_download(const VkMat& src, Mat& dst, const Option& opt)
+         d->delayed_records.push_back(r);
+     }
+
+-    // cast to fp32 (discrete gpu)
+-    if (dst_fp16.elemsize == dst_fp16.elempack * 2u)
+-    {
+-        if (vkdev->info.type() == 0 && (opt.use_fp16_storage || (opt.use_fp16_packed && dst_fp16.elempack % 4 == 0)))
+-        {
+-            int dims = dst_fp16.dims;
+-            if (dims == 1)
+-                dst.create(dst_fp16.w, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
+-            if (dims == 2)
+-                dst.create(dst_fp16.w, dst_fp16.h, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
+-            if (dims == 3)
+-                dst.create(dst_fp16.w, dst_fp16.h, dst_fp16.c, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
+-            if (dims == 4)
+-                dst.create(dst_fp16.w, dst_fp16.h, dst_fp16.d, dst_fp16.c, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
+-
+-            d->download_post_mats.push_back(dst);
++    return 0;
+
+-            VkComputePrivate::record r;
+-            r.type = VkComputePrivate::record::TYPE_post_cast_float16_to_float32;
+-            r.command_buffer = 0;
+-            r.post_cast_float16_to_float32.download_post_mat_fp16_offset = d->download_post_mats_fp16.size() - 1;
+-            r.post_cast_float16_to_float32.download_post_mat_offset = d->download_post_mats.size() - 1;
+-            r.post_cast_float16_to_float32.num_threads = opt.num_threads;
+-            d->delayed_records.push_back(r);
+-        }
+-        else
+-        {
+-            dst = dst_fp16;
+-        }
+-    }
+-    else
+-    {
+-        dst = dst_fp16;
+-    }
++    // below is commented out due to check on need_TYPE_post_cast_float16_to_float32
++    //
++    //// cast to fp32 (discrete gpu)
++    //if (dst_fp16.elemsize == dst_fp16.elempack * 2u)
++    //{
++    //    if (vkdev->info.type() == 0 && (opt.use_fp16_storage || (opt.use_fp16_packed && dst_fp16.elempack % 4 == 0)))
++    //    {
++    //        int dims = dst_fp16.dims;
++    //        if (dims == 1)
++    //            dst.create(dst_fp16.w, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
++    //        if (dims == 2)
++    //            dst.create(dst_fp16.w, dst_fp16.h, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
++    //        if (dims == 3)
++    //            dst.create(dst_fp16.w, dst_fp16.h, dst_fp16.c, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
++    //        if (dims == 4)
++    //            dst.create(dst_fp16.w, dst_fp16.h, dst_fp16.d, dst_fp16.c, (size_t)(dst_fp16.elempack * 4u), dst_fp16.elempack, opt.blob_allocator);
++
++    //        d->download_post_mats.push_back(dst);
++
++    //        VkComputePrivate::record r;
++    //        r.type = VkComputePrivate::record::TYPE_post_cast_float16_to_float32;
++    //        r.command_buffer = 0;
++    //        r.post_cast_float16_to_float32.download_post_mat_fp16_offset = d->download_post_mats_fp16.size() - 1;
++    //        r.post_cast_float16_to_float32.download_post_mat_offset = d->download_post_mats.size() - 1;
++    //        r.post_cast_float16_to_float32.num_threads = opt.num_threads;
++    //        d->delayed_records.push_back(r);
++    //    }
++    //    else
++    //    {
++    //        dst = dst_fp16;
++    //    }
++    //}
++    //else
++    //{
++    //    dst = dst_fp16;
++    //}
+ }
+
+ void VkCompute::record_download(const VkImageMat& src, Mat& dst, const Option& opt)
+diff --git a/src/command.h b/src/command.h
+index 88912739..cabd838d 100644
+--- a/src/command.h
++++ b/src/command.h
+@@ -41,7 +41,7 @@ public:
+
+     void record_upload(const Mat& src, VkImageMat& dst, const Option& opt);
+
+-    void record_download(const VkMat& src, Mat& dst, const Option& opt);
++    int record_download(const VkMat& src, Mat& dst, const Option& opt);
+
+     void record_download(const VkImageMat& src, Mat& dst, const Option& opt);

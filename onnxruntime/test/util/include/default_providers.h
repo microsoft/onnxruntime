@@ -64,6 +64,7 @@ std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const Provid
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultVulkanExecutionProvider();
 
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
     const std::unordered_set<std::string>& supported_ops);

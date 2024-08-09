@@ -1,0 +1,28 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a67ab6af..10fae775 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -595,10 +595,20 @@ endif()
+ if(NCNN_VULKAN)
+     if(NCNN_SYSTEM_GLSLANG)
+         find_package(Threads)
+-        find_package(glslang QUIET)
++        # find_package fails for glslang but onnxruntime_fetchcontent_makeavailable has created all the necessary
++        # targets and we manually set glslang_FOUND to indicate this.
++        # Side note: it could be that onnxruntime_fetchcontent_makeavailable does not implement the cmake 3.24
++        # FetchContent redirection mode and if it did the find_package here would work.
++        if (NOT glslang_FOUND)
++            find_package(glslang QUIET)
++        endif()
++        message(STATUS "glslang_FOUND: ${glslang_FOUND}")
+         if(glslang_FOUND)
+-            add_library(glslang ALIAS glslang::glslang)
+-            add_library(SPIRV ALIAS glslang::SPIRV)
++            # Add glslang libraries if they are not already targets
++            if(NOT TARGET glslang)
++                add_library(glslang ALIAS glslang::glslang)
++                add_library(SPIRV ALIAS glslang::SPIRV)
++            endif()
+         else()
+             set(GLSLANG_TARGET_DIR "GLSLANG-NOTFOUND" CACHE PATH "Absolute path to glslangTargets.cmake directory")
+             if(NOT GLSLANG_TARGET_DIR AND NOT DEFINED ENV{GLSLANG_TARGET_DIR})
