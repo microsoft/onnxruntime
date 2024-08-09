@@ -86,8 +86,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
 
   auto create_not_supported_status = [&provider_name]() {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, (std::string(provider_name) +
+                                                        " execution provider is not supported in this build.")
+                                                           .c_str());
   };
 
   for (const auto& config_pair : provider_options) {
@@ -148,7 +149,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "VULKAN") == 0) {
+  } else if (strcmp(provider_name, "Vulkan") == 0) {
 #if defined(USE_VULKAN)
     options->provider_factories.push_back(VulkanProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
@@ -157,7 +158,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'DML', 'JS', 'OpenVINO', "
+                                   "'QNN', 'SNPE', 'WEBNN', 'XNNPACK', 'Vulkan'.");
   }
 
   return status;
