@@ -9,11 +9,12 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 
 using namespace onnxruntime::contrib::attention;
 
 namespace onnxruntime {
-void AttentionKernelOptions::Initialize(int value, bool use_build_flag) {
+void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool check_cudnn_version) {
   if (value > 0) {
     use_flash_attention_ = (value & static_cast<int>(AttentionBackend::FLASH_ATTENTION)) > 0;
     use_efficient_attention_ = (value & static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION)) > 0;
@@ -27,7 +28,8 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag) {
     use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFlashAttention, false);
     use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableMemoryEfficientAttention, false);
     use_trt_fused_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedSelfAttention, false);
-    use_cudnn_flash_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableCudnnFlashAttention, false);
+    use_cudnn_flash_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableCudnnFlashAttention, true);
+
     use_unfused_ = true;
     use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableTrtFlashAttention, false);
     use_trt_cross_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedCrossAttention, false);
@@ -45,6 +47,14 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag) {
       kMinSeqLenForEfficientAttentionFp32,
       value > 0 ? 0 : kDefaultMinSeqLenForEfficientAttentionFp32);
 
+  // Enable cuDNN flash attention only when it is stable (requires cuDNN version >= 9.3.0).
+  if (use_cudnn_flash_attention_ && check_cudnn_version && !::onnxruntime::cudnn_sdpa::is_stable()) {
+    use_cudnn_flash_attention_ = false;
+    if (enable_kernel_debug_info_) {
+      std::cout << "cuDNN Flash Attention is disabled. Requires cuDNN 9.3 or later." << std::endl;
+    }
+  }
+
   if (use_build_flag) {
     // Some kernels can be disabled at build time. If they are disabled, we should not use them.
 #ifndef USE_FLASH_ATTENTION
@@ -58,9 +68,9 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag) {
 }
 
 void AttentionKernelOptions::InitializeOnce(
-    int sdpa_kernel, bool use_build_flag) {
+    int sdpa_kernel, bool use_build_flag, bool check_cudnn_version) {
   std::call_once(this->initialize_once_flag_, [&]() {
-    this->Initialize(sdpa_kernel, use_build_flag);
+    this->Initialize(sdpa_kernel, use_build_flag, check_cudnn_version);
     if (this->enable_kernel_debug_info_) {
       this->Print();
     }

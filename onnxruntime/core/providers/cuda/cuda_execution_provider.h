@@ -88,7 +88,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   const AttentionKernelOptions* GetAttentionKernelOptions() const {
-    attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true);
+    attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true, true);
     return &attention_kernel_options_;
   }
 #endif

@@ -165,7 +165,10 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
 template <typename T>
 bool NoQkvWorkspace_MHA_Cross(AttentionData<T>& data) {
   // query, key and value are passed as Q, K and V for the following conditions.
-  return (data.use_memory_efficient_attention || data.use_flash_attention) && (data.bias == nullptr);
+  return (data.use_memory_efficient_attention ||
+          data.use_flash_attention ||
+          data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) &&
+         data.bias == nullptr;
 }
 
 // For MultiHeadAttention with cross attention (Q_K_V_BSNH_BNSH_BNSH format)
@@ -186,8 +189,9 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
 
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention ||
+      data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Add bias for Q
     if (data.bias != nullptr) {
       LaunchAddBias(stream, max_threads_per_block, batch_size, sequence_length, num_heads, qk_head_size,
@@ -200,9 +204,7 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
     data.k = const_cast<T*>(data.key);
     data.v = const_cast<T*>(data.value);
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
-  } else
-#endif
-  {  // unfused kernel
+  } else {  // unfused kernel
     assert(data.IsUnfused());
     if (data.bias == nullptr) {
       // Transpose query from BSNH to BNSH
@@ -229,7 +231,10 @@ Status PrepareQkv_MHA_Cross(contrib::AttentionParameters& parameters,
 template <typename T>
 bool NoQkvWorkspace_MHA_NoPast(AttentionData<T>& data) {
   // query, key and value are passed as Q, K and V for the following conditions.
-  return (data.use_memory_efficient_attention || data.use_flash_attention) && data.bias == nullptr;
+  return (data.use_memory_efficient_attention ||
+          data.use_flash_attention ||
+          data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) &&
+         data.bias == nullptr;
 }
 
 // For MultiHeadAttention without past state, with Q, K and V inputs
@@ -271,9 +276,9 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
         data.bias, data.query, data.key, data.value, data.q, true, kv_sequence_length);
     data.v = nullptr;
     data.qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
-  }
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  else if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  } else if (data.use_memory_efficient_attention ||
+             data.use_flash_attention ||
+             data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     if (data.bias != nullptr) {
       LaunchAddBias(stream, max_threads_per_block,
                     batch_size, sequence_length, kv_sequence_length,
@@ -286,9 +291,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
     }
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  }
-#endif
-  else if (data.fused_runner != nullptr) {
+  } else if (data.fused_runner != nullptr) {
     assert(qk_head_size == v_head_size);
     assert(data.relative_position_bias == nullptr);
 
@@ -334,7 +337,9 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
 
 template <typename T>
 bool NoQkvWorkspace_MHA_WithPast_NoBias(AttentionData<T>& data) {
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention ||
+      data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Q, K and V redirects to query, present_k and present_v, so we do not need extra workspace for QKV.
     return data.past_key == nullptr && data.present_key != nullptr;
   }
@@ -373,8 +378,9 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
     data.v = data.present_value;
   }
 
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention ||
+      data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Use oiginal Query (BSNH) since there is no bias.
     data.q = const_cast<T*>(data.query);
 
@@ -385,9 +391,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
                                        max_threads_per_block, false, data.value, data.v));
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
-  } else
-#endif
-  {  // unfused kernel
+  } else {  // unfused kernel
     assert(data.IsUnfused());
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, data.query, data.q));
@@ -436,8 +440,9 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
     data.v = data.present_value;
   }
 
-#if USE_MEMORY_EFFICIENT_ATTENTION || USE_FLASH_ATTENTION
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention ||
+      data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Query(BxSxNxH) + Bias_Q => Q (BxSxNxH)
     LaunchAddBias(stream, max_threads_per_block, batch_size, sequence_length, num_heads, qk_head_size,
                   data.bias, data.query, data.q);
@@ -456,9 +461,7 @@ Status PrepareQkv_MHA_WithPast_Bias(contrib::AttentionParameters& parameters,
         data.value, data.bias + 2 * num_heads * qk_head_size, data.v, true, -1);
 
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
-  } else
-#endif
-  {  // unfused kernel
+  } else {  // unfused kernel
     assert(data.IsUnfused());
 
     constexpr int format = 0;
@@ -514,7 +517,8 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention || data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // unpack qkv to BSNH.
     constexpr int format = 4;
     T* qkv_add_bias = nullptr;
@@ -586,7 +590,8 @@ Status PrepareQkv_MHA_PackedKV(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
 
-  if (data.use_memory_efficient_attention || data.use_flash_attention) {
+  if (data.use_memory_efficient_attention || data.use_flash_attention ||
+      data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Note that there is no bias so we need not output query to q.
     data.q = const_cast<T*>(data.query);
     // Unpack kv to BSNH.

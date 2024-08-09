@@ -335,6 +335,56 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
   }
 }
 
+template <typename T>
+void PrintTensorByDims(const CudaTensorConsoleDumper* dumper,
+                       const char* name,
+                       const T* tensor,
+                       gsl::span<const int64_t>& dims) {
+  auto num_dims = dims.size();
+  if (num_dims == 1) {
+    dumper->Print(name, tensor, 1, static_cast<int>(dims[0]));
+  } else if (num_dims == 2) {
+    dumper->Print(name, tensor, static_cast<int>(dims[0]), static_cast<int>(dims[1]));
+  } else if (num_dims == 3) {
+    dumper->Print(name, tensor, static_cast<int>(dims[0]), static_cast<int>(dims[1]), static_cast<int>(dims[2]));
+  } else if (num_dims == 4) {
+    dumper->Print(name, tensor,
+                  static_cast<int>(dims[0]),
+                  static_cast<int>(dims[1]),
+                  static_cast<int>(dims[2]),
+                  static_cast<int>(dims[3]));
+  } else if (num_dims == 5) {
+    dumper->Print(name, tensor,
+                  static_cast<int>(dims[0]) * static_cast<int>(dims[1]),
+                  static_cast<int>(dims[2]),
+                  static_cast<int>(dims[3]),
+                  static_cast<int>(dims[4]));
+  }
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<int32_t>(this, name, tensor, dims);
+}
+void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<int64_t>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<float>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<half>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<MLFloat16>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const BFloat16* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<BFloat16>(this, name, tensor, dims);
+}
+
 #else
 CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
 }
@@ -410,6 +460,25 @@ void CudaTensorConsoleDumper::Print(const char*, int, bool) const {
 
 void CudaTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
+
+void CudaTensorConsoleDumper::Print(const char*, const int32_t*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const int64_t*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const float*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const half*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const BFloat16*, gsl::span<const int64_t>&) const {
+}
+
 #endif
 
 }  // namespace cuda

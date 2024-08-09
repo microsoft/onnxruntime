@@ -249,6 +249,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_cudnn_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -261,6 +262,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
+                                                   use_cudnn_flash_attention,
                                                    false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
 
@@ -297,7 +299,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
 
-  return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
+  cudnnHandle_t cudnn = GetCudnnHandle(context);
+  return QkvToContext<CudaT>(device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

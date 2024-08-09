@@ -429,6 +429,9 @@ Status CheckInputs(const T* query,
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
     output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    if (relative_position_bias != nullptr) {
+      output_parameters->relative_position_bias_dims = relative_position_bias->Shape().GetDims();
+    }
     output_parameters->qkv_format = qkv_format;
   }
 

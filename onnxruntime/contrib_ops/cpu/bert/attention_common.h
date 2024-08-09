@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
@@ -46,6 +47,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
   AttentionKernel_Default
 };
 
@@ -69,6 +71,7 @@ struct AttentionParameters {
   bool past_present_share_buffer;
   bool do_rotary;
   bool broadcast_res_pos_bias;
+  gsl::span<const int64_t> relative_position_bias_dims;
   float mask_filter_value;
   float scale;
   bool use_tf32;
