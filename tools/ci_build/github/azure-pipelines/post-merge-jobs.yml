@@ -249,8 +249,6 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -268,8 +266,6 @@ stages:
       isX86: false
       job_name_suffix: x64_no_memory_profiling
       RunOnnxRuntimeTests: false
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -287,8 +283,6 @@ stages:
       isX86: false
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -306,8 +300,6 @@ stages:
       isX86: false
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -325,8 +317,6 @@ stages:
       isX86: false
       job_name_suffix: x64_neural_speed
       RunOnnxRuntimeTests: true
-      isTraining: false
-      ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'

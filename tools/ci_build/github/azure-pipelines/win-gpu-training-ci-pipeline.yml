@@ -60,4 +60,3 @@ stages:
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10
-        isTraining: true

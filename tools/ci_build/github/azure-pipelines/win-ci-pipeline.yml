@@ -46,8 +46,6 @@ stages:
         isX86: false
         job_name_suffix: x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: false
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -93,8 +91,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: false
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -111,7 +107,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: false
         ORT_EP_NAME: DNNL
         GenerateDocumentation: false
         WITH_CACHE: false
@@ -131,7 +126,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: true
-        isTraining: false
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
         WITH_CACHE: false
@@ -150,7 +144,6 @@ stages:
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: false
-        isTraining: false
         ORT_EP_NAME: VITISAI
         GenerateDocumentation: false
         WITH_CACHE: false
@@ -170,8 +163,6 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # WinML has many warnings
         EnablePython: false
-        isTraining: false
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -189,8 +180,6 @@ stages:
         isX86: true
         job_name_suffix: x86_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: false
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
@@ -207,8 +196,6 @@ stages:
         isX86: false
         job_name_suffix: training_x64_debug
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: true
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
@@ -225,8 +212,6 @@ stages:
         isX86: false
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: true
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
@@ -244,8 +229,6 @@ stages:
         job_name_suffix: ort_training_apis_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         EnablePython: false
-        isTraining: true
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
@@ -271,8 +254,6 @@ stages:
         job_name_suffix: x64_release_azure
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         EnablePython: false
-        isTraining: false
-        ORT_EP_NAME: CPU
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
