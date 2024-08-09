@@ -23,6 +23,8 @@ The SDK and NDK packages can be installed via Android Studio or the sdkmanager c
 Android Studio is more convenient but a larger installation.
 The command line tools are smaller and usage can be scripted, but are  a little more complicated to setup. They also require a Java runtime environment to be available.
 
+Generally, you'll want to use the latest stable NDK version. We'll refer to the version that you use as `<NDK version>` from here on.
+
 Resources:
 
 * [API levels](https://developer.android.com/guide/topics/manifest/uses-sdk-element.html)
@@ -36,7 +38,7 @@ Resources:
 2. Install any additional SDK Platforms if necessary
 
    * File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-   * Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
+   * Note that the SDK path you need to use as `--android_sdk_path` when building ORT is also on this configuration page
    * Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 3. Install an NDK version
@@ -44,8 +46,7 @@ Resources:
    * File->Settings->Appearance & Behavior->System Settings->Android SDK
    * 'SDK Tools' tab
       * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
-   * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
-      * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
+   * The NDK path will be the `ndk/<NDK version>` subdirectory of the SDK path shown
 
 ### sdkmanager from command line tools
 
@@ -81,8 +82,8 @@ Resources:
 * Install the NDK
   * Find the available NDK versions by running `sdkmanager --list`
   * Install
-    * install the desired version, e.g., `sdkmanager --install "ndk;21.1.6352462"`
-    * NDK path in our example with this install would be `.../Android/ndk/21.1.6352462`
+    * install the desired version, e.g., `sdkmanager --install "ndk;<NDK version>"`
+    * NDK path in our example with this install would be `.../Android/ndk/<NDK version>`
 
 ## Android Build Instructions
 
@@ -97,7 +98,7 @@ The [Ninja](https://ninja-build.org/) generator needs to be used to build on Win
 e.g. using the paths from our example
 
 ```
-./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/21.1.6352462 --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
+./build.bat --android --android_sdk_path .../Android --android_ndk_path .../Android/ndk/<NDK version> --android_abi arm64-v8a --android_api 27 --cmake_generator Ninja
 ```
 
 ### Cross compiling on Linux and macOS

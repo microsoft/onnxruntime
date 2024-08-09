@@ -88,10 +88,10 @@ One of the outputs of the ORT format conversion is a build configuration file, c
 
 To give an idea of the binary size difference between the pre-built package and a custom build:
 
-File|Pre-built package size (bytes)|Custom build size (bytes)
+File|1.18.0 pre-built package size (bytes)|1.18.0 custom build size (bytes)
 -|-|-
 AAR|24415212|7532309
 `jni/arm64-v8a/libonnxruntime.so`, uncompressed|16276832|3962832
 `jni/x86_64/libonnxruntime.so`, uncompressed|18222208|4240864
 
-This custom build supports the operators needed to run a ResNet50 model. It also has limited framework support (built with `--minimal_build=extended`), only supporting ORT format models. It has support for the NNAPI and XNNPACK execution providers.
+This custom build supports the operators needed to run a ResNet50 model. It requires the use of ORT format models (as it was built with `--minimal_build=extended`). It has support for the NNAPI and XNNPACK execution providers.
