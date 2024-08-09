@@ -197,12 +197,16 @@
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn CUDA::curand CUDA::cufft CUDA::cudart
-              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-      if(onnxruntime_CUDNN_HOME)
-          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      include(cudnn_frontend) # also defines CUDNN::*
+      if (onnxruntime_USE_CUDA_NHWC_OPS)
+        if(CUDNN_MAJOR_VERSION GREATER 8)
+          add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
+        else()
+          message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
+        endif()
       endif()
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
