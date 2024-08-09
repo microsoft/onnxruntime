@@ -1804,15 +1804,15 @@ def setup_migraphx_vars(args):
     migraphx_home = None
 
     if args.use_migraphx:
-        print(f"migraphx_home = {args.migraphx_home}")
         migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
+        print(f"migraphx_home = {args.migraphx_home}")
 
-        migraphx_home_not_valid = migraphx_home and not os.path.exists(migraphx_home)
+        migraphx_home_not_valid = migraphx_home is None or not os.path.exists(migraphx_home)
 
         if migraphx_home_not_valid:
-            raise BuildError(
-                "migraphx_home paths must be specified and valid.",
-                f"migraphx_home='{migraphx_home}' valid={migraphx_home_not_valid}.",
+            log.warning(
+                f"--use_migraphx is set but migraphx_home ({migraphx_home}) is unspecified or invalid. "
+                "Will fall back to searching in the default paths."
             )
     return migraphx_home or ""
 
