@@ -70,11 +70,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("strides", emscripten::val::array(strides));
   const auto dilations = helper.Get("dilations", std::vector<int32_t>{1, 1});
   options.set("dilations", emscripten::val::array(dilations));
-  if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-    options.set("layout", emscripten::val("nhwc"));
-  } else {
-    options.set("layout", emscripten::val("nchw"));
-  }
+  options.set("layout", emscripten::val("nchw"));
 
   // Add Padding.
   // Usually using autopadding is more efficient than using explicit padding.
@@ -93,8 +89,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                       helper.Get("strides", std::vector<int64_t>{1, 1}),
                                       helper.Get("dilations", std::vector<int64_t>{1, 1}),
                                       auto_pad_type,
-                                      pads_out,
-                                      model_builder.GetPreferredLayout() == DataLayout::NCHW));
+                                      pads_out));
     pads = GetVecUint32FromVecInt64(pads_out);
   }
   // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
