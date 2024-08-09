@@ -141,7 +141,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
              strcmp(name1, onnxruntime::OpenVINO_GPU) == 0 ||
              strcmp(name1, onnxruntime::DML) == 0 ||
              strcmp(name1, onnxruntime::HIP) == 0 ||
-             strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0) {
+             strcmp(name1, onnxruntime::WEBGPU_BUFFER) == 0 ||
+             strcmp(name1, onnxruntime::WEBNN_BUFFER) == 0) {
     *out = new OrtMemoryInfo(
         name1, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id1)), id1,
         mem_type1);

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OptionsDimensions, OptionsFormat, OptionsNormalizationParameters, OptionsTensorFormat, OptionsTensorLayout, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {OptionsDimensions, OptionsFormat, OptionsNormalizationParameters, OptionsTensorFormat, OptionsTensorLayout, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromMLBufferOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
 import {Tensor} from './tensor-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
 
@@ -272,6 +272,15 @@ export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes
     gpuBuffer: TensorInterface.GpuBufferType, options: TensorFromGpuBufferOptions<T>): Tensor => {
   const {dataType, dims, download, dispose} = options;
   return new Tensor({location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims, download, dispose});
+};
+
+/**
+ * implementation of Tensor.fromMLBuffer().
+ */
+export const tensorFromMLBuffer = <T extends TensorInterface.MLBufferDataTypes>(
+    mlBuffer: TensorInterface.MLBufferType, options: TensorFromMLBufferOptions<T>): Tensor => {
+  const {dataType, dims, download, dispose} = options;
+  return new Tensor({location: 'ml-buffer', type: dataType ?? 'float32', mlBuffer, dims, download, dispose});
 };
 
 /**
