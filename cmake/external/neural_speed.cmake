@@ -5,11 +5,12 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" AND onnxruntime_target_platfo
 endif()
 
 if(USE_NEURAL_SPEED)
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
       neural_speed
       URL ${DEP_URL_neural_speed}
       URL_HASH SHA1=${DEP_SHA1_neural_speed}
       PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/neural_speed/150e7527d5286ddd3a995c228dedf8d76a7a86bc.patch
+      EXCLUDE_FROM_ALL
   )
   set(BTLA_USE_OPENMP OFF)
   onnxruntime_fetchcontent_makeavailable(neural_speed)

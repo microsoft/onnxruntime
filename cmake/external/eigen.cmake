@@ -3,10 +3,11 @@ if (onnxruntime_USE_PREINSTALLED_EIGEN)
     file(TO_CMAKE_PATH ${eigen_SOURCE_PATH} eigen_INCLUDE_DIRS)
     target_include_directories(eigen INTERFACE ${eigen_INCLUDE_DIRS})
 else ()
-    FetchContent_Declare(
+    onnxruntime_fetchcontent_declare(
         eigen
         URL ${DEP_URL_eigen}
         URL_HASH SHA1=${DEP_SHA1_eigen}
+        EXCLUDE_FROM_ALL
     )
 
     FetchContent_Populate(eigen)
