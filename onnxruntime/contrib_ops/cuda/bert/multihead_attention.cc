@@ -182,6 +182,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
 
+  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
   bool use_fused_cross_attention =
       !use_flash_attention &&
       !disable_fused_cross_attention_ &&
@@ -213,7 +215,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == relative_position_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
       nullptr == past_key && nullptr == present_key &&
-      (nullptr == key_padding_mask || AttentionMaskType::MASK_1D_KEY_SEQ_LEN) &&
+      is_mask_none_or_1d_k_len &&
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
