@@ -92,7 +92,7 @@ NOTE: Including a max_length will cut off the assistant's answer once reaching t
 You will be using [Android Studio](https://developer.android.com/studio) to run the app.
 
 ### Download the application source code
-Clone the [ONNX Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/c29d8edd6d010a2649d69f84f54539f1062d776d) repository.
+Clone the [ONNX Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples) repository.
 
 ### Enable Developer Mode on Mobile
 On your Android Mobile device, go to "Settings > About Phone > Software information" and tap the "Build Number" tile repeatedly until you see the message “You are now in developer mode”. In "Developer Options", turn on Wireless or USB debugging.
