@@ -48,7 +48,6 @@ class ConvBase : public JsKernel {
     std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
     int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
 
-    // currently only support Conv 1D/2D. TODO: support Conv3D and other
     JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                  "format" : $11 ? "NHWC" : "NCHW",
                                  "auto_pad" : $1,
@@ -65,8 +64,8 @@ class ConvBase : public JsKernel {
                                JSEP_HEAP32_INDEX_START(dilations),
                                JSEP_HEAP32_INDEX_END(dilations),
                                static_cast<int32_t>(conv_attrs_.group),
-                               JSEP_HEAP32_INDEX_START(kernel_shape),
-                               JSEP_HEAP32_INDEX_END(kernel_shape),
+                               JSEP_HEAP32_INDEX_START(kernel_shapes),
+                               JSEP_HEAP32_INDEX_END(kernel_shapes),
                                JSEP_HEAP32_INDEX_START(local_pads),
                                JSEP_HEAP32_INDEX_END(local_pads),
                                JSEP_HEAP32_INDEX_START(strides),
