@@ -176,7 +176,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
       }
     } else {
-      p_deserialize_tensor = std::make_unique<Tensor>(type, TensorShape(), alloc);
+      p_deserialize_tensor = std::make_unique<Tensor>(type, TensorShape(), default_cpu_alloc);
     }
 
     OrtCallback ext_data_deleter;
