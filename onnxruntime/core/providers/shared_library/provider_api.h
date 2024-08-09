@@ -220,6 +220,7 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "provider_wrappedtypes.h"

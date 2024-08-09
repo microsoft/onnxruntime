@@ -99,6 +99,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
+                                             const ExternalDataLoaderManager& external_data_loader_mgr,
                                              bool use_device_allocator_for_initializers = false,
                                              Tensor* buffered_tensor = nullptr) {
   if (bool(alloc) == (m != nullptr)) {
@@ -113,6 +114,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
+
   if (m != nullptr) {
     p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
@@ -132,7 +134,16 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   }
 
-  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
+  // Check if custom external data loader is available for the tensor
+  const onnxruntime::IExternalDataLoader* external_data_loader = nullptr;
+  if (utils::HasExternalData(tensor_proto)) {
+    external_data_loader = external_data_loader_mgr.GetExternalDataLoader(alloc->Info());
+  }
+
+  if (external_data_loader != nullptr) {
+    ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
+                                                                  *external_data_loader, *p_tensor));
+  } else if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
     if (utils::HasExternalData(tensor_proto)) {
       // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
@@ -201,7 +212,9 @@ common::Status SaveInitializedTensors(
     const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
     const SaveTensorFunction& save_tensor_func,
-    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
+    const logging::Logger& logger,
+    const DataTransferManager& data_transfer_mgr,
+    const ExternalDataLoaderManager& external_data_loader_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
@@ -333,7 +346,7 @@ common::Status SaveInitializedTensors(
       }
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
-                                         default_cpu_alloc, ort_value, data_transfer_mgr,
+                                         default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
                                          use_device_allocator_for_initializers, p_tensor);
       if (!st.IsOK()) {
         std::ostringstream oss;

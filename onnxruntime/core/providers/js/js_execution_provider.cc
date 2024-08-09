@@ -22,6 +22,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "data_transfer.h"
+#include "external_data_loader.h"
 
 namespace onnxruntime {
 
@@ -702,9 +703,9 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, co
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
-    return std::make_unique<js::JsCustomAllocator>();
+    return std::make_unique<js::WebGpuAllocator>();
   },
-                                                    0, false);  // TODO(leca): REVIEW: need JsCPUAllocator?
+                                                    0, false);
   return std::vector<AllocatorPtr>{CreateAllocator(customAllocatorCreationInfo)};
 }
 
@@ -760,6 +761,10 @@ std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
 
 std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer() const {
   return std::make_unique<js::DataTransfer>();
+}
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader() const {
+  return std::make_unique<js::ExternalDataLoader>();
 }
 
 JsExecutionProvider::~JsExecutionProvider() {

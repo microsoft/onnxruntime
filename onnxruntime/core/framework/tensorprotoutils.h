@@ -14,6 +14,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
@@ -158,6 +159,12 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
                                          Tensor* buffered_tensor = nullptr);
+
+// Given a tensor proto with external data obtain a tensor using the specified custom external data loader.
+common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                  const IExternalDataLoader& ext_data_loader,
+                                                  Tensor& tensor);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
