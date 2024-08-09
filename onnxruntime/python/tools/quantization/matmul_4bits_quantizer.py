@@ -721,7 +721,7 @@ class MatMul4BitsQuantizer:
                 for opset in opset_import:
                     if opset.domain in ["ai.onnx", ""] and opset.version < 21:
                         logger.warning(
-                            "The target opset is under 21 and doesn't support int4 data type. "
+                            "The opset of the input model is under 21 and doesn't support int4 data type. "
                             "Force to update it to opset 21, but the generated model may not be a valid model."
                         )
                         self.model.set_opset_import(opset.domain, 21)
