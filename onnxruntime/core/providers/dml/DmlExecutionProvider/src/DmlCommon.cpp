@@ -121,7 +121,7 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     uint32_t deviceTypeMask = 0u;
 
     // Form the bitmask of all supported data types.
-    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT64; ++i)
+    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT4; ++i)
     {
         DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT dataTypeQuery = { static_cast<DML_TENSOR_DATA_TYPE>(i) };
         DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT dataTypeSupport = {};
