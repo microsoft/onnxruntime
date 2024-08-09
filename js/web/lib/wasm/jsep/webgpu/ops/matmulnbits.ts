@@ -3,11 +3,13 @@
 
 import {DataType, getTensorElementSize} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
+import {BroadcastUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createTensorShapeVariables, getMaxComponents, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from './common';
+import {createMatMulNBitsSharedProgramInfo} from './matmulnbits-shared';
+import {createMatMulNBitsSpecialAProgramInfo} from './matmulnbits-special-a';
 
 //  TODO support quantization bits not equal to 4
 export interface MatMulNBitsAttributes extends AttributeWithCacheKey {
@@ -296,10 +298,26 @@ export const createMatMulNBitsProgramInfo =
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
-  const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
-  context.compute(createMatMulNBitsProgramInfo(
-      context.inputs, attributes, maxComputeWorkgroupSizes, maxComputeWorkgroupStorageSize));
+
+  const N = context.inputs[1].dims[0];
+  const K = context.inputs[0].dims[context.inputs[0].dims.length - 1];
+  if (context.inputs.length === 3 && attributes.bits === 4 && N % 4 == 0 && N >= 32 && K % 32 === 0) {
+    const outputShape = BroadcastUtil.calcShape(context.inputs[0].dims, [attributes.k, attributes.n], true);
+    if (!outputShape) {
+      throw new Error('Can\'t use matmul on the given tensors');
+    }
+    if (context.inputs[0].dims.length === 3 && context.inputs[0].dims[0] === 1 && context.inputs[0].dims[1] === 1 &&
+        context.inputs[0].dims[2] >= 1024) {
+      context.compute(createMatMulNBitsSpecialAProgramInfo(context.inputs, attributes, outputShape));
+    } else {
+      context.compute(createMatMulNBitsSharedProgramInfo(context.inputs, attributes, outputShape));
+    }
+  } else {
+    const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
+    const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
+    context.compute(createMatMulNBitsProgramInfo(
+        context.inputs, attributes, maxComputeWorkgroupSizes, maxComputeWorkgroupStorageSize));
+  }
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
