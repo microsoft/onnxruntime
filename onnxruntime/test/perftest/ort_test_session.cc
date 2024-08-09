@@ -4,18 +4,21 @@
 
 #include "ort_test_session.h"
 #include <algorithm>
-#include <limits>
+#include <assert.h>
 #include <fstream>
-#include <set>
+#include <limits>
 #include <list>
+#include <set>
 #include <type_traits>
+
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
-#include <assert.h>
-#include "providers.h"
-#include "TestCase.h"
+
+#include "test/perftest/command_args_parser.h"
+#include "test/util/include/providers.h"
+#include "test/onnx/TestCase.h"
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
@@ -579,6 +582,22 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AppendExecutionProvider_VitisAI(vitisai_session_options);
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kVulkanExecutionProvider) {
+#ifdef USE_VULKAN
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+
+    std::unordered_map<std::string, std::string> vulkan_ep_options;
+    ORT_ENFORCE(CommandLineParser::ParseProviderOptions(option_string, vulkan_ep_options),
+                "Failed parsing Vulkan EP provider options");
+
+    session_options.AppendExecutionProvider("Vulkan", vulkan_ep_options);
+#else
+    ORT_THROW("Vulkan is not supported in this build\n");
 #endif
   } else if (!provider_name_.empty() &&
              provider_name_ != onnxruntime::kCpuExecutionProvider &&

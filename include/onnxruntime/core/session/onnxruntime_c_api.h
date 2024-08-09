@@ -3616,10 +3616,15 @@ struct OrtApi {
    * \param[in] provider_options_values - values to configure the provider options
    * \param[in] num_keys - number of keys passed in
    *
-   * Currently supported providers:
+   * Currently supported providers (if included in build):
+   *   DML
+   *   JS
+   *   OpenVINO
    *   QNN
    *   SNPE
+   *   WEBNN
    *   XNNPACK
+   *   Vulkan
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
@@ -3672,6 +3677,9 @@ struct OrtApi {
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
    *      default value is 0, which means to use the session thread-pool size.
+   *
+   * Vulkan supported keys:
+   *   "device_id": The id of the GPU to use. Defaults to "0".
    *
    * \since Version 1.12.
    */
