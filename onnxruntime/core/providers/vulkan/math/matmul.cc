@@ -38,7 +38,12 @@ bool MatMulKernel::IsSupported(const GraphViewer& graph_viewer, const onnxruntim
 
   // User InnerProduct if B is constant and is 2D
   // https://github.com/Tencent/ncnn/blob/92e0b8253bc9d16b0d77bd17693fe9a72fb64b64/tools/onnx/onnx2ncnn.cpp#L5111
-  return info.constant_B && info.shape_B.size() == 2;  // constant initializer always has a shape
+  // A can be 1D or 2D. the NCNN implementation doesn't handle the batches if > 2D.
+  // We could manually do that but not worth it for our testing purposes.
+  bool a_ok = info.have_shape_A && info.shape_A.size() < 3 && !DoesShapeSpecifyZeroElements(info.shape_A);
+  bool b_ok = info.constant_B && info.shape_B.size() == 2 && !DoesShapeSpecifyZeroElements(info.shape_B);
+
+  return a_ok && b_ok;
 }
 
 MatMulKernel::MatMulKernel(const VulkanExecutionProvider& vulkan_ep,
