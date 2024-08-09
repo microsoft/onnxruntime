@@ -28,7 +28,7 @@ class ConvOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
                               const logging::Logger& logger) const override;
 };
@@ -376,6 +376,22 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     LOGS(logger, VERBOSE) << op_type << " [" << name << "]'s weight dimension: " << weight_size
                           << ". Only conv 1d / 2d is supported.";
     return false;
+  }
+
+  // WebNN CPU backend (TFLite) only supports default dilations and group.
+  // https://source.chromium.org/chromium/chromium/src/+/main:services/webnn/tflite/graph_builder_tflite.cc;l=1040
+  if (device_type == WebnnDeviceType::CPU && op_type == "ConvTranspose") {
+    NodeAttrHelper helper(node);
+    const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
+    const auto group = helper.Get("group", 1);
+    if (dilations[0] != 1 || (dilations.size() > 1 && dilations[1] != 1)) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default dilation 1.";
+      return false;
+    }
+    if (group != 1) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default group 1.";
+      return false;
+    }
   }
 
   return true;
