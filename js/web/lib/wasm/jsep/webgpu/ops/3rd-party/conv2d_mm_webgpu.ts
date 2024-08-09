@@ -157,7 +157,8 @@ const conv2dCommonSnippet =
 
 export const createConv2DMatMulProgramInfo =
     (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
-     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfo => {
+     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
       const batchSize = outputShape[0];
@@ -262,7 +263,10 @@ export const createConv2DMatMulProgramInfo =
           inputDependencies
         },
         getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
           programUniforms,
         }),
