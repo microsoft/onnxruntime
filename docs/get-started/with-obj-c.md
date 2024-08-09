@@ -16,7 +16,7 @@ ONNX Runtime provides an Objective-C API for running ONNX models on iOS devices.
 
 ## Supported Versions
 
-iOS 11+.
+See iOS [compatibility info](../reference/compatibility.md).
 
 ## Builds
 
@@ -24,7 +24,7 @@ The artifacts are published to CocoaPods.
 
 | Artifact | Description | Supported Platforms |
 |-|-|-|
-| onnxruntime-mobile-objc | CPU and CoreML | iOS |
+| onnxruntime-objc | CPU and CoreML | iOS |
 
 Refer to the [installation instructions](../install/index.md#install-on-ios).
 

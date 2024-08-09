@@ -55,7 +55,7 @@ Accelerators are called Execution Providers in ONNX Runtime.
 
 If the model is quantized, start with the CPU Execution Provider. If the model is not quantized start with XNNPACK. These are the simplest and most consistent as everything is running on CPU.
 
-If CPU/XNNPACK do not meet the application's performance results, then try NNAPI/CoreML. Performance with these execution providers is device and model specific. If the model is broken into multiple partitions due to the model using operators that ONNX Runtime, NNAPI/CoreML. or the device doesn't support (e.g. older NNAPI versions), performance may degrade.
+If CPU/XNNPACK do not meet the application's performance results, then try NNAPI/CoreML. Performance with these execution providers is device and model specific. If the model is broken into multiple partitions due to the model using operators that the execution provider doesn't support (e.g., due to older NNAPI versions), performance may degrade.
 
 Specific execution providers are configured in the SessionOptions, when the ONNXRuntime session is created and the model is loaded. For more detail, see your language [API docs](../../api).
 
@@ -80,36 +80,18 @@ Another way of reducing the model size is to find a new model with the same inpu
 
 #### Reduce application binary size
 
-There are two options for reducing the ONNX Runtime binary size.
+To reduce the ONNX Runtime binary size, you can build a custom runtime based on your model(s).
 
-1. Use the published packages that are optimized for mobile
+Refer to the process to build a [custom runtime](../../build/custom.md).
 
-   * Android Java/C/C++: onnxruntime-mobile
-   * iOS C/C++: onnxruntime-mobile-c
-   * iOS Objective-C: onnxruntime-mobile-objc
+One of the outputs of the ORT format conversion is a build configuration file, containing a list of operators from your model(s) and their types. You can use this configuration file as input to the custom runtime binary build.
 
-   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format](../../performance/model-optimizations/ort-format-models.md#convert-onnx-models-to-ort-format).
+To give an idea of the binary size difference between the pre-built package and a custom build:
 
-   See the [install guide](../../install/#install-on-web-and-mobile) for package specific instructions.
+File|1.18.0 pre-built package size (bytes)|1.18.0 custom build size (bytes)
+-|-|-
+AAR|24415212|7532309
+`jni/arm64-v8a/libonnxruntime.so`, uncompressed|16276832|3962832
+`jni/x86_64/libonnxruntime.so`, uncompressed|18222208|4240864
 
-   If the mobile package does not have coverage for all of the operators in your model, then you can build a custom runtime binary based your specific model.
-
-2. Build a custom runtime based on your model(s)
-
-   One of the outputs of the ORT format conversion is a build configuration file, containing a list of operators from your model(s) and their types. You can use this configuration as input to the custom runtime binary build script.
-
-   The process to build a [custom runtime](../../build/custom.md) uses the same build scripts as standard ONNX Runtime, with some extra parameters.
-
-To give an idea of the binary size difference between the full packages and the mobile optimized packages:
-
-[ONNX Runtime 1.13.1 Android](https://central.sonatype.com/namespace/com.microsoft.onnxruntime) library file size
-
-|Architecture|Package|Size|
-|-|-|-|
-|arm64|onnxruntime-android|12.2 MB|
-||onnxruntime-mobile|3.2 MB|
-|arm32|onnxruntime-android|8.4 MB|
-||onnxruntime-mobile|2.3 MB|
-||custom (MobileNet)|_Coming soon_|
-
-The iOS package is a static framework and so the library package size is not a good indication of the actual contribution to the application binary size. The above sizes for Android are good estimates for iOS.
+This custom build supports the operators needed to run a ResNet50 model. It requires the use of ORT format models (as it was built with `--minimal_build=extended`). It has support for the NNAPI and XNNPACK execution providers.

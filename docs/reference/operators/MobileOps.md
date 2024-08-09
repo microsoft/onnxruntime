@@ -2,11 +2,14 @@
 title: ORT Mobile operators
 parent: Operators
 grand_parent: Reference
-nav_order: 2
+nav_exclude: true
 ---
+
+# **IMPORTANT: The ORT Mobile pre-built packages with reduced operator support are no longer available starting from 1.19. Please use the versions with full operator support or do a custom build.**
+
 # ORT Mobile Pre-Built Package Operator and Type Support
 
-These are the operators and types included in the ORT Mobile pre-built packages for each release. Supported operators and types selected are based on what is required to support float32 and quantized versions of popular models. The full list of input models used to determine this list is available [here](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.readme.txt).
+These are the operators and types included in the ORT Mobile pre-built packages for each release. Supported operators and types selected are based on what is required to support float32 and quantized versions of popular models. The full list of input models used to determine this list is available [here](https://github.com/microsoft/onnxruntime/blob/v1.17.3/tools/ci_build/github/android/mobile_package.required_operators.readme.txt).
 
 | Release | Documentation |
 |---------|---------------|

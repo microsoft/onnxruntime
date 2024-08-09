@@ -157,7 +157,7 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Custom build packages
 
-In this section, `ops.config` is a [configuration file](../reference/operators/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config).
+In this section, `ops.config` is a [configuration file](../reference/operators/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include.
 
 ### Web
 
@@ -182,9 +182,9 @@ To produce pods for an iOS build, use the [build_and_assemble_apple_pods.py](htt
 
     This will do a custom build and create the pod package files for it in /path/to/staging/dir.
 
-    The build options are specified with the file provided to the `--build-settings-file` option. See the current build options used by the pre-built mobile package at [tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json). You can use this file directly.
+    The build options are specified with the file provided to the `--build-settings-file` option. See the current build options used by the pre-built package at [tools/ci_build/github/apple/default_full_apple_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/default_full_apple_framework_build_settings.json). You can use this file directly.
 
-    The reduced set of ops in the custom build is specified with the file provided to the `--include_ops_by_config` option. See the current op config used by the pre-built mobile package at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config) (Android and iOS pre-built mobile packages share the same config file). You can use this file directly.
+    The reduced set of ops in the custom build is specified with the [configuration file](../reference/operators/reduced-operator-config-file.md) provided to the `--include_ops_by_config` option. This is optional.
 
     The default package does not include the training APIs. To create a training package, add `--enable_training_apis` in the build options file provided to `--build-settings-file` and add the `--variant Training` option when calling `build_and_assemble_apple_pods.py`.
     
@@ -202,15 +202,15 @@ To produce pods for an iOS build, use the [build_and_assemble_apple_pods.py](htt
 
 3. Use the local pods.
 
-    For example, update the Podfile to use the local onnxruntime-mobile-objc pod instead of the released one:
+    For example, update the Podfile to use the local onnxruntime-objc pod instead of the released one:
 
     ```diff
-    -  pod 'onnxruntime-mobile-objc'
-    +  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
-    +  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
+    -  pod 'onnxruntime-objc'
+    +  pod 'onnxruntime-objc', :path => "/path/to/staging/dir/onnxruntime-objc"
+    +  pod 'onnxruntime-c', :path => "/path/to/staging/dir/onnxruntime-c"
     ```
 
-    Note: The onnxruntime-mobile-objc pod depends on the onnxruntime-mobile-c pod. If the released onnxruntime-mobile-objc pod is used, this dependency is automatically handled. However, if a local onnxruntime-mobile-objc pod is used, the local onnxruntime-mobile-c pod that it depends on also needs to be specified in the Podfile.
+    Note: The onnxruntime-objc pod depends on the onnxruntime-c pod. If the released onnxruntime-objc pod is used, this dependency is automatically handled. However, if a local onnxruntime-objc pod is used, the local onnxruntime-c pod that it depends on also needs to be specified in the Podfile.
 
 ### Android
 
@@ -236,23 +236,23 @@ Note: In the steps below, replace `<ORT version>` with the ONNX Runtime version 
 
     Specify the ONNX Runtime version you want to use with the `--onnxruntime_branch_or_tag` option. The script uses a separate copy of the ONNX Runtime repo in a Docker container so this is independent from the containing ONNX Runtime repo's version.
 
-    The build options are specified with the file provided to the `--build_settings` option. See the current build options used by the pre-built mobile package at [tools/ci_build/github/android/default_mobile_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/default_mobile_aar_build_settings.json).
+    The build options are specified with the file provided to the `--build_settings` option. See the current build options used by the pre-built package at [tools/ci_build/github/android/default_full_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/default_full_aar_build_settings.json).
     
-    The reduced set of ops in the custom build is specified with the file provided to the `--include_ops_by_config` option. See the current op config used by the pre-built mobile package at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config).
+    The reduced set of ops in the custom build is specified with the [configuration file](../reference/operators/reduced-operator-config-file.md) provided to the `--include_ops_by_config` option.
 
-    The `--build_settings` and `--include_ops_by_config` options are both optional and will default to what is used to build the pre-built mobile package. Not specifying either will result in a package like the pre-built mobile package.
+    The `--build_settings` and `--include_ops_by_config` options are both optional and will default to what is used to build the pre-built package. Not specifying either will result in a package like the pre-built package.
 
 2. Use the local custom Android AAR package.
 
     For example, in an Android Studio project:
 
-    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-mobile/<ORT version>/onnxruntime-mobile-<ORT version>.aar` to the project's `<module name, e.g., app>/libs` directory.
+    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-android/<ORT version>/onnxruntime-android-<ORT version>.aar` to the project's `<module name, e.g., app>/libs` directory.
 
     b. Update the project's `<module name>/build.gradle` file dependencies section:
 
     ```diff
-    -    implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'
-    +    implementation files('libs/onnxruntime-mobile-<ORT version>.aar')
+    -    implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
+    +    implementation files('libs/onnxruntime-android-<ORT version>.aar')
     ```
 
 ### Python
