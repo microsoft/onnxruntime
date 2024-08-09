@@ -1,13 +1,41 @@
+diff --git a/examples/41_fused_multi_head_attention/kernel_forward.h b/examples/41_fused_multi_head_attention/kernel_forward.h
+index 4c80f549..5fbdb927 100644
+--- a/examples/41_fused_multi_head_attention/kernel_forward.h
++++ b/examples/41_fused_multi_head_attention/kernel_forward.h
+@@ -189,6 +189,7 @@ struct AttentionKernel {
+
+     // Scale
+     accum_t scale = 0.0;
++    accum_t softcap = 0.0;
+
+     // Dimensions/strides
+     int32_t head_dim = 0;
+@@ -818,6 +819,15 @@ struct AttentionKernel {
+         accum =
+             cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.scale, accum);
+       }
++
++      // apply softcap if applicable
++      if (p.softcap > 0.0) {
++        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0 / p.softcap, accum);
++        for (int i = 0; i < accum.size(); ++i) {
++          accum[i] = cutlass::fast_tanh(accum[i]);
++        }
++        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.softcap, accum);
++      }
+
+       // apply attention bias if applicable
+       if (kSupportsBias && p.attn_bias_ptr != nullptr) {
 diff --git a/include/cutlass/functional.h b/include/cutlass/functional.h
-index 964d2ff3..b366bc14 100644
+index 964d2ff3..676ba768 100644
 --- a/include/cutlass/functional.h
 +++ b/include/cutlass/functional.h
 @@ -39,6 +39,7 @@
  #include "cutlass/numeric_types.h"
- 
+
  #include <cuda_runtime.h>
 +#include <cuda_fp16.h>
- 
+
  #if defined(CUTLASS_ARCH_WMMA_ENABLED)
  #include <mma.h>
 @@ -230,8 +231,12 @@ struct inverse_square_root<half_t> {
@@ -19,7 +47,7 @@ index 964d2ff3..b366bc14 100644
      return reinterpret_cast<half_t const &>(result);
 +#else
 +    return half_t::convert((rsqrtf(half_t::convert(lhs))));
-+#endif    
++#endif
  #else
      return half_t(1.f / std::sqrt(half_t::convert(lhs)));
  #endif
