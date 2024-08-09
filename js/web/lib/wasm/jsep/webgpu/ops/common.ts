@@ -220,6 +220,10 @@ const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, s
 
   // return type is [ storage type, runtime type ] or a single string for both
   switch (type) {
+    case DataType.int8:
+      return ['u32', components > 1 ? `vec${components}<i32>` : 'i32'];
+    case DataType.uint8:
+      return ['u32', components > 1 ? `vec${components}<u32>` : 'u32'];
     case DataType.float16:
       return components > 1 ? `vec${components}<f16>` : 'f16';
     case DataType.float:
@@ -479,8 +483,50 @@ const createIndicesHelper =
         return `${implKey}(${varIndices})`;
       };
 
+      // Users of indices helpers may intuitively expect setByOffset()/getByOffset() won't access overlapping memory
+      // locations when different offsets are given, while that's not always true. To illustrate the problem,
+      // simultaneous writes of scalars to int8 output can bring in data races because every 4 scalars are tightly
+      // packed as a single u32 in the storage buffer. Atomics are leveraged where necessary to coordinate such
+      // operations. Variables of internal usage have ambiguous address space implications, so atomics cannot be
+      // enforced and values must be encoded in a "partially packed" fashion. For instance, an internal variable might
+      // be configured to hold a pair of int8 values using the lower 16 bits of each u32, leaving the higher 16 bits
+      // unused.
+
       const setByOffset = (offset: number|string, value: string) => (() => {
-        if (type.storage === type.value) {
+        if (usage === 'input') {
+          return 'const_assert(false);';
+        }
+        if ((type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'i32' || type.value === 'u32') && usage === 'output') {
+          // int8/uint8 output, components === 1
+          return `atomicAnd(&${name}[(${offset}) / 4], ~(0xFFu << ((${offset}) % 4 * 8)));
+    atomicOr(&${name}[(${offset}) / 4], (u32(${value}) & 0xFFu) << ((${offset}) % 4 * 8));`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'i32' || type.value === 'u32') && usage === 'internal') {
+          // int8/uint8 internal, components === 1
+          return `${name}[${offset}]=u32(${value}) & 0xFFu;`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec2<i32>' || type.value === 'vec2<u32>') && usage === 'output') {
+          // int8/uint8 output, components === 2
+          return `atomicAnd(&${name}[(${offset}) / 2], ~(0xFFFFu << ((${offset}) % 2 * 16)));
+    atomicOr(
+        &${name}[(${offset}) / 2],
+        dot(vec2<u32>(0x1, 0x100), vec2<u32>(${value}) & vec2<u32>(0xFF)) << ((${offset}) % 2 * 16));`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec2<i32>' || type.value === 'vec2<u32>') && usage === 'internal') {
+          // int8/uint8 internal, components === 2
+          return `${name}[${offset}]=dot(vec2<u32>(0x1, 0x100), vec2<u32>(${value}) & vec2<u32>(0xFF));`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec4<i32>' || type.value === 'vec4<u32>')) {
+          // int8/uint8, components === 4
+          return `${name}[${offset}]=pack4xU8(vec4<u32>(${value}));`;
+        } else if (
+            type.tensor === DataType.float16 || type.tensor === DataType.float || type.tensor === DataType.int32 ||
+            type.tensor === DataType.uint32) {
           return `${name}[${offset}]=${value};`;
         } else if (type.storage === 'vec2<u32>' && type.value === 'i32') {
           // int64, components === 1
@@ -497,7 +543,48 @@ const createIndicesHelper =
       })();
 
       const getByOffset = (offset: number|string) => (() => {
-        if (type.storage === type.value) {
+        if ((type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'i32' || type.value === 'u32') && usage === 'input') {
+          // int8/uint8 input, components === 1
+          return `extractBits(${type.value}(${name}[(${offset}) / 4] >> ((${offset}) % 4 * 8)), 0, 8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'i32' || type.value === 'u32') && usage === 'output') {
+          // int8/uint8 output, components === 1
+          return `extractBits(${type.value}(atomicLoad(&${name}[(${offset}) / 4]) >> ((${offset}) % 4 * 8)), 0, 8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'i32' || type.value === 'u32') && usage === 'internal') {
+          // int8/uint8 internal, components === 1
+          return `extractBits(${type.value}(${name}[${offset}]), 0, 8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec2<i32>' || type.value === 'vec2<u32>') && usage === 'input') {
+          // int8/uint8 input, components === 2
+          return `extractBits(
+                      ${type.value}((${name}[(${offset}) / 2] >> ((${offset}) % 2 * 16)) / vec2<u32>(0x1, 0x100)), 0,
+                      8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec2<i32>' || type.value === 'vec2<u32>') && usage === 'output') {
+          // int8/uint8 output, components === 2
+          return `extractBits(
+                      ${type.value}(
+                          (atomicLoad(&${name}[(${offset}) / 2]) >> ((${offset}) % 2 * 16)) / vec2<u32>(0x1, 0x100)),
+                      0, 8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec2<i32>' || type.value === 'vec2<u32>') && usage === 'internal') {
+          // int8/uint8 internal, components === 2
+          return `extractBits(${type.value}(${name}[${offset}] / vec2<u32>(0x1, 0x100)), 0, 8)`;
+        } else if (
+            (type.tensor === DataType.int8 || type.tensor === DataType.uint8) &&
+            (type.value === 'vec4<i32>' || type.value === 'vec4<u32>')) {
+          // int8/uint8, components === 4
+          return `extractBits(${type.value}(unpack4xU8(${name}[${offset}])), 0, 8)`;
+        } else if (
+            type.tensor === DataType.float16 || type.tensor === DataType.float || type.tensor === DataType.int32 ||
+            type.tensor === DataType.uint32) {
           return `${name}[${offset}]`;
         } else if (type.storage === 'vec2<u32>' && type.value === 'i32') {
           // int64, components === 1
@@ -851,7 +938,19 @@ class ShaderHelperImpl implements ShaderHelper {
 
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
-    return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
+    const tensorType = variable.type.tensor;
+    const valueType = variable.type.value;
+    const name = variable.name;
+
+    // Atomics are expensive. Indices helper only relies on that when accesses with different offsets may trigger a data
+    // race.
+    if ((tensorType === DataType.int8 || tensorType === DataType.uint8) &&
+        (valueType === 'i32' || valueType === 'u32' || valueType === 'vec2<i32>' || valueType === 'vec2<u32>') &&
+        access === 'read_write') {
+      return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${name}: array<atomic<${storageType}>>;`;
+    } else {
+      return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${name}: array<${storageType}>;`;
+    }
   }
 
   declareVariables(...variables: IndicesHelper[]): string {
