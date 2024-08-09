@@ -177,6 +177,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -213,6 +214,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -247,6 +249,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -283,6 +286,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
