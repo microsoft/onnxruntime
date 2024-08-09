@@ -29,7 +29,7 @@ stages:
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
-          vmImage: 'macOS-latest'
+          vmImage: 'macOS-13'
         itemPattern: '*/*mac*x86_64.whl'
     - template: templates/py-package-smoking-test.yml
       parameters:

@@ -69,9 +69,9 @@ stages:
         versionSpec: $(pythonVersion)
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 11
+      displayName: Use jdk 17
       inputs:
-        versionSpec: '11'
+        versionSpec: '17'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
@@ -123,6 +123,7 @@ stages:
     timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
+    condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
@@ -130,9 +131,9 @@ stages:
         versionSpec: $(pythonVersion)
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 11
+      displayName: Use jdk 17
       inputs:
-        versionSpec: '11'
+        versionSpec: '17'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
@@ -159,7 +160,6 @@ stages:
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
-        --build_shared_lib \
         --cmake_generator=Ninja \
         --build_java
       displayName: NNAPI EP, Build, Test on Android Emulator
@@ -194,9 +194,9 @@ stages:
           versionSpec: $(pythonVersion)
 
       - task: JavaToolInstaller@0
-        displayName: Use jdk 11
+        displayName: Use jdk 17
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: 'x64'
           jdkSourceOption: 'PreInstalled'
 
