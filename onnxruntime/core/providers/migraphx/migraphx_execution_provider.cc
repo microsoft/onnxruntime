@@ -16,6 +16,7 @@
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
+#include <hip/hip_version.h>
 
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"
