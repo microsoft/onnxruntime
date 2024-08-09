@@ -17,9 +17,23 @@ x * 0.5 * (1.0 + erf(x / sqrt(2.0))), where x is the input.
 
 */
 class GeluFusion : public GraphTransformer {
+ private:
+  TransformerLevel optimization_level_ = TransformerLevel::Level1;
+  std::string GetGeluFusionName(TransformerLevel level) {
+    switch (level) {
+      case TransformerLevel::Level1:
+        return "GeluFusionL1";
+      case TransformerLevel::Level2:
+        return "GeluFusionL2";
+      default:
+        return "GeluFusion";
+    }
+  }
+
  public:
-  GeluFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("GeluFusion", compatible_execution_providers) {}
+  GeluFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+             TransformerLevel level = TransformerLevel::Level1) noexcept
+      : GraphTransformer(GetGeluFusionName(level), compatible_execution_providers), optimization_level_(level) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
