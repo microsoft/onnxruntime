@@ -1,0 +1,19 @@
+{
+    "default-registry": {
+        "kind": "git",
+        "repository": "https://github.com/Microsoft/vcpkg",
+        "baseline": "1de2026f28ead93ff1773e6e680387643e914ea1"
+    },
+    "registries": [
+        {
+            "repository": "https://github.com/luncliff/vcpkg-registry",
+            "kind": "git",
+            "packages": [
+                "abseil",
+                "eigen3",
+                "onnx"
+            ],
+            "baseline": "8f14a82699eb749ea5c03b40c644810b703357cd"
+        }
+    ]
+}

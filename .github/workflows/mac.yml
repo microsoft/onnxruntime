@@ -58,6 +58,90 @@ jobs:
           --use_xnnpack \
           --use_binskim_compliant_compile_flags
 
+  Vcpkg:
+    runs-on: macos-13
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.python_version }}
+
+    - name: "Run vcpkg(x64-osx)"
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgDirectory: "${{ runner.temp }}/vcpkg"
+        vcpkgGitCommitId: "1de2026f28ead93ff1773e6e680387643e914ea1" # 2024.07.12
+        runVcpkgInstall: true
+        vcpkgJsonGlob: "cmake/vcpkg.json"
+        vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+      env:
+        VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+        VCPKG_DEFAULT_TRIPLET: "x64-osx"
+        # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
+
+    - name: "Run compile_schema.py"
+      run: |
+        # Runner's host triplet should be x64-osx or arm64-osx
+        export FLATC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-osx/tools/flatbuffers"
+        export PATH="$FLATC_DIR:$PATH"
+        flatc --version
+        python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
+
+    - name: "Detect protoc"
+      id: protoc-detect
+      run: |
+        export PROTOC_DIR="${{ github.workspace }}/.build/${{ runner.arch }}-osx/tools/protobuf"
+        export PATH="$PROTOC_DIR:$PATH"
+        protoc --version
+        echo "protoc_path=$(which protoc)" >> "$GITHUB_OUTPUT"
+
+    - name: "Run build.py(x64-osx)"
+      run: |
+        python ./tools/ci_build/build.py \
+          --build_dir "build/x64-osx" \
+          --skip_submodule_sync \
+          --skip_tests \
+          --compile_no_warning_as_error \
+          --parallel \
+          --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
+          --osx_arch x86_64 \
+          --use_vcpkg \
+          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-osx" \
+          --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
+          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      shell: bash
+
+    - name: "Run vcpkg(arm64-osx)"
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgDirectory: "${{ runner.temp }}/vcpkg"
+        vcpkgGitCommitId: "1de2026f28ead93ff1773e6e680387643e914ea1" # 2024.07.12
+        runVcpkgInstall: true
+        vcpkgJsonGlob: "cmake/vcpkg.json"
+        vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+      env:
+        VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+        VCPKG_DEFAULT_TRIPLET: "arm64-osx"
+        # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
+
+    - name: "Run build.py(arm64-osx)"
+      run: |
+        python ./tools/ci_build/build.py \
+          --build_dir "build/arm64-osx" \
+          --skip_submodule_sync \
+          --skip_tests \
+          --compile_no_warning_as_error \
+          --parallel \
+          --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
+          --osx_arch arm64 \
+          --use_vcpkg \
+          --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+          --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-osx" \
+          --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
+          --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      shell: bash
+
   Objective-C-StaticAnalysis:
     runs-on: macos-14
 

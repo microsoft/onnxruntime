@@ -332,6 +332,9 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # If it's an onnxruntime library, extract .o files from the original cmake build path to a separate directory for
   # each library to avoid any clashes with filenames (e.g. utils.o)
   foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
+    if(NOT TARGET ${_LIB}) # if we didn't build from source. it may not a target
+      continue()
+    endif()
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
       set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/$<TARGET_LINKER_FILE_BASE_NAME:${_LIB}>)
@@ -362,6 +365,9 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
 
   # for external libraries we create a symlink to the .a file
   foreach(_LIB ${onnxruntime_EXTERNAL_LIBRARIES})
+    if(NOT TARGET ${_LIB}) # if we didn't build from source. it may not a target
+      continue()
+    endif()
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
       add_custom_command(TARGET onnxruntime POST_BUILD
