@@ -3,7 +3,10 @@
 
 // Load onnxruntime-common and testdata-config.
 // NOTE: this need to be called before import any other library.
+import {Float16Array} from '@petamoriken/float16';
 import * as ort from 'onnxruntime-common';
+
+globalThis.Float16Array = Float16Array;
 
 const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 

@@ -1382,6 +1382,7 @@
       "reduce-min.jsonc",
       "relu.jsonc",
       "gelu.jsonc",
+      "pad_f16.jsonc",
       "pad.jsonc",
       "pad-big.jsonc",
       "pow.jsonc",
