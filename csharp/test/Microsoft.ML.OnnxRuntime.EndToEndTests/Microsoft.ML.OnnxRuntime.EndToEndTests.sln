@@ -1,9 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.810.8
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.ML.OnnxRuntime.EndToEndTests", "Microsoft.ML.OnnxRuntime.EndToEndTests.csproj", "{B6FB2796-4CFB-44FF-B826-E1B8CA9E9447}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.ML.OnnxRuntime.EndToEndTests", "Microsoft.ML.OnnxRuntime.EndToEndTests.csproj", "{B6FB2796-4CFB-44FF-B826-E1B8CA9E9447}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
