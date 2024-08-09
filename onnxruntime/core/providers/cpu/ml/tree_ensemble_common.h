@@ -319,12 +319,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
-    if (i >= target_class_ids.size()) {
-      ORT_THROW("Index ", i, " is out of bounds for target_class_ids.");
-    }
-    if (i >= target_class_weights.size() && i >= target_class_weights_as_tensor.size()) {
-      ORT_THROW("Index ", i, " is out of bounds for both target_class_weights and target_class_weights_as_tensor.");
-    }
     w.i = target_class_ids[i];
     w.value = target_class_weights_as_tensor.empty() ? static_cast<ThresholdType>(target_class_weights[i])
                                                      : target_class_weights_as_tensor[i];
