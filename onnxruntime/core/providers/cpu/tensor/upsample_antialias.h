@@ -193,7 +193,15 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       }
 
       float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
+#ifdef _WIN32
+#pragma warning(push)            // Save the current warning state
+#pragma warning(disable : 4189)  // Disable warning C4189
       auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
+
+#pragma warning(pop)  // Restore the warning state
+#else
+      auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
+#endif
       for (x = 0; x < xmax_cut - xmin_cut; x++) {
         scale_buffer[x] *= total_weight_inv;
 
