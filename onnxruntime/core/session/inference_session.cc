@@ -1615,7 +1615,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
     const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep,
-    concurrency::ThreadPool* intra_op_thread_pool) {
+    concurrency::ThreadPool* intra_op_thread_pool,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
@@ -1623,7 +1624,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
         static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
-        optimizers_to_disable, intra_op_thread_pool);
+        optimizers_to_disable, intra_op_thread_pool, p_buffered_tensors);
 
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
@@ -2012,7 +2013,8 @@ common::Status InferenceSession::Initialize() {
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep, GetIntraOpThreadPoolToUse()));
+                                                  cpu_ep, GetIntraOpThreadPoolToUse(),
+                                                  session_state_->GetMutableBufferedTensors()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -3175,7 +3177,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
         if (use_full_build_optimizations) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse());
+                                                       GetIntraOpThreadPoolToUse(),
+                                                       session_state_->GetMutableBufferedTensors());
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
@@ -3185,7 +3188,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse());
+                                                                      GetIntraOpThreadPoolToUse(),
+                                                                      session_state_->GetMutableBufferedTensors());
         }
       }();
 

@@ -13,6 +13,9 @@ namespace cuda {
 
 #if DUMP_TENSOR_LEVEL > 0
 
+// Environment variable to enable/disable GPU Tensor dumping
+constexpr const char* kEnableGpuTensorDumper = "ORT_ENABLE_GPU_DUMP";
+
 // Total number of elements which trigger snippet rather than full dump (default 200). Value 0 disables snippet.
 constexpr const char* kTensorSnippetThreshold = "ORT_TENSOR_SNIPPET_THRESHOLD";
 
@@ -202,6 +205,10 @@ void DumpGpuTensor(const char* name, const Tensor& tensor) {
   DumpGpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
 }
 
+CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
+  is_enabled_ = ParseEnvironmentVariableWithDefault<int>(kEnableGpuTensorDumper, 1) != 0;
+}
+
 void CudaTensorConsoleDumper::Print(const std::string& value) const {
   std::cout << value << std::endl;
 }
@@ -329,6 +336,8 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
 }
 
 #else
+CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
+}
 
 void CudaTensorConsoleDumper::Print(const std::string&) const {
 }

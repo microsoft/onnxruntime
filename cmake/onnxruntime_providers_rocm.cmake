@@ -223,8 +223,13 @@
   if (onnxruntime_ENABLE_ATEN)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
   endif()
-
+  file(GLOB ONNXRUNTIME_ROCM_PROVIDER_PUBLIC_HEADERS CONFIGURE_DEPENDS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/rocm/*.h"
+      )
+  set_target_properties(onnxruntime_providers_rocm PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_ROCM_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_rocm
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/rocm
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

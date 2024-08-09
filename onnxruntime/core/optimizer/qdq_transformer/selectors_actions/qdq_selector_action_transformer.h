@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <string>
+#include <memory>
+#include <unordered_map>
+
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
@@ -25,7 +29,8 @@ class QDQSelectorActionTransformer : public SelectorActionTransformer {
   QDQSelectorActionTransformer(bool is_int8_allowed,
                                const SatApplyContextVariant& apply_context = {},
                                int64_t qdq_matmulnbits_accuracy_level = 4,
-                               concurrency::ThreadPool* intra_op_thread_pool = nullptr);
+                               concurrency::ThreadPool* intra_op_thread_pool = nullptr,
+                               std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
 };
 
 }  // namespace onnxruntime

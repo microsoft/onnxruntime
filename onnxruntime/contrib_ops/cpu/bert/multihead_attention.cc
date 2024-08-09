@@ -85,7 +85,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       scale_,
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
-                                                                      false));
+                                                                      kMultiHeadAttention));
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;
@@ -121,20 +121,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
-  // For each of Q/K/V, there are multiple scenarios:
-  // 1) Combined QKV bias is null
-  //    a) Q/K/V is (B, S, D)
-  //    b) Q/K/V is (B, S, N, H)
-  // 2) No packed QKV in Q
-  //    a) Q/K/V has seq_len = 1
-  //    b) Q/K/V has seq_len > 1
-
   OrtValue Q;
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, q_sequence_length, qk_head_size, query, bias, q_bias_offset, Q));
 
-  if (parameters.pass_past_in_kv) {  // key and value in BNSH format
-    assert(bias == nullptr);
+  if (parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
+    // For cross attention with k and v in BNSH format, we assume that bias for key and value are zeros.
+    // So we don't need to add bias for key and value here.
     assert(past_key == nullptr);
     assert(past_value == nullptr);
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(),

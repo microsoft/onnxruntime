@@ -9,10 +9,10 @@
 #include "core/util/thread_utils.h"
 
 static void BM_QDQBlockwiseQuantizer_QuantizeColumnwise(benchmark::State& state) {
-  int M = state.range(0);
-  int N = state.range(1);
-  int quant_block_size = state.range(2);
-  int threads = state.range(3);
+  int M = (int)state.range(0);
+  int N = (int)state.range(1);
+  int quant_block_size = (int)state.range(2);
+  int threads = (int)state.range(3);
   size_t scale_size = (M + quant_block_size - 1) / quant_block_size * N;
 
   auto src = RandomVectorUniform(M * N, -16.0f, 14.0f);
@@ -37,10 +37,10 @@ static void BM_QDQBlockwiseQuantizer_QuantizeColumnwise(benchmark::State& state)
 }
 
 static void BM_MlasQuantizeBlockwise(benchmark::State& state) {
-  int M = state.range(0);
-  int N = state.range(1);
-  int quant_block_size = state.range(2);
-  int threads = state.range(3);
+  int M = (int)state.range(0);
+  int N = (int)state.range(1);
+  int quant_block_size = (int)state.range(2);
+  int threads = (int)state.range(3);
   size_t scale_size = (M + quant_block_size - 1) / quant_block_size * N;
 
   auto src = RandomVectorUniform(M * N, -16.0f, 14.0f);
@@ -65,10 +65,10 @@ static void BM_MlasQuantizeBlockwise(benchmark::State& state) {
 }
 
 static void BM_QDQBlockwiseQuantizer_TransposeColumnwise(benchmark::State& state) {
-  int M = state.range(0);
-  int N = state.range(1);
-  int quant_block_size = state.range(2);
-  int threads = state.range(3);
+  int M = (int)state.range(0);
+  int N = (int)state.range(1);
+  int quant_block_size = (int)state.range(2);
+  int threads = (int)state.range(3);
   bool add8 = state.range(4) != 0;
   int quant_num_M = (M + quant_block_size - 1) / quant_block_size;
   int blob_size = (quant_block_size + 1) / 2;

@@ -797,8 +797,8 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.add_argument(
         "--quant_format",
         default="QOperator",
-        type=QuantFormat,
-        choices=list(QuantFormat),
+        type=str,
+        choices=["QOperator", "QDQ"],
         help="QuantFormat {QOperator, QDQ}"
         "QOperator format quantizes the model with quantized operators directly."
         "QDQ format quantize the model by inserting DeQuantizeLinear before the MatMul.",
@@ -814,7 +814,7 @@ if __name__ == "__main__":
 
     input_model_path = args.input_model
     output_model_path = args.output_model
-    quant_format = args.quant_format
+    quant_format = QuantFormat[args.quant_format]
 
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")

@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.24.0.240626
+  default: 2.25.0.240728
 
 - name: PYTHON_VERSION
   type: string

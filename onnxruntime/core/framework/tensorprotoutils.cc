@@ -987,7 +987,8 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 
 Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
-                                 SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
+                                 SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
+                                 Tensor* buffered_tensor) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1003,7 +1004,12 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     // the value in location is the memory address of the data
     ext_data_buf = reinterpret_cast<void*>(file_offset);
     ext_data_len = raw_data_safe_len;
-    ext_data_deleter = OrtCallback{nullptr, nullptr};
+    if (buffered_tensor) {
+      ext_data_deleter = OrtCallback{[](void* p) noexcept { delete reinterpret_cast<Tensor*>(p); },
+                                     reinterpret_cast<void*>(buffered_tensor)};
+    } else {
+      ext_data_deleter = OrtCallback{nullptr, nullptr};
+    }
   } else {
 #if defined(__wasm__)
     ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
@@ -1241,7 +1247,9 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
+                                                const std::string& tensor_proto_name,
+                                                bool use_tensor_buffer) {
   // Set name, dimensions, type, and data of the TensorProto.
   ONNX_NAMESPACE::TensorProto tensor_proto;
 
@@ -1259,6 +1267,28 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
     for (; f < end; ++f) {
       *mutable_string_data->Add() = *f;
     }
+  } else if (use_tensor_buffer && tensor.SizeInBytes() > 127) {
+    // The logic aligns with
+    // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/graph_flatbuffers_utils.cc#L302
+    const auto* raw_data = tensor.DataRaw();
+    ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
+    static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
+    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+    // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
+    // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
+    // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
+    auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
+
+    ONNX_NAMESPACE::StringStringEntryProto* entry = tensor_proto.mutable_external_data()->Add();
+    entry->set_key("location");
+    entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
+    entry = tensor_proto.mutable_external_data()->Add();
+    entry->set_key("offset");
+    entry->set_value(std::to_string(offset));
+    entry = tensor_proto.mutable_external_data()->Add();
+    entry->set_key("length");
+    entry->set_value(std::to_string(tensor.SizeInBytes()));
   } else {
     utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
   }

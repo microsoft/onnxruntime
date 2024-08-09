@@ -3,6 +3,9 @@
 
 #pragma once
 #include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
@@ -44,7 +47,8 @@ common::Status SaveInitializedTensors(
     const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
-    const MemoryProfileFunction& memory_profile_func);
+    const MemoryProfileFunction& memory_profile_func,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,

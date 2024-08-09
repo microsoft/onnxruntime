@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
 #include "core/common/flatbuffers.h"
@@ -303,6 +304,10 @@ class SessionState {
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
+  std::unordered_map<std::string, std::unique_ptr<Tensor>>* GetMutableBufferedTensors() {
+    return &name_to_buffered_tensor_;
+  }
+
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
                               bool remove_initializers = true,
@@ -562,6 +567,12 @@ class SessionState {
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;
 #endif
+
+  // Holds the tensors which provide memory buffer for TensorProtos
+  // Use case: in optimizer, transform a TensorProto to a new TensorProto whose the memory buffer is
+  // allocated by CPU instead by protobuf's arena. Arena style memory allocators do not fully release
+  // a instance's memory which may result large memory consumption, which is a tradeoff for speed.
+  std::unordered_map<std::string, std::unique_ptr<Tensor>> name_to_buffered_tensor_;
 };
 
 }  // namespace onnxruntime
