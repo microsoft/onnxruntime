@@ -390,8 +390,13 @@ class HQQWeightOnlyQuantizer:
         Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
         not supported yet because Gather does not support int4 data.
         """
-        if node.op_type != "MatMul":
-            return [node]  # only care about MatMul for now
+        if node.op_type not in self.config.ops_to_quantize:
+            return [node]
+
+        # With HQQ, zero points are in float. Current GatherBlockQuantized does not support float zero points.
+        if node.op_type == "Gather":
+            raise NotImplementedError("Gather quantization is not supported yet in HQQ")
+
         import torch
 
         logger.info(f"start to quantize {node.name} ...")
