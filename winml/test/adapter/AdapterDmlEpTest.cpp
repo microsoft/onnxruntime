@@ -116,7 +116,8 @@ std::array<float, tensor_size> tensor_values = {};
 winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
   constexpr uint64_t buffer_size = tensor_size * sizeof(float);
   constexpr D3D12_HEAP_PROPERTIES heap_properties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
+  };
   constexpr D3D12_RESOURCE_DESC resource_desc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -365,6 +366,7 @@ const AdapterDmlEpTestApi& getapi() {
     DmlCopyTensor,
     CreateCustomRegistry,
     ValueGetDeviceId,
-    SessionGetInputRequiredDeviceId};
+    SessionGetInputRequiredDeviceId
+  };
   return api;
 }

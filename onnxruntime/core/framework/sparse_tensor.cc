@@ -220,7 +220,6 @@ Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
     ORT_RETURN_IF_NOT(buffer_size_t > values_bytes,
                       "Values size ", static_cast<size_t>(values_bytes), " must be less than total buffer size: ", buffer_size);
     auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, buffer_size_t);
-    ORT_RETURN_IF(data_ptr == nullptr, "SparseTensor Allocation failed for size: ", buffer_size);
     if (IsDataTypeString()) {
       // We own the buffer, so we must properly construct strings. Neither of the Tensors
       // we construct on top of the buffer own it. We are constructing empty strings, hopefully
@@ -552,7 +551,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   }
 
   if (Values().Shape().Size() > 0) {
-    // This instance may either have a contigious buffer which we can copy in one shot
+    // This instance may either have a contiguous buffer which we can copy in one shot
     // or it can point to users buffers, in which case we have to copy each buffer individually
     // strings can not be memcpyed albeit always on CPU.
     if (p_data_ != nullptr) {
@@ -570,7 +569,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
         ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst));
       }
     } else {
-      // non-contiguos buffer
+      // non-contiguous buffer
       if (is_string) {
         CopyStrings(Values(), result_values);
       } else {

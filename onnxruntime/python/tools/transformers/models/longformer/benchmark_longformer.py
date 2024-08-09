@@ -289,9 +289,7 @@ def test_ort_memory(
 
 
 def load_torch_model(model_name, device):
-    torch_model_name_or_dir = (
-        PRETRAINED_LONGFORMER_MODELS[model_name] if model_name in PRETRAINED_LONGFORMER_MODELS else model_name
-    )
+    torch_model_name_or_dir = PRETRAINED_LONGFORMER_MODELS.get(model_name, model_name)
     model = LongformerModel.from_pretrained(torch_model_name_or_dir)
     model.to(device)
     return model
@@ -337,7 +335,7 @@ def test_ort(args, device) -> List[Dict[str, Any]]:
 
     onnx_model_path = find_onnx_model(model_name) if not args.onnx else args.onnx
 
-    optimized = onnx_model_path.endswith("_fp16.onnx") or onnx_model_path.endswith("_fp32.onnx")
+    optimized = onnx_model_path.endswith("_fp16.onnx") or onnx_model_path.endswith("_fp32.onnx")  # noqa: PIE810
     precision = "fp32" if not onnx_model_path.endswith("_fp16.onnx") else "fp16"
 
     model = load_torch_model(model_name, device)
@@ -592,7 +590,7 @@ def run_tests(
     logger.info(f"ORT_LONGFORMER_COMPACT_MEMORY={compact_memory}")
 
     os.environ["ORT_LONGFORMER_USE_HALF4"] = "1" if use_half4 else "0"
-    logger.info("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))
+    logger.info("ORT_LONGFORMER_USE_HALF4={}".format("1" if use_half4 else "0"))  # noqa: G001
 
     results = []
     test_times = 1000

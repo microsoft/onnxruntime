@@ -56,8 +56,8 @@ public:
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
-        const bool hasPastKey = keyValueIsPast || kernelCreationContext.IsInputValid(pastKeyIndex);
-        const bool hasPastValue = keyValueIsPast || kernelCreationContext.IsInputValid(pastValueIndex);
+        const bool hasPastKey = keyValueIsPast || (kernelCreationContext.IsInputValid(pastKeyIndex) && kernelCreationContext.GetInputTensorShape(pastKeyIndex)[2] != 0);
+        const bool hasPastValue = keyValueIsPast || (kernelCreationContext.IsInputValid(pastValueIndex) && kernelCreationContext.GetInputTensorShape(pastValueIndex)[2] != 0);
         const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
         const bool hasPresentValueOutput = kernelCreationContext.IsOutputValid(outputPresentValueIndex);
         const bool stackedQkv = kernelCreationContext.GetInputTensorDimensionCount(queryIndex) == 5;
@@ -74,8 +74,8 @@ public:
             biasIndex,
             hasMask ? std::optional<uint32_t>(maskIndex) : std::nullopt,
             relativePositionBiasIndex,
-            keyValueIsPast ? keyIndex : pastKeyIndex,
-            keyValueIsPast ? valueIndex : pastValueIndex,
+            hasPastKey ? std::optional<uint32_t>(keyValueIsPast ? keyIndex : pastKeyIndex) : std::nullopt,
+            hasPastValue ? std::optional<uint32_t>(keyValueIsPast ? valueIndex : pastValueIndex) : std::nullopt,
         };
 
         std::vector<std::optional<uint32_t>> outputIndices = {
@@ -205,12 +205,34 @@ public:
             else
             {
                 const auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
-                ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
+                size_t maskDimCount = keyPaddingMaskTensorShape.size();
+                ML_CHECK_VALID_ARGUMENT(maskDimCount >= 2 || maskDimCount <= 4);
                 ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[0] == batchSize);
-                ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
 
-                const uint32_t actualShape[4] = {batchSize, 1, 1, kvSequenceLength};
-                const uint32_t desiredShape[4] = {batchSize, numHeads, sequenceLength, kvSequenceLength};
+                std::array<uint32_t, 4> actualShape{};
+                std::array<uint32_t, 4> desiredShape{};
+
+                if (maskDimCount == 2)
+                {
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
+                    actualShape = {batchSize, 1, 1, kvSequenceLength};
+                    desiredShape = {batchSize, numHeads, sequenceLength, kvSequenceLength};
+                }
+                else if (maskDimCount == 3)
+                {
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == sequenceLength);
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[2] == totalSequenceLength);
+                    actualShape = {batchSize, 1, sequenceLength, totalSequenceLength};
+                    desiredShape = {batchSize, numHeads, sequenceLength, totalSequenceLength};
+                }
+                else if (maskDimCount == 4)
+                {
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == numHeads);
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[2] == sequenceLength);
+                    ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[3] == totalSequenceLength);
+                    actualShape = {batchSize, numHeads, sequenceLength, totalSequenceLength};
+                    desiredShape = {batchSize, numHeads, sequenceLength, totalSequenceLength};
+                }
 
                 m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
                     m_inputTensorDescs[dmlMaskIndex].GetMlOperatorDataType(),

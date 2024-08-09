@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
+import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
-import {createGroupedConvProgramInfoLoader} from './conv-grouped';
-import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
+import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
+import {computeConv3DInfo, createConv3DNaiveProgramInfo} from './3rd-party/conv3d_naive_webgpu';
+import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
+import {createGroupedConvProgramInfo, createGroupedConvVectorizeProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
-import {createMatmulProgramInfoLoader} from './matmul';
-import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
+import {createNaiveMatmulProgramInfo} from './matmul';
+import {createTransposeProgramInfo} from './transpose';
 
 export const calculateOutputShape =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[],
@@ -42,7 +43,7 @@ export interface ConvAttributes extends InternalActivationAttributes, AttributeW
 }
 
 // for transposing weight tensor from [M, C/group, KH, KW] to [KH, KW, C/group, M]
-const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [2, 3, 1, 0]});
+const weightTransposeAttribute = [2, 3, 1, 0];
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttributes): void => {
   // Refer to the below link for all input checks
@@ -51,9 +52,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
     throw new Error('Conv requires 2 or 3 inputs');
   }
 
-  // TODO : Need to add support for multi-dimensional conv
-  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
-    throw new Error('currently only support conv 1D and 2D');
+  if (inputs[0].dims.length > 5) {
+    throw new Error('greater than 5D is not supported');
   }
 
   if (inputs[0].dims.length !== inputs[1].dims.length) {
@@ -93,15 +93,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvAttribute
   if (attributes.kernelShape.length !== 0 && attributes.kernelShape.length !== inputs[1].dims.length - 2) {
     throw new Error('invalid kernel shape');
   }
-
-  // TODO : Need to add support for float64
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('Conv input(X,W) should be float tensor');
-  }
-
-  if (inputs.length === 3 && inputs[2].dataType !== DataType.float) {
-    throw new Error('Conv input(bias) should be float tensor');
-  }
 };
 
 const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
@@ -119,7 +110,7 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
 
   // always return a new object so does not modify the original attributes
   const newAttributes: T = Object.assign({}, attributes);
-  Object.assign(newAttributes, {kernelShape, pads, cacheKey: attributes.cacheKey});
+  Object.assign(newAttributes, {kernelShape, pads});
   return newAttributes;
 };
 
@@ -128,15 +119,25 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
   const format = attributes.format as 'NHWC' | 'NCHW';
   const autoPad = ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number];
-  const dilations = attributes.dilations as [number, number];
+  const dilations = attributes.dilations as number[];
   const group = attributes.group as number;
-  const kernelShape = attributes.kernel_shape as [number, number];
-  const pads = attributes.pads as [number, number, number, number];
-  const strides = attributes.strides as [number, number];
+  const kernelShape = attributes.kernel_shape as number[];
+  const pads = attributes.pads as number[];
+  const strides = attributes.strides as number[];
   const wIsConst = (attributes.w_is_const as () => boolean)();
 
-  return createAttributeWithCacheKey(
-      {autoPad, format, dilations, group, kernelShape, pads, strides, wIsConst, ...activationAttributes});
+  return {
+    autoPad,
+    format,
+    dilations,
+    group,
+    kernelShape,
+    pads,
+    strides,
+    wIsConst,
+    ...activationAttributes,
+    cacheKey: `${attributes.format};${activationAttributes.activation};`
+  };
 };
 
 const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
@@ -144,15 +145,39 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
 
   // check attributes
 
-  const hasBias = inputs.length === 3;
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
-  if (!isChannelsLast || attributes.group !== 1) {
-    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+  if (attributes.group !== 1) {
+    // NVIDIA GPU with ampere architecture fails with below 2 cases, but we couldn't repro them with any other
+    // GPUs. So just disable vectorize on NVIDIA ampere to ensure always correct outputs.
+    // [webgpu]Conv - conv - vectorize group - B
+    // [webgpu]Conv - conv - vectorize group - D
+    const enableGroupedConvVectorize = !context.adapterInfo.isArchitecture('ampere');
+    if (enableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
+        inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
+      const outputShape = calculateOutputShape(
+          inputs[0].dims, inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
+          isChannelsLast);
+      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+          context.compute(
+              createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
+              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+      const convInputs = [inputs[0], transposedWeight];
+      if (inputs.length === 3) {
+        convInputs.push(inputs[2]);
+      }
+      context.compute(
+          createGroupedConvVectorizeProgramInfo(convInputs, adjustedAttributes, outputShape), {inputs: convInputs});
+    } else {
+      context.compute(createGroupedConvProgramInfo(inputs, adjustedAttributes));
+    }
     return;
   }
 
-  // const batchSize = context.inputs[0].dims[0];
+  const hasBias = inputs.length === 3;
   const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
   const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
   const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
@@ -165,57 +190,71 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
-  const batch = outputShape[0];
 
-  const sameSize =
-      isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth && attributes.autoPad === 'VALID';
+  const sameSize = isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth &&
+      attributes.pads[0] === 0 && attributes.pads[1] === 0;
   if (sameSize ||
       (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
        attributes.strides[0] === 1 && attributes.strides[1] === 1 && attributes.pads[0] === 0 &&
        attributes.pads[1] === 0)) {
     // conv2dByMatMul
-    const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
-        context.compute(
-            {
-              ...transposeProgramMetadata,
-              cacheHint: weightTransposeAttribute.cacheKey,
-              get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
-            },
-            {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
-    if (attributes.wIsConst && !context.kernelCustomData.wT) {
-      context.kernelCustomData.wT = transposedWeight;
-    }
-
+    const batch = outputShape[0];
+    let xReshaped, wReshaped, matmulOutputShape;
     const matmulInputs = [];
-    matmulInputs.push(inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]));
-    matmulInputs.push(transposedWeight.reshape([1, inputChannels, outChannels]));
+    if (isChannelsLast) {
+      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+          context.compute(
+              createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
+              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+      if (sameSize) {
+        const sharedDim = inputHeight * inputWidth * inputChannels;
+        xReshaped = inputs[0].reshape([1, batch, sharedDim]);
+        wReshaped = transposedWeight.reshape([1, sharedDim, outChannels]);
+        matmulOutputShape = [1, batch, outChannels];
+      } else {
+        xReshaped = inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]);
+        wReshaped = transposedWeight.reshape([1, inputChannels, outChannels]);
+        matmulOutputShape = [batch, outHeight * outWidth, outChannels];
+      }
+      matmulInputs.push(xReshaped);
+      matmulInputs.push(wReshaped);
+    } else {
+      xReshaped = inputs[0].reshape([batch, inputChannels, inputHeight * inputWidth]);
+      wReshaped = inputs[1].reshape([1, outChannels, inputChannels]);
+      matmulOutputShape = [batch, outChannels, outHeight * outWidth];
+      matmulInputs.push(wReshaped);
+      matmulInputs.push(xReshaped);
+    }
     if (hasBias) {
       matmulInputs.push(inputs[2]);
     }
-    const matmulOutputShape = [batch, outHeight * outWidth, outChannels];
-    context.compute(
-        createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape),
-        {inputs: matmulInputs});
-
+    const N = matmulOutputShape[2];
+    const K = matmulInputs[0].dims[matmulInputs[0].dims.length - 1];
+    // Tune the threshold.
+    if (N < 8 && K < 8) {
+      context.compute(
+          createNaiveMatmulProgramInfo(
+              matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    } else {
+      context.compute(
+          createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    }
     return;
   }
 
   // TODO: implement conv2dWithIm2Col()
-
-  const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
-  const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
-  const dimInner = weightHeight * weightWidth * inputChannels;
 
   const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
 
   // STEP.1: transpose weight
   const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
       context.compute(
-          {
-            ...transposeProgramMetadata,
-            cacheHint: weightTransposeAttribute.cacheKey,
-            get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
-          },
+          createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
           {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
   if (attributes.wIsConst && !context.kernelCustomData.wT) {
     context.kernelCustomData.wT = transposedWeight;
@@ -224,16 +263,15 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // STEP.2: prepare reshaped inputs
   const convInputs = [inputs[0], transposedWeight];
   if (hasBias) {
-    if (!isChannelsLast && inputs[2].dims.length === 1) {
-      convInputs.push(inputs[2].reshape([inputs[2].dims[0], 1, 1]));
-    } else {
-      convInputs.push(inputs[2]);
-    }
+    convInputs.push(inputs[2]);
   }
 
   // STEP.3: compute matmul
+  const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
+  const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
+  const dimInner = weightHeight * weightWidth * inputChannels;
   context.compute(
-      createConv2DMatMulProgramInfoLoader(
+      createConv2DMatMulProgramInfo(
           convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
           sequentialAccessByThreads),
       {inputs: convInputs});
@@ -260,15 +298,32 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
   const dilations = [1].concat(attributes.dilations);
   const kernelShape = [1].concat(attributes.kernelShape);
   const adjustedAttributes = getAdjustedConvAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
-  context.compute(createGroupedConvProgramInfoLoader(
+  context.compute(createGroupedConvProgramInfo(
       inputs, adjustedAttributes,
       outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
 };
 
+const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
+  const format = attributes.format === 'NHWC' ? 'channelsLast' : 'channelsFirst';
+  const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
+  const pads = attributes.autoPad === 'NOTSET' ? attributes.pads : attributes.autoPad;
+  const convInfo = computeConv3DInfo(
+      inputs[0].dims as [number, number, number, number, number],
+      inputs[1].dims as [number, number, number, number, number],
+      attributes.strides as number | [number, number, number],
+      attributes.dilations as number | [number, number, number], pads as string | number[], false, format);
+  context.compute(createConv3DNaiveProgramInfo(
+      inputs, adjustedAttributes, convInfo.outShape,
+      [convInfo.filterDepth, convInfo.filterHeight, convInfo.filterWidth],
+      [convInfo.padInfo.front, convInfo.padInfo.top, convInfo.padInfo.left], format));
+};
+
 export const conv = (context: ComputeContext, attributes: ConvAttributes): void => {
-  validateInputs(context.inputs, attributes);  // currently will fail if not conv1D/2D
+  validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 3) {
     conv1d(context, attributes);
+  } else if (context.inputs[0].dims.length === 5) {
+    conv3d(context, context.inputs, attributes);
   } else {
     conv2d(context, context.inputs, attributes);
   }

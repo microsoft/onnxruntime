@@ -19,10 +19,10 @@ SVMRegressor<T>::SVMRegressor(const OpKernelInfo& info)
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
   int64_t vector_count = 0;
-  ORT_ENFORCE(info.GetAttr<int64_t>("n_supports", &vector_count).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("n_supports", &vector_count));
   vector_count_ = narrow<ptrdiff_t>(vector_count);
-  ORT_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("rho", rho_));
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
   ORT_ENFORCE(!coefficients_.empty());
 
   auto onec = info.GetAttrOrDefault<int64_t>("one_class", 0);

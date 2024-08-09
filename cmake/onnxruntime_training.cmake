@@ -39,10 +39,6 @@ endif()
 
 target_include_directories(onnxruntime_training PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header} ${MPI_CXX_INCLUDE_DIRS})
 
-if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_training PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
-
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_training PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
@@ -81,9 +77,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
   target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
   target_link_libraries(onnxruntime_training_runner PRIVATE nlohmann_json::nlohmann_json)
-  if (onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_training_runner PUBLIC ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  endif()
 
   if (onnxruntime_USE_NCCL)
     target_include_directories(onnxruntime_training_runner PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -140,10 +133,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       onnxruntime_flatbuffers
       Boost::mp11 safeint_interface
   )
-
-  if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-      list(APPEND ONNXRUNTIME_LIBS onnxruntime_language_interop onnxruntime_pyop)
-  endif()
 
   if(UNIX AND NOT APPLE)
     if (HAS_NO_MAYBE_UNINITIALIZED)

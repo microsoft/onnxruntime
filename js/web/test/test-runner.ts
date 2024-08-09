@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array as Float16ArrayPolyfill} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -14,7 +15,8 @@ import {Operator} from '../lib/onnxjs/operators';
 import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
-import {tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
+import {createView} from '../lib/wasm/jsep/tensor-view';
+import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
@@ -38,10 +40,6 @@ const ONNXRUNTIME_THRESHOLD_RELATIVE_ERROR = 1.00001;
  */
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
 
-function toInternalTensor(tensor: ort.Tensor): Tensor {
-  return new Tensor(
-      tensor.dims, tensor.type as Tensor.DataType, undefined, undefined, tensor.data as Tensor.NumberType);
-}
 function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
@@ -95,7 +93,7 @@ async function loadTensors(
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
 
-  const allowInt64 = ['wasm', 'xnnpack', 'webgpu'].includes(backendName);
+  const allowInt64 = ['wasm', 'webgpu', 'webnn'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
@@ -136,8 +134,9 @@ async function loadTensors(
 }
 
 async function initializeSession(
-    modelFilePath: string, backendHint: string, profile: boolean, sessionOptions: ort.InferenceSession.SessionOptions,
-    fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
+    modelFilePath: string, backendHint: ort.InferenceSession.ExecutionProviderConfig, ioBindingMode: Test.IOBindingMode,
+    profile: boolean, externalData: ort.InferenceSession.SessionOptions['externalData'],
+    sessionOptions: ort.InferenceSession.SessionOptions, fileCache?: FileCacheBuffer): Promise<ort.InferenceSession> {
   const preloadModelData: Uint8Array|undefined =
       fileCache && fileCache[modelFilePath] ? fileCache[modelFilePath] : undefined;
   Logger.verbose(
@@ -146,18 +145,29 @@ async function initializeSession(
           preloadModelData ? ` [preloaded(${preloadModelData.byteLength})]` : ''}`);
 
   const profilerConfig = profile ? {maxNumberEvents: 65536} : undefined;
-  const sessionConfig =
-      {...sessionOptions, executionProviders: [backendHint], profiler: profilerConfig, enableProfiling: profile};
+  const sessionConfig = {
+    ...sessionOptions,
+    executionProviders: [backendHint],
+    profiler: profilerConfig,
+    enableProfiling: profile,
+    preferredOutputLocation: ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+    externalData
+  };
+
   let session: ort.InferenceSession;
 
   try {
     if (preloadModelData) {
       session = await ort.InferenceSession.create(preloadModelData, sessionConfig);
     } else {
-      session = await ort.InferenceSession.create(modelFilePath, sessionConfig);
+      const modelData = await readFile(modelFilePath);
+      session = await ort.InferenceSession.create(modelData, sessionConfig);
     }
   } catch (e) {
-    Logger.error('TestRunner', `Failed to load model from file: ${modelFilePath}. Error: ${inspect(e)}`);
+    Logger.error(
+        'TestRunner',
+        `Failed to load model from file: ${modelFilePath}. ` +
+            `Error: ${e.message} @ ${e.fileName}:${e.lineNumber}`);
     throw e;
   }
 
@@ -181,6 +191,7 @@ export class ModelTestContext {
       readonly session: ort.InferenceSession,
       readonly backend: string,
       readonly perfData: ModelTestContext.ModelTestPerfData,
+      readonly ioBinding: Test.IOBindingMode,
       private readonly profile: boolean,
   ) {}
 
@@ -221,9 +232,8 @@ export class ModelTestContext {
   /**
    * create a ModelTestContext object that used in every test cases in the given ModelTest.
    */
-  static async create(
-      modelTest: Test.ModelTest, profile: boolean,
-      sessionOptions?: ort.InferenceSession.SessionOptions): Promise<ModelTestContext> {
+  static async create(modelTest: Test.ModelTest, profile: boolean, testOptions?: Test.Options):
+      Promise<ModelTestContext> {
     if (this.initializing) {
       throw new Error('cannot create a ModelTestContext object when the previous creation is not done');
     }
@@ -232,8 +242,12 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
-      const session =
-          await initializeSession(modelTest.modelUrl, modelTest.backend!, profile, sessionOptions || {}, this.cache);
+      const executionProviderConfig =
+          modelTest.backend === 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
+      const session = await initializeSession(
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, modelTest.externalData,
+          testOptions?.sessionOptions || {}, this.cache);
+
       const initEnd = now();
 
       for (const testCase of modelTest.cases) {
@@ -244,6 +258,7 @@ export class ModelTestContext {
           session,
           modelTest.backend!,
           {init: initEnd - initStart, firstRun: -1, runs: [], count: 0},
+          modelTest.ioBinding,
           profile,
       );
     } finally {
@@ -301,7 +316,7 @@ export class TensorResultValidator {
     } else if (backend === 'webgpu') {
       this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
-    } else if (backend === 'wasm' || backend === 'xnnpack' || backend === 'webnn') {
+    } else if (backend === 'wasm' || backend === 'webnn') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'onnxruntime') {
@@ -313,6 +328,10 @@ export class TensorResultValidator {
   }
 
   checkTensorResult(actual: Tensor[], expected: Tensor[]): void {
+    this.checkApiTensorResult(actual.map(fromInternalTensor), expected.map(fromInternalTensor));
+  }
+
+  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
     // check output size
     expect(actual.length, 'size of output tensors').to.equal(expected.length);
 
@@ -330,10 +349,6 @@ export class TensorResultValidator {
     }
   }
 
-  checkApiTensorResult(actual: ort.Tensor[], expected: ort.Tensor[]): void {
-    this.checkTensorResult(actual.map(toInternalTensor), expected.map(toInternalTensor));
-  }
-
   checkNamedTensorResult(actual: Record<string, ort.Tensor>, expected: Test.NamedTensor[]): void {
     // check output size
     expect(Object.getOwnPropertyNames(actual).length, 'size of output tensors').to.equal(expected.length);
@@ -347,7 +362,7 @@ export class TensorResultValidator {
   }
 
   // This function check whether 2 tensors should be considered as 'match' or not
-  areEqual(actual: Tensor, expected: Tensor): boolean {
+  areEqual(actual: ort.Tensor, expected: ort.Tensor): boolean {
     if (!actual || !expected) {
       return false;
     }
@@ -375,13 +390,31 @@ export class TensorResultValidator {
 
     switch (actualType) {
       case 'string':
-        return this.strictEqual(actual.stringData, expected.stringData);
+        return this.strictEqual(actual.data, expected.data);
+
+      case 'float16': {
+        const actualData = actual.data as Uint16Array;
+        const actualDataBuffer = actualData.buffer;
+        const actualDataByteOffset = actualData.byteOffset;
+        const actualDataLength = actualData.length;
+        const actualDataFloat32Array =
+            new Float32Array(new Float16ArrayPolyfill(actualDataBuffer, actualDataByteOffset, actualDataLength));
+
+        const expectedData = expected.data as Uint16Array;
+        const expectedDataBuffer = expectedData.buffer;
+        const expectedDataByteOffset = expectedData.byteOffset;
+        const expectedDataLength = expectedData.length;
+        const expectedDataFloat32Array =
+            new Float32Array(new Float16ArrayPolyfill(expectedDataBuffer, expectedDataByteOffset, expectedDataLength));
+
+        return this.floatEqual(actualDataFloat32Array, expectedDataFloat32Array);
+      }
 
       case 'float32':
       case 'float64':
         return this.floatEqual(
-            actual.numberData as number[] | Float32Array | Float64Array,
-            expected.numberData as number[] | Float32Array | Float64Array);
+            actual.data as number[] | Float32Array | Float64Array,
+            expected.data as number[] | Float32Array | Float64Array);
 
       case 'uint8':
       case 'int8':
@@ -392,10 +425,8 @@ export class TensorResultValidator {
       case 'int64':
       case 'bool':
         return TensorResultValidator.integerEqual(
-            actual.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array,
-            expected.numberData as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array |
-                Int32Array);
+            actual.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array,
+            expected.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array);
 
       default:
         throw new Error('type not implemented or not supported');
@@ -481,6 +512,136 @@ export class TensorResultValidator {
   }
 }
 
+function createGpuTensorForInput(cpuTensor: ort.Tensor): ort.Tensor {
+  if (!isGpuBufferSupportedType(cpuTensor.type) || Array.isArray(cpuTensor.data)) {
+    throw new Error(`createGpuTensorForInput can not work with ${cpuTensor.type} tensor`);
+  }
+  const device = ort.env.webgpu.device as GPUDevice;
+  const gpuBuffer = device.createBuffer({
+    // eslint-disable-next-line no-bitwise
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
+    size: Math.ceil(cpuTensor.data.byteLength / 16) * 16,
+    mappedAtCreation: true
+  });
+  const arrayBuffer = gpuBuffer.getMappedRange();
+  new Uint8Array(arrayBuffer)
+      .set(new Uint8Array(cpuTensor.data.buffer, cpuTensor.data.byteOffset, cpuTensor.data.byteLength));
+  gpuBuffer.unmap();
+
+  // TODO: how to "await" for the copy to finish, so that we can get more accurate performance data?
+
+  return ort.Tensor.fromGpuBuffer(
+      gpuBuffer, {dataType: cpuTensor.type, dims: cpuTensor.dims, dispose: () => gpuBuffer.destroy()});
+}
+
+function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]) {
+  if (!isGpuBufferSupportedType(type)) {
+    throw new Error(`createGpuTensorForOutput can not work with ${type} tensor`);
+  }
+
+  const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(type))!;
+  const size = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+
+  const device = ort.env.webgpu.device as GPUDevice;
+  const gpuBuffer = device.createBuffer({
+    // eslint-disable-next-line no-bitwise
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
+    size: Math.ceil(size / 16) * 16
+  });
+
+  return ort.Tensor.fromGpuBuffer(gpuBuffer, {
+    dataType: type,
+    dims,
+    dispose: () => gpuBuffer.destroy(),
+    download: async () => {
+      const stagingBuffer = device.createBuffer({
+        // eslint-disable-next-line no-bitwise
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        size: gpuBuffer.size
+      });
+      const encoder = device.createCommandEncoder();
+      encoder.copyBufferToBuffer(gpuBuffer, 0, stagingBuffer, 0, gpuBuffer.size);
+      device.queue.submit([encoder.finish()]);
+
+      await stagingBuffer.mapAsync(GPUMapMode.READ);
+      const arrayBuffer = stagingBuffer.getMappedRange().slice(0, size);
+      stagingBuffer.destroy();
+
+      return createView(arrayBuffer, type) as ort.Tensor.DataTypeMap[ort.Tensor.GpuBufferDataTypes];
+    }
+  });
+}
+
+export async function sessionRun(options: {
+  session: ort.InferenceSession; feeds: Record<string, ort.Tensor>;
+  outputsMetaInfo: Record<string, Pick<ort.Tensor, 'dims'|'type'>>;
+  ioBinding: Test.IOBindingMode;
+}): Promise<[number, number, ort.InferenceSession.OnnxValueMapType]> {
+  const session = options.session;
+  const feeds = options.feeds;
+  const fetches: Record<string, ort.Tensor> = {};
+
+  // currently we only support IO Binding for WebGPU
+  //
+  // For inputs, we create GPU tensors on both 'gpu-tensor' and 'gpu-location' binding testing mode.
+  // For outputs, we create GPU tensors on 'gpu-tensor' binding testing mode only.
+  //              in 'gpu-device' binding mode, outputs are not pre-allocated.
+  const shouldUploadInput = options.ioBinding === 'gpu-tensor' || options.ioBinding === 'gpu-location';
+  const shouldUploadOutput = options.ioBinding === 'gpu-tensor';
+  try {
+    if (shouldUploadInput) {
+      // replace the CPU tensors in feeds into GPU tensors
+      for (const name in feeds) {
+        if (Object.hasOwnProperty.call(feeds, name)) {
+          if (feeds[name].size > 0) {
+            feeds[name] = createGpuTensorForInput(feeds[name]);
+          }
+        }
+      }
+    }
+
+    if (shouldUploadOutput) {
+      for (const name in options.outputsMetaInfo) {
+        if (Object.hasOwnProperty.call(options.outputsMetaInfo, name)) {
+          const {type, dims} = options.outputsMetaInfo[name];
+          if (dims.some(d => d === 0)) {
+            fetches[name] = new ort.Tensor(type, [], dims);
+          } else {
+            fetches[name] = createGpuTensorForOutput(type, dims);
+          }
+        }
+      }
+    }
+
+    const start = now();
+    Logger.verbose('TestRunner', `Timestamp before session run: ${start}`);
+    const outputs = await (
+        shouldUploadOutput ? session.run(feeds, fetches) :
+                             session.run(feeds, Object.getOwnPropertyNames(options.outputsMetaInfo)));
+    const end = now();
+    Logger.verbose('TestRunner', `Timestamp after session run: ${end}`);
+
+    // download each output tensor if needed
+    for (const name in outputs) {
+      if (Object.hasOwnProperty.call(outputs, name)) {
+        const tensor = outputs[name];
+        // Tensor.getData(true) release the underlying resource
+        await tensor.getData(true);
+      }
+    }
+
+    return [start, end, outputs];
+  } finally {
+    // dispose the GPU tensors in feeds
+    for (const name in feeds) {
+      if (Object.hasOwnProperty.call(feeds, name)) {
+        const tensor = feeds[name];
+        tensor.dispose();
+      }
+    }
+  }
+}
+
 /**
  * run a single model test case. the inputs/outputs tensors should already been prepared.
  */
@@ -491,12 +652,11 @@ export async function runModelTestSet(
   const validator = new TensorResultValidator(context.backend);
   try {
     const feeds: Record<string, ort.Tensor> = {};
-    testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
-    const start = now();
-    Logger.verbose('TestRunner', `Timestamp before session run: ${start}`);
-    const outputs = await context.session.run(feeds);
-    const end = now();
-    Logger.verbose('TestRunner', `Timestamp after session run: ${end}`);
+    const outputsMetaInfo: Record<string, ort.Tensor> = {};
+    testCase.inputs!.forEach((tensor) => feeds[tensor.name] = tensor);
+    testCase.outputs!.forEach((tensor) => outputsMetaInfo[tensor.name] = tensor);
+    const [start, end, outputs] =
+        await sessionRun({session: context.session, feeds, outputsMetaInfo, ioBinding: context.ioBinding});
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
     } else {
@@ -575,6 +735,7 @@ export class ProtoOpTestContext {
   private readonly loadedData: Uint8Array;  // model data, inputs, outputs
   session: ort.InferenceSession;
   readonly backendHint: string;
+  readonly ioBindingMode: Test.IOBindingMode;
   constructor(test: Test.OperatorTest, private readonly sessionOptions: ort.InferenceSession.SessionOptions = {}) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
     const operator = test.operator;
@@ -621,6 +782,25 @@ export class ProtoOpTestContext {
       throw new Error(
           `Test cases for test: ${test.name} [${test.operator}] must have the same number of inputs and outputs`);
     }
+    const inputsOmitted = test.cases[0].inputs.map(input => !input.data);
+    const outputsOmitted = test.cases[0].outputs.map(output => !output.data);
+    for (let caseIndex = 1; caseIndex < test.cases.length; caseIndex++) {
+      const testCase = test.cases[caseIndex];
+      for (let i = 0; i < inputCount; i++) {
+        if (inputsOmitted[i] !== !testCase.inputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent inputs data availability. Data of input[${i}] in testCase #0 and #${
+              caseIndex} should be both available or both omitted.`);
+        }
+      }
+      for (let i = 0; i < outputCount; i++) {
+        if (outputsOmitted[i] !== !testCase.outputs![i].data) {
+          throw new Error(`Test cases for test: ${test.name} [${
+              test.operator}] must have consistent outputs data availability. Data of output[${
+              i}] in testCase #0 and #${caseIndex} should be both available or both omitted.`);
+        }
+      }
+    }
 
     const model = onnx.ModelProto.create();
     model.irVersion = onnx.Version.IR_VERSION;
@@ -628,8 +808,8 @@ export class ProtoOpTestContext {
     model.graph = onnx.GraphProto.create();
 
     model.graph.node = [onnx.NodeProto.create({
-      input: test.cases[0].inputs!.map((_, i) => `input_${i}`),
-      output: test.cases[0].outputs!.map((_, i) => `output_${i}`),
+      input: test.cases[0].inputs!.map((t, i) => t.data ? `input_${i}` : ''),
+      output: test.cases[0].outputs!.map((t, i) => t.data ? `output_${i}` : ''),
       opType: operator,
       domain: test.opset?.domain,
       name: operator,
@@ -688,32 +868,42 @@ export class ProtoOpTestContext {
       normalizedInputShapeDefinitions = test.inputShapeDefinitions;
     }
 
-    model.graph.input = test.cases[0].inputs!.map((input, i) => {
-      const shapeDefinition = normalizedInputShapeDefinitions[i];
-      const shape = shapeDefinition ? onnx.TensorShapeProto.create({
-        dim: shapeDefinition.map(
-            dim => onnx.TensorShapeProto.Dimension.create(typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
-      }) :
-                                      undefined;
-      return onnx.ValueInfoProto.create({
-        name: `input_${i}`,
-        type: onnx.TypeProto.create({
-          tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
-        }),
-      });
-    });
+    model.graph.input =
+        test.cases[0]
+            .inputs!
+            .map((input, i) => {
+              const shapeDefinition = normalizedInputShapeDefinitions[i];
+              const shape = shapeDefinition ? onnx.TensorShapeProto.create({
+                dim: shapeDefinition.map(
+                    dim => onnx.TensorShapeProto.Dimension.create(
+                        typeof dim === 'string' ? {dimParam: dim} : {dimValue: dim}))
+              }) :
+                                              undefined;
+              return onnx.ValueInfoProto.create({
+                name: `input_${i}`,
+                type: onnx.TypeProto.create({
+                  tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(input.type), shape}),
+                }),
+              });
+            })
+            .filter((_, i) => test.cases[0].inputs![i].data);
 
-    model.graph.output = test.cases[0].outputs!.map((output, i) => onnx.ValueInfoProto.create({
-      name: `output_${i}`,
-      type: onnx.TypeProto.create({
-        tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
-      }),
-    }));
+    model.graph.output =
+        test.cases[0]
+            .outputs!
+            .map((output, i) => onnx.ValueInfoProto.create({
+              name: `output_${i}`,
+              type: onnx.TypeProto.create({
+                tensorType: onnx.TypeProto.Tensor.create({elemType: tensorDataTypeStringToEnum(output.type)}),
+              }),
+            }))
+            .filter((_, i) => test.cases[0].outputs![i].data);
 
     model.graph.name = test.name;
 
     this.backendHint = test.backend!;
-    this.loadedData = onnx.ModelProto.encode(model).finish();
+    this.ioBindingMode = test.ioBinding;
+    this.loadedData = onnx.ModelProto.encode(model).finish().slice();
 
     // in debug mode, open a new tab in browser for the generated onnx model.
     if (ort.env.debug) {
@@ -729,8 +919,11 @@ export class ProtoOpTestContext {
     }
   }
   async init(): Promise<void> {
-    this.session = await ort.InferenceSession.create(
-        this.loadedData, {executionProviders: [this.backendHint], ...this.sessionOptions});
+    this.session = await ort.InferenceSession.create(this.loadedData, {
+      executionProviders: [this.backendHint],
+      preferredOutputLocation: this.ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
+      ...this.sessionOptions
+    });
   }
 
   async dispose(): Promise<void> {
@@ -739,16 +932,20 @@ export class ProtoOpTestContext {
 }
 
 async function runProtoOpTestcase(
-    session: ort.InferenceSession, testCase: Test.OperatorTestCase, validator: TensorResultValidator): Promise<void> {
+    session: ort.InferenceSession, testCase: Test.OperatorTestCase, ioBindingMode: Test.IOBindingMode,
+    validator: TensorResultValidator): Promise<void> {
   const feeds: Record<string, ort.Tensor> = {};
-  const fetches: string[] = [];
-  testCase.inputs!.forEach((input, i) => {
+  const fetches: Record<string, Pick<ort.Tensor, 'dims'|'type'>> = {};
+  testCase.inputs.forEach((input, i) => {
     if (input.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = input.data;
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = input.data;
       if (input.type === 'uint64') {
         data = BigUint64Array.from(input.data.map(BigInt));
       } else if (input.type === 'int64') {
         data = BigInt64Array.from(input.data.map(BigInt));
+      } else if (input.type === 'float16') {
+        const dataArr = Float16ArrayPolyfill.from(input.data);
+        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
     }
@@ -756,21 +953,24 @@ async function runProtoOpTestcase(
 
   const outputs: ort.Tensor[] = [];
   const expectedOutputNames: string[] = [];
-  testCase.outputs!.forEach((output, i) => {
+  testCase.outputs.forEach((output, i) => {
     if (output.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = output.data;
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = output.data;
       if (output.type === 'uint64') {
         data = BigUint64Array.from(output.data.map(BigInt));
       } else if (output.type === 'int64') {
         data = BigInt64Array.from(output.data.map(BigInt));
+      } else if (output.type === 'float16') {
+        const dataArr = Float16ArrayPolyfill.from(output.data);
+        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       outputs.push(new ort.Tensor(output.type, data, output.dims));
       expectedOutputNames.push(`output_${i}`);
-      fetches.push(`output_${i}`);
+      fetches[`output_${i}`] = {dims: output.dims, type: output.type};
     }
   });
 
-  const results = await session.run(feeds, fetches);
+  const [, , results] = await sessionRun({session, feeds, outputsMetaInfo: fetches, ioBinding: ioBindingMode});
 
   const actualOutputNames = Object.getOwnPropertyNames(results);
   expect(actualOutputNames.length).to.equal(expectedOutputNames.length);
@@ -821,7 +1021,8 @@ async function runOpTestcase(
 export async function runOpTest(
     testcase: Test.OperatorTestCase, context: ProtoOpTestContext|OpTestContext): Promise<void> {
   if (context instanceof ProtoOpTestContext) {
-    await runProtoOpTestcase(context.session, testcase, new TensorResultValidator(context.backendHint));
+    await runProtoOpTestcase(
+        context.session, testcase, context.ioBindingMode, new TensorResultValidator(context.backendHint));
   } else {
     await runOpTestcase(
         context.inferenceHandler, context.createOperator(), testcase, new TensorResultValidator(context.backendHint));

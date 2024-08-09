@@ -192,7 +192,7 @@ __device__ __forceinline__ void _LambUpdateRule(
     T2* w_new,
     T3* g_new,
     T_MIXED_PRECISION_FP* w_mixed_precision_new) {
-  // Confidence coefficeint of this update.
+  // Confidence coefficient of this update.
   const T2 ratio = (w_norm != T2(0.0f) && r_norm != T2(0.0f)) ? T2(eta) * _Max(T2(ratio_min), _Min(T2(ratio_max), _Sqrt(w_norm / r_norm))) : T2(eta);
 
   // Compute delta using the saved update direction.
@@ -619,7 +619,7 @@ CudaKernel::CudaAsyncBuffer<LambMultiTensorSyncRangeAndLock> compute_tensor_rang
 
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()(
-    cudaStream_t stream,
+    cudaStream_t /*stream*/,
     ChunkGroup<4> chunk_group,
     const CudaKernel& kernel,
     void* reduction_buffer,

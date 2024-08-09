@@ -8,7 +8,7 @@
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OrtSession_SessionOptions.h"
-#ifdef WIN32
+#ifdef _WIN32
 #include <Windows.h>
 #else
 #include <dlfcn.h>
@@ -19,7 +19,6 @@
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
-#include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
 #include "onnxruntime/core/providers/armnn/armnn_provider_factory.h"
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
@@ -319,7 +318,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_closeC
 
   // Iterate the handles, calling the appropriate close function
   for (jint i = 0; i < numHandles; i++) {
-#ifdef WIN32
+#ifdef _WIN32
     FreeLibrary((void*)handles[i]);
 #else
     dlclose((void*)handles[i]);
@@ -631,7 +630,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIG
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDirectML
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
   (void)jobj;
-  #ifdef USE_DIRECTML
+  #ifdef USE_DML
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_DML((OrtSessionOptions*) handle, deviceID));
   #else
     (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when DirectML is defined.

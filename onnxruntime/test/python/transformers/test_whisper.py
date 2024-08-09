@@ -50,7 +50,7 @@ class TestFusion(unittest.TestCase):
                 )
             )
 
-    # Attention type #1 in onnx_model_bart.py
+    # Attention type #1 in fusion_bart_attention.py
     def test_encoder_attention_fusion_with_skiplayernorm(self):
         num_heads = 4
         hidden_size = 64
@@ -67,7 +67,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "encoder_attention_with_sln_fused.onnx")
 
-    # Attention type #2 in onnx_model_bart.py
+    # Attention type #2 in fusion_bart_attention.py
     def test_decoder_attention_fusion_with_skiplayernorm(self):
         num_heads = 4
         hidden_size = 64
@@ -84,7 +84,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_attention_with_sln_fused.onnx")
 
-    # Attention type #4 in onnx_model_bart.py
+    # Attention type #4 in fusion_bart_attention.py
     def test_decoder_multihead_attention_fusion(self):
         num_heads = 4
         hidden_size = 64
@@ -100,7 +100,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_mha_fused.onnx")
 
-    # Attention type #3 in onnx_model_bart.py
+    # Attention type #3 in fusion_bart_attention.py
     def test_decoder_with_past_multihead_self_attention_fusion_with_skiplayernorm(self):
         num_heads = 4
         hidden_size = 64
@@ -118,7 +118,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_self_mha_fused.onnx")
 
-    # Attention type #5 in onnx_model_bart.py
+    # Attention type #5 in fusion_bart_attention.py
     def test_decoder_with_past_multihead_cross_attention_fusion(self):
         num_heads = 4
         hidden_size = 64
@@ -134,7 +134,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_cross_mha_fused.onnx")
 
-    # Attention type #4 in onnx_model_bart.py
+    # Attention type #4 in fusion_bart_attention.py
     def test_decoder_multihead_attention_split_bias_fusion(self):
         num_heads = 4
         hidden_size = 64
@@ -151,7 +151,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_mha_split_bias_fused.onnx")
 
-    # Attention type #3 in onnx_model_bart.py
+    # Attention type #3 in fusion_bart_attention.py
     def test_decoder_with_past_multihead_self_attention_split_bias_fusion_with_skiplayernorm(self):
         num_heads = 4
         hidden_size = 64
@@ -171,7 +171,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
         self.verify_fusion(optimized_model, "decoder_with_past_self_mha_split_bias_fused.onnx")
 
-    # Attention type #5 in onnx_model_bart.py
+    # Attention type #5 in fusion_bart_attention.py
     def test_decoder_with_past_multihead_cross_attention_split_bias_fusion(self):
         num_heads = 4
         hidden_size = 64

@@ -33,7 +33,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
@@ -127,7 +127,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                                     const OpSupportCheckParams& /* params */) const {
   if (node_unit.Outputs().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "Your onnx model may be in training mode, please export "
@@ -158,20 +158,20 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
   const auto& b_name = inputs[2].node_arg.Name();
   const auto& mean_name = inputs[3].node_arg.Name();
   const auto& var_name = inputs[4].node_arg.Name();
-  if (!Contains(initializers, scale_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be known";
+  if (!graph_viewer.GetConstantInitializer(scale_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Scale of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, b_name)) {
-    LOGS_DEFAULT(VERBOSE) << "B of BN must be known";
+  if (!graph_viewer.GetConstantInitializer(b_name)) {
+    LOGS_DEFAULT(VERBOSE) << "B of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, mean_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be known";
+  if (!graph_viewer.GetConstantInitializer(mean_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Mean of BN must be a constant initializer";
     return false;
   }
-  if (!Contains(initializers, var_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Var of BN must be known";
+  if (!graph_viewer.GetConstantInitializer(var_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Var of BN must be a constant initializer";
     return false;
   }
 

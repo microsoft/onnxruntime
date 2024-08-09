@@ -67,7 +67,7 @@ class PackingAttentionBase:
                 last_layernorm_node = node
         return last_layernorm_node
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         raise NotImplementedError()
 
     def _insert_removepadding_node(self, inputs: List[str], outputs: List[str]) -> None:
@@ -105,7 +105,7 @@ class PackingAttentionBase:
     def convert(self, use_symbolic_shape_infer: bool = True) -> None:
         logger.debug("start converting to packing model...")
 
-        if not self._are_attentions_supportted():
+        if not self._are_attentions_supported():
             return
 
         attention_mask = self._try_getting_attention_mask()
@@ -164,7 +164,7 @@ class PackingAttention(PackingAttentionBase):
     def __init__(self, model: OnnxModel):
         super().__init__(model, Operators.ATTENTION)
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         for node in self.attention_nodes:
             if OnnxModel.get_node_attribute(node, "past_present_share_buffer") is not None:
                 return False
@@ -237,7 +237,7 @@ class PackingMultiHeadAttention(PackingAttentionBase):
                 return False
         return True
 
-    def _are_attentions_supportted(self) -> bool:
+    def _are_attentions_supported(self) -> bool:
         for node in self.attention_nodes:
             for attr in node.attribute:
                 if attr.name not in ["num_heads", "mask_filter_value", "scale"]:

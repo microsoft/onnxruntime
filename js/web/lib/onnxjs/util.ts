@@ -474,7 +474,7 @@ export class ProtoUtil {
 export class LongUtil {
   // This function is called to get a number from long type of data for attribute, dim, and ir version,
   // which values are signed integers.
-  // To make it more generic, add an optional paramter to convert to a unsigned number.
+  // To make it more generic, add an optional parameter to convert to a unsigned number.
   static longToNumber(n: Long|flatbuffers.Long|number, unsigned?: boolean) {
     if (Long.isLong(n)) {
       return n.toNumber();
@@ -967,7 +967,7 @@ export class ReduceUtil {
     const dims = a.dims.slice(0);
     // if axes is not set, perform reduce on all axes
     if (axes.length === 0) {
-      dims.forEach((d, ind) => axes.push(ind));
+      dims.forEach((_d, ind) => axes.push(ind));
     }
     // get a temporary broadcastable output shape
     const outputDims = ReduceUtil.calcReduceShape(dims, axes, true);

@@ -12,9 +12,8 @@ namespace test {
 // InferenceSession wrapper class for use in tests where we need access to the Graph and SessionState
 class InferenceSessionWrapper : public InferenceSession {
  public:
-  explicit InferenceSessionWrapper(const SessionOptions& session_options,
-                                   const Environment& env) : InferenceSession(session_options, env) {
-  }
+  // Expose the constructors from InferenceSession
+  using InferenceSession::InferenceSession;
 
   const Graph& GetGraph() const {
     return model_->MainGraph();

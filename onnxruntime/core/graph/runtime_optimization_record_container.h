@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
 
 #include "core/common/common.h"
 #include "core/graph/runtime_optimization_record.h"

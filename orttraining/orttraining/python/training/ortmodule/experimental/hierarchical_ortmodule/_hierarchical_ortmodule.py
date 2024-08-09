@@ -214,8 +214,7 @@ class HierarchicalORTModule(torch.nn.Module):
                 if isinstance(sub_module, torch.nn.ModuleList):
                     # We encounter a list of sub-modules.
                     # Let's wrap them one-by-one.
-                    idx = 0
-                    for item_name, sub_module_item in sub_module._modules.items():
+                    for idx, (item_name, sub_module_item) in enumerate(sub_module._modules.items()):
                         # Avoid saving too many graphs.
                         new_save_onnx = save_onnx and idx == 0
                         sub_new_prefix = new_prefix + "_" + item_name
@@ -237,7 +236,6 @@ class HierarchicalORTModule(torch.nn.Module):
                                 )
                         else:
                             recursive_wrap(sub_module_item, new_save_onnx, sub_new_prefix)
-                        idx += 1
                 else:
                     if is_supported(sub_module):
                         # Just wrap it as ORTModule when possible.

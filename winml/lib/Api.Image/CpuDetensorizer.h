@@ -36,7 +36,8 @@ class CpuDetensorizer {
 
     auto nominalRangeConverter = NominalRangeConverter(pixelRange);
 
-    if (formatFrom == formatTo && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
+    if (formatFrom == formatTo &&
+        (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       for (uint32_t i = 0; i < tensorHeight; i++) {
         BYTE* pPixel = pData;
 
@@ -52,7 +53,8 @@ class CpuDetensorizer {
 
         pData += bufferWidth;
       }
-    } else if ((formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) || (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8)) {
+    } else if ((formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) ||
+               (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8)) {
       for (uint32_t i = 0; i < tensorHeight; i++) {
         BYTE* pPixel = pData;
 
@@ -68,7 +70,8 @@ class CpuDetensorizer {
 
         pData += bufferWidth;
       }
-    } else if (formatFrom == kImageTensorChannelTypeGRAY8 && (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
+    } else if (formatFrom == kImageTensorChannelTypeGRAY8 &&
+               (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
       // just replicate the gray data across each channel
       for (uint32_t i = 0; i < end; i += bufferWidth) {
         for (uint32_t j = i; j < i + bytesPerRow; j += 4) {
@@ -128,8 +131,12 @@ class CpuDetensorizer {
     return nominalRangeConverter.Denormalize(*pCPUTensor);
   }
 
+  // clang-format off
   template <>
-  static float ReadTensor<DirectX::PackedVector::HALF>(
+#if _MSVC_LANG < 202002L
+  static
+#endif
+  float ReadTensor<DirectX::PackedVector::HALF>(
     const DirectX::PackedVector::HALF* pCPUTensor, const NominalRangeConverter& nominalRangeConverter
   ) {
     return nominalRangeConverter.Denormalize(DirectX::PackedVector::XMConvertHalfToFloat(*pCPUTensor));
@@ -167,9 +174,13 @@ class CpuDetensorizer {
     }
   }
 
+  // clang-format off
 #if defined(_M_AMD64) || defined(_M_IX86)
   template <>
-  static void InterleaveRowFloatToByte(
+#if _MSVC_LANG < 202002L
+  static
+#endif
+  void InterleaveRowFloatToByte(
     const float* xChannel,
     const float* yChannel,
     const float* zChannel,

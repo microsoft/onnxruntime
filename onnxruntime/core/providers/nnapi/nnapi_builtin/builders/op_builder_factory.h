@@ -33,6 +33,7 @@ void CreateReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSoftMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

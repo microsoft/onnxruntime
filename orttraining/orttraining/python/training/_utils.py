@@ -6,11 +6,9 @@
 import importlib.util
 import os
 import sys
-from functools import wraps  # noqa: F401
 
 import numpy as np
 import torch
-from onnx import TensorProto  # noqa: F401
 from packaging.version import Version
 
 
@@ -21,16 +19,6 @@ def get_device_index(device):
     elif isinstance(device, int):
         return device
     return 0 if device.index is None else device.index
-
-
-def get_device_index_from_input(input):
-    """Returns device index from a input PyTorch Tensor"""
-
-    if isinstance(input, (list, tuple)):
-        device_index = get_device_index(input[0].device)
-    else:
-        device_index = get_device_index(input.device)
-    return device_index
 
 
 def get_device_str(device):
@@ -48,24 +36,6 @@ def get_device_str(device):
     else:
         raise RuntimeError("Unsupported device type")
     return device
-
-
-def get_all_gradients_finite_name_from_session(session):
-    """Find all_gradients_finite node on Session graph and return its name"""
-
-    nodes = [x for x in session._outputs_meta if "all_gradients_finite" in x.name]
-    if len(nodes) != 1:
-        raise RuntimeError("'all_gradients_finite' node not found within training session")
-    return nodes[0].name
-
-
-def get_gradient_accumulation_name_from_session(session):
-    """Find Group_Accumulated_Gradients node on Session graph and return its name"""
-
-    nodes = [x for x in session._outputs_meta if "Group_Accumulated_Gradients" in x.name]
-    if len(nodes) != 1:
-        raise RuntimeError("'Group_Accumulated_Gradients' node not found within training session")
-    return nodes[0].name
 
 
 def dtype_torch_to_numpy(torch_dtype):
@@ -232,111 +202,3 @@ def import_module_from_file(file_path, module_name=None):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def state_dict_model_key():
-    """Returns the model key name in the state dictionary"""
-
-    return "model"
-
-
-def state_dict_optimizer_key():
-    """Returns the optimizer key name in the state dictionary"""
-
-    return "optimizer"
-
-
-def state_dict_partition_info_key():
-    """Returns the partition info key name in the state dictionary"""
-
-    return "partition_info"
-
-
-def state_dict_trainer_options_key():
-    """Returns the trainer options key name in the state dictionary"""
-
-    return "trainer_options"
-
-
-def state_dict_full_precision_key():
-    """Returns the full precision key name in the state dictionary"""
-
-    return "full_precision"
-
-
-def state_dict_original_dimension_key():
-    """Returns the original dimension key name in the state dictionary"""
-
-    return "original_dim"
-
-
-def state_dict_sharded_optimizer_keys():
-    """Returns the optimizer key names that can be sharded in the state dictionary"""
-
-    return {"Moment_1", "Moment_2"}
-
-
-def state_dict_user_dict_key():
-    """Returns the user dict key name in the state dictionary"""
-
-    return "user_dict"
-
-
-def state_dict_trainer_options_mixed_precision_key():
-    """Returns the trainer options mixed precision key name in the state dictionary"""
-
-    return "mixed_precision"
-
-
-def state_dict_trainer_options_zero_stage_key():
-    """Returns the trainer options zero_stage key name in the state dictionary"""
-
-    return "zero_stage"
-
-
-def state_dict_trainer_options_world_rank_key():
-    """Returns the trainer options world_rank key name in the state dictionary"""
-
-    return "world_rank"
-
-
-def state_dict_trainer_options_world_size_key():
-    """Returns the trainer options world_size key name in the state dictionary"""
-
-    return "world_size"
-
-
-def state_dict_trainer_options_data_parallel_size_key():
-    """Returns the trainer options data_parallel_size key name in the state dictionary"""
-
-    return "data_parallel_size"
-
-
-def state_dict_trainer_options_horizontal_parallel_size_key():
-    """Returns the trainer options horizontal_parallel_size key name in the state dictionary"""
-
-    return "horizontal_parallel_size"
-
-
-def state_dict_trainer_options_optimizer_name_key():
-    """Returns the trainer options optimizer_name key name in the state dictionary"""
-
-    return "optimizer_name"
-
-
-def state_dict_train_step_info_key():
-    """Returns the train step info key name in the state dictionary"""
-
-    return "train_step_info"
-
-
-def state_dict_train_step_info_optimization_step_key():
-    """Returns the train step info optimization step key name in the state dictionary"""
-
-    return "optimization_step"
-
-
-def state_dict_train_step_info_step_key():
-    """Returns the train step info step key name in the state dictionary"""
-
-    return "step"

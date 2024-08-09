@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import logging
@@ -8,24 +9,18 @@ import pathlib
 import tempfile
 from collections import deque
 from enum import IntEnum
-from typing import Optional
 
 import onnx
 
-from ..onnx_model_utils import (
-    get_producer_consumer_maps,
-    is_fixed_size_tensor,
-    iterate_graph_per_graph_func,
-    iterate_graph_per_node_func,
-    optimize_model,
-)
+from ..onnx_model_utils import ModelProtoWithShapeInfo, get_producer_consumer_maps, is_fixed_size_tensor, optimize_model
 
 
 class _SupportedOpsChecker:
     """
     Class to process the md file with list of supported ops and caveats for an execution provider.
     e.g. /tools/ci_build/github/android/nnapi_supported_ops.md
-         /tools/ci_build/github/apple/coreml_supported_ops.md
+         /tools/ci_build/github/apple/coreml_supported_mlprogram_ops.md
+         /tools/ci_build/github/apple/coreml_supported_neuralnetwork_ops.md
     """
 
     def __init__(self, filename):
@@ -34,7 +29,7 @@ class _SupportedOpsChecker:
         self._ops_seen = set()
 
         with open(filename) as f:
-            for line in f.readlines():
+            for line in f:
                 # we're looking for a markdown table with 2 columns. first is op name. second is caveats
                 # op name is domain:op
                 if line.startswith("|"):
@@ -74,28 +69,58 @@ class PartitioningInfo:
         MAYBE = (1,)
         YES = 2
 
-    def __init__(self):
-        self.num_nodes = -1  # main graph only
-        self.num_supported_nodes = -1
-        self.num_partitions = -1
-        self.num_nodes_in_subgraphs = -1  # nodes not covered as we don't currently handle subgraphs in nnapi/coreml
-        self.supported_ops_checker = None
-        self.supported_groups = []
-        self.unsupported_ops = set()
-        self.nodes_unsupported_due_to_op = -1
-        self.nodes_unsupported_due_to_dynamic_input = -1
+    def __init__(
+        self,
+        num_nodes: int,
+        num_supported_nodes: int,
+        num_partitions: int,
+        supported_ops_checker: _SupportedOpsChecker,
+        supported_groups: list[onnx.NodeProto],
+        unsupported_ops: set[str],
+        nodes_unsupported_due_to_op: int,
+        nodes_unsupported_due_to_dynamic_input: int,
+        num_unsupported_nodes_due_to_rank: int,
+        ops_with_unsupported_rank: set[str],
+    ):
+        self.num_nodes = num_nodes
+        self.num_supported_nodes = num_supported_nodes
+        self.num_partitions = num_partitions
+        self.supported_ops_checker = supported_ops_checker
+        self.supported_groups = supported_groups
+        self.unsupported_ops = unsupported_ops
+        self.nodes_unsupported_due_to_op = nodes_unsupported_due_to_op
+        self.nodes_unsupported_due_to_dynamic_input = nodes_unsupported_due_to_dynamic_input
+        self.num_unsupported_nodes_due_to_rank = num_unsupported_nodes_due_to_rank
+        self.ops_with_unsupported_rank = ops_with_unsupported_rank
+
+        self.num_subgraphs = 0
+        self.num_nodes_in_subgraphs = 0
+
+    def merge(self, other: PartitioningInfo):
+        """
+        Merge the information from another PartitioningInfo instance into this one.
+        """
+        self.num_nodes += other.num_nodes
+        self.num_supported_nodes += other.num_supported_nodes
+        self.num_partitions += other.num_partitions
+        self.supported_groups.extend(other.supported_groups)
+        self.unsupported_ops.update(other.unsupported_ops)
+        self.nodes_unsupported_due_to_op += other.nodes_unsupported_due_to_op
+        self.nodes_unsupported_due_to_dynamic_input += other.nodes_unsupported_due_to_dynamic_input
+        self.num_unsupported_nodes_due_to_rank += other.num_unsupported_nodes_due_to_rank
+        self.ops_with_unsupported_rank.update(other.ops_with_unsupported_rank)
+
+        # hard assumption that we merge into the main graph partitioning info
+        self.num_subgraphs += 1
+        self.num_nodes_in_subgraphs += other.num_nodes
 
     def suitability(self):
-        # for now add up all the nodes. if there are subgraphs, the percentage of covered nodes will be reduced by all
-        # nodes in the subgraphs.
-        num_nodes = self.num_nodes + self.num_nodes_in_subgraphs
-
         # semi-arbitrary choices that err on the side of MAYBE.
         # having 1 partition is always preferred, but if that is small it may not be useful.
         # having 2 partitions may be okay if they cover most nodes
-        # more than 2 partitions and the device copy cost is almost guaranteed to outweight the benefit of using the NPU
+        # more than 2 partitions and the device copy cost is almost guaranteed to outweigh the benefit of using the NPU
         # NOTE: This assumes the EP is not CPU based and there is device copy overhead to consider
-        pct_supported = self.num_supported_nodes / num_nodes * 100
+        pct_supported = self.num_supported_nodes / self.num_nodes * 100
         if self.num_partitions == 1:
             if pct_supported > 75:
                 return PartitioningInfo.TryWithEP.YES
@@ -112,46 +137,66 @@ class PartitioningInfo:
 
         return PartitioningInfo.TryWithEP.NO
 
-    def dump_analysis(self, logger: logging.Logger, ep_name: str):
+    def print_analysis(self, logger: logging.Logger, ep_name: str):
         """
         Analyze the partitioning information and log the analysis
         :param logger: Logger to use
         :param ep_name: Execution provider name to use in the log messages
         """
 
-        num_nodes = self.num_nodes + self.num_nodes_in_subgraphs
         logger.info(
-            f"{self.num_partitions} partitions with a total of {self.num_supported_nodes}/{num_nodes} "
+            f"{self.num_partitions} partitions with a total of {self.num_supported_nodes}/{self.num_nodes} "
             f"nodes can be handled by the {ep_name} EP."
         )
-        if self.num_nodes_in_subgraphs:
-            logger.info(f"{self.num_nodes_in_subgraphs} nodes are in subgraphs, which are currently not handled.")
 
         if self.supported_groups:
-            logger.info(f'Partition sizes: [{", ".join([str(len(partition)) for partition in self.supported_groups])}]')
-            logger.info(f"Unsupported nodes due to operator={self.nodes_unsupported_due_to_op}")
-            if self.nodes_unsupported_due_to_dynamic_input:
-                logger.info(
-                    "Unsupported nodes due to input having a dynamic shape=%d",
-                    self.nodes_unsupported_due_to_dynamic_input,
-                )
+            logger.info(
+                f'\tPartition sizes: [{", ".join([str(len(partition)) for partition in self.supported_groups])}]'
+            )
 
-        if logger.getEffectiveLevel() <= logging.DEBUG:
-            # Enable this manually if you need to look at specific partitions.
-            # for group in supported_groups:
-            #     logger.debug(f'Nodes in group: {",".join([f"{node.name}:{node.op_type}" for node in group])}')
-            if self.unsupported_ops:
-                logger.info(f'Unsupported ops: {",".join(sorted(self.unsupported_ops))}')
+            # dump full groups if debug output is enabled
+            for group in self.supported_groups:
+                logger.debug(f'Nodes in group: {",".join([f"{node.op_type}:{node.name}" for node in group])}')
 
-            caveats = self.supported_ops_checker.get_caveats()
-            if caveats:
-                indent = " " * 5
-                logger.debug(
-                    "Caveats that have not been checked and may result in a node not being supported:  "
-                    f'{"".join([os.linesep + indent + caveat for caveat in caveats])}'
-                )
+        logger.info(f"Unsupported nodes due to operator={self.nodes_unsupported_due_to_op}")
+        if self.unsupported_ops:
+            logger.info(f'\tUnsupported ops: {",".join(sorted(self.unsupported_ops))}')
 
-        pct_nodes_using_ep = self.num_supported_nodes / num_nodes * 100
+        caveats = self.supported_ops_checker.get_caveats()
+        if caveats:
+            indent = " " * 5
+            logger.info(
+                "\tCaveats that have not been checked and may result in a node not actually being supported:  "
+                f'{"".join([os.linesep + indent + caveat for caveat in caveats])}'
+            )
+
+        if self.nodes_unsupported_due_to_dynamic_input:
+            logger.info(
+                "Unsupported nodes due to input having a dynamic shape=%d",
+                self.nodes_unsupported_due_to_dynamic_input,
+            )
+
+        if self.num_unsupported_nodes_due_to_rank:
+            logger.info(f"Unsupported nodes due to rank of input data={self.num_unsupported_nodes_due_to_rank}")
+            logger.info(f"\tOps with unsupported rank: {','.join(sorted(self.ops_with_unsupported_rank))}")
+
+        if self.num_subgraphs > 0:
+            # TODO: CoreML has a flag. NNAPI doesn't. Either should be able to support a subgraph when treated as a
+            # separate graph (only extra detail would be making sure implicit inputs are handled).
+            # Merging the subgraph into the parent graph would be more complex.
+            #   e.g. for CoreML we could potentially convert Loop to while_loop and If to cond if the subgraphs in the
+            #        control flow node are fully supported.
+            #        NNAPI also has While and If.
+
+            # It most likely will be necessary to support merging in If nodes with fully supported subgraphs,
+            # as the subgraphs in those are often very simple, so the performance cost of going to the CPU EP and back
+            # is high.
+            logger.info(
+                f"{self.num_nodes_in_subgraphs} nodes are in {self.num_subgraphs} subgraphs. "
+                "Check EP as to whether subgraphs are supported."
+            )
+
+        pct_nodes_using_ep = self.num_supported_nodes / self.num_nodes * 100
         if self.num_partitions == 0:
             logger.info(f"{ep_name} cannot run any nodes in this model.")
         elif self.num_partitions == 1:
@@ -185,43 +230,24 @@ class PartitioningInfo:
             )
 
 
-def check_partitioning(
+def _check_partitioning_for_graph(
     graph: onnx.GraphProto,
+    node_to_producers: dict[onnx.NodeProto, set[onnx.NodeProto]],
+    node_to_consumers: dict[onnx.NodeProto, set[onnx.NodeProto]],
     supported_ops_checker: _SupportedOpsChecker,
-    require_fixed_input_sizes: bool = False,
-    value_info: Optional[dict] = None,
+    outer_scope_initializers: set[str],
+    require_fixed_input_sizes: bool,
+    value_info: dict[str, onnx.ValueInfoProto],
+    max_rank: int = 999,  # max rank if EP has a limitation
 ):
-    """
-    Estimate the partitions the graph will be split into for nodes that is_node_supported_fn returns true for.
-
-    The check on whether a node is supported is purely based on the operator type. Additional limitations
-    (e.g. NNAPI EP only supports 2D Conv) are not checked, so partitions may not be 100% accurate. The limitations
-    for operators in the partitions are printed so the user can manually check.
-    :param graph: Graph to process
-    :param supported_ops_checker: Checker with info on supported ops.
-    :param require_fixed_input_sizes: If True, require that the inputs to a potentially supported node are
-                                       fixed size tensors for it to be considered as supported.
-                                       If True, onnx.shape_inference.infer_shapes should have been run on the model
-                                       to populate the shape information.
-    :param value_info: Map of value name to ValueInfoProto. Required if require_fixed_input_sizes is True to lookup
-                       the shape of a value.
-    :return PartitioningInfo instance with details
-    """
-
-    if require_fixed_input_sizes and not value_info:
-        raise ValueError("value_info must be provided if require_fixed_input_sizes is True.")
-
-    node_to_producers, node_to_consumers = get_producer_consumer_maps(graph)
-
     # initializers have fixed sizes.
-    # TODO: when adding subgraph support we also need to match against initializers in ancestor graphs as they are
-    # be accessible from the outer scope (unless shadowed locally)
     initializers = [i.name for i in graph.initializer]
 
     def _is_fixed_shape_value(value):
         if value in value_info:
             return is_fixed_size_tensor(value_info[value])
-        if value in initializers:
+
+        if value in initializers or value in outer_scope_initializers:
             return True
 
         # if something has an unknown shape (e.g. something downstream of a Reshape with dynamic input for the shape)
@@ -234,6 +260,10 @@ def check_partitioning(
     #
     # We keep the structure and variable names as close as possible to the C++ implementation to simplify keeping them
     # in sync if future updates are needed.
+    #
+    # NOTE: CreateSupportedPartitionNodeGroups was recently updated to be QDQ aware so that partitions did not split
+    # QDQ node groups. This code does not need to be QDQ aware as splitting a QDQ node group does not affect the total
+    # number of partitions or supported nodes.
     #
 
     # we don't currently support a callback for additional group closure checks in the python implementation
@@ -255,23 +285,15 @@ def check_partitioning(
             # node is only dependent on graph input or initializers
             nodes_to_process.append(node)
 
-    # currently we don't support checking subgraphs in the partitioning as they're not handled by NNAPI/CoreML.
-    # check how many nodes are in that blind spot so we can adjust the recommendation accordingly.
-    # note: need to pass count in an array so that it's by reference
-    def _count_subgraph_nodes(cur_graph: onnx.GraphProto, original_graph: onnx.GraphProto, count: [int]):
-        if cur_graph != original_graph:
-            count[0] += len(cur_graph.node)
-
-    nodes_in_subgraphs = [0]  # array with single value
-    iterate_graph_per_graph_func(graph, _count_subgraph_nodes, original_graph=graph, count=nodes_in_subgraphs)
-
     supported_group = []
     # the partition node group's border is the aggregate of its nodes' output nodes
     supported_group_border = set()
     num_supported_nodes = 0
     num_unsupported_nodes_due_to_op = 0
     num_unsupported_nodes_due_to_dynamic_input = 0
+    num_unsupported_nodes_due_to_rank = 0
     unsupported_ops = set()
+    ops_with_unsupported_rank = set()
 
     def close_group():
         if supported_group:
@@ -294,7 +316,22 @@ def check_partitioning(
 
         is_op_supported = supported_ops_checker.is_op_supported(node)
         is_input_shape_supported = not require_fixed_input_sizes or all(_is_fixed_shape_value(i) for i in node.input)
-        is_node_supported = is_op_supported and is_input_shape_supported
+
+        is_rank_supported = True
+        if value_info:
+            for node_input in node.input:
+                if node_input and node_input in value_info and value_info[node_input].type.HasField("tensor_type"):
+                    input_rank = len(value_info[node_input].type.tensor_type.shape.dim)
+                    if input_rank > max_rank:
+                        is_rank_supported = False
+                        break
+
+        # special-case if we can infer the rank from the length of the 'perms' Transpose attribute
+        # e.g. this works with SegmentAnything where dynamic Reshape operators result in no shape info.
+        if node.op_type == "Transpose" and len(node.attribute[0].ints) > max_rank:
+            is_rank_supported = False
+
+        is_node_supported = is_op_supported and is_input_shape_supported and is_rank_supported
 
         if not is_node_supported:
             if node in supported_group_border:
@@ -306,8 +343,13 @@ def check_partitioning(
             if not is_op_supported:
                 unsupported_ops.add(f'{node.domain if node.domain else "ai.onnx"}:{node.op_type}')
                 num_unsupported_nodes_due_to_op += 1
-            else:
+
+            if not is_input_shape_supported:
                 num_unsupported_nodes_due_to_dynamic_input += 1
+
+            if not is_rank_supported:
+                num_unsupported_nodes_due_to_rank += 1
+                ops_with_unsupported_rank.add(f'{node.domain if node.domain else "ai.onnx"}:{node.op_type}')
 
         if is_node_supported:
             num_supported_nodes += 1
@@ -336,34 +378,128 @@ def check_partitioning(
 
     close_group()
 
-    # find any subgraphs and check supported for nodes in the subgraphs. this won't change the partitioning as we skip
-    # Scan/Loop/If nodes, but will provide additional info on operators that are not supported if we changed that.
-    iterate_graph_per_node_func(graph, supported_ops_checker.is_op_supported)
-
     num_nodes = len(graph.node)
     num_partitions = len(supported_groups)
 
-    info = PartitioningInfo()
-    info.num_nodes = num_nodes
-    info.num_supported_nodes = num_supported_nodes
-    info.num_partitions = num_partitions
-    info.num_nodes_in_subgraphs = nodes_in_subgraphs[0]
-    info.supported_ops_checker = supported_ops_checker
-    info.supported_groups = supported_groups
-    info.unsupported_ops = unsupported_ops
-    info.nodes_unsupported_due_to_op = num_unsupported_nodes_due_to_op
-    info.nodes_unsupported_due_to_dynamic_input = num_unsupported_nodes_due_to_dynamic_input
+    info = PartitioningInfo(
+        num_nodes,
+        num_supported_nodes,
+        num_partitions,
+        supported_ops_checker,
+        supported_groups,
+        unsupported_ops,
+        num_unsupported_nodes_due_to_op,
+        num_unsupported_nodes_due_to_dynamic_input,
+        num_unsupported_nodes_due_to_rank,
+        ops_with_unsupported_rank,
+    )
 
     return info
 
 
-def _check_ep_partitioning(model, supported_ops_config, value_info: Optional[dict] = None):
+def check_partitioning(
+    main_graph: onnx.GraphProto,
+    supported_ops_checker: _SupportedOpsChecker,
+    require_fixed_input_sizes: bool,
+    max_rank: int = 999,
+) -> PartitioningInfo:
+    """
+    Estimate the partitions the graph will be split into for nodes that is_node_supported_fn returns true for.
+
+    The check on whether a node is supported is purely based on the operator type. Additional limitations
+    (e.g. NNAPI EP only supports 2D Conv) are not checked, so partitions may not be 100% accurate. The limitations
+    for operators in the partitions are printed so the user can manually check.
+    :param main_graph: Graph to process
+    :param supported_ops_checker: Checker with info on supported ops.
+    :param require_fixed_input_sizes: If True, require that the inputs to a potentially supported node are fixed size
+                                      tensors for it to be considered as supported. This requires
+                                      onnx.shape_inference.infer_shapes to have been run on the model to populate the
+                                      shape information.
+                                      If False, shapes are ignored during the check.
+    :param max_rank: Set if EP has a limitation on the rank of tensors it supports.
+    :return PartitioningInfo instance with details
+    """
+
+    if require_fixed_input_sizes and len(main_graph.value_info) == 0 and len(main_graph.node) > 1:
+        raise ValueError("Run onnx.shape_inference.infer_shapes on the model to populate the shape information.")
+
+    # create lookup map from ValueInfo for efficiency
+    def _update_value_info(graph: onnx.GraphProto, value_to_shape: dict[str, onnx.ValueInfoProto]):
+        for v in graph.input:
+            value_to_shape[v.name] = v
+        for v in graph.output:
+            value_to_shape[v.name] = v
+        for v in graph.value_info:
+            value_to_shape[v.name] = v
+
+    # the producer/consumer maps are for the entire model
+    node_to_producers, node_to_consumers = get_producer_consumer_maps(main_graph)
+
+    def _check_graph(
+        graph: onnx.GraphProto,
+        outer_scope_value_info: dict[str, onnx.ValueInfoProto] | None,
+        outer_scope_initializers: set[str] | None = None,
+        partitioning_info: PartitioningInfo | None = None,
+    ) -> PartitioningInfo:
+        if outer_scope_value_info is not None:
+            # extend value info if we're using it. we replace any value shadowed with a local one
+            value_info = outer_scope_value_info.copy()
+            _update_value_info(graph, value_info)
+        else:
+            value_info = {}
+
+        if outer_scope_initializers is None:
+            outer_scope_initializers = set()
+
+        info = _check_partitioning_for_graph(
+            graph,
+            node_to_producers,
+            node_to_consumers,
+            supported_ops_checker,
+            outer_scope_initializers,
+            require_fixed_input_sizes,
+            value_info,
+            max_rank,
+        )
+
+        if partitioning_info:
+            # merge in subgraph info
+            partitioning_info.merge(info)
+        else:
+            # main graph info
+            partitioning_info = info
+
+        # setup outer scope initializers. we copy the input set as a model may have multiple subgraphs
+        # on multiple levels, so we need to keep the set for each descent separate
+        subgraph_outer_scope_initializers = set(outer_scope_initializers)
+        for initializer in graph.initializer:
+            subgraph_outer_scope_initializers.add(initializer.name)
+
+        for node in graph.node:
+            # recurse into nodes with subgraphs
+            for attr in node.attribute:
+                if attr.HasField("g"):
+                    subgraph = attr.g
+                    partitioning_info = _check_graph(
+                        subgraph, value_info, subgraph_outer_scope_initializers, partitioning_info
+                    )
+
+        return partitioning_info
+
+    aggregated_partitioning_info = _check_graph(main_graph, {} if require_fixed_input_sizes else None)
+
+    return aggregated_partitioning_info
+
+
+def _check_ep_partitioning(
+    model: onnx.ModelProto, supported_ops_config: pathlib.Path, require_fixed_input_sizes: bool, max_rank: int = 999
+):
     supported_ops = _SupportedOpsChecker(supported_ops_config)
-    partition_info = check_partitioning(model.graph, supported_ops, value_info is not None, value_info)
+    partition_info = check_partitioning(model.graph, supported_ops, require_fixed_input_sizes, max_rank)
     return partition_info
 
 
-def check_nnapi_partitions(model, value_info: Optional[dict] = None):
+def check_nnapi_partitions(model, require_fixed_input_sizes: bool):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
@@ -374,27 +510,28 @@ def check_nnapi_partitions(model, value_info: Optional[dict] = None):
         ort_root = script_dir.parents[3]
         config_path = ort_root / "tools" / "ci_build" / "github" / "android" / "nnapi_supported_ops.md"
 
-    return _check_ep_partitioning(model, config_path, value_info)
+    return _check_ep_partitioning(model, config_path, require_fixed_input_sizes)
 
 
-def check_coreml_partitions(model, value_info: Optional[dict] = None):
+def check_coreml_partitions(model: onnx.ModelProto, require_fixed_input_sizes: bool, config_filename: str):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
-    local_config = script_dir / "coreml_supported_ops.md"
+    local_config = script_dir / config_filename
     if local_config.exists():
         config_path = local_config
     else:
         ort_root = script_dir.parents[3]
-        config_path = ort_root / "tools" / "ci_build" / "github" / "apple" / "coreml_supported_ops.md"
+        config_path = ort_root / "tools" / "ci_build" / "github" / "apple" / config_filename
 
-    return _check_ep_partitioning(model, config_path, value_info)
+    max_rank = 5
+    return _check_ep_partitioning(model, config_path, require_fixed_input_sizes, max_rank)
 
 
-def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None):
+def check_shapes(graph: onnx.GraphProto, logger: logging.Logger | None = None):
     """
     Check the shapes of graph inputs, values and graph outputs to determine if they have static or dynamic sizes.
-    NNAPI and CoreML do not support dynamically sized values.
+    NNAPI does not support dynamically sized values. CoreML does, but it will most likely cost performance.
     :param graph: Graph to check. If shape inferencing has been run the checks on values will be meaningful.
     :param logger: Optional logger for diagnostic information.
     :return: Tuple of List of inputs with dynamic shapes, Number of dynamic values found
@@ -464,18 +601,9 @@ def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None
     return dynamic_inputs, num_dynamic_values
 
 
-def checker(model_path, logger: logging.Logger):
-    model = onnx.load(model_path)
-    model_with_shape_info = onnx.shape_inference.infer_shapes(model)
-
-    # create lookup map for efficiency
-    value_to_shape = {}
-    for v in model_with_shape_info.graph.input:
-        value_to_shape[v.name] = v
-    for v in model_with_shape_info.graph.output:
-        value_to_shape[v.name] = v
-    for v in model_with_shape_info.graph.value_info:
-        value_to_shape[v.name] = v
+def checker(model_path: pathlib.Path, logger: logging.Logger):
+    model_with_shape_info_wrapper = ModelProtoWithShapeInfo(model_path)
+    model_with_shape_info = model_with_shape_info_wrapper.model_with_shape_info
 
     dynamic_inputs, num_dynamic_values = check_shapes(model_with_shape_info.graph)
 
@@ -483,47 +611,70 @@ def checker(model_path, logger: logging.Logger):
         logger.info(f"Checking {ep_name}")
 
         # check with shape info first so supported nodes takes into account values with dynamic shapes
-        partition_info = checker_func(model_with_shape_info, value_to_shape)
-        if logger.getEffectiveLevel() <= logging.DEBUG:
-            partition_info.dump_analysis(logger, ep_name)
+        require_fixed_input_sizes = True
+        partition_info = checker_func(model_with_shape_info, require_fixed_input_sizes)
+        if logger.getEffectiveLevel() <= logging.INFO:
+            partition_info.print_analysis(logger, ep_name)
 
         suitability = partition_info.suitability()
         logger.info(f"Model should perform well with {ep_name} as is: {suitability.name}")
 
         if suitability != PartitioningInfo.TryWithEP.YES and dynamic_inputs:
+            logger.info("--------")
             logger.info("Checking if model will perform better if the dynamic shapes are fixed...")
-            partition_info_with_fixed_shapes = checker_func(model_with_shape_info)
-            if logger.getEffectiveLevel() <= logging.DEBUG:
+            require_fixed_input_sizes = False
+            partition_info_with_fixed_shapes = checker_func(model_with_shape_info, require_fixed_input_sizes)
+
+            if logger.getEffectiveLevel() <= logging.INFO:
                 # analyze and log detailed info
                 logger.info("Partition information if the model was updated to make the shapes fixed:")
-                partition_info_with_fixed_shapes.dump_analysis(logger, ep_name)
+                partition_info_with_fixed_shapes.print_analysis(logger, ep_name)
 
             fixed_shape_suitability = partition_info_with_fixed_shapes.suitability()
             logger.info(
                 f"Model should perform well with {ep_name} if modified to have fixed input shapes: "
                 f"{fixed_shape_suitability.name}"
             )
+
             if fixed_shape_suitability != PartitioningInfo.TryWithEP.NO:
                 logger.info("Shapes can be altered using python -m onnxruntime.tools.make_dynamic_shape_fixed")
 
             if fixed_shape_suitability.value > suitability.value:
                 suitability = fixed_shape_suitability
 
+        logger.info("================")
+        logger.info("")
+
         return suitability
 
     nnapi_suitability = check_ep("NNAPI", check_nnapi_partitions)
-    coreml_suitability = check_ep("CoreML", check_coreml_partitions)
+
+    # Check for NeuralNetwork CoreML model
+    def check_nn_coreml(model: onnx.ModelProto, require_fixed_input_sizes):
+        return check_coreml_partitions(model, require_fixed_input_sizes, "coreml_supported_neuralnetwork_ops.md")
+
+    # Check for MLProgram CoreML model
+    def check_mlprogram_coreml(model: onnx.ModelProto, require_fixed_input_sizes):
+        return check_coreml_partitions(model, require_fixed_input_sizes, "coreml_supported_mlprogram_ops.md")
+
+    coreml_nn_suitability = check_ep("CoreML NeuralNetwork", check_nn_coreml)
+    coreml_mlprogram_suitability = check_ep("CoreML MLProgram", check_mlprogram_coreml)
 
     if (
-        nnapi_suitability != PartitioningInfo.TryWithEP.YES or coreml_suitability != PartitioningInfo.TryWithEP.YES
-    ) and logger.getEffectiveLevel() > logging.DEBUG:
-        logger.info("Re-run with log level of DEBUG for more details on the NNAPI/CoreML issues.")
+        nnapi_suitability != PartitioningInfo.TryWithEP.YES
+        or coreml_nn_suitability != PartitioningInfo.TryWithEP.YES
+        or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.YES
+    ) and logger.getEffectiveLevel() > logging.INFO:
+        logger.info("Re-run with log level of INFO for more details on the NNAPI/CoreML issues.")
 
-    logger.info("---------------")
-    return nnapi_suitability != PartitioningInfo.TryWithEP.NO or coreml_suitability != PartitioningInfo.TryWithEP.NO
+    return (
+        nnapi_suitability != PartitioningInfo.TryWithEP.NO
+        or coreml_nn_suitability != PartitioningInfo.TryWithEP.NO
+        or coreml_mlprogram_suitability != PartitioningInfo.TryWithEP.NO
+    )
 
 
-def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: Optional[logging.Logger] = None):
+def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: logging.Logger | None = None):
     """
     Analyze the provided model to determine if it's likely to work well with the NNAPI or CoreML Execution Providers
     :param model_path: Model to analyze.
@@ -541,10 +692,10 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
     with tempfile.TemporaryDirectory() as tmp:
         if not skip_optimize:
             tmp_path = pathlib.Path(tmp) / model_path.name
-            optimize_model(model_path, tmp_path)
+            optimize_model(model_path, tmp_path, use_external_initializers=True)
             model_path = tmp_path
 
-        try_eps = checker(str(model_path.resolve(strict=True)), logger)
+        try_eps = checker(model_path.resolve(strict=True), logger)
 
     return try_eps
 
@@ -554,9 +705,7 @@ def parse_args():
         os.path.basename(__file__), description="""Analyze an ONNX model for usage with the ORT mobile"""
     )
 
-    parser.add_argument(
-        "--log_level", choices=["debug", "info", "warning", "error"], default="info", help="Logging level"
-    )
+    parser.add_argument("--log_level", choices=["debug", "info"], default="info", help="Logging level")
     parser.add_argument(
         "--skip_optimize",
         action="store_true",

@@ -37,20 +37,6 @@ struct OP_ScaledTanh : public CtxScaledTanh {
 };
 
 template <typename T>
-struct OP_Gelu : public CtxGelu {
-  __device__ __inline__ T operator()(const T& a) const {
-    return _Gelu(a);
-  }
-};
-
-template <>
-struct OP_Gelu<half> : public CtxGelu {
-  __device__ __inline__ half operator()(const half& a) const {
-    return static_cast<half>(_Gelu(static_cast<float>(a)));
-  }
-};
-
-template <typename T>
 struct OP_QuickGelu : public CtxQuickGelu {
   __device__ __inline__ T operator()(const T& a) const {
     T v = a * static_cast<T>(alpha);

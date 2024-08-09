@@ -92,7 +92,7 @@ export class ExecutionPlan {
         const inputTensors = inputList as Tensor[];
         Logger.verbose(
             'ExecPlan',
-            `Runing op:${thisOp.node.name} (${
+            `Running op:${thisOp.node.name} (${
                 inputTensors.map((t, i) => `'${thisOp.node.inputs[i]}': ${t.type}[${t.dims.join(',')}]`).join(', ')})`);
 
         const outputList = await this.profiler.event(
@@ -114,7 +114,7 @@ export class ExecutionPlan {
 
         // resolve downstream nodes
         const downstreamNodes = new Set<number>();
-        outputList.forEach((output, i) => {
+        outputList.forEach((_output, i) => {
           const j = thisOp.node.outputs[i];
           for (const currentDownstreamNodeIndex of graphValues[j].to) {
             const currentDownstreamNode = graphNodes[currentDownstreamNodeIndex];

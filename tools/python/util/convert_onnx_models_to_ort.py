@@ -302,9 +302,7 @@ def convert_onnx_models_to_ort(
 
     for optimization_style in optimization_styles:
         print(
-            "Converting models with optimization style '{}' and level '{}'".format(
-                optimization_style.name, optimization_level_str
-            )
+            f"Converting models with optimization style '{optimization_style.name}' and level '{optimization_level_str}'"
         )
 
         converted_models = _convert(
@@ -330,9 +328,9 @@ def convert_onnx_models_to_ort(
                 )
                 session_options_config_entries_for_second_conversion = session_options_config_entries.copy()
                 # Limit the optimizations to those that can run in a model with runtime optimizations.
-                session_options_config_entries_for_second_conversion[
-                    "optimization.minimal_build_optimizations"
-                ] = "apply"
+                session_options_config_entries_for_second_conversion["optimization.minimal_build_optimizations"] = (
+                    "apply"
+                )
 
                 print(
                     "Converting models again without runtime optimizations to generate a complete config file. "
@@ -351,9 +349,7 @@ def convert_onnx_models_to_ort(
                 )
 
             print(
-                "Generating config file from ORT format models with optimization style '{}' and level '{}'".format(
-                    optimization_style.name, optimization_level_str
-                )
+                f"Generating config file from ORT format models with optimization style '{optimization_style.name}' and level '{optimization_level_str}'"
             )
 
             config_file = _create_config_file_path(

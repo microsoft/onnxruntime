@@ -4,7 +4,7 @@
 #pragma once
 
 #include <wrl/client.h>
-#include <d3d12.h>
+#include "directx/d3d12.h"
 #include <wil/wrl.h>
 #include <wil/result_macros.h>
 #include "External/D3DX12/d3dx12.h"
@@ -39,7 +39,7 @@ namespace Dml
                 &props,
                 D3D12_HEAP_FLAG_NONE,
                 &buffer,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_COMMON,
                 nullptr,
                 IID_GRAPHICS_PPV_ARGS(resource.GetAddressOf())
             ));

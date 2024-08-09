@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "miopen_common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 
@@ -73,7 +73,12 @@ Status MiopenTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType) {
+Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType, bool is_nhwc) {
+  if (is_nhwc) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "NHWC Tensor usage is not supported in AMD builds for now");
+  }
+
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());

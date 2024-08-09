@@ -140,8 +140,8 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       std::vector<uint8_t> axes_bytes;
 
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
-      ORT_ENFORCE(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
-                  "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
+      ORT_RETURN_IF_NOT(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
+                        "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
       reduce_axes.resize(axes_bytes.size() / sizeof(AxesOnnxIntType));
 
       auto src_span = gsl::make_span(axes_bytes.data(), axes_bytes.size());
@@ -186,13 +186,6 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_PROD && is_npu_backend) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: ReduceProd operator not supported by HTP backend.");
-  }
-
-  if (is_npu_backend) {
-    std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                      "QNN EP: Cannot get input shape for");
-    ORT_RETURN_IF(input_shape.size() > 4, "QNN EP: HTP backend does not support Reduce ops with rank > 4.");
   }
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);

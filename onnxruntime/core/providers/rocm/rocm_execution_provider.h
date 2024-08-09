@@ -10,6 +10,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_graph.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
@@ -27,20 +28,20 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   Status Sync() const override;
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream) override;
+  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The ROCM interface does not return anything interesting.
     return nullptr;
   }
 
-  rocblas_handle PerThreadRocblasHandle() {
+  rocblas_handle PerThreadDefaultRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
   }
 
-  miopenHandle_t PerThreadMiopenHandle() {
+  miopenHandle_t PerThreadDefaultMiopenHandle() {
     return GetPerThreadContext().MiopenHandle();
   }
 
@@ -60,7 +61,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
   int GetMiopenConvExhaustiveSearch() const { return info_.miopen_conv_exhaustive_search; }
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
-
   bool GetMiopenConvUseMaxWorkspace() const { return info_.miopen_conv_use_max_workspace; }
 
   ProviderOptions GetProviderOptions() const override {
@@ -68,20 +68,24 @@ class ROCMExecutionProvider : public IExecutionProvider {
   }
 
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
 
   ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  Status ReplayGraph(int graph_annotation_id) override;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
-  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
   bool external_stream_ = false;
+  // only used when set user external stream or hip graph
   hipStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
@@ -105,25 +109,41 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
     template <typename T>
     const T* GetConstOnes(size_t count, hipStream_t stream) {
-      if (std::is_same<T, float>::value) {
+      constexpr bool is_float = std::is_same<T, float>::value;
+      constexpr bool is_double = std::is_same<T, double>::value;
+      constexpr bool is_half = std::is_same<T, half>::value;
+      constexpr bool is_BFloat16 = std::is_same<T, BFloat16>::value;
+      if (is_float) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
         return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
-      } else if (std::is_same<T, double>::value) {
+      } else if (is_double) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
         return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
-      } else if (std::is_same<T, half>::value) {
+      } else if (is_half) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
+      } else if (is_BFloat16) {
+        if (!constant_ones_bfloat16_) {
+          constant_ones_bfloat16_ = rocm::CreateConstantOnes<BFloat16>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
     }
+
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin(int graph_annotation_id);
+    void CaptureEnd(int graph_annotation_id);
+    bool IsGraphCaptured(int graph_annotation_id) const;
+    Status ReplayGraph(int graph_annotation_id);
+    void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
     rocblas_handle rocblas_handle_ = nullptr;
@@ -132,6 +152,19 @@ class ROCMExecutionProvider : public IExecutionProvider {
     std::unique_ptr<rocm::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<rocm::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<rocm::IConstantBuffer<half>> constant_ones_half_;
+    std::unique_ptr<rocm::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
+
+    // Hip graph with multi threads will be supported in the future, so hip_graph_
+    // is put under PerThreadContext.
+    ROCMGraph hip_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = 0;
+
+    // There is chance that the second regular run allocates GPU memory for causes like:
+    // (1) memory pattern is enabled. (2) arena allocation for stream.
+    // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
+    // to allocate enough memory in Arena before graph capturing.
+    const int min_num_runs_before_hip_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const ROCMExecutionProvider*, std::weak_ptr<PerThreadContext>>;

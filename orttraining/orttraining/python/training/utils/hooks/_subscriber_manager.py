@@ -68,6 +68,26 @@ class _IncrementStep(torch.autograd.Function):
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        node = onnx.NodeProto()
+        node.ParseFromString(node_proto_str)
+        non_tensor_fw_input_count = 1
+        fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
+        fw_alias_map = [-1] * fw_output_count
+        bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
+
+        for i in range(fw_output_count):
+            fw_alias_map[i] = i + non_tensor_fw_input_count
+
+        tensor_input_index = 0
+        for i in range(len(bw_alias_map)):
+            if i < non_tensor_fw_input_count:
+                continue
+            bw_alias_map[i] = tensor_input_index
+            tensor_input_index += 1
+        return fw_alias_map, bw_alias_map
+
 
 class SubscriberManager:
     """This class is used to manage all the subscribers and register subscribers' custom actions as PyTorch hooks

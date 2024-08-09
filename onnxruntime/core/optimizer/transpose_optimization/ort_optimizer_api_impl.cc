@@ -46,11 +46,12 @@ class ApiValueInfo final : public api::ValueInfoRef {
 class ApiTensor final : public api::TensorRef {
  private:
   const onnx::TensorProto& tensor_proto_;
-  const Path& model_path_;
+  const std::filesystem::path& model_path_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator)
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const std::filesystem::path& model_path,
+                     AllocatorPtr cpu_allocator)
       : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
@@ -95,7 +96,8 @@ class ApiNode final : public api::NodeRef {
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
   std::string_view GetExecutionProviderType() const override;
-  virtual int SinceVersion() const override;
+  int SinceVersion() const override;
+  int64_t Id() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -106,10 +108,17 @@ class ApiGraph final : public api::GraphRef {
   onnxruntime::Graph& graph_;
   AllocatorPtr cpu_allocator_;
   const char* new_node_ep_;
+  std::unordered_set<std::string_view> graph_outputs_;  // graph_.GetOutputs() names for efficient lookup
 
  public:
   explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep)
-      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {}
+      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {
+    const auto& graph_outputs = graph_.GetOutputs();
+    graph_outputs_.reserve(graph_outputs.size());
+    for (const auto* output : graph_outputs) {
+      graph_outputs_.emplace(output->Name());
+    }
+  }
 
   onnxruntime::Graph& Graph() {
     return graph_;
@@ -137,6 +146,7 @@ class ApiGraph final : public api::GraphRef {
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
+  bool IsGraphOutput(std::string_view name) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
@@ -280,10 +290,12 @@ std::vector<uint8_t> ApiTensor::Data() const {
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
   onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_,
                                                 tensor_proto_, tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
   const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
+  // TODO: the returned data is unaligned, which does not meet the alignment requirement that mlas requires. Because
+  // the returned type is a vector, not a Tensor or tensor buffer that is allocated from a CPU allocator.
   return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
@@ -417,6 +429,10 @@ int ApiNode::SinceVersion() const {
   return node_.SinceVersion();
 }
 
+int64_t ApiNode::Id() const {
+  return node_.Index();
+}
+
 // </ApiNode>
 
 std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {
@@ -440,6 +456,10 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   }
 
   return nodes;
+}
+
+bool ApiGraph::IsGraphOutput(std::string_view name) const {
+  return graph_outputs_.find(name) != graph_outputs_.end();
 }
 
 std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) const {
@@ -489,11 +509,8 @@ std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(std::string_vie
     }
   }
 
-  const auto& graph_outputs = graph_.GetOutputs();
-  for (const auto* output : graph_outputs) {
-    if (output->Name() == name) {
-      consumers->comprehensive = false;
-    }
+  if (IsGraphOutput(name)) {
+    consumers->comprehensive = false;
   }
 
   return consumers;
@@ -505,14 +522,7 @@ bool ApiGraph::HasValueConsumers(std::string_view name) const {
     return true;
   }
 
-  const auto& graph_outputs = graph_.GetOutputs();
-  for (const auto* output : graph_outputs) {
-    if (output->Name() == name) {
-      return true;
-    }
-  }
-
-  return false;
+  return IsGraphOutput(name);
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(std::string_view name) const {
@@ -547,7 +557,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath(),
                                                 *tensor_proto, in_tensor));
 
   ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
@@ -699,10 +709,6 @@ static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
 // Based on the opset version imported for this model, returns the since version for the node.
 static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map) {
-  // TODO do we need this check? we will also check kLayoutTransformationPotentiallyAddedOps
-  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
-              domain, " provided for op: ", op_type);
-
   const auto opset_import_iter = domain_to_version_map.find(std::string(domain));
   ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), domain, " domain not found in opset imports.");
 
@@ -760,10 +766,10 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(data.data(), data.size());
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+  utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();

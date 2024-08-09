@@ -530,7 +530,7 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined (MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
         RowsHandled = GetMlasPlatform().GemmDoubleKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {

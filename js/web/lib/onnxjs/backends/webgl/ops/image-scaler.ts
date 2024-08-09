@@ -35,7 +35,7 @@ const imageScalerProgramMetadata = {
 };
 
 const createImageScalerProgramInfo =
-    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], attributes: ImageScalerAttributes):
+    (_handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], attributes: ImageScalerAttributes):
         ProgramInfo => {
           const outputShape = inputs[0].dims.slice();
           const rank = outputShape.length;

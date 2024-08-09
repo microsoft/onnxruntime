@@ -1,8 +1,0 @@
--r requirements.txt
-onnxruntime-gpu>=1.14
-py3nvml>=0.2.7
-# cuda-python is needed for cuda graph. It shall be compatible with CUDA version of torch and onnxruntime-gpu.
-cuda-python==11.7.0
-#To export onnx of stable diffusion, please install PyTorch 1.13.1+cu117
-#--extra-index-url https://download.pytorch.org/whl/cu117
-#torch==1.13.1+cu117

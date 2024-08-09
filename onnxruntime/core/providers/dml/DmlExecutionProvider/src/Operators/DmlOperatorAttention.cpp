@@ -531,7 +531,7 @@ public:
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
         operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
@@ -567,6 +567,12 @@ void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*o
 
     // `do_rotary == 1` is not supported yet
     if (attributes.GetOptionalAttribute<int32_t>(AttrName::DoRotary, 0) != 0)
+    {
+        return;
+    }
+
+    // `past_present_share_buffer == 1` is not supported yet
+    if (attributes.GetOptionalAttribute<int32_t>(AttrName::PastPresentShareBuffer, 0) != 0)
     {
         return;
     }

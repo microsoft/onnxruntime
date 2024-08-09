@@ -10,12 +10,16 @@ class StringProperty(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsStringProperty(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = StringProperty()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsStringProperty(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def StringPropertyBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -38,7 +42,26 @@ class StringProperty(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def StringPropertyStart(builder): builder.StartObject(2)
-def StringPropertyAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-def StringPropertyAddValue(builder, value): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
-def StringPropertyEnd(builder): return builder.EndObject()
+def StringPropertyStart(builder):
+    builder.StartObject(2)
+
+def Start(builder):
+    StringPropertyStart(builder)
+
+def StringPropertyAddName(builder, name):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+
+def AddName(builder, name):
+    StringPropertyAddName(builder, name)
+
+def StringPropertyAddValue(builder, value):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
+
+def AddValue(builder, value):
+    StringPropertyAddValue(builder, value)
+
+def StringPropertyEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return StringPropertyEnd(builder)

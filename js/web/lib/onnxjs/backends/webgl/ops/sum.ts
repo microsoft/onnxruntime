@@ -11,7 +11,7 @@ export const sum = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): 
 
   const sumProgramMetadata = {
     name: 'Sum',
-    inputNames: inputs.map((v, i) => `X${i}`),
+    inputNames: inputs.map((_v, i) => `X${i}`),
     inputTypes: new Array(inputs.length).fill(TextureType.unpacked)
   };
 
@@ -24,7 +24,7 @@ const createSumProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], sumProgramMetadata: ProgramMetadata): ProgramInfo => {
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
       const outputShape = inputs[0].dims.slice();
-      const sumLine = inputs.map((v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
+      const sumLine = inputs.map((_v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
       const shaderSource = `
       void main() {
         vec4 result = ${sumLine};

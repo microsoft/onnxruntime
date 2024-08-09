@@ -16,7 +16,6 @@
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #ifdef USE_COREML
@@ -81,6 +80,13 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
 #ifdef USE_COREML
     } else if (name == "coreml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
+#endif
+#ifdef USE_QNN
+    } else if (name == "qnn") {
+      std::unordered_map<std::string, std::string> qnn_options;
+      qnn_options["backend_path"] = "QnnHtp.dll";
+      qnn_options["enable_htp_fp16_precision"] = "1";
+      sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,

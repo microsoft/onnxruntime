@@ -34,7 +34,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto rank = static_cast<int32_t>(input_shape.size());
 
   emscripten::val desc = emscripten::val::object();
-  desc.set("type", emscripten::val("int64"));
+  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims = emscripten::val::array();
   dims.call<void>("push", rank);
   desc.set("dimensions", dims);
@@ -55,8 +55,15 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val sizes = emscripten::val::array();
   sizes.call<void>("push", slice_length);
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   // Since WebNN doesn't support Shape op, we use constant + slice ops as workaround.
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", shape_constant, starts, sizes);
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice",
+                                                                            shape_constant,
+                                                                            starts,
+                                                                            sizes,
+                                                                            options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -66,7 +73,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                        const Node& node,
-                                       const WebnnDeviceType device_type,
+                                       const WebnnDeviceType /* device_type */,
                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
@@ -74,7 +81,7 @@ bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initialize
     return false;
 
   int32_t output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-  if (!IsSupportedDataType(output_type, device_type)) {
+  if (!IsSupportedDataType(output_type, webnn_supported_data_types)) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Output type: [" << output_type
                           << "] is not supported for now";

@@ -199,13 +199,6 @@ struct Func_Min<std::string> {
 };
 
 template <>
-struct Func_Min<MLFloat16> {
-  void operator()(MLFloat16*, const MLFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
-  }
-};
-
-template <>
 struct Func_Min<BFloat16> {
   void operator()(BFloat16*, const BFloat16*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'min'.");
@@ -230,13 +223,6 @@ template <>
 struct Func_Max<std::string> {
   void operator()(std::string*, const std::string*) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
-  }
-};
-
-template <>
-struct Func_Max<MLFloat16> {
-  void operator()(MLFloat16*, const MLFloat16*) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 18 when reduction is 'max'.");
   }
 };
 

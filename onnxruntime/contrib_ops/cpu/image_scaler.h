@@ -16,8 +16,8 @@ template <typename T>
 class ImageScaler final : public OpKernel {
  public:
   ImageScaler(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
-    ORT_ENFORCE(info.GetAttrs<float>("bias", bias_).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("scale", &scale_));
+    ORT_THROW_IF_ERROR(info.GetAttrs<float>("bias", bias_));
   }
 
   Status Compute(OpKernelContext* context) const override {

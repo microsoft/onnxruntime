@@ -8,11 +8,24 @@
 #include <cassert>
 #include <functional>
 #include <vector>
+#include <filesystem>
 struct OrtApi;
 
 namespace vaip_core {
 
+#define VAIP_ORT_API_MAJOR (4u)
+#define VAIP_ORT_API_MINOR (0u)
+#define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
+  uint32_t magic;  // 'VAIP' or something else to make sure the following field
+                   // are not garbage.
+  uint32_t major;  // bump this field changes that are not backward compatible or
+                   // that represent a change in direction for the project
+  uint32_t minor;  // bump this field for adding new features without breaking
+                   // existing behavior
+  uint32_t patch;  // bump this field for fixing some bugs but not introducing
+                   // new functionality
+  onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
   Model* (*model_load)(const std::string& file);  // [0]
@@ -49,7 +62,7 @@ struct OrtApiForVaip {
                           const std::string& description,
                           const std::vector<const NodeArg*>& input_args,
                           const std::vector<const NodeArg*>& output_args,
-                          NodeAttributes& attributes,
+                          const NodeAttributes& attributes,
                           const std::string& domain);  // [18]
   void (*graph_save)(const Graph& graph, const std::string& filename,
                      const std::string& dat_filename,
@@ -119,8 +132,8 @@ struct OrtApiForVaip {
   NodeAttributes* (*node_attributes_new)();                               // [46]
   void (*node_attributes_delete)(NodeAttributes* p);                      // [47]
   void (*node_attributes_add)(NodeAttributes& p, AttributeProto&& attr);  // [48]
-  AttributeProto* (*node_attributes_get)(NodeAttributes& p,
-                                         const std::string& name);  // [49]
+  const AttributeProto* (*node_attributes_get)(const NodeAttributes& p,
+                                               const std::string& name);  // [49]
   DllSafe<std::vector<std::string>> (*node_attributes_get_keys)(
       NodeAttributes& p);  // [50]
   /// attr proto
@@ -182,8 +195,39 @@ struct OrtApiForVaip {
   gsl::span<const char> (*tensor_proto_as_raw)(
       const TensorProto& tensor);  // [79]
 
-  DllSafe<std::string> (*get_lib_id)();    // [80]
-  DllSafe<std::string> (*get_lib_name)();  // [81]
+  DllSafe<std::string> (*get_lib_id)();                                           // [80]
+  DllSafe<std::string> (*get_lib_name)();                                         // [81]
+                                                                                  /** new API after 2.0 */
+  void (*graph_add_initialized_tensor)(Graph& graph, const TensorProto& tensor);  // [82]
+                                                                                  /** new API after 3.0 */
+  TensorProto* (*tensor_proto_new_doubles)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<double>& data);  // [83]
+  TensorProto* (*tensor_proto_new_i16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [84
+  TensorProto* (*tensor_proto_new_u16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint16_t>& data);  // [84]
+  TensorProto* (*tensor_proto_new_u32)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint32_t>& data);  // [85]
+  TensorProto* (*tensor_proto_new_u8)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);  // [86]
+  TensorProto* (*tensor_proto_new_u64)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint64_t>& data);  // [87]
+  TensorProto* (*tensor_proto_new_fp16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [88]
+  TensorProto* (*tensor_proto_new_bf16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);                                                                                       // [89]
+  const std::filesystem::path& (*get_model_path)(const Graph& graph);                                                          // [90]
+  Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);  //[91]
+  void (*graph_set_inputs)(Graph& graph,
+                           gsl::span<const NodeArg* const> inputs);  // [92]
 };
 
 #ifndef USE_VITISAI
@@ -194,5 +238,4 @@ VAIP_DLL_SPEC const OrtApiForVaip* api();
        ? ::vaip_core::api()->name      \
        : (assert(false && #name " is not set"), nullptr))
 #endif
-VAIP_DLL_SPEC void initialize_ort();
 }  // namespace vaip_core

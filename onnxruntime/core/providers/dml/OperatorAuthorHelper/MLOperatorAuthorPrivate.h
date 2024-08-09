@@ -10,17 +10,10 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
-// Either nodesAsOpDesc or nodesAsIDMLOperator is present.
-//  1) Operator kernels which implement operators using only a single DML operator will pass a DML_OPERATOR_DESC.
-//     These kernels pass DML_OPERATOR_DESC, because while building Dml graph (inside FusedGraphKernel.cpp) we can change the
-//     the flag of constant inputs to DML_TENSOR_FLAG_OWNED_BY_DML.
-//  2) Operator kernels which implement operators using DMLX graph, they will pass IDMLOperator and won't be able
-//     to use DML_TENSOR_FLAG_OWNED_BY_DML.
 struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
-    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodesAsOpDesc;
-    _Field_size_opt_(nodeCount) IDMLOperator** nodesAsIDMLOperator;
+    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodes;
 
     uint32_t inputEdgeCount;
     _Field_size_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
@@ -37,6 +30,11 @@ interface __declspec(uuid("aa2173bb-6684-4de8-abf2-9acbdf88b426"))
 IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContext
 {
     STDMETHOD(GetConstantInputTensor)(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
+    STDMETHOD(TryGetConstantInputTensor)(
         uint32_t inputIndex,
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
@@ -69,6 +67,11 @@ interface __declspec(uuid("63bff199-0203-43c7-86c4-f442a599df4c"))
 IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContext
 {
     STDMETHOD(GetConstantInputTensor)(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
+    STDMETHOD(TryGetConstantInputTensor)(
         uint32_t inputIndex,
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
@@ -171,11 +174,12 @@ IMLOperatorRegistryPrivate : public IUnknown
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
         _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
         bool isInternalOperator,
-        bool canAliasFirstInput,
         bool supportsGraph,
         const uint32_t* requiredInputCountForGraph = nullptr,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
-        uint32_t constantCpuInputCount = 0
+        uint32_t constantCpuInputCount = 0,
+        _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
+        uint32_t aliasCount = 0
         ) const noexcept PURE;
 };
 

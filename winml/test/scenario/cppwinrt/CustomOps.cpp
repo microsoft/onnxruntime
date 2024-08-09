@@ -305,7 +305,8 @@ static void CustomKernelWithBuiltInSchema() {
 
   // Register the kernel
   MLOperatorEdgeDescription floatTensorType = {
-    MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float)};
+    MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float)
+  };
 
   MLOperatorEdgeTypeConstrant constraint = {"T", &floatTensorType, 1};
 
@@ -318,7 +319,8 @@ static void CustomKernelWithBuiltInSchema() {
     1,
     nullptr,
     0,
-    MLOperatorKernelOptions::AllowDynamicInputShapes};
+    MLOperatorKernelOptions::AllowDynamicInputShapes
+  };
 
   Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory =
     wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<false>);
@@ -614,7 +616,8 @@ static void CustomKernelWithCustomSchema() {
     MLOperatorEdgeTypeConstrant kernelConstraint = {"T1", &floatTensorEdgeDesc, 1};
 
     MLOperatorKernelDescription kernelDesc = {
-      "", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u};
+      "", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u
+    };
 
     if (!testCases[caseIndex].attributeDefaultsInSchema) {
       kernelDesc.defaultAttributes = defaultAttributes;
@@ -693,10 +696,8 @@ static void CustomKernelWithCustomSchema() {
 
 const CustomOpsTestsApi& getapi() {
   static CustomOpsTestsApi api = {
-    CustomOpsScenarioTestsClassSetup,
-    CustomOperatorFusion,
-    CustomKernelWithBuiltInSchema,
-    CustomKernelWithCustomSchema};
+    CustomOpsScenarioTestsClassSetup, CustomOperatorFusion, CustomKernelWithBuiltInSchema, CustomKernelWithCustomSchema
+  };
 
   if (SkipGpuTests()) {
     api.CustomOperatorFusion = SkipTest;

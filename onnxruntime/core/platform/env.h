@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
@@ -96,6 +96,12 @@ struct ThreadOptions {
 std::ostream& operator<<(std::ostream& os, const LogicalProcessors&);
 std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors>);
 
+/// <summary>
+/// Get errno and the corresponding error message.
+/// </summary>
+/// <returns>errno and the error message string if errno indicates an error.</returns>
+std::pair<int, std::string> GetErrnoInfo();
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
@@ -140,6 +146,8 @@ class Env {
   virtual int GetNumPhysicalCpuCores() const = 0;
 
   virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
+
+  virtual int GetL2CacheSize() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {

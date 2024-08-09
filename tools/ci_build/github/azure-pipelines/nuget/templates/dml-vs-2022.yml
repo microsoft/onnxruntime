@@ -15,7 +15,7 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   AgentPool: 'onnxruntime-Win-CPU-2022'
   AgentDemands: []
-  OrtPackageId: Microsoft.ML.OnnxRuntime
+  OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
   EnableLto: true
@@ -24,9 +24,9 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: []
+  dependsOn: Setup
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
     strategy:
       maxParallel: 2
@@ -47,6 +47,8 @@ stages:
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
 
@@ -55,6 +57,9 @@ stages:
       - checkout: self
         clean: true
         submodules: recursive
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
       - powershell: |
           if($env:TELEMETRYGUID)
@@ -103,7 +108,7 @@ stages:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '$(BuildCommand) --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
+          arguments: '$(BuildCommand) --use_binskim_compliant_compile_flags --parallel --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
@@ -130,14 +135,14 @@ stages:
 
 
       - task: NuGetToolInstaller@0
-        displayName: Use Nuget 5.7.0
+        displayName: Use Nuget 6.10.x
         inputs:
-          versionSpec: 5.7.0
+          versionSpec: 6.10.x
 
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           platform: 'Any CPU'
           configuration: '$(BuildConfig)'
           msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
@@ -146,7 +151,7 @@ stages:
       - task: MSBuild@1
         displayName: 'Build C#'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           configuration: '$(BuildConfig)'
           platform: 'Any CPU'
           msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
@@ -176,7 +181,7 @@ stages:
              python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
              set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
              @echo %PATH%
-             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
+             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --parallel --use_binskim_compliant_compile_flags --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
             workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             displayName: 'Run tests'
 
@@ -185,7 +190,7 @@ stages:
           displayName: 'Publish unit test results'
           inputs:
             testResultsFiles: '**\*.results.xml'
-            searchFolder: '$(Build.BinariesDirectory)'
+            searchFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             testRunTitle: 'Unit Test Run'
           condition: succeededOrFailed()
 
@@ -223,13 +228,14 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
-          - task: PublishSymbols@2
-            displayName: 'Publish Build Symbols'
-            inputs:
-              symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-              searchPattern: '**/*.pdb'
-              symbolServerType: teamServices
+        - task: PublishSymbols@2
+          displayName: 'Publish Build Symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            SearchPattern: 'onnxruntime.pdb'
+            SymbolServerType: teamServices
+            SymbolExpirationInDays: 365
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
@@ -285,6 +291,7 @@ stages:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
 
+
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - template: ../../templates/compliance.yml
           parameters :
@@ -293,7 +300,3 @@ stages:
       - template: ../../templates/component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
-
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()

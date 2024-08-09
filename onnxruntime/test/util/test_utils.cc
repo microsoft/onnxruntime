@@ -132,11 +132,17 @@ static gsl::span<const std::byte> GetModelBytes(ModelPathOrBytes model_path_or_b
 void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+                               const EPVerificationParams& params,
+                               const std::function<void(SessionOptions&)>& session_options_updater,
+                               bool verify_outputs) {
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
   SessionOptions so;
+  if (session_options_updater) {
+    session_options_updater(so);
+  }
+
   so.session_logid = log_id;
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
@@ -179,7 +185,9 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(output_names, expected_fetches, fetches, params);
+  if (verify_outputs) {
+    VerifyOutputs(output_names, expected_fetches, fetches, params);
+  }
 
   if (params.graph_verifier) {
     (*params.graph_verifier)(graph2);
@@ -225,7 +233,7 @@ void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
-  Path model_path;
+  std::filesystem::path model_path;
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> ind_span;
   std::vector<int64_t> converted_indices;

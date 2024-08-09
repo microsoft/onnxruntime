@@ -38,7 +38,8 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, I
     auto channel_buffers_pointers = std::vector<float*>{
       &input_data.at(0),
       &input_data.at(0) + channel_buffers_sizes[0],
-      &input_data.at(0) + channel_buffers_sizes[0] + +channel_buffers_sizes[1]};
+      &input_data.at(0) + channel_buffers_sizes[0] + +channel_buffers_sizes[1]
+    };
 
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind_as_references<float>(
       input_name,

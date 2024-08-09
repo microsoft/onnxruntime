@@ -24,8 +24,6 @@ docker run --rm \
   --security-opt seccomp=unconfined \
   --shm-size=1024m \
   --user $UID:$(id -g $USER) \
-  -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
-  -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
   -e NIGHTLY_BUILD \
   --volume $SOURCE_DIR:/onnxruntime_src \
   --volume $BINARY_DIR:/build \
@@ -33,14 +31,7 @@ docker run --rm \
   --volume /data/onnx:/data/onnx:ro \
   --workdir /onnxruntime_src \
   $IMAGE \
-  ${PYTHON_BIN:-python} /onnxruntime_src/tools/ci_build/build.py \
-    --config Release \
-    --build_dir /build \
-    --parallel \
-    --use_rocm --rocm_version=$ROCM_VERSION --rocm_home $ROCM_HOME --nccl_home $ROCM_HOME \
-    --build_shared_lib \
-    --skip_submodule_sync \
-    --skip_tests --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
+  /bin/bash -c "${PYTHON_BIN:-python} /onnxruntime_src/tools/ci_build/build.py --config Release --build_dir /build --parallel --use_rocm --use_binskim_compliant_compile_flags --rocm_version=$ROCM_VERSION --rocm_home $ROCM_HOME --nccl_home $ROCM_HOME --build_shared_lib --skip_submodule_sync --skip_tests --cmake_extra_defines FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER && cd /build/Release && make install DESTDIR=/build/installed"
 
 
 EXIT_CODE=$?

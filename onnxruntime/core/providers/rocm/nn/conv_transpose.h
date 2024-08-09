@@ -12,10 +12,12 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename T>
+template <typename T, bool NHWC>
 class ConvTranspose : public RocmKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info) : RocmKernel(info), conv_transpose_attrs_(info){};
+  ConvTranspose(const OpKernelInfo& info) : RocmKernel(info), conv_transpose_attrs_(info) {
+    static_assert(!NHWC, "AMD builds don't support usage of NHWC ops");
+  };
   Status ComputeInternal(OpKernelContext* context) const override;
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 

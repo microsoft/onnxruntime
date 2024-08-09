@@ -168,22 +168,23 @@ inline void TrainingSession::FromBuffer(Value& buffer) {
 
   auto buffer_size = buffer_shape.front();
 
+  size_t session_buffer_size = 0U;
+  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size, false));
+
+  if (buffer_size == static_cast<int64_t>(session_buffer_size)) {
+    ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, false));
+    return;
+  }
+
   size_t session_buffer_size_trainable_only = 0U;
   ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size_trainable_only, true));
 
   if (buffer_size == static_cast<int64_t>(session_buffer_size_trainable_only)) {
     ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, true));
     return;
-  }
-
-  size_t session_buffer_size = 0U;
-  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size, false));
-
-  if (buffer_size != static_cast<int64_t>(session_buffer_size)) {
+  } else {
     ThrowStatus(Status("Incorrect buffer size received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
   }
-
-  ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, false));
 }
 
 inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
@@ -277,6 +278,18 @@ inline Property CheckpointState::GetProperty(const std::string& property_name) {
   }
 
   return property;
+}
+
+inline void CheckpointState::UpdateParameter(const std::string& parameter_name, const Value& parameter) {
+  ThrowOnError(GetTrainingApi().UpdateParameter(p_, parameter_name.c_str(), parameter));
+}
+
+inline Value CheckpointState::GetParameter(const std::string& parameter_name) {
+  AllocatorWithDefaultOptions allocator;
+  OrtValue* parameter;
+  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), allocator, &parameter));
+
+  return Value{parameter};
 }
 
 }  // namespace Ort

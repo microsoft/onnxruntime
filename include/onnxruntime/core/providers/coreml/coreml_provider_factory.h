@@ -28,9 +28,12 @@ enum COREMLFlags {
   // dynamic shapes. However, the performance may be negatively impacted if inputs have dynamic shapes.
   COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008,
 
+  // Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or later.
+  COREML_FLAG_CREATE_MLPROGRAM = 0x010,
+
   // Keep COREML_FLAG_LAST at the end of the enum definition
   // And assign the last COREMLFlag to it
-  COREML_FLAG_LAST = COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES,
+  COREML_FLAG_LAST = COREML_FLAG_CREATE_MLPROGRAM,
 };
 
 #ifdef __cplusplus

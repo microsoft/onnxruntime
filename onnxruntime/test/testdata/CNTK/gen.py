@@ -213,7 +213,7 @@ def GenScan():  # noqa: N802
 
     for n in out_mp.graph.node:
         if n.op_type == "Scan":
-            body = [attr for attr in n.attribute if attr.name == "body"][0]
+            body = next(attr for attr in n.attribute if attr.name == "body")
             for vi in list(body.g.input) + list(body.g.output) + list(body.g.value_info):
                 dim = vi.type.tensor_type.shape.dim
                 dim[0].dim_param = "batch"

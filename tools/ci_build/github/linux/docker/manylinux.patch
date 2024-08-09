@@ -94,7 +94,7 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..203b4bc 100755
+index 137d2e2..a0ed0c8 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
 @@ -33,7 +33,7 @@ source $MY_DIR/build_utils.sh
@@ -152,9 +152,9 @@ index 137d2e2..203b4bc 100755
 +            sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/ubi.repo
 +	fi
 +        if [[ -d /usr/local/cuda ]]; then
-+	    TOOLCHAIN_DEPS="gcc gcc-c++"
++	    TOOLCHAIN_DEPS="gcc gcc-c++ libasan"
 +	else
-+	    TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran"
++	    TOOLCHAIN_DEPS="gcc-toolset-12-binutils gcc-toolset-12-gcc gcc-toolset-12-gcc-c++ gcc-toolset-12-gcc-gfortran gcc-toolset-12-libasan-devel"
  	fi
  elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
  	TOOLCHAIN_DEPS="binutils gcc g++ gfortran"

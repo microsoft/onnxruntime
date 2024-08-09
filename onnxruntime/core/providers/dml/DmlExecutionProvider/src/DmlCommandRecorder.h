@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <DirectML.h>
 #include "ICommandRecorder.h"
 #include "CommandAllocatorRing.h"
+#include "DescriptorPool.h"
 
 namespace Dml
 {
@@ -16,7 +18,7 @@ namespace Dml
     public:
         DmlCommandRecorder(
             ID3D12Device* d3dDevice,
-            IDMLDevice* device, 
+            IDMLDevice* device,
             std::shared_ptr<CommandQueue> commandQueue);
 
         void InitializeOperator(
@@ -46,19 +48,19 @@ namespace Dml
             _Outptr_ ID3D12Fence** fence,
             _Out_ uint64_t* completionValue);
 
-        ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-        
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> GetCommandList();
+
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 
         void Open() final;
         void CloseAndExecute() final;
-        
+
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
         bool HasUnsubmittedWork() override
         {
-            return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
+            return m_operationsRecordedInCurrentCommandList;
         }
 
         // Forces the descriptor heap to be reset to D3D before executing future operations
@@ -68,12 +70,13 @@ namespace Dml
         }
 
     private:
+        void CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList);
 
         std::shared_ptr<CommandQueue> m_queue;
-        ComPtr<ID3D12Device> m_d3dDevice;
-        ComPtr<IDMLDevice> m_dmlDevice;
-        ComPtr<IDMLOperatorInitializer> m_initializer;
-        ComPtr<IDMLCommandRecorder> m_recorder;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
+        Microsoft::WRL::ComPtr<IDMLDevice> m_dmlDevice;
+        Microsoft::WRL::ComPtr<IDMLOperatorInitializer> m_initializer;
+        Microsoft::WRL::ComPtr<IDMLCommandRecorder> m_recorder;
 
         // Descriptors are allocated from a pool. The current heap pointer is only used to avoid redundantly
         // setting the same heap; it does not have ownership of the heap object.
@@ -86,18 +89,11 @@ namespace Dml
         CommandAllocatorRing<2> m_commandAllocatorRing;
 
         // The command list currently being recorded into, and whether any command have been recorded yet.
-        ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
         bool m_operationsRecordedInCurrentCommandList = false;
 
-        // Command lists which have been batched up for execution.  The values in 
-        // m_pendingCommandListsCacheable indicate whether they can be moved into this
-        // class's cache after execution, versus if they belong to the caller and were
-        // passed to ExecuteCommandList.
-        std::vector<ComPtr<ID3D12GraphicsCommandList>> m_pendingCommandLists;
-        std::vector<bool> m_pendingCommandListsCacheable;
-
-        // A pool of cached command lists which may be re-used.
-        std::deque<ComPtr<ID3D12GraphicsCommandList>> m_cachedCommandLists;
+        // A cached command list which may be re-used.
+        Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_cachedCommandList;
 
         void SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap);
     };

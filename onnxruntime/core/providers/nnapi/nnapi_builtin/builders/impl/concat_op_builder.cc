@@ -32,11 +32,11 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
@@ -113,7 +113,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       float scale = 0.0f;
       int32_t zero_point = 0;
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          model_builder.GetInitializerTensors(), node_unit.Inputs()[i], node_unit.ModelPath(),
+          model_builder.GetGraphViewer(), node_unit.Inputs()[i], node_unit.ModelPath(),
           scale, zero_point));
 
       ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
@@ -128,7 +128,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t y_zero_point = operand_types.at(input0).operandType.zeroPoint;
   if (is_quant_op) {
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(),
+        model_builder.GetGraphViewer(), node_unit.Outputs()[0], node_unit.ModelPath(),
         y_scale, y_zero_point));
   }
 
@@ -151,7 +151,7 @@ bool ConcatOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
 }
 
-bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+bool ConcatOpBuilder::IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
                                         const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -168,7 +168,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 }
 
 bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   const auto& op_name = node_unit.Name();
@@ -188,11 +188,11 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
   if (IsQuantizedOp(node_unit)) {
     std::vector<size_t> input_indices(input_size);
     std::iota(input_indices.begin(), input_indices.end(), 0);
-    if (!IsQuantizedIOSupported(initializers, node_unit, input_indices, params, ArgType::kInput)) {
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, input_indices, params, ArgType::kInput)) {
       return false;
     }
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput)) {
+    if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput)) {
       return false;
     }
 
@@ -203,7 +203,7 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
       size_t input_idx = 0;
 
       auto status = GetQuantizationScaleAndZeroPoint(
-          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
+          graph_viewer, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
           input_scales[input_idx], input_zps[input_idx]);
 
       if (!status.IsOK()) {
@@ -214,7 +214,7 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
       }
 
       for (++input_idx; input_idx < input_size; ++input_idx) {
-        if (!HasRequiredScaleAndZeroPoint(initializers,
+        if (!HasRequiredScaleAndZeroPoint(graph_viewer,
                                           MakeString("Op [", op_type, "] name [", op_name, "] input ", input_idx),
                                           node_unit.Inputs()[input_idx],
                                           node_unit.ModelPath(),
@@ -225,7 +225,7 @@ bool ConcatOpBuilder::HasSupportedInputOutputsImpl(
       }
 
       // NNAPI (28-) requires the output scale and zp be the same as the input 0
-      if (!HasRequiredScaleAndZeroPoint(initializers,
+      if (!HasRequiredScaleAndZeroPoint(graph_viewer,
                                         MakeString("Op [", op_type, "] name [", op_name, "]'s output 0"),
                                         node_unit.Outputs()[0], node_unit.ModelPath(),
                                         input_scales[0] /* required_scale */,

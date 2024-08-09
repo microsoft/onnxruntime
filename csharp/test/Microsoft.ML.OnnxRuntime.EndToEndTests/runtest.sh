@@ -32,7 +32,7 @@ if [ $RunTestCsharp = "true" ]; then
     exit 1
   fi
 
-  if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
+  if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ] || [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu.Linux" ]; then
     export TESTONGPU=ON
     dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
     if [ $? -ne 0 ]; then

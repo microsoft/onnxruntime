@@ -94,4 +94,14 @@ ORT_API_STATUS_IMPL(GetProperty, _In_ const OrtCheckpointState* checkpoint_state
 ORT_API_STATUS_IMPL(LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
                     _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state);
 
+ORT_API_STATUS_IMPL(GetParameterTypeAndShape, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _Outptr_ OrtTensorTypeAndShapeInfo** parameter_type_and_shape);
+
+ORT_API_STATUS_IMPL(UpdateParameter, _Inout_ OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _In_ OrtValue* parameter);
+
+ORT_API_STATUS_IMPL(GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
+                    _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ OrtValue** parameter);
+
 }  // namespace OrtTrainingApis

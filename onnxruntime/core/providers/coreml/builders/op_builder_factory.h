@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "op_builder.h"
+#include "core/providers/coreml/builders/op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -24,10 +24,12 @@ void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateConvTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateDepthToSpaceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateGridSampleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -36,6 +38,8 @@ void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateShapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

@@ -19,7 +19,7 @@ using namespace Ort::Custom;
     throw std::runtime_error(msg); \
   }
 
-namespace Cuda {
+namespace Rocm {
 
 void KernelOne(const Ort::Custom::RocmContext& rocm_ctx,
                const Ort::Custom::Tensor<float>& X,
@@ -38,10 +38,6 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
   domain.Add(c_CustomOpOne.get());
 }
 
-}  // namespace Cuda
-
-#else
-
-void Cuda::RegisterOps(Ort::CustomOpDomain& domain) {}
+}  // namespace Rocm
 
 #endif

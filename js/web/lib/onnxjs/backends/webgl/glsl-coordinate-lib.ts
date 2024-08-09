@@ -186,7 +186,7 @@ export class CoordsGlslLib extends GlslLib {
   /**
    * 1D packed output coordinates.
    */
-  protected getOutputPacked1DCoords(shape: [number], texShape: [number, number]): GlslLibRoutine {
+  protected getOutputPacked1DCoords(_shape: [number], texShape: [number, number]): GlslLibRoutine {
     const packedTexShape = texShape;
     let source = '';
     if (packedTexShape[0] === 1) {
@@ -331,7 +331,7 @@ export class CoordsGlslLib extends GlslLib {
   /**
    * Unpacked 1D output coordinates.
    */
-  protected getOutputUnpacked1DCoords(shape: [number], texShape: [number, number]): GlslLibRoutine {
+  protected getOutputUnpacked1DCoords(_shape: [number], texShape: [number, number]): GlslLibRoutine {
     const source = `
         int getOutputCoords() {
           ivec2 resTexRC = ivec2(TexCoords.xy *
@@ -641,7 +641,7 @@ export class CoordsGlslLib extends GlslLib {
     if (outRank < 2 && inRank > 0) {
       unpackedCoordsSnippet = 'coords';
     } else {
-      unpackedCoordsSnippet = inShape.map((s, i) => `coords.${fields[i + rankDiff]}`).join(', ');
+      unpackedCoordsSnippet = inShape.map((_s, i) => `coords.${fields[i + rankDiff]}`).join(', ');
     }
 
     let output = 'return outputValue;';
@@ -734,7 +734,7 @@ export class CoordsGlslLib extends GlslLib {
     if (outRank < 2 && inRank > 0) {
       unpackedCoordsSnippet = 'coords';
     } else {
-      unpackedCoordsSnippet = inputLayout.unpackedShape.map((s, i) => `coords.${fields[i + rankDiff]}`).join(', ');
+      unpackedCoordsSnippet = inputLayout.unpackedShape.map((_s, i) => `coords.${fields[i + rankDiff]}`).join(', ');
     }
     const source = `
         float ${funcName}() {
@@ -1234,7 +1234,7 @@ export class CoordsGlslLib extends GlslLib {
   }
 
   /**
-   * This is the main function to map from the given texture coordiantes (s,t)
+   * This is the main function to map from the given texture coordinates (s,t)
    * to logical indices for the output
    * There will only be one single variation of this
    * Also see coordsToOffset and offsetToIndices for input-specific versions

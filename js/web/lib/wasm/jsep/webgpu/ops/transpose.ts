@@ -1,21 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
 }
-
-export const transposeProgramMetadata = {
-  name: 'Transpose',
-  inputTypes: [GpuDataType.default]
-};
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -23,11 +19,11 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-const getAdjustedPerm = (inputShape: readonly number[], perm: number[]): number[] =>
-    (perm && perm.length !== inputShape.length) ? [...(inputShape.keys())].reverse() : perm;
+const getAdjustedPerm = (inputRank: number, perm: number[]): number[] =>
+    (perm && perm.length !== inputRank) ? [...(new Array(inputRank).keys())].reverse() : perm;
 
 const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly number[] =>
-    ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape, perm));
+    ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
 
 const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, output: IndicesHelper): string => {
   const reverseFunc = [];
@@ -41,47 +37,68 @@ const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, ou
 };
 
 export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: number[]): ProgramInfo => {
-  const dataType = inputTensor.dataType;
-  const inputShape = inputTensor.dims;
-  const perm = getAdjustedPerm(inputShape, permAttr);
-  const outputShape = getOutputShape(inputShape, perm);
-  const rank = inputShape.length;
-  const outputSize = ShapeUtil.size(outputShape);
-  // A dims=[${inputs[0].dims.toString()}]
-  // out Dims=[${unpackedOutputShape.toString()}]
-  // based on perm=[${perm.toString()}]
+  const inputDataType = inputTensor.dataType;
+  const inputRank = inputTensor.dims.length;
+  const perm = getAdjustedPerm(inputRank, permAttr);
+  const outputShape = getOutputShape(inputTensor.dims, perm);
+  const output = outputVariable('output', inputDataType, outputShape.length);
+  const input = inputVariable('a', inputDataType, inputRank);
+  let getShaderSource;
+  if (perm.length === 2 && perm[0] === 1 && perm[1] === 0) {
+    const wgslType = output.type.value;
+    const workgroupSize: [number, number, number] = [16, 16, 1];
+    getShaderSource = (shaderHelper: ShaderHelper) => `
+  ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
+  var<workgroup> tile : array<array<${wgslType}, ${workgroupSize[0] + 1}>, ${workgroupSize[0]}>;
+  ${shaderHelper.mainStart(workgroupSize)}
+    var x = workgroup_id.x * ${workgroupSize[0]}u + local_id.x;
+    var y = workgroup_id.y * ${workgroupSize[0]}u + local_id.y;
+    let width = uniforms.output_shape[0];
+    let height = uniforms.output_shape[1];
+    if (x < width && y < height) {
+      tile[local_id.y][local_id.x] = ${input.getByOffset('y * width + x')};
+    }
+    workgroupBarrier();
+    x = workgroup_id.y * ${workgroupSize[0]}u + local_id.x;
+    y = workgroup_id.x * ${workgroupSize[0]}u + local_id.y;
+    if (x < height && y < width) {
+      ${output.setByOffset('y * height + x', 'tile[local_id.x][local_id.y]')}
+    }
+  }`;
+  } else {
+    getShaderSource = (shaderHelper: ShaderHelper) => `
+  ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
 
-  const output = outputVariable('output', dataType, outputShape);
-  const input = inputVariable('a', dataType, inputShape);
-
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
-  ${shaderHelper.declareVariables(input, output)}
-
-  ${permFunctionBody(perm, rank, input, output)}
+  ${permFunctionBody(perm, inputRank, input, output)}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
 
     let indices = ${output.offsetToIndices('global_idx')};
     let aIndices = perm(indices);
 
     ${output.setByOffset('global_idx', input.getByIndices('aIndices'))}
   }`;
+  }
   return {
-    ...transposeProgramMetadata,
-    outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
+    name: 'Transpose',
+    shaderCache: {hint: `${permAttr}`, inputDependencies: ['rank']},
+    getRunData: (inputs) => {
+      const outputSize = ShapeUtil.size(outputShape);
+      return {
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+        dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+        programUniforms:
+            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
+      };
+    },
     getShaderSource,
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };
 };
 
 export const transpose = (context: ComputeContext, attributes: TransposeAttributes): void => {
   validateInputs(context.inputs);
-  context.compute({
-    ...transposeProgramMetadata,
-    cacheHint: attributes.cacheKey,
-    get: () => createTransposeProgramInfo(context.inputs[0], attributes.perm)
-  });
+  context.compute(createTransposeProgramInfo(context.inputs[0], attributes.perm));
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>

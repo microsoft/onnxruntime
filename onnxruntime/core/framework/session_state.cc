@@ -22,9 +22,9 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM
-static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
-  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
+  return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
@@ -1046,7 +1046,8 @@ Status SessionState::CreateSubgraphSessionState() {
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_, nullptr, allocators_);
+                                         logger_, profiler_, sess_options_,
+                                         prepacked_weights_container_, allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1409,7 +1410,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
-  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // std::cout << std::make_pair(&*p_seq_exec_plan_, this);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
@@ -1485,7 +1486,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             }
             return Status::OK();
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func,
+          name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

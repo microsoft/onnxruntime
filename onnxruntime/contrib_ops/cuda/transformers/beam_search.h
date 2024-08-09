@@ -21,6 +21,16 @@ class BeamSearch final : public onnxruntime::contrib::transformers::BeamSearch {
   Status ComputeInternal(OpKernelContext* context) const;
 };
 
+class WhisperBeamSearch final : public onnxruntime::contrib::transformers::WhisperBeamSearch {
+ public:
+  WhisperBeamSearch(const OpKernelInfo& info);
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  Status ComputeInternal(OpKernelContext* context) const;
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

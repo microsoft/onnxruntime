@@ -1,10 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/tensor/upsample.h"
+
+#include <limits>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/tensor/upsample.h"
 #include "core/providers/cpu/tensor/upsample_antialias.h"
+
 using namespace onnxruntime::common;
 using namespace std;
 using onnxruntime::narrow;
@@ -29,6 +34,46 @@ REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(int8_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
+
+void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                            InlinedVector<float>& scales) const {
+  // AspectRatioPolicy::STRETCH is default policy when opset < 18
+  if (keep_aspect_ratio_policy_ == AspectRatioPolicy::STRETCH) {
+    return;
+  }
+
+  InlinedHashSet<int64_t> axes_set(axes_.begin(), axes_.end());
+
+  float scale_in_policy = 0.0f;
+  if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::NOT_LARGER) {
+    scale_in_policy = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < scales.size(); i++) {
+      if (axes_set.empty() || axes_set.count(i) > 0) {
+        scale_in_policy = std::min(scale_in_policy, scales[i]);
+      }
+    }
+  } else if (keep_aspect_ratio_policy_ == AspectRatioPolicy ::NOT_SMALLER) {
+    scale_in_policy = std::numeric_limits<float>::min();
+
+    for (size_t i = 0; i < scales.size(); i++) {
+      if (axes_set.empty() || axes_set.count(i) > 0) {
+        scale_in_policy = std::max(scale_in_policy, scales[i]);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < scales.size(); i++) {
+    // if axes is not specified (AKA axes_set.empty()), we apply the policy to all axes
+    if (axes_set.empty() || axes_set.count(i) > 0) {
+      scales[i] = scale_in_policy;
+      output_dims[i] = static_cast<int64_t>(std::round(scales[i] * input_dims[i]));
+    } else {
+      scales[i] = 1.0f;
+      output_dims[i] = input_dims[i];
+    }
+  }
+}
 
 template <typename T>
 void UpsampleNearest2x(int64_t batch_size,
@@ -94,8 +139,8 @@ UpsampleNearestSetupInputMappings(int64_t n_dim,
                                   const TensorShape& input_shape,
                                   const TensorShape& output_shape,
                                   const std::vector<int64_t>& input_dim_factor,
-                                  const vector<float>& scales,
-                                  const vector<float>& roi,
+                                  gsl::span<const float> scales,
+                                  gsl::span<const float> roi,
                                   bool extrapolation_enabled,
                                   const GetOriginalCoordinateFunc& get_original_coordinate,
                                   const GetNearestPixelFunc& get_nearest_pixel) {
@@ -141,8 +186,8 @@ static Status UpsampleNearestImpl(const T* input,
                                   T* output,
                                   const TensorShape& input_shape,
                                   const TensorShape& output_shape,
-                                  const vector<float>& scales,
-                                  const vector<float>& roi,
+                                  gsl::span<const float> scales,
+                                  gsl::span<const float> roi,
                                   bool extrapolation_enabled,
                                   const T extrapolation_value,
                                   const GetOriginalCoordinateFunc& get_original_coordinate,
@@ -285,8 +330,8 @@ static Status UpsampleNearest(const T* input,
                               T* output,
                               const TensorShape& input_shape,
                               const TensorShape& output_shape,
-                              const vector<float>& scales,
-                              const vector<float>& roi,
+                              gsl::span<const float> scales,
+                              gsl::span<const float> roi,
                               bool is_resize,
                               bool extrapolation_enabled,
                               T extrapolation_value,
@@ -412,7 +457,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
                                      const int32_t output_width,
                                      const float height_scale,
                                      const float width_scale,
-                                     const std::vector<float>& roi,
+                                     gsl::span<const float> roi,
                                      AllocatorPtr& alloc,
                                      const GetOriginalCoordinateFunc& get_original_coordinate,
                                      const bool is_nchw) {
@@ -518,7 +563,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
                                                    const int32_t output_width,
                                                    const float height_scale,
                                                    const float width_scale,
-                                                   const std::vector<float>& roi,
+                                                   gsl::span<const float> roi,
                                                    AllocatorPtr& alloc,
                                                    const GetOriginalCoordinateFunc& get_original_coordinate,
                                                    const bool is_nchw) {
@@ -650,7 +695,7 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
                                               float depth_scale,
                                               float height_scale,
                                               float width_scale,
-                                              const std::vector<float>& roi,
+                                              gsl::span<const float> roi,
                                               AllocatorPtr& alloc,
                                               const GetOriginalCoordinateFunc& get_original_coordinate) {
   TrilinearParams p;
@@ -796,7 +841,7 @@ void UpsampleTrilinear(int64_t batch_size,
                        float depth_scale,
                        float height_scale,
                        float width_scale,
-                       const std::vector<float>& roi,
+                       gsl::span<const float> roi,
                        bool use_extrapolation,
                        float extrapolation_value,
                        const T* XdataBase,
@@ -929,7 +974,7 @@ void ResizeBiCubic(int64_t batch_size,
                    bool use_extrapolation,
                    float extrapolation_value,
                    bool exclude_outside,
-                   const std::vector<float>& roi,
+                   gsl::span<const float> roi,
                    const T* Xdata,
                    T* Ydata,
                    const GetOriginalCoordinateFunc& get_original_coordinate) {
@@ -1067,9 +1112,9 @@ void ResizeBiCubic(int64_t batch_size,
 
 template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
-                                const std::vector<float>& roi,
-                                const std::vector<float>& scales,
-                                const gsl::span<const int64_t>& output_dims) const {
+                                gsl::span<const float> roi,
+                                gsl::span<const float> scales,
+                                gsl::span<const int64_t> output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   auto dims = X->Shape().GetDims();
   ORT_RETURN_IF_NOT(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
@@ -1327,7 +1372,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   // Initialize the roi array to all zeros as this will be the most common case
   // Roi data is needed only when coordinate transformation mode is set to tf_crop_and_resize
   // for all other cases we need a 0 initialized roi array
-  std::vector<float> roi_array(roi_);
+  InlinedVector<float> roi_array(roi_);
 
   if (!roi_cached_) {
     bool use_default_roi = true;
@@ -1353,7 +1398,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
   ComputeROIWithAxes(roi_array, input_dims.size());
   // Get scales data
-  std::vector<float> scales_array(input_dims.size());
+  InlinedVector<float> scales_array(input_dims.size());
 
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims

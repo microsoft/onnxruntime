@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.tools.json",
   "exclude": ["type-tests/**/*.ts"],
   "compilerOptions": {
-    "module": "ES2022",
+    "module": "Node16",
     "sourceMap": true
   }
 }

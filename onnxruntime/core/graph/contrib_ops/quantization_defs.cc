@@ -22,7 +22,9 @@ void RNNShapeInference(InferenceContext& ctx);
 void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
-void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+namespace defs::math::utils {
+  void MatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+}
 
 }  // namespace ONNX_NAMESPACE
 
@@ -162,7 +164,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T2", OpSchema::Optional)
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)"},
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int4)",
+                               "tensor(uint4)"},
                         "Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -204,7 +207,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
                                 .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
-                                                       "tensor(uint16)", "tensor(int32)"},
+                                                       "tensor(uint16)", "tensor(int32)", "tensor(int4)",
+                                                       "tensor(uint4)"},
                                                 "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
                                                 "16-bit integer tensors, or 32-bit signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
@@ -400,7 +404,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data type to 8-bit integer tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -434,11 +438,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(0, "Y", "Matrix multiply results from A * B", "T3")
         .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data type to 8-bit integer tensor.")
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data type to 8-bit integer tensor.")
-        .TypeConstraint("T3", {"tensor(float)"},
+        .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"},
                         "Constrain input a_scale, b_scale and output Y data type as float tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 2, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1129,7 +1133,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 2);
         }));
 
 static const char* Attention_QOrdered_doc = R"DOC(

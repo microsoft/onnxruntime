@@ -67,17 +67,6 @@ class ScaledTanh final : public UnaryElementwise {
 };
 
 template <typename T>
-class Gelu final : public UnaryElementwise {
- public:
-  Gelu(const OpKernelInfo& info) : UnaryElementwise(info) {}
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  MAKE_FUNC_CTX_NULL()
-};
-
-template <typename T>
 class QuickGelu final : public UnaryElementwise {
  public:
   QuickGelu(const OpKernelInfo& info) : UnaryElementwise(info) {

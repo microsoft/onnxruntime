@@ -18,7 +18,7 @@ Abstract:
 
 #include "mlasi.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #define tile_dpbssd(dst, src1, src2) _tile_dpbssd(dst, src1, src2)
 
 #define tile_dpbsud(dst, src1, src2) _tile_dpbsud(dst, src1, src2)

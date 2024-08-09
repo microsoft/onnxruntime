@@ -46,7 +46,7 @@ export const parseReduceAttributes: OperatorInitialization<ReduceAttributes> = (
 };
 
 const createReduceProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, name: string, reduceOp: ReduceOp,
+    (_handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, _name: string, reduceOp: ReduceOp,
      reduceProgramMetadata: ProgramMetadata): ProgramInfo => {
       const outputShape: number[] = [];
       const iRank = inputs[0].dims.length || 1;

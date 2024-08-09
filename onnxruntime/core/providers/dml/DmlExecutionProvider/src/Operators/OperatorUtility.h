@@ -40,7 +40,8 @@ namespace Dml
             int candidateOpInputCount,
             std::string_view activationOpType,
             std::string_view activationOpDomain,
-            int activationOpSinceVersion);
+            int activationOpSinceVersion,
+            bool isMcdmDevice);
 
         // Returns true if the given activation operator type supports being fused with a fusable operator, false
         // otherwise.
@@ -64,8 +65,7 @@ namespace Dml
     } // namespace FusionHelpers
 
     // Given an axis in ONNX axis numbering, return the axis adjusted for DML based on how the sizes have been coerced.
-    // Note this function presumes the axis attribute is relative to the first input tensor (which is always the case).
-    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount);
+    uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount, uint32_t firstInputIndex = 0);
 
     uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, uint32_t onnxDimCount, uint32_t dmlDimCount);
 

@@ -14,7 +14,6 @@ export const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTy
   ['uint8', Uint8Array],
   ['int8', Int8Array],
   ['uint16', Uint16Array],
-  ['float16', Uint16Array],
   ['int16', Int16Array],
   ['int32', Int32Array],
   ['bool', Uint8Array],
@@ -34,16 +33,22 @@ export const NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP = new Map<SupportedTypedArray
   [Uint32Array, 'uint32'],
 ]);
 
-// the following code allows delaying execution of BigInt checking. This allows lazy initialization for
-// NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP and NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, which allows BigInt polyfill
-// if available.
-let isBigIntChecked = false;
-export const checkBigInt = () => {
-  if (!isBigIntChecked) {
-    isBigIntChecked = true;
-    const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && typeof BigInt64Array.from === 'function';
-    const isBigUint64ArrayAvailable =
-        typeof BigUint64Array !== 'undefined' && typeof BigUint64Array.from === 'function';
+// a dummy type declaration for Float16Array in case any polyfill is available.
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-explicit-any
+  const Float16Array: any;
+}
+
+// the following code allows delaying execution of BigInt/Float16Array checking. This allows lazy initialization for
+// NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP and NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, which allows BigInt/Float16Array
+// polyfill if available.
+let isTypedArrayChecked = false;
+export const checkTypedArray = () => {
+  if (!isTypedArrayChecked) {
+    isTypedArrayChecked = true;
+    const isBigInt64ArrayAvailable = typeof BigInt64Array !== 'undefined' && BigInt64Array.from;
+    const isBigUint64ArrayAvailable = typeof BigUint64Array !== 'undefined' && BigUint64Array.from;
+    const isFloat16ArrayAvailable = typeof Float16Array !== 'undefined' && Float16Array.from;
 
     if (isBigInt64ArrayAvailable) {
       NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('int64', BigInt64Array);
@@ -52,6 +57,13 @@ export const checkBigInt = () => {
     if (isBigUint64ArrayAvailable) {
       NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('uint64', BigUint64Array);
       NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(BigUint64Array, 'uint64');
+    }
+    if (isFloat16ArrayAvailable) {
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('float16', Float16Array);
+      NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.set(Float16Array, 'float16');
+    } else {
+      // if Float16Array is not available, use 'Uint16Array' to store the data.
+      NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.set('float16', Uint16Array);
     }
   }
 };

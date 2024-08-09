@@ -63,7 +63,7 @@ int64_t TensorShape::Size() const {
 int64_t TensorShape::SizeToDimension(size_t dimension) const {
   const size_t num_dims = values_.size();
   ORT_ENFORCE(dimension <= num_dims,
-              "Invalid dimension of ", dimension, " for SizeFromDimension. Tensor has ",
+              "Invalid dimension of ", dimension, " for SizeToDimension. Tensor has ",
               num_dims, " dimensions.");
 
   int64_t size = SizeHelper(0, dimension);

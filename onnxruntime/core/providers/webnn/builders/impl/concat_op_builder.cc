@@ -36,13 +36,17 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   uint32_t axis = static_cast<uint32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
-  emscripten::val inputs = emscripten::val::array();
-  for (const auto* input : node.InputDefs()) {
+  std::vector<emscripten::val> inputs;
+  for (const auto* input : input_defs) {
     LOGS(logger, VERBOSE) << "input name " << input->Name();
-    inputs.call<void>("push", model_builder.GetOperand(input->Name()));
+    inputs.push_back(model_builder.GetOperand(input->Name()));
   }
 
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("concat", inputs, axis);
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
+  emscripten::val output =
+      model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();

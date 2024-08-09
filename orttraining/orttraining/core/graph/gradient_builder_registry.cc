@@ -68,9 +68,11 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Reshape", GetReshapeGradient);
   REGISTER_GRADIENT_BUILDER("Transpose", GetTransposeGradient);
   REGISTER_GRADIENT_BUILDER("Gemm", GetGemmGradient);
+  REGISTER_GRADIENT_BUILDER("MatMulBnb4", GetMatmulBnb4Gradient);
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("Gather", GetGatherGradient);
   REGISTER_GRADIENT_BUILDER("PadAndUnflatten", GetPadAndUnflattenGradient);
+  REGISTER_GRADIENT_BUILDER("FlattenAndUnpad", GetFlattenAndUnpadGradient);
   REGISTER_GRADIENT_BUILDER("ShrunkenGather", GetShrunkenGatherGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
@@ -122,6 +124,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Reciprocal", GetReciprocalGradient);
   REGISTER_GRADIENT_BUILDER("LeakyRelu", GetLeakyReluGradient);
   REGISTER_GRADIENT_BUILDER("ConvTranspose", GetConvTransposeGradient);
+  REGISTER_GRADIENT_BUILDER("Resize", GetResizeGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };

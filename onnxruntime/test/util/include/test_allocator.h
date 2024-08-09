@@ -14,7 +14,9 @@ struct MockedOrtAllocator : OrtAllocator {
   void* Alloc(size_t size);
   void Free(void* p);
   const OrtMemoryInfo* Info() const;
+  void* Reserve(size_t size);
   size_t NumAllocations() const;
+  size_t NumReserveAllocations() const;
 
   void LeakCheck();
 
@@ -24,5 +26,6 @@ struct MockedOrtAllocator : OrtAllocator {
 
   std::atomic<size_t> memory_inuse{0};
   std::atomic<size_t> num_allocations{0};
+  std::atomic<size_t> num_reserve_allocations{0};
   OrtMemoryInfo* cpu_memory_info;
 };

@@ -193,7 +193,7 @@ def main(args):
     config = AutoConfig.from_pretrained(args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir)
     model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
-    # This scirpt does not support float16 for PyTorch.
+    # This script does not support float16 for PyTorch.
     # if args.float16:
     #    model.half()
 
@@ -400,7 +400,7 @@ def main(args):
                         }
                         csv_writer.writerow(row)
                     except Exception:
-                        logger.error("Exception", exc_info=True)
+                        logger.error("Exception", exc_info=True)  # noqa: G201
                         return None
 
     logger.info(f"Results are saved to file {csv_filename}")

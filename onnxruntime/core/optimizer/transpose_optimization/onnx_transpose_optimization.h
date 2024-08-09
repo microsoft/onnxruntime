@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 // implementation details of the transpose optimizer API defined in optimizer_api.h.
@@ -38,6 +39,8 @@ struct HandlerInfo {
   bool transposes_outputs = true;
 };
 
+using NodeIdToInputIdxsMap = std::unordered_map<int64_t, std::vector<size_t>>;
+
 struct OptimizerCtx {
   int64_t opset;
   api::GraphRef& graph;
@@ -69,6 +72,7 @@ bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_
 
 // base handlers that are used by extended handlers. add from transpose_optimizer.cc as needed.
 bool HandleReduceOps(HandlerArgs& args);
+bool HandleResize([[maybe_unused]] HandlerArgs& args);
 
 void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,

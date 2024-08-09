@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {inspect} from 'util';
 
+import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {bufferToBase64} from '../test/test-shared';
 import {Test} from '../test/test-types';
 
@@ -28,6 +29,7 @@ async function main() {
 
   npmlog.verbose('TestRunnerCli.Init.Config', inspect(args));
 
+  const DIST_ROOT = path.join(__dirname, '..', 'dist');
   const TEST_ROOT = path.join(__dirname, '..', 'test');
   const TEST_DATA_MODEL_NODE_ROOT = path.join(TEST_ROOT, 'data', 'node');
   const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
@@ -164,6 +166,7 @@ async function main() {
       debug: args.debug,
       cpuOptions: args.cpuOptions,
       webglOptions: args.webglOptions,
+      webnnOptions: args.webnnOptions,
       wasmOptions: args.wasmOptions,
       globalEnvFlags: args.globalEnvFlags
     }
@@ -257,15 +260,17 @@ async function main() {
       times?: number): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
-      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
+      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: [], ioBinding: args.ioBindingMode};
     }
 
     let modelUrl: string|null = null;
     let cases: Test.ModelTestCase[] = [];
+    let externalData: Array<{data: string; path: string}>|undefined;
 
     npmlog.verbose('TestRunnerCli.Init.Model', `Start to prepare test data from folder: ${testDataRootFolder}`);
 
     try {
+      const maybeExternalDataFiles: Array<[fileNameWithoutExtension: string, size: number]> = [];
       for (const thisPath of fs.readdirSync(testDataRootFolder)) {
         const thisFullPath = path.join(testDataRootFolder, thisPath);
         const stat = fs.lstatSync(thisFullPath);
@@ -280,6 +285,8 @@ async function main() {
             } else {
               throw new Error('there are multiple model files under the folder specified');
             }
+          } else {
+            maybeExternalDataFiles.push([path.parse(thisPath).name, stat.size]);
           }
         } else if (stat.isDirectory()) {
           const dataFiles: string[] = [];
@@ -305,6 +312,34 @@ async function main() {
       if (modelUrl === null) {
         throw new Error('there are no model file under the folder specified');
       }
+      // for performance consideration, we do not parse every model. when we think it's likely to have external
+      // data, we will parse it. We think it's "likely" when one of the following conditions is met:
+      // 1. any file in the same folder has the similar file name as the model file
+      //    (e.g., model file is "model_abc.onnx", and there is a file "model_abc.pb" or "model_abc.onnx.data")
+      // 2. the file size is larger than 1GB
+      const likelyToHaveExternalData = maybeExternalDataFiles.some(
+          ([fileNameWithoutExtension, size]) =>
+              path.basename(modelUrl!).startsWith(fileNameWithoutExtension) || size >= 1 * 1024 * 1024 * 1024);
+      if (likelyToHaveExternalData) {
+        const model = onnx.ModelProto.decode(fs.readFileSync(path.join(testDataRootFolder, path.basename(modelUrl!))));
+        const externalDataPathSet = new Set<string>();
+        for (const initializer of model.graph!.initializer!) {
+          if (initializer.externalData) {
+            for (const data of initializer.externalData) {
+              if (data.key === 'location') {
+                externalDataPathSet.add(data.value!);
+              }
+            }
+          }
+        }
+        externalData = [];
+        const externalDataPaths = [...externalDataPathSet];
+        for (const dataPath of externalDataPaths) {
+          const fullPath = path.resolve(testDataRootFolder, dataPath);
+          const url = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, fullPath));
+          externalData.push({data: url, path: dataPath});
+        }
+      }
     } catch (e) {
       npmlog.error('TestRunnerCli.Init.Model', `Failed to prepare test data. Error: ${inspect(e)}`);
       throw e;
@@ -323,14 +358,38 @@ async function main() {
       }
     }
 
+    let ioBinding: Test.IOBindingMode;
+    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+      npmlog.warn(
+          'TestRunnerCli.Init.Model', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+      ioBinding = 'none';
+    } else {
+      ioBinding = args.ioBindingMode;
+    }
+
+
     npmlog.verbose('TestRunnerCli.Init.Model', 'Finished preparing test data.');
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Backend: ${backend}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
+    if (externalData) {
+      npmlog.verbose('TestRunnerCli.Init.Model', ` External data: ${externalData.length}`);
+      for (const data of externalData) {
+        npmlog.verbose('TestRunnerCli.Init.Model', `  - ${data.path}`);
+      }
+    }
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases};
+    return {
+      name: path.basename(testDataRootFolder),
+      platformCondition,
+      modelUrl,
+      backend,
+      cases,
+      ioBinding,
+      externalData
+    };
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -390,6 +449,13 @@ async function main() {
       for (const test of tests) {
         test.backend = backend;
         test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
+        if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+          npmlog.warn(
+              'TestRunnerCli.Init.Op', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+          test.ioBinding = 'none';
+        } else {
+          test.ioBinding = args.ioBindingMode;
+        }
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
@@ -436,9 +502,6 @@ async function main() {
     npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle...');
     const buildCommand = `node ${path.join(__dirname, 'build')}`;
     const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
     npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
     const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
     if (build.status !== 0) {
@@ -458,7 +521,14 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc... DONE');
 
       npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha...');
-      const mochaArgs = ['mocha', path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
+      const mochaArgs = [
+        'mocha',
+        '--timeout',
+        `${args.debug ? 9999999 : 60000}`,
+        '-r',
+        path.join(DIST_ROOT, 'ort.node.min.js'),
+        path.join(TEST_ROOT, 'test-main'),
+      ];
       npmlog.info('TestRunnerCli.Run', `CMD: npx ${mochaArgs.join(' ')}`);
       const mocha = spawnSync('npx', mochaArgs, {shell: true, stdio: 'inherit'});
       if (mocha.status !== 0) {
@@ -472,14 +542,13 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
       const webgpu = args.backends.indexOf('webgpu') > -1;
       const webnn = args.backends.indexOf('webnn') > -1;
-      const browser = getBrowserNameFromEnv(
-          args.env,
-          args.bundleMode === 'perf' ? 'perf' :
-              args.debug             ? 'debug' :
-                                       'test',
-          webgpu, webnn);
+      const browser = getBrowserNameFromEnv(args.env);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
+      if (args.bundleMode === 'dev' && !args.debug) {
+        // use headless for 'test' mode (when 'perf' and 'debug' are OFF)
+        chromiumFlags.push('--headless=new');
+      }
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
         chromiumFlags.push('--remote-debugging-port=9333');
@@ -489,24 +558,26 @@ async function main() {
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu || webnn) {
+
+      // When using BrowserStack with Safari, we need NOT to use 'localhost' as the hostname.
+      if (!(browser.startsWith('BS_') && browser.includes('Safari'))) {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
-        if (browser.includes('Canary')) {
-          chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
-        } else {
-          chromiumFlags.push('--enable-dawn-features=use_dxc');
-          chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
-        }
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
-        chromiumFlags.push('--enable-experimental-web-platform-features');
+        chromiumFlags.push('--enable-features=WebMachineLearningNeuralNetwork');
       }
-      if (config.options.globalEnvFlags?.webgpu?.profilingMode === 'default') {
-        chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
+      if (process.argv.includes('--karma-debug')) {
+        karmaArgs.push('--log-level debug');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
+      if (args.userDataDir) {
+        karmaArgs.push(`--user-data-dir="${args.userDataDir}"`);
+      }
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
       if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
@@ -542,7 +613,7 @@ async function main() {
           // == The Problem ==
           // every time when a test is completed, it will be added to the recovery page list.
           // if we run the test 100 times, there will be 100 previous tabs when we launch Edge again.
-          // this run out of resources quickly and fails the futher test.
+          // this run out of resources quickly and fails the further test.
           // and it cannot recover by itself because every time it is terminated forcely or crashes.
           // and the auto recovery feature has no way to disable by configuration/commandline/registry
           //
@@ -598,15 +669,14 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
+  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env']) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn);
+        return 'ChromeTest';
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
-        return 'Firefox';
+        return 'FirefoxTest';
       case 'electron':
         return 'Electron';
       case 'safari':
@@ -615,22 +685,6 @@ async function main() {
         return process.env.ORT_WEB_TEST_BS_BROWSERS!;
       default:
         throw new Error(`env "${env}" not supported.`);
-    }
-  }
-
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
-    if (webnn) {
-      return 'ChromeCanaryTest';
-    } else if (webgpu) {
-      return 'ChromeTest';
-    } else {
-      switch (mode) {
-        case 'debug':
-        case 'perf':
-          return 'ChromeTest';
-        default:
-          return 'ChromeTestHeadless';
-      }
     }
   }
 }

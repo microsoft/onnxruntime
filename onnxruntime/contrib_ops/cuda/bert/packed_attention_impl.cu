@@ -13,7 +13,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -297,7 +297,7 @@ struct T2<half> {
 };
 
 template <typename T>
-void LaunchAddBiasTranspose(
+void AddBiasTransposePacked(
     const T* input, const T* biases, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
@@ -440,7 +440,7 @@ Status LaunchTransposeRemovePadding(
 
 template <typename T>
 Status FusedScaledDotProductAttention(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& /*device_prop*/,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
     PackedAttentionData<T>& data) {
@@ -452,17 +452,16 @@ Status FusedScaledDotProductAttention(
   void* fused_runner = data.fused_runner;
   ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
 
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::QKV_BSN3H, data.token_offset,
                          parameters.token_count, stream);
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(data.workspace, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len,
+                         data.workspace, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
@@ -478,7 +477,7 @@ Status FusedScaledDotProductAttentionCutlass(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::Q_K_V_BSNH, data.token_offset,
@@ -507,10 +506,12 @@ Status FusedScaledDotProductAttentionCutlass(
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
   p.is_half = sizeof(T) == 2;
+  p.is_kv_bsnh = true;
   p.batch_size = parameters.batch_size;
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.sequence_length;
+  p.max_sequence_length = parameters.sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
@@ -527,6 +528,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
 
   DUMP_TENSOR("PackedAttention cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
@@ -562,7 +564,7 @@ Status UnfusedScaledDotProductAttention(
   T* k = q + elements_q;
   T* v = k + elements_k;
 
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
@@ -593,7 +595,7 @@ Status UnfusedScaledDotProductAttention(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero,
       scaled_qk, sequence_length, sequence_length * sequence_length,
-      batches, device_prop));
+      batches, device_prop, parameters.use_tf32));
 
   DUMP_TENSOR_D("PackedAttention unfused QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
@@ -621,7 +623,7 @@ Status UnfusedScaledDotProductAttention(
       v_head_size, sequence_length, sequence_length,
       &one, v, v_head_size, sequence_length * v_head_size,
       attention_score, sequence_length, sequence_length * sequence_length,
-      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
+      &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop, parameters.use_tf32));
 
   // Temp_output is BxNxSxH_v, transpose and remove padding to output token_countxNxH_v
   Status result = LaunchTransposeRemovePadding(
@@ -654,6 +656,20 @@ Status QkvToContext(
 
   return UnfusedScaledDotProductAttention<T>(device_prop, cublas, stream, parameters, data);
 }
+
+template void AddBiasTransposePacked<float>(
+    const float* input, const float* biases, float* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
+template void AddBiasTransposePacked<half>(
+    const half* input, const half* biases, half* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,

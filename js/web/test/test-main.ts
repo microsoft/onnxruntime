@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Load onnxruntime-web and testdata-config.
+// Load onnxruntime-common and testdata-config.
 // NOTE: this need to be called before import any other library.
-const ort = require('..');
+import * as ort from 'onnxruntime-common';
+
 const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
 import * as platform from 'platform';
@@ -18,46 +19,7 @@ if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => tes
 }
 
 // set flags
-const options = ORT_WEB_TEST_CONFIG.options;
-if (options.debug !== undefined) {
-  ort.env.debug = options.debug;
-}
-if (options.globalEnvFlags) {
-  const flags = options.globalEnvFlags;
-  if (flags.logLevel !== undefined) {
-    ort.env.logLevel = flags.logLevel;
-  }
-  if (flags.webgl?.contextId !== undefined) {
-    ort.env.webgl.contextId = flags.webgl.contextId;
-  }
-  if (flags.webgl?.matmulMaxBatchSize !== undefined) {
-    ort.env.webgl.matmulMaxBatchSize = flags.webgl.matmulMaxBatchSize;
-  }
-  if (flags.webgl?.textureCacheMode !== undefined) {
-    ort.env.webgl.textureCacheMode = flags.webgl.textureCacheMode;
-  }
-  if (flags.webgl?.pack !== undefined) {
-    ort.env.webgl.pack = flags.webgl.pack;
-  }
-  if (flags.webgl?.async !== undefined) {
-    ort.env.webgl.async = flags.webgl.async;
-  }
-  if (flags.wasm?.numThreads !== undefined) {
-    ort.env.wasm.numThreads = flags.wasm.numThreads;
-  }
-  if (flags.wasm?.simd !== undefined) {
-    ort.env.wasm.simd = flags.wasm.simd;
-  }
-  if (flags.wasm?.proxy !== undefined) {
-    ort.env.wasm.proxy = flags.wasm.proxy;
-  }
-  if (flags.wasm?.initTimeout !== undefined) {
-    ort.env.wasm.initTimeout = flags.wasm.initTimeout;
-  }
-  if (flags.webgpu?.profilingMode !== undefined) {
-    ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
-  }
-}
+Object.assign(ort.env, ORT_WEB_TEST_CONFIG.options.globalEnvFlags);
 
 // Set logging configuration
 for (const logConfig of ORT_WEB_TEST_CONFIG.log) {
@@ -106,8 +68,7 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
-          context = await ModelTestContext.create(
-              test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
+          context = await ModelTestContext.create(test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options);
         });
 
         after('release session', async () => {

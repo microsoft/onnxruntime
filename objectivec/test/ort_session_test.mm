@@ -295,6 +295,32 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   XCTAssertTrue([stringData isEqualToArray:outputStringData]);
 }
 
+- (void)testKeepORTEnvReference {
+  ORTEnv* __weak envWeak = _ortEnv;
+  // Remove sole strong reference to the ORTEnv created in setUp.
+  _ortEnv = nil;
+  // There should be no more strong references to it.
+  XCTAssertNil(envWeak);
+
+  // Create a new ORTEnv.
+  NSError* err = nil;
+  ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                               error:&err];
+  ORTAssertNullableResultSuccessful(env, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:env
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  envWeak = env;
+  // Remove strong reference to the ORTEnv passed to the ORTSession initializer.
+  env = nil;
+  // ORTSession should keep a strong reference to it.
+  XCTAssertNotNil(envWeak);
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

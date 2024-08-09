@@ -58,6 +58,25 @@ TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
                                  ExpectedEPNodeAssignment::All);
 }
 
+// Test Leaky Relu where input is FP16 and alpha is FP32
+TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto input_def = TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 1.0f, 10.0f, 30.0f, 40.0f});
+  TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
+  auto attrs = {utils::MakeAttribute("alpha", 0.2f)};
+  TestFp16ModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
+                        BuildOpTestCase<MLFloat16>("LeakyRelu", {input_fp16_def}, {}, attrs),
+                        provider_options,
+                        16,
+                        ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime

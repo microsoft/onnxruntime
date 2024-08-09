@@ -217,7 +217,8 @@ struct TensorBase : TBase {
     }
 
     D3D12_HEAP_PROPERTIES heapProperties = {
-      D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+      D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
+    };
     D3D12_RESOURCE_DESC resourceDesc = {
       D3D12_RESOURCE_DIMENSION_BUFFER,
       0,
@@ -875,7 +876,7 @@ struct TensorBase : TBase {
 
     WINML_THROW_HR_IF_TRUE_MSG(
       E_ILLEGAL_METHOD_CALL,
-      std::is_same<T, std::string>::value,
+      (std::is_same<T, std::string>::value),
       "TensorString objects cannot be created from IBuffers!"
     );
   }

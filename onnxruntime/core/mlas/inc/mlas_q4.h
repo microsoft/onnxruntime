@@ -21,6 +21,7 @@ Abstract:
 #pragma once
 
 #include "mlas.h"
+#include "mlas_gemm_postprocessor.h"
 
 #include <math.h>
 #include <algorithm>
@@ -39,7 +40,7 @@ typedef enum {
  * @brief Computes the number of bytes required to pack and int4-quantize
  *        a weight matrix
  * @param QType  type of block quantization
- * @param N      the number of columns of matrix B. 
+ * @param N      the number of columns of matrix B.
  * @param K      the number of rows of matrix B.
  * @return size of the packing buffer, 0 if the operation is not yet supported.
 */
@@ -53,11 +54,11 @@ MlasQ4GemmPackBSize(
 
 /**
  * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
- * 
+ *
  * @param QType      type of block quantization
  * @param PackedBuf  destination buffer
  * @param FpData     the pointer to fp32 matrix
- * @param N          the number of columns of matrix B. 
+ * @param N          the number of columns of matrix B.
  * @param K          the number of rows of matrix B.
  * @param ldb        leading dimension of B
 */
@@ -93,22 +94,6 @@ MlasQ4GemmUnPackB(
     size_t K,
     size_t ldb
     );
-
-
-template<typename T>
-class MLAS_GEMM_POSTPROCESSOR
-{
-   public:
-    virtual void Process(T*,         /**< the address of matrix to process */
-                         size_t,     /**< the start row index of matrix */
-                         size_t,     /**< the start col index of matrix */
-                         size_t,     /**< the element count per row to process */
-                         size_t,     /**< the element count per col to process */
-                         size_t      /**< the leading dimension of matrix */
-    ) const = 0;
-
-    virtual ~MLAS_GEMM_POSTPROCESSOR() {}
-};
 
 
 /**
@@ -229,3 +214,224 @@ MlasQ8Q4GemmBatch(
     const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
+
+
+////////////////////////////////////////////////////////////
+// Blockwise quantization and dequantization where quantization
+// parameters are packed into separate buffers.
+//
+
+/**
+ * @brief For quantization type <T, block_size, columnwise>, and
+ *        matrix shape [rows, columns], compute the shape of the
+ *        quantization parameter matrix [meta_rows, meta_cols]
+*/
+template <typename T, int qbits>
+void
+MlasBlockwiseQuantMetaShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& meta_rows,
+    int& meta_cols
+    );
+
+/**
+ * @brief For quantization type <T, block_size, columnwise>, and
+ * matrix shape [rows, columns], compute the shape of the
+ * quantized matrix [q_rows, q_cols]. The quantized matrix
+ * is in column major layout, with bits packed on the column.
+ *
+ * @tparam T
+ * @tparam qbits
+ * @param block_size
+ * @param columnwise
+ * @param rows
+ * @param columns
+ * @param q_rows
+ * @param q_cols
+*/
+template <typename T, int qbits>
+void
+MlasBlockwiseQuantizedShape(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& q_rows,
+    int& q_cols
+    );
+
+/**
+ * @brief Compute the sizes of the quantized data and quantization parameter buffers.
+ *
+ * @param qbits                             The bit width of each quantized value.
+ * @param block_size                        The number of quantized values in a block.
+ * @param columnwise                        Whether a block contains values from a matrix column (true) or row (false).
+ * @param rows                              Number of matrix rows.
+ * @param columns                           Number of matrix columns.
+ * @param[out] q_data_size_in_bytes         The size in bytes of the quantized data.
+ * @param[out] q_scale_num_elements         The size in elements of the scale quantization parameters.
+ * @param[out] q_zero_point_size_in_bytes   The size in bytes of the zero point quantization parameters. Optional.
+ *
+ * If the qbits or block_size values are unsupported the output sizes will be zero.
+ */
+void MLASCALL
+MlasBlockwiseQuantizedBufferSizes(
+    int qbits,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    size_t& q_data_size_in_bytes,
+    size_t& q_scale_num_elements,
+    size_t* q_zero_point_size_in_bytes
+);
+
+
+/**
+ * @brief Blockwise 4 bits quantization, resulting elements and quantization
+ *        parameters (scales, zero points) are packed into separate matrices
+ *        all in column major layout for faster access during subsequent matrix
+ *        multiplication.
+ *
+ * @tparam ElementT             type of the input matrix element, usually floating point
+ * @tparam qbits                number of bits used for quantization, 4 for int4
+ *
+ * @param dst                   points to the quantized matrix, shape [rows, columns] column major
+ * @param scales                points to the scales matrix, column major
+ * @param zero_points           points to the zero_points matrix, column major
+ * @param src                   points to the floating point matrix, to be quantized, row major shape [rows, columns]
+ * @param block_size            size of the block to quantize, elements from the same block share the same scale and zero point
+ * @param columnwise            true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param rows
+ * @param columns
+ * @param leading_dimension
+ * @param thread_pool
+*/
+template <typename ElementT, int qbits>
+void
+MlasQuantizeBlockwise(
+    uint8_t* dst,
+    ElementT* scales,
+    uint8_t* zero_points,
+    const ElementT* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+
+/**
+ * @brief Blockwise 4 bits dequantization, quantized elements and quantization
+ *        parameters (scales, zero points) are from separate matrices packed
+ *        in column major layout.  Output is a floating point matrix in column
+ *        major layout for faster access during subsequent matrix multiplication.
+ *
+ * @tparam ElementT     type of the dequantized matrix element, usually floating point
+ * @tparam qbits        number of bits used for quantization, 4 for int4
+ *
+ * @param dst           points to dequantized matrix shape [rows, columns] column major
+ * @param src           points to quantized matrix, column major
+ * @param scales        points to quantization scales, column major
+ * @param zero_points   points to quantization zero points, column major
+ * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point
+ * @param columnwise    true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param rows
+ * @param columns
+ * @param thread_pool
+*/
+template <typename ElementT, int qbits>
+void
+MlasDequantizeBlockwise(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const uint8_t* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+    );
+
+/**
+ * @brief Blockwise 4 bits quantization. After quantization, the weights and zero points
+ *        are packed row-wise. If zero_points is null, quantized type is int4 with default
+ *        zero point 0, to align with DQ schema. Otherwise, quantized type is uint4.
+ *        In int4/uint4, dst have the same shape as src, and zero_points have the same shape as scales.
+ * @tparam Tin
+ * @tparam qbits            number of bits used for quantization, only 4 is supported
+ * @param src               points to the floating point matrix, to be quantized, row major shape [rows, columns]
+ * @param scales            points to the scales matrix, row major
+ * @param zero_points       points to the zero_points matrix, row major
+ * @param dst               points to the quantized matrix, shape [rows, columns] row major in qbits type.
+ *                          In uint8_t type, shape is [rows, columns * qbits / 8].
+ * @param columnwise        true when quantize elements in a column, false when quantize elements in a row.
+ * @param rows
+ * @param columns
+ * @param quant_block_size  number of elements in a quantize block
+ * @param thread_pool
+ * @return the quantized type is signed.
+ */
+template <typename Tin, int qbits>
+bool
+MlasQDQQuantizeBlockwise(
+    const Tin* src,
+    Tin* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+/**
+ * @brief Transpose blockwise quantized tensors. The src tensors are row major. src weights and zero
+ *        points are packed row-wise. The dst tensors are column major. dst weights and zero points
+ *        are packed column-wise.
+ *        dst_weights and dst_zero_points are in uint4.
+ *        If src_weights is int4 and has src_zero_points, src_weights and src_zero_points are
+ *        converted to uint4 by adding 8.
+ *        If src_weights is int4 and no src_zero_points, src_weights is converted to uint4 by adding 8.
+ *        src_zero_points is 0 and dst_zero_points is 8.
+ *        If src_weights is uint4 and has src_zero_points, just transpose.
+ *        If src_weights is uint4 and no src_zero_points, caller must allocate dst_zero_points with
+ *        0 values. Otherwise exception is thrown.
+ * @tparam Tin
+ * @tparam qbits            number of bits used for quantization, only 4 is supported
+ * @tparam signed_quant     true when quantized type is signed, false when quantized type is unsigned
+ * @param src_weights       points to the quantized matrix, row major, shape [rows, columns] in qbits type.
+ *                          In uint8_t type, shape is [rows, columns * qbits / 8].
+ * @param src_scales        points to the scales matrix, row major
+ * @param src_zero_points   points to the zero_points matrix, row major. Packed row-wise.
+ * @param dst_weights       points to the quantized matrix, column major. Packed column-wise.
+ * @param dst_scales        points to the scales matrix, column major
+ * @param dst_zero_points   points to the zero_points matrix, column major. Packed column-wise.
+ * @param columnwise        true when quantize elements in a column, false when quantize elements in a row.
+ * @param rows
+ * @param columns
+ * @param quant_block_size  number of elements in a quantize block
+ * @param thread_pool
+ */
+template <typename Tin, int qbits, bool signed_quant>
+void
+MlasQDQTransposeBlockwiseQuantized(
+    const uint8_t* src_weights,
+    const Tin* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    Tin* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);

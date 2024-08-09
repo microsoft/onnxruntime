@@ -21,7 +21,7 @@ e.g.
     - /build/Linux/Debug/_deps/flatbuffers-build/flatc
 
 It is possible to use another flatc as well, e.g., from a separate installation. Note that ONNX Runtime uses
-FlatBuffers 1.12.
+FlatBuffers 23.5.26.
 
 To update the flatbuffers schemas and generated files:
 1. Modify [the ORT file format schema](ort.fbs) or [training checkpoint schema](ort_training_checkpoint.fbs).

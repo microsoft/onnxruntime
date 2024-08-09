@@ -11,9 +11,10 @@ import torch._dynamo
 from functorch.compile import min_cut_rematerialization_partition
 from torch._dynamo.backends.common import aot_autograd
 from torch.library import Library
+from torch.onnx import _OrtBackend as OrtBackend
+from torch.onnx import _OrtBackendOptions as OrtBackendOptions
 
 import onnxruntime
-from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
 
 # Dummy operator set to map aten::mul.Tensor to test.customop::CustomOpOne
 # in ONNX model executed by DORT.
@@ -112,16 +113,18 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
 
         # In order to use custom exporting function inside PyTorch-to-ONNX exporter used in DORT, create executor of ONNX model with custom `onnx_registry`.
         ort_backend = OrtBackend(
-            ep="CPUExecutionProvider",
-            session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
-            onnx_exporter_options=torch.onnx.ExportOptions(dynamic_shapes=True, onnx_registry=onnx_registry),
+            OrtBackendOptions(
+                preferred_execution_providers="CPUExecutionProvider",
+                ort_session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
+                export_options=torch.onnx.ExportOptions(dynamic_shapes=True, onnx_registry=onnx_registry),
+            )
         )
 
         # Wrap ORT executor as a Dynamo backend.
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
-            decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
+            decompositions=ort_backend._resolved_onnx_exporter_options.decomposition_table,
         )
 
         def one_mul(tensor_x: torch.Tensor, tensor_y: torch.Tensor):
@@ -169,19 +172,22 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
 
         # Create executor of ONNX model.
         ort_backend = OrtBackend(
-            ep="CPUExecutionProvider",
-            session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
-            onnx_exporter_options=torch.onnx.ExportOptions(onnx_registry=onnx_registry),
+            OrtBackendOptions(
+                preferred_execution_providers="CPUExecutionProvider",
+                ort_session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
+                export_options=torch.onnx.ExportOptions(dynamic_shapes=True, onnx_registry=onnx_registry),
+            )
         )
+
         # Allow torch.ops.foo.bar.default to be sent to DORT.
         # _support_dict tells Dynamo which ops to sent to DORT.
-        ort_backend._supported_ops._support_dict.add(torch.ops.foo.bar.default)
+        ort_backend._supported_ops._support_dict[torch.ops.foo.bar.default] = None
 
         # Wrap ORT executor as a Dynamo backend.
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
-            decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
+            decompositions=ort_backend._resolved_onnx_exporter_options.decomposition_table,
         )
 
         def one_foo(tensor_x: torch.Tensor):

@@ -14,8 +14,7 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
   //
   static std::vector<MLDataType> types{
-      // TODO(fs-eire): support f16 when it's ready
-      // DataTypeImpl::GetTensorType<MLFloat16>(),
+      DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),

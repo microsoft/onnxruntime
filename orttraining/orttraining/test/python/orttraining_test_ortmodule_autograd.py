@@ -1415,10 +1415,12 @@ def test_pythonop_training_mode():
         ## make sure the ort's PythonOp's training_mode is correct
         if is_eval_mode:
             onnx_nodes = (
-                model._torch_module._execution_manager._inference_manager._onnx_models.exported_model.graph.node
+                model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
             )
         else:
-            onnx_nodes = model._torch_module._execution_manager._training_manager._onnx_models.exported_model.graph.node
+            onnx_nodes = (
+                model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+            )
 
         found_pythonop = False
         for node in onnx_nodes:
@@ -1533,25 +1535,14 @@ def test_python_op_save_input_for_backward():
 
     import warnings
 
-    for index in range(10):
-        count = 0
-        with warnings.catch_warnings(record=True) as w:
+    for _ in range(10):
+        with warnings.catch_warnings(record=True):
             input = torch.randn(output_size, device=device, dtype=torch.float)
             pt_prediction = _run_step(pt_model, input)
             ort_prediction = _run_step(ort_model, input)
 
             assert_values_are_close(ort_prediction, pt_prediction, rtol=1e-04, atol=1.0)
             assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
-
-            for i in range(len(w)):
-                msg = str(w[i].message)
-                if "Add input index to _GlobalOpKernelInfoMap" in msg:
-                    count += 1
-
-        if index == 0:
-            assert count == 1
-        else:
-            assert count == 0
 
 
 class DupNamedFunction(torch.autograd.Function):
@@ -1717,3 +1708,158 @@ def test_customized_shape_inference():
     ).train()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
     _check_pythonop_shape(ortmodule)
+
+
+def test_python_op_return_persistent_param_as_value():
+    """Some PythonOp return values that are still used by PyTorch computation. This test makes sure that ORTModule
+    will not release/erase the storage of those return values during tear down OrtValue of the corresponding PythonOp
+    return values.
+    """
+
+    class SimplePassThrough(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            return x.detach()
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            return grad_output
+
+    class GeluWithExternalOutput(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x, bias_param):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))), bias_param.detach()
+
+        @staticmethod
+        def backward(ctx, *grad_outputs):
+            (x,) = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            g = ff * grad_outputs[0]
+            return g, grad_outputs[1]
+
+    class TestLayer(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.relu = GeluWithExternalOutput.apply
+            self._output_size = output_size
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
+            self.w = Parameter(
+                torch.empty(output_size, output_size, device=torch.cuda.current_device(), dtype=torch.float)
+            )
+            with torch.no_grad():
+                self.bias.uniform_()
+                self.w.uniform_()
+
+        def forward(self, model_input):
+            activation0 = torch.add(model_input, 0.4)
+            activation1 = activation0.view(self._output_size, -1)
+
+            # Returned detached_bias_param Tensor shares the same storage with self.bias
+            # We are testing to make sure ORT will not erase the storage of self.bias during tear down OrtValue as
+            # the returned value of the SimplePassThrough PythonOp.
+            detached_bias_param = SimplePassThrough.apply(self.bias)
+            relu_out, detached_bias_param = self.relu(activation1, detached_bias_param)
+            activation2 = torch.add(relu_out, self.bias)
+            activation3 = torch.add(activation2, detached_bias_param)
+            activation3 = torch.matmul(self.w, activation3)
+            activation4 = torch.div(activation3, 1000)
+            return activation4
+
+    class TestModule(torch.nn.Module):
+        def __init__(self, output_size) -> None:
+            super().__init__()
+            self.layers = torch.nn.ModuleList([TestLayer(output_size) for i in range(6)])
+
+        def forward(self, x):
+            # ModuleList can act as an iterable, or be indexed using ints
+            for layer in self.layers:
+                x = x.view(-1)
+                x = torch.nn.functional.relu(layer(x))
+            return x
+
+    device = "cuda"
+    output_size = 1024
+    pt_model = TestModule(output_size).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def _run_step(model, input):
+        loss = model(input).sum()
+        loss.backward()
+        return loss
+
+    for _ in range(5):
+        input = torch.randn(output_size, device=device, dtype=torch.float)
+        _run_step(pt_model, input)
+        _run_step(ort_model, input)
+
+        pt_params = {n: p for n, p in pt_model.named_parameters()}
+        for name, param in ort_model.named_parameters():
+            assert_values_are_close(param, pt_params[name], rtol=1e-04, atol=1e-3)
+            if param.grad is not None:
+                assert pt_params[name].grad is not None, f"pt param.grad is None for {name}"
+                assert_values_are_close(param.grad, pt_params[name].grad, rtol=1e-04, atol=1e-3)
+            else:
+                assert pt_params[name].grad is None
+
+
+def test_determistic_pythonop_export():
+
+    class TestFunction(torch.autograd.Function):
+        @staticmethod
+        # bias is an optional argument
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            x = ctx.saved_tensors
+            tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+            ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+            return ff * grad_output
+
+    class TestModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super().__init__()
+            self.custom_fn = TestFunction.apply
+            self.bias = Parameter(torch.empty(output_size, dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            # model_input did not require_grad
+            out = self.custom_fn(model_input)
+            return out + self.bias
+
+    output_size = 1024
+
+    ortmodule = ORTModule(TestModel(output_size)).train()
+    _ = ortmodule(torch.randn(output_size, dtype=torch.float))
+
+    onnx_nodes = (
+        ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+    )
+
+    found_pythonop = False
+    for node in onnx_nodes:
+        if node.op_type == "PythonOp":
+            cconv = None
+            for attr in node.attribute:
+                if attr.name == "func_name":
+                    func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                    if (
+                        func_name
+                        == "orttraining_test_ortmodule_autograd.test_determistic_pythonop_export.<locals>.TestFunction"
+                    ):
+                        found_pythonop = True
+
+                if attr.name == "input_convention":
+                    cconv = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+
+            if found_pythonop:
+                assert cconv == "cccd", f"Expected cconv to be ccdd, but actually got {cconv}"
+
+    assert found_pythonop, "PythonOp should be found in the exported model"

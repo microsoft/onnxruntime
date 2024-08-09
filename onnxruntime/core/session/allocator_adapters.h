@@ -27,6 +27,7 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   void Free(void* p);
 
   const OrtMemoryInfo* Info() const;
+  void* Reserve(size_t size);
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
@@ -43,6 +44,7 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
   ~IAllocatorImplWrappingOrtAllocator() override = default;
 
   void* Alloc(size_t size) override;
+  void* Reserve(size_t size) override;
 
   void Free(void* p) override;
 

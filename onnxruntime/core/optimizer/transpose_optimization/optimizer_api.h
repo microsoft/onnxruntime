@@ -86,7 +86,7 @@ class TensorRef {
   /// <returns>Flattened tensor data in bytes</returns>
   virtual std::vector<uint8_t> Data() const = 0;
 
-  virtual ~TensorRef(){};
+  virtual ~TensorRef() {};
 };
 
 /// <summary>
@@ -131,7 +131,7 @@ class ValueInfoRef {
   /// <param name="axes">Indices of dimensions to add. Indices are relative to final shape.</param>
   virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
 
-  virtual ~ValueInfoRef(){};
+  virtual ~ValueInfoRef() {};
 };
 
 /// <summary>
@@ -242,7 +242,13 @@ class NodeRef {
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;
 
-  virtual ~NodeRef(){};
+  /// <summary>
+  /// Get the unique id of the node.
+  /// </summary>
+  /// <returns>Id</returns>
+  virtual int64_t Id() const = 0;
+
+  virtual ~NodeRef() {};
 };
 
 /// <summary>
@@ -436,13 +442,20 @@ class GraphRef {
     return !unused;
   }
 
-  virtual ~GraphRef(){};
+  /// <summary>
+  /// Is the value a graph output.
+  /// </summary>
+  /// <param name="name">Value name.</param>
+  /// <returns>True if output of the Graph.</returns>
+  virtual bool IsGraphOutput(std::string_view name) const = 0;
+
+  virtual ~GraphRef() {};
 };
 
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 19;
+constexpr int64_t kMaxSupportedOpset = 21;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

@@ -17,31 +17,35 @@ namespace onnxruntime {
 namespace xnnpack {
 
 namespace {
-Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
+
+Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            int64_t C, int64_t M,
                            const TensorShapeVector& kernel_shape,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
                            XnnpackOperator& op_uptr,
-                           xnn_caches_t caches_t,
+                           xnn_code_cache_t code_cache,
+                           xnn_weights_cache_t weights_cache,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
                            bool is_transpose = false) {
   struct xnn_operator* p = nullptr;
 
-  const uint32_t kernel_height = gsl::narrow<uint32_t>(kernel_shape[0]);
-  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[1]);
+  // if this is 1D input, we fake all the height related dims being 1 to make it 2D. so {W} -> {1, W}
+  const auto is_1D = kernel_shape.size() == 1;
 
-  const auto& conv_attrs = *conv_attrs_ptr;
-  const uint32_t input_padding_top = gsl::narrow<uint32_t>(conv_attrs.pads[0]);
-  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[1]);
-  const uint32_t input_padding_bottom = gsl::narrow<uint32_t>(conv_attrs.pads[2]);
-  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[3]);
+  const uint32_t kernel_height = is_1D ? 1 : gsl::narrow<uint32_t>(kernel_shape[0]);
+  const uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[is_1D ? 0 : 1]);
 
-  const uint32_t subsampling_height = gsl::narrow<uint32_t>(conv_attrs.strides[0]);
-  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[1]);
-  const uint32_t dilation_height = gsl::narrow<uint32_t>(conv_attrs.dilations[0]);
-  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[1]);
+  const uint32_t input_padding_top = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[0]);
+  const uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 0 : 1]);
+  const uint32_t input_padding_bottom = is_1D ? 0 : gsl::narrow<uint32_t>(conv_attrs.pads[2]);
+  const uint32_t input_padding_right = gsl::narrow<uint32_t>(conv_attrs.pads[is_1D ? 1 : 3]);
+
+  const uint32_t subsampling_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.strides[0]);
+  const uint32_t subsampling_width = gsl::narrow<uint32_t>(conv_attrs.strides[is_1D ? 0 : 1]);
+  const uint32_t dilation_height = is_1D ? 1 : gsl::narrow<uint32_t>(conv_attrs.dilations[0]);
+  const uint32_t dilation_width = gsl::narrow<uint32_t>(conv_attrs.dilations[is_1D ? 0 : 1]);
 
   uint32_t flags = 0;
   if (conv_attrs.auto_pad == AutoPadType::SAME_UPPER) {
@@ -75,7 +79,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         C, M,                                         // input channel stride, output channel stride
         Weight.Data<float>(), B_data,
         foutput_min, foutput_max, flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
@@ -99,7 +103,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -107,7 +111,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     const int8_t output_zero_point = quant_param[2].second;
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
-    status = xnn_create_convolution2d_nhwc_qc8(
+    status = xnn_create_convolution2d_nhwc_qs8_qc8w(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
@@ -123,7 +127,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
     const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -148,15 +152,17 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         quant_param[2].second, quant_param[2].first[0],
         output_min, output_max,
         flags,
-        caches_t,
+        code_cache, weights_cache,
         &p);
   }
+
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to create xnnpack kernel. xnn_create_",
                            is_transpose ? "deconvolution2d" : "convolution2d", "_nhwc_",
                            OpTypeToString(conv_type), " returned ", status);
   }
+
   op_uptr.reset(p);
   return Status::OK();
 }
@@ -296,16 +302,28 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
+    // We have only implemented support for opset 11 Conv and above
+    if (node_unit.SinceVersion() < 11) {
+      break;
+    }
+
     // Conv has at least 2 inputs.
     const auto& inputs = node_unit.Inputs();
     const auto& x_arg = inputs[0].node_arg;
     const auto& weight_arg = inputs[1].node_arg;
 
-    // we only support 2D (4 dims with batch and channel)
     const auto* x_shape = x_arg.Shape();
-    if (!x_shape || x_shape->dim_size() != 4) {
+    if (!x_shape) {
       break;
     }
+
+    // xnnpack only supports 2D. we support 2D (4 dims with batch and channel) or 1D (3 dims).
+    // if 1D we can fake the data being 4D by pretending the height dims are 1
+    const auto rank = x_shape->dim_size();
+    if (rank != 4 && rank != 3) {
+      break;
+    }
+
     // we only support float and u8 currently
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
@@ -317,13 +335,13 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
     if (!x_shape->dim(1).has_dim_value() ||
         !x_shape->dim(2).has_dim_value() ||
-        !x_shape->dim(3).has_dim_value()) {
+        (rank == 4 && !x_shape->dim(3).has_dim_value())) {
       break;
     }
 
-    // weight must be constant and also rank 4
+    // weight must be constant
     const auto* weight = graph.GetConstantInitializer(weight_arg.Name(), true);
-    if (weight == nullptr || weight->dims_size() != 4) {
+    if (weight == nullptr) {
       break;
     }
 
@@ -367,7 +385,7 @@ bool ConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 }
 
 ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
-    : XnnpackKernel(info),
+    : XnnpackKernel(info, /*enable_caches*/ true),
       conv_attrs_(info),
       conv_transpose_attrs_(info),
       convbase_attrs_ref_(is_transpose ? conv_transpose_attrs_ : conv_attrs_),
@@ -383,21 +401,14 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
       }
     }
   }
-  // xnnpack cache_code, unfortunately these definitions are only available in xnnpack/cache.h,
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_init_code_cache(&code_cache_);
-  xnn_caches_.code_cache = &code_cache_;
-#endif
-  // TODO(Jicwen) enable weight-cache and code-cache
-  xnn_init_weights_cache(&weights_cache_);
-  xnn_caches_.weights_cache = &weights_cache_;
-#endif
+
   const auto& node{Node()};
   const auto& input_defs = node.InputDefs();
   const NodeArg& X = *input_defs[0];
   auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X.Shape());
-  C_ = X_shape[3];  // input is NHWC. op support checker made sure C dim was known
+  const auto rank = X_shape.NumDimensions();
+
+  C_ = X_shape[rank - 1];  // input is NHWC or NWC. op support checker made sure C dim was known
 
   // as the weight input is a constant initializer we can calculate all the sizes here instead of in Compute
   const Tensor* Weight = nullptr;
@@ -417,10 +428,9 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
   ORT_ENFORCE(info.TryGetConstantInput(weight_index, &Weight),
               "Weight input was not constant initializer. XNNPACK EP should not have asked for the node. Node name:",
               node.Name());
-  M_ = Weight->Shape()[0];
 
-  // this happens before PrePack, so the weight input is still in the ONNX spec format
-  ORT_THROW_IF_ERROR(convbase_attrs_ref_.ComputeKernelShape(Weight->Shape(), kernel_shape_));
+  const auto& weight_shape = Weight->Shape();
+  ORT_THROW_IF_ERROR(convbase_attrs_ref_.ComputeKernelShape(weight_shape, kernel_shape_));
 
   if (convbase_attrs_ref_.pads.empty()) {
     convbase_attrs_ref_.pads.resize(kernel_shape_.size() * 2, 0);
@@ -441,16 +451,19 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
                 "Invalid Node with non-constant Bias input. XNNPACK EP should not have asked for the node. Node name:",
                 node.Name());
   } else {
-    has_bias = input_defs.size() == (8 + 1) && input_defs[8]->Exists();
+    has_bias = input_defs.size() == 9 && input_defs[8]->Exists();
     ORT_ENFORCE(has_bias == false || info.TryGetConstantInput(8, &B_),
                 "Invalid Node with non-constant Bias input. XNNPACK EP should not have asked for the node. Node name:",
                 node.Name());
   }
-  const TensorShape input_shape{X_shape[1], X_shape[2]};
+
+  // HW from NHWC or W from NWC
+  const TensorShape input_shape = rank == 4 ? TensorShape{X_shape[1], X_shape[2]}
+                                            : TensorShape{X_shape[1]};
 
   if (is_transpose) {
     // Group_num group_size
-    M_ = Weight->Shape()[1] * convbase_attrs_ref_.group;
+    M_ = weight_shape[1] * convbase_attrs_ref_.group;
     if (conv_transpose_attrs_.output_padding.empty()) {
       conv_transpose_attrs_.output_padding.resize(kernel_shape_.size(), 0);
     }
@@ -459,29 +472,33 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
         input_shape, M_, kernel_shape_,
         conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
         conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &output_shape_);
+
     output_shape_[1] = output_shape_[2];
-    output_shape_[2] = output_shape_[3];
-    output_shape_[3] = M_;
+    if (rank == 4) {
+      output_shape_[2] = output_shape_[3];
+    }
+
+    output_shape_[rank - 1] = M_;
+
   } else {
+    M_ = weight_shape[0];
+
     ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
-    output_shape_.push_back(1);
+    output_shape_.push_back(1);  // N
     ORT_THROW_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape_,
                                                            conv_attrs_.strides, conv_attrs_.dilations, pads,
                                                            output_shape_));
 
     output_shape_.push_back(M_);
   }
+
   // have to delay creating the xnnpack kernel until after the weights are pre-packed.
 }
 
 Status ConvBase::CreateKernel() {
-  auto ret = CreateXnnpackKernel(&convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
+  auto ret = CreateXnnpackKernel(convbase_attrs_ref_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
                                  B_, op0_,
-#ifdef XNN_CACHE_ENABLE
-                                 &xnn_caches_,
-#else
-                                 0,
-#endif
+                                 GetCodeCache(), GetWeightsCache(),
                                  quant_param_, conv_type_, is_transpose_);
   return ret;
 }

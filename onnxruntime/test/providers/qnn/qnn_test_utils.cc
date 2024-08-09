@@ -9,9 +9,11 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
 
+#include "core/platform/env_var_utils.h"
 #include "core/common/span_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -41,9 +43,62 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
   return data;
 }
 
-void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
+std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start, float step) {
+  if (shape.empty()) {
+    return {};
+  }
+
+  int64_t count = 1;
+  for (auto dim : shape) {
+    count *= dim;
+  }
+
+  std::vector<float> data;
+  data.reserve(static_cast<size_t>(count));
+
+  float val = start;
+  for (int64_t i = 0; i < count; i++) {
+    data.push_back(val);
+    val += step;
+  }
+
+  return data;
+}
+
+TestInputDef<MLFloat16> ConvertToFP16InputDef(const TestInputDef<float>& input_def) {
+  if (input_def.IsRawData()) {
+    std::vector<MLFloat16> input_data_fp16;
+    input_data_fp16.reserve(input_def.GetRawData().size());
+    for (float f32_val : input_def.GetRawData()) {
+      input_data_fp16.push_back(MLFloat16(f32_val));
+    }
+
+    return TestInputDef<MLFloat16>(input_def.GetShape(), input_def.IsInitializer(), input_data_fp16);
+  } else {
+    auto rand_data = input_def.GetRandomDataInfo();
+    return TestInputDef<MLFloat16>(input_def.GetShape(), input_def.IsInitializer(),
+                                   MLFloat16(rand_data.min), MLFloat16(rand_data.max));
+  }
+}
+
+void TryEnableQNNSaver(ProviderOptions& qnn_options) {
+  // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
+  constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";
+  static std::optional<int> enable_qnn_saver = onnxruntime::ParseEnvironmentVariable<int>(
+      kEnableQNNSaverEnvironmentVariableName);
+
+  if (enable_qnn_saver.has_value() && *enable_qnn_saver != 0) {
+#if defined(_WIN32)
+    qnn_options["qnn_saver_path"] = "QnnSaver.dll";
+#else
+    qnn_options["qnn_saver_path"] = "libQnnSaver.so";
+#endif  // defined(_WIN32)
+  }
+}
+
+void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err, logging::Severity log_severity) {
+                     float fp32_abs_err, logging::Severity log_severity, bool verify_outputs) {
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.fp32_abs_err = fp32_abs_err;
@@ -65,26 +120,34 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  TryEnableQNNSaver(provider_options);
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
-                            helper.feeds_, verification_params);
+                            helper.feeds_, verification_params,
+                            {}, verify_outputs);
 }
 
 void InferenceModel(const std::string& model_data, const char* log_id,
-                    std::unique_ptr<IExecutionProvider> execution_provider,
+                    const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<OrtValue>& output_vals) {
+                    std::vector<OrtValue>& output_vals,
+                    bool is_qnn_ep,
+                    const std::unordered_map<std::string, std::string>& session_option_pairs) {
   SessionOptions so;
   so.session_logid = log_id;
+  for (auto key_value : session_option_pairs) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(key_value.first.c_str(), key_value.second.c_str()));
+  }
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
 
   std::string provider_type = kCpuExecutionProvider;
-  if (execution_provider) {
-    provider_type = execution_provider->Type();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  if (is_qnn_ep) {
+    auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
+    provider_type = qnn_ep->Type();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(qnn_ep)));
   }
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());

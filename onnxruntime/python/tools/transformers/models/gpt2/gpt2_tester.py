@@ -137,7 +137,7 @@ class Gpt2Tester:
         self.has_position_ids = position_ids is not None
         self.has_attention_mask = attention_mask is not None
 
-        # Emtpy past state for first inference
+        # Empty past state for first inference
         self.past = []
         past_shape = [
             2,
@@ -387,8 +387,8 @@ class Gpt2Tester:
             if i % 10 == 0:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
-            position_ids = inputs["position_ids"] if "position_ids" in inputs else None
-            attention_mask = inputs["attention_mask"] if "attention_mask" in inputs else None
+            position_ids = inputs.get("position_ids", None)
+            attention_mask = inputs.get("attention_mask", None)
 
             onnx_runner = Gpt2Tester(
                 input_ids,

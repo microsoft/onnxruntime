@@ -112,7 +112,16 @@ Status TrainingSession::CopyParametersToBuffer(OrtValue& parameters_buffer, cons
 }
 
 Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
-  return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
+  const bool was_nominal_state = state_->module_checkpoint_state.is_nominal_state;
+  ORT_RETURN_IF_ERROR(module_->CopyBufferToParameters(parameters_buffer, trainable_only));
+
+  // If the checkpoint state was nominal before loading the params, then we need to construct the
+  // optimizer state and inputs.
+  if (was_nominal_state) {
+    ORT_RETURN_IF_ERROR(optimizer_->ConstructOptimizerStateAndInputs());
+  }
+
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

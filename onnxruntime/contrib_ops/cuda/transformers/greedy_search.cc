@@ -5,7 +5,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/greedy_search.h"
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<MLFloat16>()}),
     GreedySearch);
 
-transformers::CudaTensorConsoleDumper g_cuda_dumper_greedysearch;
+CudaTensorConsoleDumper g_cuda_dumper_greedysearch;
 
 GreedySearch::GreedySearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::GreedySearch(info) {
@@ -48,10 +48,12 @@ GreedySearch::GreedySearch(const OpKernelInfo& info)
 
   SetConsoleDumper(&g_cuda_dumper_greedysearch);
 
+#ifndef USE_ROCM
   cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 
   cuda_device_arch_ = static_cast<const cudaDeviceProp*>(cuda_device_prop_)->major * 100 +
                       static_cast<const cudaDeviceProp*>(cuda_device_prop_)->minor * 10;
+#endif
 }
 
 Status GreedySearch::ComputeInternal(OpKernelContext* context) const {

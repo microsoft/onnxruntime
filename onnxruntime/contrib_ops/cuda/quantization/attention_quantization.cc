@@ -106,6 +106,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_tensor = context->Input<Tensor>(8);
 
   AttentionParameters parameters;
+  parameters.use_tf32 = UseTF32();
+
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   weights,
                                   bias,
@@ -152,7 +154,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   CudaT dequant_scale;
   CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->Data<T>()));
   CudaT weight_scale = *(reinterpret_cast<const CudaT*>(weight_scale_tensor->Data<T>()));
-  if (sizeof(T) == 2) {
+  if constexpr (sizeof(T) == 2) {
     dequant_scale = __float2half(__half2float(input_scale) * __half2float(weight_scale));
   } else {
     dequant_scale = input_scale * weight_scale;
@@ -188,7 +190,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    fused_runner,
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   true);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
@@ -206,6 +209,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.workspace_bytes = workSpaceSize;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   if (nullptr != present) {
     data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());

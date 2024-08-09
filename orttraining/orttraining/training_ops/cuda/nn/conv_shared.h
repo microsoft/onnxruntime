@@ -54,15 +54,15 @@ struct ConvArgs {
 };
 
 struct ConvParamsHash {
-  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
 
   size_t operator()(const ConvParams& conv_params) const;
 };
 
 struct ConvParamsEqual {
-  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
 
   bool operator()(const ConvParams& a, const ConvParams& b) const;
 };
@@ -75,7 +75,7 @@ class AlgoIterator {
   Status TryAll(const CUDAExecutionProvider* provider, const AllocatorPtr& allocator,
                 std::function<Status(const T_Perf& perf)> f);
 
-  static Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results);
+  static Status OnlyDefaultAlgorithm(const ConvArgs& args, std::vector<T_Perf>& perf_results, bool use_tf32);
 
  private:
   const ConvArgs& args_;

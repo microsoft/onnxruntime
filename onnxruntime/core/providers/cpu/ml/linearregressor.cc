@@ -21,8 +21,8 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
     : OpKernel(info),
       intercepts_(info.GetAttrsOrDefault<float>("intercepts")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("targets", &num_targets_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("targets", &num_targets_));
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
 
   // use the intercepts_ if they're valid
   use_intercepts_ = intercepts_.size() == static_cast<size_t>(num_targets_);

@@ -29,7 +29,7 @@ const withOrt = (config) => {
   config = configPlugin.withDangerousMod(config, [
     'ios',
     (config) => {
-      const podFilePath = path.join(config.modRequest.platformProjectRoot, 'PodFile');
+      const podFilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
       const contents = fs.readFileSync(podFilePath, {encoding: 'utf-8'});
       const updatedContents =
           generateCode

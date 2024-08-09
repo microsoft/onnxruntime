@@ -32,19 +32,18 @@ class UnaryOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
                                            const OpSupportCheckParams& params) const override;
 
-  bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+  bool HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                    const OpSupportCheckParams& params) const override;
 
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
-  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  static bool IsQuantizedOpSupported(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                      const OpSupportCheckParams& params);
 };
 
@@ -117,11 +116,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   float y_scale = 0.0f;
   int32_t y_zero_point = 0;
   if (is_qlinear_sigmoid) {
-    const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+        model_builder.GetGraphViewer(), node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
@@ -141,10 +139,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // Operator support related
 
-bool UnaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool UnaryOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                        const OpSupportCheckParams& params) const {
   if (node_unit.OpType() == "QLinearSigmoid") {
-    return IsQuantizedOpSupported(initializers, node_unit, params);
+    return IsQuantizedOpSupported(graph_viewer, node_unit, params);
   } else if (node_unit.OpType() == "Sigmoid") {
     Shape input_shape;
     if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -178,16 +176,16 @@ int32_t UnaryOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_un
 }
 
 bool UnaryOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
   // We only need to override input check for QLinearSigmoid
   if (node_unit.OpType() != "QLinearSigmoid")
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput))
     return false;
 
   return true;
@@ -204,13 +202,13 @@ int UnaryOpBuilder::GetMinSupportedOpSet(const NodeUnit& node_unit) const {
 }
 
 /* static */ bool UnaryOpBuilder::IsQuantizedOpSupported(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) {
+    const GraphViewer& graph_viewer, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) {
   const auto& op_type = node_unit.OpType();
   ORT_ENFORCE(op_type == "QLinearSigmoid");
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
   // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
-  if (!HasRequiredScaleAndZeroPoint(initializers,
+  if (!HasRequiredScaleAndZeroPoint(graph_viewer,
                                     MakeString("Op [", op_type, "] name [", node_unit.Name(), "]'s output 0 "),
                                     node_unit.Outputs()[0], node_unit.ModelPath(),
                                     1.f / 256 /* required_scale */, 0 /* required_zp */)) {

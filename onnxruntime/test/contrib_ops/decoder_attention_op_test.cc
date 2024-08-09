@@ -31,10 +31,8 @@ static void RunAttentionTest(
     const std::vector<float>* new_value_cache = nullptr,
     const std::vector<float>* key_cache = nullptr,
     const std::vector<float>* value_cache = nullptr,
-    const std::initializer_list<bool>* key_padding_mask_data = nullptr,
-    bool use_float16 = false) {
-  int min_cuda_architecture = use_float16 ? 530 : 0;
-  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+    const std::initializer_list<bool>* key_padding_mask_data = nullptr) {
+  bool enable_cuda = HasCudaEnvironment(0);
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
 
@@ -99,6 +97,7 @@ static void RunAttentionTest(
       tester.AddOutput<float>("new_key_cache", output_cache_dims, *new_key_cache);
       tester.AddOutput<float>("new_value_cache", output_cache_dims, *new_value_cache);
     }
+    tester.SetOutputTolerance(0.001f, 0.001f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {

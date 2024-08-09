@@ -315,6 +315,7 @@ function Install-Pybind {
     param (
         [Parameter(Mandatory)][string]$cmake_path,
         [Parameter(Mandatory)][string]$msbuild_path,
+        [Parameter(Mandatory)][string]$cpu_arch,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -349,11 +350,18 @@ function Install-Pybind {
       $msbuild_args += "/p:CLToolExe=cl.exe", "/p:CLToolPath=C:\ProgramData\chocolatey\bin", "/p:TrackFileAccess=false", "/p:UseMultiToolTask=true"
     }
 
+    if($cpu_arch -eq 'x86'){
+      $msbuild_args +=  "/p:platform=Win32"
+    } elseif($cpu_arch -eq 'x64') {
+      $msbuild_args +=  "/p:platform=x64"
+    }
+
+
     $final_args = $msbuild_args + "pybind11.sln"
     &$msbuild_path $final_args
     $final_args = $msbuild_args + "INSTALL.vcxproj"
     &$msbuild_path $final_args
-       
+
     Write-Host "Installing pybind finished."
 
     popd
@@ -377,6 +385,7 @@ function Install-Abseil {
     param (
         [Parameter(Mandatory)][string]$cmake_path,
         [Parameter(Mandatory)][string]$msbuild_path,
+        [Parameter(Mandatory)][string]$cpu_arch,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -393,7 +402,7 @@ function Install-Abseil {
     }
     cd $absl_src_dir
     cd *
-    
+
     # Search patch.exe
     $patch_path = 'C:\Program Files\Git\usr\bin\patch.exe'
     if(-not (Test-Path $patch_path -PathType Leaf)){
@@ -408,9 +417,9 @@ function Install-Abseil {
     } else {
       Write-Host "Skip patching abseil since we cannot find patch.exe at $patch_path"
     }
-    
+
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-DABSL_PROPAGATE_CXX_STD=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DABSL_USE_EXTERNAL_GOOGLETEST=ON", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
+    [string[]]$cmake_args = ".", "-DABSL_PROPAGATE_CXX_STD=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DABSL_USE_EXTERNAL_GOOGLETEST=ON",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -425,6 +434,11 @@ function Install-Abseil {
       $msbuild_args += "/p:CLToolExe=cl.exe", "/p:CLToolPath=C:\ProgramData\chocolatey\bin", "/p:TrackFileAccess=false", "/p:UseMultiToolTask=true"
     }
 
+    if($cpu_arch -eq 'x86'){
+      $msbuild_args +=  "/p:platform=Win32"
+    } elseif($cpu_arch -eq 'x64') {
+      $msbuild_args +=  "/p:platform=x64"
+    }
 
     $final_args = $msbuild_args + "absl.sln"
     &$msbuild_path $final_args
@@ -444,7 +458,7 @@ function Install-Abseil {
     .Description
     The Install-UTF8-Range function installs Google's utf8_range library from source.
     utf8_range depends on Abseil.
-	
+
     .PARAMETER cmake_path
     The full path of cmake.exe
 
@@ -459,6 +473,7 @@ function Install-UTF8-Range {
     param (
         [Parameter(Mandatory)][string]$cmake_path,
         [Parameter(Mandatory)][string]$msbuild_path,
+        [Parameter(Mandatory)][string]$cpu_arch,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -477,7 +492,7 @@ function Install-UTF8-Range {
     cd *
 
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-Dutf8_range_ENABLE_TESTS=OFF", "-Dutf8_range_ENABLE_INSTALL=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
+    [string[]]$cmake_args = ".", "-Dutf8_range_ENABLE_TESTS=OFF", "-Dutf8_range_ENABLE_INSTALL=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -492,6 +507,11 @@ function Install-UTF8-Range {
       $msbuild_args += "/p:CLToolExe=cl.exe", "/p:CLToolPath=C:\ProgramData\chocolatey\bin", "/p:TrackFileAccess=false", "/p:UseMultiToolTask=true"
     }
 
+    if($cpu_arch -eq 'x86'){
+      $msbuild_args +=  "/p:platform=Win32"
+    } elseif($cpu_arch -eq 'x64') {
+      $msbuild_args +=  "/p:platform=x64"
+    }
 
     $final_args = $msbuild_args + "utf8_range.sln"
     &$msbuild_path $final_args
@@ -527,6 +547,7 @@ function Install-Protobuf {
     param (
         [Parameter(Mandatory)][string]$cmake_path,
         [Parameter(Mandatory)][string]$msbuild_path,
+        [Parameter(Mandatory)][string]$cpu_arch,
         [Parameter(Mandatory)][string]$src_root,
         [Parameter(Mandatory)][CMakeBuildType]$build_config,
         [Parameter(Mandatory)][string[]]$cmake_extra_args
@@ -559,7 +580,7 @@ function Install-Protobuf {
     }
 
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
+    [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF",   "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -567,8 +588,13 @@ function Install-Protobuf {
       Write-Host -Object "CMake command failed. Exitcode: $exitCode"
       exit $lastExitCode
     }
-    
+
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
+    if($cpu_arch -eq 'x86'){
+      $msbuild_args +=  "/p:platform=Win32"
+    } elseif($cpu_arch -eq 'x64') {
+      $msbuild_args +=  "/p:platform=x64"
+    }
 
     if ($use_cache) {
       $msbuild_args += "/p:CLToolExe=cl.exe", "/p:CLToolPath=C:\ProgramData\chocolatey\bin", "/p:TrackFileAccess=false", "/p:UseMultiToolTask=true"
@@ -604,18 +630,23 @@ function Install-ONNX {
     pushd .
 
     Write-Host "Uninstalling onnx and ignore errors if there is any..."
-    python.exe -m pip uninstall -y onnx -qq
-    
+    [string[]]$pip_args ="-m", "pip", "uninstall", "-y", "onnx", "-qq"
+    &"python.exe" $pip_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
+    }
+    $temp_dir = Get-TempDirectory
+    $new_requirements_text_file = Join-Path $temp_dir "new_requirements.txt"
     Write-Host "Installing python packages..."
-    $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "-m", "pip", "install", "--disable-pip-version-check", "setuptools", "wheel", "numpy", "protobuf==$protobuf_version"
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Install dependent python wheels failed. Exitcode: $exitCode"
-        exit $exitCode
+    Get-Content "$src_root\tools\ci_build\github\linux\docker\inference\x86_64\python\cpu\scripts\requirements.txt" | Select-String -pattern 'onnx' -notmatch | Out-File $new_requirements_text_file
+
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "-r", $new_requirements_text_file
+    &"python.exe" $pip_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
 
     $url=Get-DownloadURL -name onnx -src_root $src_root
-    $temp_dir = Get-TempDirectory
     $onnx_src_dir = Join-Path $temp_dir "onnx"
     $download_finished = DownloadAndExtract -Uri $url -InstallDirectory $onnx_src_dir -Force
     if(-Not $download_finished){
@@ -655,11 +686,11 @@ function Install-ONNX {
     if($build_config -eq 'Debug'){
        $Env:DEBUG='1'
     }
-    $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=OFF -DCMAKE_PREFIX_PATH=$install_prefix"
+    $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=OFF"
 
     python.exe "setup.py" "bdist_wheel"
-    
-    
+
+
     Write-Host "Installing the newly built ONNX python package"
     Get-ChildItem -Path dist/*.whl | foreach {
         $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "-m", "pip", "--disable-pip-version-check", "install", "--upgrade", $_.fullname

@@ -51,9 +51,8 @@ void* ROCMAllocator::Alloc(size_t size) {
 
 void ROCMAllocator::Free(void* p) {
   SetDevice(false);
-  CheckDevice(false);  // ignore ROCM failure when free
-  // do not throw error since it's OK for hipFree to fail during shutdown; void to silence nodiscard
-  (void)hipFree(p);
+  CheckDevice(false);                   // ignore ROCM failure when free
+  ORT_IGNORE_RETURN_VALUE(hipFree(p));  // do not throw error since it's OK for hipFree to fail during shutdown
 }
 
 void* ROCMExternalAllocator::Alloc(size_t size) {
@@ -61,7 +60,7 @@ void* ROCMExternalAllocator::Alloc(size_t size) {
   if (size > 0) {
     p = alloc_(size);
 
-    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    // review(codemzs): ORT_ENFORCE does not seem appropriate.
     ORT_ENFORCE(p != nullptr);
   }
 

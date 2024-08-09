@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/execution_provider.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ort_value.h"
@@ -20,6 +20,7 @@
 
 namespace onnxruntime {
 class Graph;
+struct SessionOptions;
 
 namespace test {
 
@@ -62,11 +63,14 @@ using ModelPathOrBytes = std::variant<std::basic_string_view<ORTCHAR_T>,
 
 // Run the model using the CPU EP to get expected output, comparing to the output when the 'execution_provider'
 // is enabled.
+// session_options_updater can be used to update the SessionOptions the inference session is created with.
 void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes,
                                std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params = EPVerificationParams());
+                               const EPVerificationParams& params = EPVerificationParams(),
+                               const std::function<void(SessionOptions&)>& session_options_updater = {},
+                               bool verify_outputs = true);
 
 // Tests model loading only.
 // This can be used to test EPs in builds where only loading (and not running) of a model is supported.

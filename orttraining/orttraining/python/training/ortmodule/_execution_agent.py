@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from typing import Tuple
+
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
@@ -100,7 +102,7 @@ class TrainingAgent:
     ):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param fw_feed_names: Feed names for foward pass.
+        :param fw_feed_names: Feed names for forward pass.
         :param fw_outputs_device_info: Device info for fetches in forward pass.
         :param bw_fetches_names: Fetch names for backward pass.
         :param bw_outputs_device_info: Device info for fetches in backward pass.
@@ -161,3 +163,13 @@ class TrainingAgent:
         :param state: State of the graph that is used for executing partial graph runs.
         """
         self._training_agent.run_backward(feeds, fetches, state)
+
+    def get_serialized_ortmodule_memory_stat(
+        self, memory_optimization_config_file_path: str, recompute_probe_level: str, return_opportunity_table: bool
+    ) -> Tuple[str, dict]:
+        """
+        Get serialized memory stats for OrtModule.
+        """
+        return self._training_agent.get_serialized_ortmodule_memory_stat(
+            memory_optimization_config_file_path, recompute_probe_level, return_opportunity_table
+        )

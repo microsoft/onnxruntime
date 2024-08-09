@@ -42,8 +42,8 @@ export const parseSliceAttributes: OperatorInitialization<SliceAttributes> = (no
 };
 
 const createSliceProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SliceAttributes): ProgramInfo => {
-      const axes = (attributes.axes.length === 0) ? input.dims.slice(0).map((val, i) => i) : attributes.axes;
+    (_inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SliceAttributes): ProgramInfo => {
+      const axes = (attributes.axes.length === 0) ? input.dims.slice(0).map((_val, i) => i) : attributes.axes;
       const normalizedAxes = ShapeUtil.normalizeAxes(axes, input.dims.length);
       const starts = attributes.starts.map((start, i) => {
         if (start > input.dims[normalizedAxes[i]] - 1) {

@@ -1,10 +1,19 @@
-## Validating ETW Sink unit test output
+## About the ETW Sink
 
-## Setup
-Install Windows Performance Toolkit from <https://docs.microsoft.com/en-us/windows-hardware/get-started/adk-install>
-You get to select components when installing, so can select just the performance toolkit.
+The ETW Sink (ONNXRuntimeTraceLoggingProvider) allows ONNX semi-structured printf style logs to be output via ETW.
 
-Overview of the steps is at <https://msdn.microsoft.com/en-us/library/windows/desktop/dn904629(v=vs.85).aspx> if you want more detail.
+ETW makes it easy and useful to only enable and listen for events with great performance, and when you need them instead of only at compile time.
+Therefore ONNX will preserve any existing loggers and log severity [provided at compile time](/docs/FAQ.md?plain=1#L7).
+
+However, when the provider is enabled a new ETW logger sink will also be added and the severity separately controlled via ETW dynamically.
+
+- Provider GUID: 929DD115-1ECB-4CB5-B060-EBD4983C421D
+- Keyword: Logs (0x2) keyword per [logging.h](/include/onnxruntime/core/common/logging/logging.h)
+- Level: 1-5 ([CRITICAL through VERBOSE](https://learn.microsoft.com/en-us/windows/win32/api/evntprov/ns-evntprov-event_descriptor)) [mapping](/onnxruntime/core/platform/windows/logging/etw_sink.cc) to [ONNX severity](/include/onnxruntime/core/common/logging/severity.h) in an intuitive manner
+
+Notes:
+- The ETW provider must be enabled prior to session creation, as that as when internal logging setup is complete
+- Other structured ETW logs are output via the other Microsoft.ML.ONNXRuntime ETW provider. Both used together are recommended
 
 ## Capturing ETW trace output
 
@@ -25,9 +34,17 @@ Run the ETW sink unit tests
 Stop the ETW tracing
     `<path to repo>\onnxruntime\test\platform\windows\logging> wpr -stop TraceCaptureFile.etl EtwSinkTest`
 
-## View the output
+## View the trace output
 
-Open TraceCaptureFile.etl file Windows Performance Analyzer.
+### Setup
+- Install Windows Performance Analyzer (Preview) from the Windows Store - <https://www.microsoft.com/en-us/p/windows-performance-analyzer-preview/9n58qrw40dfw>
+- Or from the ADK <https://docs.microsoft.com/en-us/windows-hardware/get-started/adk-install>
+  - You get to select components when installing, so can select just the performance toolkit.
+  - Overview of the steps is at <https://msdn.microsoft.com/en-us/library/windows/desktop/dn904629(v=vs.85).aspx> if you want more detail.
+
+### Viewing
+
+Open TraceCaptureFile.etl file in Windows Performance Analyzer.
 
 Expand the "System Activity" dropdown in the left pane, and double-click "Generic Events".
 That should open events in an Analysis window in the right pane. You should see an event

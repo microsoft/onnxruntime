@@ -168,8 +168,7 @@ auto GetRocBlasGemmTypeStringAndOps() {
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
-          " (", params->Signature(), ")");
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
@@ -238,8 +237,7 @@ auto GetRocBlasBatchedGemmTypeStringAndOps() {
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
-          " (", params->Signature(), ")");
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };
@@ -308,8 +306,7 @@ auto GetRocBlasStridedBatchedGemmTypeStringAndOps() {
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != rocblas_status_success,
-          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status),
-          " (", params->Signature(), ")");
+          "[rocBLAS] Solution #", i, " (original ", solution, ") failed: ", rocblas_status_to_string(status));
 
       return Status::OK();
     };

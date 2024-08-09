@@ -8,7 +8,6 @@
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/inference_session.h"
 
-#include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_config.h"
 
@@ -76,7 +75,7 @@ void GradientOpTester::Run(int output_index_to_use_as_loss,
         }
       }
 
-      onnxruntime::training::TrainingSession session_object{so, GetEnvironment()};
+      onnxruntime::InferenceSession session_object{so, GetEnvironment()};
 
       ASSERT_TRUE(!execution_providers->empty()) << "Empty execution providers vector.";
       std::string provider_types;
@@ -102,7 +101,7 @@ void GradientOpTester::Run(int output_index_to_use_as_loss,
 
       has_run = true;
 
-      ExecuteModel<onnxruntime::training::TrainingSession>(
+      ExecuteModel<onnxruntime::InferenceSession>(
           model, session_object, ExpectResult::kExpectSuccess, "", nullptr, feeds, output_names, provider_types);
     } else {
       for (const std::string& provider_type : all_provider_types) {
@@ -158,11 +157,11 @@ void GradientOpTester::Run(int output_index_to_use_as_loss,
           continue;
 
         has_run = true;
-        onnxruntime::training::TrainingSession session_object{so, GetEnvironment()};
+        onnxruntime::InferenceSession session_object{so, GetEnvironment()};
 
         EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
-        ExecuteModel<onnxruntime::training::TrainingSession>(
+        ExecuteModel<onnxruntime::InferenceSession>(
             model, session_object, ExpectResult::kExpectSuccess, "", nullptr, feeds, output_names, provider_type);
       }
     }

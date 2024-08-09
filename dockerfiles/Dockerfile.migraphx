@@ -5,57 +5,22 @@
 # Dockerfile to run ONNXRuntime with MIGraphX integration
 #--------------------------------------------------------------------------
 
-FROM ubuntu:20.04
+FROM rocm/pytorch:rocm6.0_ubuntu20.04_py3.9_pytorch_2.1.1
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
-ARG ROCM_VERSION=5.4
-# MIGraphX version should be the same as ROCm version
-ARG MIGRAPHX_VERSION=rocm-5.4.0
-ENV DEBIAN_FRONTEND noninteractive
-ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
-RUN apt-get clean && apt-get update && apt-get install -y locales
-RUN locale-gen en_US.UTF-8
-RUN update-locale LANG=en_US.UTF-8
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-
-# Install rocm
-RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && \
-  curl -sL http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
-  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/${ROCM_VERSION}/ ubuntu main > /etc/apt/sources.list.d/rocm.list'
+ENV PATH /code/cmake-3.27.3-linux-x86_64/bin:${PATH}
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash build-essential rocm-dev python3-dev python3-pip miopen-hip \
-    rocblas half aria2 libnuma-dev pkg-config
-
-RUN aria2c -q -d /tmp -o cmake-3.27.3-linux-x86_64.tar.gz \
-https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-x86_64.tar.gz &&\
-tar -zxf /tmp/cmake-3.27.3-linux-x86_64.tar.gz --strip=1 -C /usr
-
-# Install rbuild
-RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz numpy yapf==0.28.0
-
-ENV PATH /opt/miniconda/bin:/code/cmake-3.27.3-linux-x86_64/bin:${PATH}
-
-# Install MIGraphX from source
-RUN mkdir -p /migraphx
-RUN cd /migraphx && git clone --depth=1 --branch ${MIGRAPHX_VERSION} https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
-RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
-RUN dpkg -i /migraphx/build/*.deb
-RUN rm -rf /migraphx
-
-# Install rocm ep dependencies
-RUN apt-get update &&\
-    apt-get install -y rocrand rccl hipsparse hipfft hipcub hipblas rocthrust
+    apt-get install -y migraphx
 
 WORKDIR /code
 
 # Prepare onnxruntime repository & build onnxruntime
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
-    cd onnxruntime  &&\
+    cd onnxruntime  && pip install --upgrade pip &&\
     /bin/sh ./build.sh --allow_running_as_root --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` --config Release --parallel \
             --skip_tests --build_wheel --use_rocm --rocm_version=${ROCM_VERSION} --rocm_home /opt/rocm --use_migraphx &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl

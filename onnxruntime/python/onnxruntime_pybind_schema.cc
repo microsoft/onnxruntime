@@ -15,7 +15,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
       "get_all_operator_schema", []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
         return ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
       },
-      "Return a vector of OpSchema all registed operators");
+      "Return a vector of OpSchema all registered operators");
   m.def(
       "get_all_opkernel_def", []() -> const std::vector<onnxruntime::KernelDef> {
         std::vector<onnxruntime::KernelDef> result;
@@ -40,7 +40,8 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_OPENVINO
             []() {
               ProviderOptions provider_options_map;
-              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options_map);
+              SessionOptions session_options;
+              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options);
             }(),
 #endif
 #ifdef USE_TENSORRT
@@ -59,7 +60,10 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::ArmNNProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_DML
-            onnxruntime::DMLProviderFactoryCreator::Create(0, /*skip_software_device_check*/ true),
+            []() {
+              ConfigOptions config_options{};
+              return onnxruntime::DMLProviderFactoryCreator::Create(config_options, 0, false, false, false);
+            }(),
 #endif
 #ifdef USE_NNAPI
             onnxruntime::NnapiProviderFactoryCreator::Create(0, std::optional<std::string>()),

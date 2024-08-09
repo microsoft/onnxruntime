@@ -26,7 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 6.0.x
     - name: Restore dependencies
@@ -37,7 +37,7 @@ jobs:
         wget https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip -O build/docfx/docfx.zip
         unzip build/docfx/docfx.zip -d build/docfx
     - name: Install NuGet
-      uses: nuget/setup-nuget@v1
+      uses: nuget/setup-nuget@v2
     - name: Build Documentation
       run: |
         build/docfx/docfx metadata csharp/ApiDocs/docfx.json
@@ -51,7 +51,7 @@ jobs:
         rm -rf _site/docs/api/csharp
         mv csharp/ApiDocs/csharp _site/docs/api/csharp
     - name: Upload docs artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: onnxruntime-csharp-apidocs
         path: _site

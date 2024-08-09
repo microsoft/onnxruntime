@@ -2,34 +2,24 @@
 // Licensed under the MIT License.
 
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
-
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
-
-#if defined(__APPLE__)
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
 
 namespace onnxruntime::coreml {
 
 class GatherOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
 
-  // Operator support related
- private:
-  bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
+                              const logging::Logger& logger) const override;
+
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
-// Add operator related
-#if defined(__APPLE__)
 namespace {
 int64_t GetAxisAttribute(const Node& node) {
   NodeAttrHelper node_attr_helper{node};
@@ -38,8 +28,8 @@ int64_t GetAxisAttribute(const Node& node) {
 }  // namespace
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                              const logging::Logger& logger) const {
-  auto layer = CreateNNLayer(model_builder, node);
+                                              const logging::Logger& /*logger*/) const {
+  auto layer = model_builder.CreateNNLayer(node);
   layer->mutable_gather()->set_axis(GetAxisAttribute(node));
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();    // data
   *layer->mutable_input()->Add() = node.InputDefs()[1]->Name();    // indices
@@ -47,10 +37,9 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif  // defined(__APPLE__)
 
-// Operator support related
-bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
+bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
+                                             const logging::Logger& logger) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger))
     return false;

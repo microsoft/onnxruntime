@@ -66,6 +66,9 @@ void RunQLinearGlobalAveragePool(
   test.AddInput<float>("y_scale", {}, {y_scale});
   test.AddInput<T8Bits>("y_zero_point", {}, {y_zero_point});
   test.AddOutput<T8Bits>("Y", y_dims, y_data);
+  if (channels_last) {
+    test.AddAttribute("channels_last", (int64_t)1LL);
+  }
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     const OrtValue& ort_value = fetches[0];

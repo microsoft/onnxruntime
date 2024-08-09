@@ -51,24 +51,24 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
       params->c);
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->RegisterOp(GemmFastGeluUnfused<T>);
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #endif
 
 #ifdef USE_HIPBLASLT
-    for (auto&& [_, op] : GetHipBlasLtGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetHipBlasLtGemmFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
