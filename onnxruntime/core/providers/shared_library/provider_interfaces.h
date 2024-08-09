@@ -565,7 +565,8 @@ struct ProviderHost {
   virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
-  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
+  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
+  virtual bool HasSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
