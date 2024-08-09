@@ -19,7 +19,7 @@ struct OrtTensorRTProviderOptionsV2 {
                                                          // can be updated using: UpdateTensorRTProviderOptionsWithValue
   int trt_max_partition_iterations{1000};                // maximum iterations for TensorRT parser to get capability
   int trt_min_subgraph_size{1};                          // minimum size of TensorRT subgraphs
-  size_t trt_max_workspace_size{1 << 30};                // maximum workspace size for TensorRT.
+  size_t trt_max_workspace_size{0};                      // maximum workspace size for TensorRT. Default is 0 means max device memory size
   int trt_fp16_enable{0};                                // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable{0};                                // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name{nullptr};  // TensorRT INT8 calibration table name.

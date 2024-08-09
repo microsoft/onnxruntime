@@ -22,7 +22,7 @@ struct TensorrtExecutionProviderInfo {
   bool has_trt_options{false};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
-  size_t max_workspace_size{1 << 30};
+  size_t max_workspace_size{0};
   bool fp16_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
