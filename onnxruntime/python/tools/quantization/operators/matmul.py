@@ -219,10 +219,13 @@ class QDQMatMul(QDQOperatorBase):
             nodes_to_iterate = itertools.chain(node.input, node.output)
 
         for tensor_name in nodes_to_iterate:
-            is_per_channel, channel_axis = self.quantizer.is_tensor_per_channel(
-                tensor_name, default_axis=1, op_type=node.op_type
-            )
-            if is_per_channel:
-                self.quantizer.quantize_weight_tensor_per_channel(tensor_name, channel_axis)
+            if find_by_name(tensor_name, self.quantizer.model.initializer()):
+                is_per_channel, channel_axis = self.quantizer.is_tensor_per_channel(
+                    tensor_name, default_axis=1, op_type=node.op_type
+                )
+                if is_per_channel:
+                    self.quantizer.quantize_weight_tensor_per_channel(tensor_name, channel_axis)
+                else:
+                    self.quantizer.quantize_weight_tensor(tensor_name)
             else:
                 self.quantizer.quantize_activation_tensor(tensor_name)
