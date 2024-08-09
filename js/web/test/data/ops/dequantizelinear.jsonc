@@ -1,0 +1,385 @@
+[
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          },
+          {
+            "data": [0],
+            "dims": [1],
+            "type": "uint8"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[3]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          },
+          {
+            "data": [0],
+            "dims": [1],
+            "type": "uint8"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[4]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[5]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1, 0.1],
+            "dims": [2],
+            "type": "float32"
+          },
+          {
+            "data": [0, 0],
+            "dims": [2],
+            "type": "uint8"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[6]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1, 0.2],
+            "dims": [2],
+            "type": "float32"
+          },
+          {
+            "data": [0, 0],
+            "dims": [2],
+            "type": "uint8"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.6, 0.8, 0.5, 0.6, 1.4, 1.6],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[7]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 21 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      },
+      {
+        "name": "block_size",
+        "data": 2,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[8]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 1, 2],
+            "type": "uint8"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0, 0.0, 0.2, 0.4, 0.6, 0.8, 1.2, 1.6],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear block dequantization",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 21 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      },
+      {
+        "name": "block_size",
+        "data": 2,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[9]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 2, 2],
+            "type": "int32"
+          },
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 1, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.4, 0.3, 0.8, 1.5, 2.4, 2.1, 3.2],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dequantizelinear",
+    "operator": "DequantizeLinear",
+    "opset": { "domain": "", "version": 13 },
+    "attributes": [
+      {
+        "name": "axis",
+        "data": 1,
+        "type": "int"
+      }
+    ],
+    "cases": [
+      {
+        "name": "T[3]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [2, 2],
+            "type": "uint8"
+          },
+          {
+            "data": [0.1],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

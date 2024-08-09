@@ -26,6 +26,7 @@ import {matMulNBits, parseMatMulNBitsAttributes} from './ops/matmulnbits';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multihead-attention';
 import {pad} from './ops/pad';
 import * as pool from './ops/pool';
+import {dequantizeLinear, parseDequantizeLinearAttributes} from './ops/quantize-linear';
 import {range} from './ops/range';
 import {reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
@@ -71,6 +72,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Cosh', [unaryOps.cosh]],
   ['CumSum', [cumsum, parseCumSumAttributes]],
   ['DepthToSpace', [depthToSpace, parseDepthToSpaceAttributes]],
+  ['DequantizeLinear', [dequantizeLinear, parseDequantizeLinearAttributes]],
   ['Div', [binaryOps.div]],
   ['Einsum', [einsum, parseEinsumAttributes]],
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
