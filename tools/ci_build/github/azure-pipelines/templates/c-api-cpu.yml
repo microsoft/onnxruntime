@@ -107,12 +107,9 @@ stages:
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        pushd $(Build.BinariesDirectory)/artifacts_staging
-        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        pushd $(Build.BinariesDirectory)/ios_framework/framework_out
+        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
+          onnxruntime.xcframework
         popd
       displayName: "Build Apple xcframework"
 
