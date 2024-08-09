@@ -5,11 +5,21 @@
 #pragma once
 
 #include <cfloat>
+#include <vector>
+#include <string>
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
+
 #ifndef USE_CUDA_MINIMAL
+#if !defined(__CUDACC__)
+#include <cudnn_frontend.h>
+#endif
+
 namespace onnxruntime {
 namespace cuda {
+
+#define CUDNN_FE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_FE_CALL(expr))
 
 class CudnnTensor final {
  public:
@@ -19,6 +29,7 @@ class CudnnTensor final {
 
   Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType, bool is_nhwc = false);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
+  Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType, gsl::span<const int64_t> input_strides);
   // Set 4D tensor format (for NHWC)
   Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w);
 
@@ -139,7 +150,8 @@ struct Consts<BFloat16> {
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   if (epsilon < CUDNN_BN_MIN_EPSILON) {
     if (CUDNN_BN_MIN_EPSILON - epsilon > FLT_EPSILON)
-      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than CUDNN_BN_MIN_EPSILON. Setting it to CUDNN_BN_MIN_EPSILON";
+      LOGS_DEFAULT(WARNING) << "Provided epsilon is smaller than CUDNN_BN_MIN_EPSILON. "
+                            << "Setting it to CUDNN_BN_MIN_EPSILON";
     return CUDNN_BN_MIN_EPSILON;
   }
   return epsilon;
@@ -257,6 +269,23 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
                              const int strideA[]) {
   return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA);
 }
+
+std::vector<int64_t> generateStrides(const std::vector<int64_t>& shape, bool channels_last);
+
+#if !defined(__CUDACC__)
+class CudnnFeTensor final {
+ public:
+  CudnnFeTensor(const onnxruntime::TensorShapeVector& shape, const std::string& name,
+                std::optional<cudnn_frontend::DataType_t> dtype, const bool nhwc);
+
+  template <typename T>
+  static cudnn_frontend::DataType_t GetDataType();
+  cudnn_frontend::graph::Tensor_attributes Get() { return tensor_; }
+
+ private:
+  cudnn_frontend::graph::Tensor_attributes tensor_;
+};
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
