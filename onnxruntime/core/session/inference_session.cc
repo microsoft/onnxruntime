@@ -2054,10 +2054,13 @@ common::Status InferenceSession::Initialize() {
           const size_t optimized_model_external_initializers_min_size_in_bytes =
               ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+          Graph::OffsetAlignmentInfo align_info;
+          align_info.align_offset = true;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
-                                                                             optimized_model_external_initializers_min_size_in_bytes));
+                                                                             optimized_model_external_initializers_min_size_in_bytes,
+                                                                             align_info));
         }
       }
     }
