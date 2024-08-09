@@ -222,7 +222,7 @@ def create_group_query_attention_graph_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
@@ -410,7 +410,7 @@ def create_group_query_attention_graph_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -787,7 +787,7 @@ def gqa_prompt_func(
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     rotary_interleaved=False,
-    softcap = 0.0,
+    softcap=0.0,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
         config,
@@ -894,7 +894,7 @@ def gqa_past_func(
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
-    softcap = 0.0,
+    softcap=0.0,
 ):
     onnx_model_str = create_group_query_attention_graph_past(
         config,
@@ -1205,7 +1205,7 @@ def parity_check_gqa_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1320,7 +1320,16 @@ def parity_check_gqa_prompt(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1390,7 +1399,7 @@ def parity_check_gqa_prompt_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1552,7 +1561,7 @@ def parity_check_gqa_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1663,7 +1672,16 @@ def parity_check_gqa_past(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1733,7 +1751,7 @@ def parity_check_gqa_past_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
-    softcap = 0.0,
+    softcap=0.0,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1850,7 +1868,16 @@ def parity_check_gqa_past_no_buff(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:

@@ -1122,7 +1122,16 @@ def parity_check_gqa_prompt(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap,
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1294,7 +1303,16 @@ def parity_check_gqa_prompt_no_buff(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, new_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap,
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        new_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1497,7 +1515,16 @@ def parity_check_gqa_past(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap,
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1706,7 +1733,16 @@ def parity_check_gqa_past_no_buff(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size, softcap=softcap,
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        softcap=softcap,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:

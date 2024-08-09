@@ -38,7 +38,7 @@ class GQAAttentionBase {
   int kv_num_heads_;  // number of attention heads of K or V
   float scale_;       // the scaling factor applied before softmax
   float softcap_;
-  bool do_rotary_;    // whether or not to use rotary embeddings
+  bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int local_window_size_;
 

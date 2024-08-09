@@ -111,14 +111,14 @@ void set_params_fprop(Flash_fwd_params& params,
 
   // Set the different scale values.
   if (softcap > 0.0) {
-      params.softcap = softmax_scale / softcap;
-      params.scale_softmax = softcap;
-      params.scale_softmax_log2 = softcap * M_LOG2E;
-  } else{
-      // Remove potential NaN
-      params.softcap = 0.0;
-      params.scale_softmax = softmax_scale;
-      params.scale_softmax_log2 = softmax_scale * M_LOG2E;
+    params.softcap = softmax_scale / softcap;
+    params.scale_softmax = softcap;
+    params.scale_softmax_log2 = softcap * M_LOG2E;
+  } else {
+    // Remove potential NaN
+    params.softcap = 0.0;
+    params.scale_softmax = softmax_scale;
+    params.scale_softmax_log2 = softmax_scale * M_LOG2E;
   }
 
   // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API separates

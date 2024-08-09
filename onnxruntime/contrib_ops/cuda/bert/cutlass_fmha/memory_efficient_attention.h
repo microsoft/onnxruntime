@@ -29,7 +29,7 @@ struct MemoryEfficientAttentionParams {
   bool is_attn_bias_batched;
 
   float scale;
-  float softcap=0.0;
+  float softcap = 0.0;
 
   int32_t* seqstart_q_ptr;
   int32_t* seqstart_k_ptr;

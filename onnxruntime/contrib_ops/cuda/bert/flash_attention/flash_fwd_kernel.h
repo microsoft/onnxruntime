@@ -278,7 +278,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
     // if (cute::thread0()) { print(acc_s); }
-    if constexpr (Is_softcap){
+    if constexpr (Is_softcap) {
       flash::apply_softcap(acc_s, params.softcap);
     }
 
@@ -325,7 +325,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     flash::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
-    if constexpr (Is_softcap){
+    if constexpr (Is_softcap) {
       flash::apply_softcap(acc_s, params.softcap);
     }
 
@@ -805,7 +805,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
     // if (cute::thread0()) { print(acc_s); }
-    if constexpr (Is_softcap){
+    if constexpr (Is_softcap) {
       flash::apply_softcap(acc_s, params.softcap);
     }
 
@@ -877,7 +877,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     flash::gemm(
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
-    if constexpr (Is_softcap){
+    if constexpr (Is_softcap) {
       flash::apply_softcap(acc_s, params.softcap);
     }
 
