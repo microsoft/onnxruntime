@@ -611,15 +611,90 @@ class DefaultWeightOnlyQuantizer:
 
         return output_nodes
 
+    @staticmethod
+    def quant_slice_symmetric(data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        max_val = np.max(np.abs(data), axis=1, keepdims=True)
+
+        scale = -max_val / 8.0
+        quantized_slice = np.where(scale == 0, 0, data / scale).round().clip(-8, 7).astype(np.int8)
+
+        return quantized_slice, scale
+
+    @staticmethod
+    def quant_slice_asymmetric(data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        min_val = np.minimum(data.min(axis=1, keepdims=True), 0)
+        max_val = np.maximum(data.max(axis=1, keepdims=True), 0)
+
+        scale = (max_val - min_val) / 15.0
+        zero_point = np.where(scale == 0, 8, -min_val / scale).round().clip(0, 15).astype(np.uint8)
+        quantized_slice = np.where(scale == 0, 8, data / scale + zero_point).round().clip(0, 15).astype(np.uint8)
+
+        return quantized_slice, scale, zero_point
+
+    @staticmethod
+    def pack_int8_to_int4(data: np.ndarray) -> np.ndarray:
+        """Pack int8 data to int4 and store in uint8 ndarray."""
+        data_flat = data.reshape(-1)
+        if len(data_flat) % 2 != 0:
+            data_flat = np.append(data_flat, 0)
+        quant_data_int4 = (data_flat[::2] & 0xF) | ((data_flat[1::2] & 0xF) << 4)
+
+        return quant_data_int4.astype("uint8")
+
+    @staticmethod
     def quantize_ndarray(
-        self,
         data: np.ndarray,
         quantize_axis: int,
         block_size: int,
-        qtype: TensorProto.DataType,
+        is_symmetric: bool,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Quantize ndarray data to int4, return (quantized data, scales, zero points)."""
-        raise NotImplementedError("quantize_ndarray is not implemented yet.")
+        """Quantize ndarray data to int4 using numpy, return (quantized data, scales, zero points)."""
+        # Get the shape of the matrix
+        m = 1  # dimension of the matrix before the quantize axis
+        k = data.shape[quantize_axis]  # dimension of the matrix along the quantize axis
+        n = 1  # dimension of the matrix after the quantize axis
+        for i, dim in enumerate(data.shape):
+            if i < quantize_axis:
+                m *= dim
+            elif i > quantize_axis:
+                n *= dim
+
+        k_blocks = (k + block_size - 1) // block_size
+
+        data_reshape = data.reshape((m, k, n))
+        scales = np.zeros((m, k_blocks, n), dtype=data.dtype)
+        if is_symmetric:
+            quant_data_int8 = np.zeros((m, k, n), dtype="int8")
+        else:
+            quant_data_int8 = np.zeros((m, k, n), dtype="uint8")
+            zero_point_int8 = np.zeros((m, k_blocks, n), dtype="uint8")
+
+        # slice and quantize
+        for i in range(0, k, block_size):
+            end_idx = min(i + block_size, k)
+            slice = data_reshape[:, i:end_idx, :]
+
+            if is_symmetric:
+                quantized_slice_int8, scale_slice = (
+                    DefaultWeightOnlyQuantizer.quant_slice_symmetric(slice)
+                )
+            else:
+                quantized_slice_int8, scale_slice, zero_point_slice_int8 = (
+                    DefaultWeightOnlyQuantizer.quant_slice_asymmetric(slice)
+                )
+
+            quant_data_int8[:, i:end_idx, :] = quantized_slice_int8
+            j = i // block_size
+            scales[:, j : (j + 1), :] = scale_slice
+            if not is_symmetric:
+                zero_point_int8[:, j : (j + 1), :] = zero_point_slice_int8
+
+        # pack int8 to int4
+        quant_data_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(quant_data_int8)
+        if not is_symmetric:
+            zero_point_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(zero_point_int8)
+
+        return quant_data_int4, scales, zero_point_int4
 
     def quantize_gather(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """Quantize weight data of Gather node to int4."""
@@ -633,9 +708,17 @@ class DefaultWeightOnlyQuantizer:
             return [node]  # only care about constant weight
 
         data_ndarray = onnx.numpy_helper.to_array(data_tensorproto)
+        data_rank = len(data_ndarray.shape)
         quantize_axis = self.config.quant_axes.get("Gather", 1)
         block_size = self.config.block_size
-        quantized_data, scales, zero_points = self.quantize_ndarray(data_ndarray, quantize_axis, block_size, qtype)
+
+        assert quantize_axis < data_rank and quantize_axis >= -data_rank, "Invalid quantize axis for Gather node."
+        assert block_size >= 16 and ((block_size - 1) & block_size == 0), "Invalid block size for Gather node."
+
+        quantize_axis = (quantize_axis + data_rank) % data_rank
+        quantized_data, scales, zero_points = self.quantize_ndarray(
+            data_ndarray, quantize_axis, block_size, self.config.is_symmetric
+        )
 
         for input in data_graphproto.input:
             if input.name == data_arg:
@@ -873,7 +956,8 @@ class MatMul4BitsQuantizer:
             # Update domain opset
             if self.algo_config.quant_format == QuantFormat.QOperator:
                 self.model.set_opset_import("com.microsoft", 1)
-            else:
+
+            if self.algo_config.quant_format == QuantFormat.QDQ or "Gather" in self.algo_config.ops_to_quantize:
                 opset_import = self.model.opset_import()
                 for opset in opset_import:
                     if opset.domain in [None, "ai.onnx", ""] and opset.version < 21:
