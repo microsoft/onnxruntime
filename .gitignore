@@ -203,7 +203,4 @@ b/
 build/
 build*\
 
-build2/
-build3/
-
-b3/
+b2
