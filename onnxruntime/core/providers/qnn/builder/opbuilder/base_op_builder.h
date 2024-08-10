@@ -123,7 +123,6 @@ class BaseOpBuilder : public IOpBuilder {
         {"Floor", QNN_OP_ELEMENT_WISE_FLOOR},
         {"Gather", QNN_OP_GATHER},
         {"GatherElements", QNN_OP_GATHER_ELEMENTS},
-        {"GatherND", QNN_OP_GATHER_ND},
         {"Greater", QNN_OP_ELEMENT_WISE_GREATER},
         {"GreaterOrEqual", QNN_OP_ELEMENT_WISE_GREATER_EQUAL},
         {"Less", QNN_OP_ELEMENT_WISE_LESS},
