@@ -29,18 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 class WeightOnlyQuantConfig:
-    # Default quantization axes for an operator. The keys list all the supported operators.
-    DEFAULT_QUANT_AXES: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1))
-
-    # Default operators to quantize
-    DEFAULT_QUANT_OPS: tuple[str, ...] = ("MatMul",)
-
     def __init__(
         self,
         algorithm: str,
         quant_format: QuantFormat,
-        ops_to_quantize: set[str] | None = None,
-        quant_axes: dict[str, int] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
     ):
         """This is the Base class for Weight Only blockwise quantization Configuration.
 
@@ -57,12 +51,8 @@ class WeightOnlyQuantConfig:
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
-        self.ops_to_quantize = ops_to_quantize if ops_to_quantize else set(self.DEFAULT_QUANT_OPS)
-        self.quant_axes = quant_axes if quant_axes else dict(self.DEFAULT_QUANT_AXES)
-
-        assert self.ops_to_quantize.issubset(
-            dict(self.DEFAULT_QUANT_AXES).keys()
-        ), "Unsupported operator types to quantize"
+        self.ops_to_quantize = set(ops_to_quantize) if ops_to_quantize else {"MatMul"}
+        self.quant_axes = dict(quant_axes) if quant_axes else {"MatMul": 0, "Gather": 1}
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -70,7 +60,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         ratios=None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: set[str] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
     ):
         """
         This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
@@ -108,7 +98,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         mse=False,
         perchannel=True,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: set[str] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
     ):
         """
         This is a class for GPTQ algorithm Weight Only Quant Configuration.
@@ -156,8 +146,8 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         bits=4,
         axis=1,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: set[str] | None = None,
-        quant_axes: dict[str, int] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
     ):
         """
         This is a class for HQQ algorithm Weight Only Quant Configuration.
@@ -199,8 +189,8 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: set[str] | None = None,
-        quant_axes: dict[str, int] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -675,9 +665,7 @@ class DefaultWeightOnlyQuantizer:
             slice = data_reshape[:, i:end_idx, :]
 
             if is_symmetric:
-                quantized_slice_int8, scale_slice = (
-                    DefaultWeightOnlyQuantizer.quant_slice_symmetric(slice)
-                )
+                quantized_slice_int8, scale_slice = DefaultWeightOnlyQuantizer.quant_slice_symmetric(slice)
             else:
                 quantized_slice_int8, scale_slice, zero_point_slice_int8 = (
                     DefaultWeightOnlyQuantizer.quant_slice_asymmetric(slice)
@@ -781,6 +769,9 @@ class DefaultWeightOnlyQuantizer:
             results = self.quantize_matmul(node, graph_stack)
         elif node.op_type == "Gather":
             results = self.quantize_gather(node, graph_stack)
+        else:
+            logger.error(f"Unsupported operator {node.op_type} for weight only quantization. Skip quantization.")
+            results = [node]
 
         logger.info(f"complete quantization of {node.name} ...")
 
@@ -816,8 +807,8 @@ class MatMul4BitsQuantizer:
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
         quant_format=QuantFormat.QOperator,
-        ops_to_quantize: set[str] | None = None,
-        quant_axes: dict[str, int] | None = None,
+        ops_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -1084,8 +1075,8 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
     quant_format = QuantFormat[args.quant_format]
-    ops_to_quantize = set(args.ops_to_quantize)
-    quant_axes = dict(args.quant_axes) if args.quant_axes else None
+    ops_to_quantize = tuple(args.ops_to_quantize) if args.ops_to_quantize else None
+    quant_axes = tuple(args.quant_axes) if args.quant_axes else None
 
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")
