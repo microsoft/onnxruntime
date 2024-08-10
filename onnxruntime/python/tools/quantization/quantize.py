@@ -12,6 +12,10 @@ import onnx
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
+from .matmul_4bits_quantizer import (
+    WeightOnlyQuantConfig,
+    MatMul4BitsQuantizer
+)
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
     QuantFormat,
@@ -692,17 +696,26 @@ def quantize_dynamic(
 def quantize(
     model_input: Union[str, Path, onnx.ModelProto],
     model_output: Union[str, Path],
-    quant_config: QuantConfig,
+    quant_config: QuantConfig | WeightOnlyQuantConfig,
 ):
     """Quantize a model with QuantConfig.
 
     Args:
         model_input (str | Path | ModelProto): Path to the model or ModelProto to quantize.
         model_output (str | Path): Path to save the quantized model.
-        quant_config (QuantConfig): Quantization Configuration.
+        quant_config (QuantConfig | WeightOnlyQuantConfig): Quantization Configuration.
     """
 
-    if isinstance(quant_config, StaticQuantConfig):
+    if isinstance(quant_config, WeightOnlyQuantConfig):
+        model = (
+            save_and_reload_model_with_shape_infer(model_input)
+            if isinstance(model_input, onnx.ModelProto)
+            else load_model_with_shape_infer(Path(model_input))
+        )
+        quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
+        quant.process()
+        quant.model.save_model_to_file(model_output, True)
+    elif isinstance(quant_config, StaticQuantConfig):
         quantize_static(
             model_input,
             model_output,
