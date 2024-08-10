@@ -44,7 +44,7 @@ void mutateModelTest(onnx::ModelProto& model_proto,
   //
   std::wstring modelPrefix = L"/ReproMutateModel_";
   if (seed == 0) {
-     seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
+    seed = static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count());
     modelPrefix = L"/MutateModel_";
   }
 
