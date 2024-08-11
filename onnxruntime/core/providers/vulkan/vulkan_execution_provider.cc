@@ -208,7 +208,7 @@ int do_forward_layer(const ncnn::Layer* layer, std::vector<ncnn::VkMat>& blob_ma
 
 }  // namespace
 
-VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& /*info*/)
+VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& info)
     : IExecutionProvider(kVulkanExecutionProvider,
                          OrtDevice(OrtDevice::CPU,  // input on CPU
                                    OrtDevice::MemType::DEFAULT,
@@ -221,7 +221,17 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
       weight_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 8 MB. should it be different or configurable?
       staging_allocator_{&vulkan_device_},
       blob_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
-      pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)} {
+      pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)},
+      // TODO: Figure out required extensions.
+      // llama.cpp has a few it checks for
+      // https://github.com/ggerganov/llama.cpp/blob/a21c6fd45032a20180e026773582d21294c85619/ggml/src/ggml-kompute.cpp#L217
+      // https://github.com/ggerganov/llama.cpp/blob/a21c6fd45032a20180e026773582d21294c85619/ggml/src/ggml-kompute.cpp#L1801-L1802
+      // ncnn checks for a lot of VK_KHR_... values
+      // https://github.com/search?q=repo%3ATencent%2Fncnn%20VK_KHR_&type=code
+      // the 'support_' properties of GpuInfo might provide the superset of relevant ones, but what is
+      // 'required' vs 'available' is not clear.
+      // https://github.com/Tencent/ncnn/blob/b9debee8fb92263cd3a087208d3657081a2e4f37/src/gpu.h#L262-L312
+      kompute_manager_{narrow<uint32_t>(info.device_id), {}, {"VK_KHR_maintenance4"}} {
   DumpKomputeManagerInfo(kompute_manager_);
 
   ncnn_options_.use_vulkan_compute = true;
