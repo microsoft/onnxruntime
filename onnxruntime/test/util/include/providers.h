@@ -40,3 +40,6 @@
 #ifdef USE_CANN
 #include "core/providers/cann/cann_provider_factory.h"
 #endif
+#ifdef USE_VULKAN
+#include "core/providers/vulkan/vulkan_provider_factory_creator.h"
+#endif

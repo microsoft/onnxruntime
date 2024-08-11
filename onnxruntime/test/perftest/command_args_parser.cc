@@ -37,8 +37,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack' or 'vitisai'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|vulkan]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'vulkan'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -133,8 +133,11 @@ namespace perftest {
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
-      "\t    [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
+      "\t    [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n"
       "\n"
+      "\t    [Vulkan only] [device_id]: Set device id. Default is 0. \n"
+      "\t    [Example] [For Vulkan EP] -e vulkan -i \"device_id|1\" \n"
+      "\n\n"
       "\t-T [Set intra op thread affinities]: Specify intra op thread affinity string\n"
       "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6 \n"
       "\t\t Use semicolon to separate configuration between threads.\n"
@@ -202,6 +205,11 @@ static bool ParseSessionConfigs(const std::string& configs_string,
   }
 
   return true;
+}
+
+bool CommandLineParser::ParseProviderOptions(const std::string& options_string,
+                                             std::unordered_map<std::string, std::string>& options) {
+  return ParseSessionConfigs(options_string, options);
 }
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
@@ -279,6 +287,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vulkan"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVulkanExecutionProvider;
         } else {
           return false;
         }

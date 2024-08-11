@@ -46,7 +46,7 @@ void DumpKomputeManagerInfo(kp::Manager& manager) {
   LOGS_DEFAULT(INFO) << "Current device: " << manager.getDeviceProperties().deviceID;
 }
 
-ncnn::VulkanDevice& GetVulkanDevice() {
+ncnn::VulkanDevice& GetVulkanDevice(int device_id = -1) {
   // get_gpu_count/get_default_gpu_index/get_gpu_device all implicitly create the gpu instance if it doesn't exist yet.
   // there is also `create_gpu_instance(const char* driver_path = 0);` if we need/want
 
@@ -57,7 +57,7 @@ ncnn::VulkanDevice& GetVulkanDevice() {
     ORT_THROW("No Vulkan capable GPU detected.");
   }
 
-  auto device_index = ncnn::get_default_gpu_index();  // TODO: Make device id configurable.
+  auto device_index = device_id >= 0 ? device_id : ncnn::get_default_gpu_index();
 
   // TODO: info on the available devices is logged with NCNN_LOGE by create_gpu_instance if NCNN_STDIO is defined.
   // we could maybe look at doing that via ORT logging so the ORT log severity applies.
@@ -208,11 +208,13 @@ int do_forward_layer(const ncnn::Layer* layer, std::vector<ncnn::VkMat>& blob_ma
 
 }  // namespace
 
-VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& info)
+VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& /*info*/)
     : IExecutionProvider(kVulkanExecutionProvider,
                          OrtDevice(OrtDevice::CPU,  // input on CPU
                                    OrtDevice::MemType::DEFAULT,
-                                   info.device_id)),
+                                   // we do not use device_id here when compiling as the memory is on CPU for the
+                                   // input/output of the compiled partition
+                                   0)),
       ncnn_options_{},
       vulkan_device_{GetVulkanDevice()},
       weight_staging_allocator_{&vulkan_device_},
@@ -248,7 +250,14 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
-  // TODO: Is there any explicit release of NCNN owned resources required?
+  staging_allocator_.clear();
+  blob_allocator_.clear();
+  weight_staging_allocator_.clear();
+  weight_allocator_.clear();
+
+  ncnn_options_.pipeline_cache->clear();
+
+  ncnn::destroy_gpu_instance();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
