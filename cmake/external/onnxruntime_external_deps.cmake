@@ -86,6 +86,7 @@ if (onnxruntime_USE_VULKAN)
   set(NCNN_STDIO ON CACHE BOOL "" FORCE)  # NCNN_LOGE output via stderr otherwise it's lost
   # set(NCNN_INSTALL_SDK OFF CACHE BOOL "" FORCE)
   set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+  set(NCNN_SIMPLEVK OFF CACHE BOOL "" FORCE)  # use headers from Vulkan SDK. required for ncnn and kompute to co-exist
   set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
   # TODO: These default to being disabled on Android an iOS in NCNN. For now use the ORT setting.
   set(NCNN_DISABLE_RTTI ${onnxruntime_DISABLE_RTTI} CACHE BOOL "" FORCE)
@@ -93,18 +94,13 @@ if (onnxruntime_USE_VULKAN)
   # TBD what to set the various NCNN_PIXEL* values to
 
   onnxruntime_fetchcontent_makeavailable(ncnn)
+  # set_target_properties(ncnn PROPERTIES FOLDER "External")  # need to do this manually due to the cmake structure
 
-  # Add the _deps directory as an include. NCNN doesn't have a subdirectory for the source so the default addition
-  # to the include path is _deps/ncnn-src/src, and would result in for example `#include "layer.h"`, which doesn't
-  # convey that the file comes from NCNN and is also likely to clash with other header filenames.
-  # By adding _deps we can at least do #include "ncnn-src/src/layer.h" which is more explicit and unique.
-  #
-  # This works, but it's a little ugly.
-  #
-  # target_include_directories(ncnn PUBLIC $<BUILD_INTERFACE:${FETCHCONTENT_BASE_DIR}>)
-
-  # Trying alternative of creating an 'include' directory _deps/ncnn-src directory with a symlink called ncnn that
-  # _deps/ncnn-src/src. This would allow #include "include/ncnn/layer.h" which is a bit closer to typical
+  # NCNN doesn't have a subdirectory for the source so the default addition to the include paths is _deps/ncnn-src/src,
+  # and would result in for example `#include "layer.h"`, which doesn't convey that the file comes from NCNN and is also
+  #  likely to clash with other header filenames.
+  # Create an 'include' directory in _deps/ncnn-src with a symlink called ncnn to _deps/ncnn-src/src.
+  # This allows #include "include/ncnn/layer.h" which is a bit closer to typical
   if (NOT EXISTS ${ncnn_SOURCE_DIR}/include)
     file(MAKE_DIRECTORY ${ncnn_SOURCE_DIR}/include)
     file(CREATE_LINK ${ncnn_SOURCE_DIR}/src ${ncnn_SOURCE_DIR}/include/ncnn SYMBOLIC)
@@ -122,7 +118,33 @@ if (onnxruntime_USE_VULKAN)
     file(REMOVE_RECURSE ${ncnn_SOURCE_DIR}/glslang)
     file(CREATE_LINK ${glslang_SOURCE_DIR} ${ncnn_SOURCE_DIR}/glslang SYMBOLIC)
   endif()
-endif()
+
+  FetchContent_Declare(
+    kompute
+    URL ${DEP_URL_kompute}
+    URL_HASH SHA1=${DEP_SHA1_kompute}
+  )
+
+  # kompute options
+  set(KOMPUTE_OPT_LOG_LEVEL "Debug" CACHE BOOL "" FORCE)  # Start with verbose output for initial development
+  set(KOMPUTE_OPT_USE_BUILT_IN_VULKAN_HEADER OFF CACHE BOOL "" FORCE)  # Use the Vulkan headers from the Vulkan SDK
+  set(KOMPUTE_OPT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  if (ANDROID)
+    set(KOMPUTE_OPT_ANDROID_BUILD ON CACHE BOOL "" FORCE)
+  endif()
+
+  onnxruntime_fetchcontent_makeavailable(kompute)
+  set_target_properties(${subdir_target} PROPERTIES FOLDER "External")
+
+  # Vulkan Memory Allocator is header only
+  FetchContent_Declare(
+    vulkan_memory_allocator
+    URL ${DEP_URL_vulkan_memory_allocator}
+    URL_HASH SHA1=${DEP_SHA1_vulkan_memory_allocator}
+  )
+
+  onnxruntime_fetchcontent_makeavailable(vulkan_memory_allocator)
+endif()  # USE_VULKAN
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 

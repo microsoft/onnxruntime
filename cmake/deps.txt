@@ -61,3 +61,5 @@ directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.5.2.zip;11071a47594b20f00af09aad83e0d5203ccf6029
 ncnn;https://github.com/Tencent/ncnn/archive/refs/tags/20240410.zip;ff9ec49e0c0c7fbab90d6f584f244357d5d19ee5
 glslang;https://github.com/KhronosGroup/glslang/archive/refs/tags/14.3.0.zip;dbba3edfe8d16b09467581ec79ab92c51e2f0e5b
+kompute;https://github.com/KomputeProject/kompute/archive/refs/tags/v0.9.0.zip;ed368521b3091ba032d8044d3817f66e62018449
+vulkan_memory_allocator;https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.1.0.zip;c3ca4d51e9d3c74c56bd900ad95db3db4302fd8e

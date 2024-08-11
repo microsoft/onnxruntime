@@ -6,6 +6,9 @@
 #include <string>
 #include <unordered_map>
 
+#include "kompute/Kompute.hpp"
+// #include "vk_mem_alloc.h"  // Vulkan Memory Allocator
+
 #include "include/ncnn/command.h"
 #include "include/ncnn/option.h"
 
@@ -109,6 +112,8 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   // one entry per partition
   std::unordered_map<std::string, std::unique_ptr<NcnnModel>> models_;
+
+  kp::Manager kompute_manager_;
 };
 
 }  // namespace onnxruntime

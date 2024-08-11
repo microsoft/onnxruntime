@@ -28,17 +28,20 @@ onnxruntime_add_static_library(onnxruntime_providers_vulkan ${onnxruntime_provid
 
 onnxruntime_add_include_to_target(onnxruntime_providers_vulkan
   onnxruntime_common onnxruntime_framework
-  ncnn Vulkan::Headers
+  ncnn # NCNN backend
+  VulkanMemoryAllocator kompute  # kompute backend
+  Vulkan::Headers
   onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface
 )
 
-message(STATUS "ncnn HEADER_DIRS $<TARGET_PROPERTY:ncnn,HEADER_DIRS>")
-message(STATUS "ncnn INCLUDE_DIRECTORIES $<TARGET_PROPERTY:ncnn,INCLUDE_DIRECTORIES>")
-message(STATUS "ncnn INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:ncnn,INTERFACE_INCLUDE_DIRECTORIES>")
+# NCNN backend needs some special sauce to make the header include look nice
 target_include_directories(onnxruntime_providers_vulkan PRIVATE "${ncnn_SOURCE_DIR}/include/ncnn/layer")
 target_include_directories(onnxruntime_providers_vulkan PRIVATE "${ncnn_SOURCE_DIR}/include/ncnn/layer/vulkan")
 
-target_link_libraries(onnxruntime_providers_vulkan ncnn Vulkan::Vulkan)
+target_link_libraries(onnxruntime_providers_vulkan ncnn ) # NCNN backend
+target_link_libraries(onnxruntime_providers_vulkan kompute VulkanMemoryAllocator) # Kompute backend
+target_link_libraries(onnxruntime_providers_vulkan Vulkan::Vulkan)
+
 add_dependencies(onnxruntime_providers_vulkan ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 set_target_properties(onnxruntime_providers_vulkan PROPERTIES FOLDER "ONNXRuntime")

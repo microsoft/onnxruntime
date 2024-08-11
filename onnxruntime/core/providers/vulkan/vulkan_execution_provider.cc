@@ -25,6 +25,27 @@ namespace onnxruntime {
 namespace {
 using namespace vulkan;
 
+void DumpKomputeManagerInfo(kp::Manager& manager) {
+  auto dump_props = [](vk::PhysicalDeviceProperties& props) {
+    LOGS_DEFAULT(INFO) << "Device: " << props.deviceName << " (id: " << props.deviceID << ")";
+    LOGS_DEFAULT(INFO) << "  Type: " << vk::to_string(props.deviceType);
+    LOGS_DEFAULT(INFO) << "  API Version: " << VK_VERSION_MAJOR(props.apiVersion) << "." << VK_VERSION_MINOR(props.apiVersion) << "." << VK_VERSION_PATCH(props.apiVersion);
+    LOGS_DEFAULT(INFO) << "  Driver Version: " << props.driverVersion;
+    LOGS_DEFAULT(INFO) << "  Vendor ID: " << props.vendorID;
+    LOGS_DEFAULT(INFO) << "  Device ID: " << props.deviceID;
+  };
+
+  auto devices = manager.listDevices();
+  for (auto& device : devices) {
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    vk::PhysicalDeviceProperties props(deviceProperties);
+    dump_props(props);
+  }
+
+  LOGS_DEFAULT(INFO) << "Current device: " << manager.getDeviceProperties().deviceID;
+}
+
 ncnn::VulkanDevice& GetVulkanDevice() {
   // get_gpu_count/get_default_gpu_index/get_gpu_device all implicitly create the gpu instance if it doesn't exist yet.
   // there is also `create_gpu_instance(const char* driver_path = 0);` if we need/want
@@ -199,6 +220,8 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
       staging_allocator_{&vulkan_device_},
       blob_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
       pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)} {
+  DumpKomputeManagerInfo(kompute_manager_);
+
   ncnn_options_.use_vulkan_compute = true;
 
   // this was the setup when using static kernels to try and ensure we use these allocators for weight upload only.
