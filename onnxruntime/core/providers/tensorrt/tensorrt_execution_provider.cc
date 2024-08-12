@@ -17,7 +17,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#include "core/session/allocator_adapters.h"
+//#include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include <gsl/gsl>
 #include <unordered_map>

@@ -229,6 +229,12 @@ using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGr
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
 std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 
+// Since all allocators are of type 'OrtAllocator' and there is a single
+// OrtApis:ReleaseAllocator function, we need to have a common base type that lets us delete them.
+struct OrtAllocatorImpl : public OrtAllocator {
+  virtual ~OrtAllocatorImpl() = default;
+};
+
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
