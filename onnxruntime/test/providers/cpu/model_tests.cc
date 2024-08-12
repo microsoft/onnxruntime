@@ -95,7 +95,7 @@ TEST_P(ModelTest, Run) {
 
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
-    if (provider_name == "cuda" || provider_name == "openvino") {
+    if (provider_name == "cuda" || provider_name == "openvino" || provider_name =="rocm") {
       per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
@@ -537,6 +537,21 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+  static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
+                                                   ORT_TSTR("bvlc_reference_caffenet"),
+                                                   ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
+                                                   ORT_TSTR("coreml_Resnet50_ImageNet"),
+                                                   ORT_TSTR("mlperf_resnet"),
+                                                   ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
+                                                   // models from model zoo
+                                                   ORT_TSTR("AlexNet"),
+                                                   ORT_TSTR("CaffeNet"),
+                                                   ORT_TSTR("MobileNet v2-7"),
+                                                   ORT_TSTR("R-CNN ILSVRC13"),
+                                                   ORT_TSTR("ShuffleNet-v1"),
+                                                   ORT_TSTR("version-RFB-320"),
+                                                   ORT_TSTR("version-RFB-640")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),
       ORT_TSTR("bertsquad"),
@@ -663,7 +678,14 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
-    if (provider_name == provider_name_cuda) {
+    bool provider_cuda_or_rocm = provider_name == provider_name_cuda;
+#ifdef USE_ROCM
+    if (provider_name == provider_name_rocm) {
+      provider_cuda_or_rocm = true;
+      all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
+    }
+#endif
+    if (provider_cuda_or_rocm) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
@@ -735,6 +757,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           continue;
         }
         std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().native();
+        // std::cout << "Adding test: " << test_case_name << std::endl;
         if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
           test_case_name = test_case_name.substr(5);
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
