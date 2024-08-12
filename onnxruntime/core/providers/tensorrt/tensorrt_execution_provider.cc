@@ -10,6 +10,7 @@
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
+#include "tensorrt_cuda_allocator.h"
 #include "tensorrt_execution_provider_utils.h"
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "onnx_ctx_model_helper.h"
@@ -1836,6 +1837,27 @@ void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
   ++regular_run_count_before_graph_capture_;
 }
 
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
+  cuda_allocator_ = std::make_unique<CUDAAllocator>(device_id_);
+  cuda_pinned_allocator_ = std::make_unique<CUDAPinnedAllocator>();
+  
+  AllocatorCreationInfo default_memory_info(
+      [&](OrtDevice::DeviceId device_id) {
+        ORT_UNUSED_PARAMETER(device_id);
+        return std::make_unique<onnxruntime::IAllocatorImplWrappingOrtAllocator>(cuda_allocator_.get()); 
+      },
+      narrow<OrtDevice::DeviceId>(device_id_));
+
+  AllocatorCreationInfo pinned_allocator_info(
+      [&](OrtDevice::DeviceId device_id) {
+        ORT_UNUSED_PARAMETER(device_id);
+        return std::make_unique<onnxruntime::IAllocatorImplWrappingOrtAllocator>(cuda_pinned_allocator_.get());
+      },
+      0);
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+}
+#else
 std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); },
@@ -1850,6 +1872,7 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
+#endif
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
   return onnxruntime::CreateGPUDataTransfer();

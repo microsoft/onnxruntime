@@ -14,11 +14,11 @@ namespace onnxruntime {
 // Following names are originally defined in allocator.h, in order to support out-of-tree/plugin EP framework,
 // we shouldn't include allocator.h since it contains internal classes, ex: IAllocator. 
 // Here simply duplicate the names.
-constexpr const char* CUDA = "Cuda";
-constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* CUDA_ALLOCATOR = "Cuda";
+constexpr const char* CUDA_PINNED_ALLOCATOR = "CudaPinned";
 
 struct CUDAAllocator : OrtAllocator {
-  CUDAAllocator(OrtDevice::DeviceId device_id, const char* name = onnxruntime::CUDA) {
+  CUDAAllocator(OrtDevice::DeviceId device_id, const char* name = onnxruntime::CUDA_ALLOCATOR) {
     OrtAllocator::version = ORT_API_VERSION;
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CUDAAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CUDAAllocator*>(this_)->Free(p); };
@@ -27,7 +27,7 @@ struct CUDAAllocator : OrtAllocator {
                                   OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
                                   device_id, OrtMemTypeDefault);
   }
-  ~CUDAAllocator();
+  //~CUDAAllocator();
 
   void* Alloc(size_t size);
   void Free(void* p);
@@ -44,7 +44,7 @@ struct CUDAAllocator : OrtAllocator {
 };
 
 struct CUDAPinnedAllocator : OrtAllocator {
-  CUDAPinnedAllocator(const char* name = onnxruntime::CUDA_PINNED) {
+  CUDAPinnedAllocator(const char* name = onnxruntime::CUDA_PINNED_ALLOCATOR) {
     OrtAllocator::version = ORT_API_VERSION;
     OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CUDAAllocator*>(this_)->Alloc(size); };
     OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CUDAAllocator*>(this_)->Free(p); };
@@ -53,7 +53,7 @@ struct CUDAPinnedAllocator : OrtAllocator {
                                   OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device always with id 0*/),
                                   0, OrtMemTypeCPUOutput);
   }
-  ~CUDAPinnedAllocator();
+  //~CUDAPinnedAllocator();
 
   void* Alloc(size_t size);
   void Free(void* p);
