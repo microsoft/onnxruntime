@@ -153,7 +153,7 @@ def run_dynamo_export(
     batch_size, sequence_length, past_sequence_length = 2, 8, 0
     device = llama.device if args.model_name == "Llama-2-70b-hf" else torch.device("cpu")
 
-    # Export decoder_model.onnx
+    # Export decoder_model.onnx, commented out for now to use dynamo_export
     # input_ids, attn_mask, pos_ids = get_sample_inputs(l_config, device, batch_size, sequence_length)
     # temp_dir = tempfile.TemporaryDirectory()
     # temp_path = os.path.join(temp_dir.name, "temp.onnx")
@@ -911,7 +911,7 @@ def main():
                 decoder_merged_model_fp32_opt_path,
             ]
 
-        #     # Run the optimizer script, runs the torch as well 
+        #     # Run the optimizer script, runs the torch as well. Keeping this block commented makes sure only Dynamo export is used.
         #     logger.info("Optimizing models...")
         #     for orig_path, opt_path in zip(old_paths, new_paths):
         #         if os.path.exists(orig_path):
