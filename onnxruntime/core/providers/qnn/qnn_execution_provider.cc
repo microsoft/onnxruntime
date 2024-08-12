@@ -775,12 +775,11 @@ DataLayout QNNExecutionProvider::GetPreferredLayout() const {
 }
 
 Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
-                                               const logging::Logger& logger,
-                                               bool use_shared_model) {
+                                               const logging::Logger& logger) {
   NodeComputeInfo compute_info;
   compute_info.create_state_func = [&](ComputeContext* context, FunctionState* state) {
     LOGS(logger, VERBOSE) << "compute_info.create_state_func context->node_name: " << context->node_name;
-    if (use_shared_model) {
+    if (use_shared_model_) {
       *state = qnn_models_shared_[context->node_name].get();
       return 0;
     }
@@ -902,7 +901,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
         ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node));
         ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput());
         qnn_models_shared_.emplace(graph_meta_id, qnn_model_shared);
-        ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger, true));
+        use_shared_model_ = true;
+        ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
       }
       qnn_ep_shared_contexts_.clear();
       return Status::OK();

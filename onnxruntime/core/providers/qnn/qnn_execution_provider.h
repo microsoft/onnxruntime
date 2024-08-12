@@ -74,8 +74,7 @@ class QNNExecutionProvider : public IExecutionProvider {
                                                     const logging::Logger& logger) const;
 
   Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
-                           const logging::Logger& logger,
-                           bool use_shared_model = false);
+                           const logging::Logger& logger);
 
   Status CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                              std::vector<NodeComputeInfo>& node_compute_funcs,
@@ -92,6 +91,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   std::unordered_map<std::string, std::shared_ptr<qnn::QnnModel>> qnn_models_shared_;
+  bool use_shared_model_ = false;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
   std::string context_node_name_prefix_ = "";

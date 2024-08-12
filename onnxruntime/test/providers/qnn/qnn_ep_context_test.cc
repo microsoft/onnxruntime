@@ -810,16 +810,44 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  Ort::SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
-  so.AppendExecutionProvider("QNN", provider_options);
-
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/weight_share1.onnx"), so);
+  Ort::SessionOptions so1;
+  so1.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so1.AppendExecutionProvider("QNN", provider_options);
+  Ort::Session session1(*ort_env, ORT_TSTR("testdata/weight_share1.onnx"), so1);
 
   Ort::SessionOptions so2;
   so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
   so2.AppendExecutionProvider("QNN", provider_options);
   Ort::Session session2(*ort_env, ORT_TSTR("testdata/weight_share2.onnx"), so2);
+
+  // Run sessions
+
+  // prepare input
+  std::vector<int64_t> input_dim{4096, 4096};
+  std::vector<float> input_value(4096*4096, 0.0);
+  OrtValue ml_value;
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                               input_dim.data(), input_dim.size());
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_tensor));
+
+  const char* input1_names[] = {"matmul_2"};
+  const char* const output1_names[] = {"matmul_3"};
+  auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input1_names, ort_inputs.data(), ort_inputs.size(),
+                                   output1_names, 1);
+  ASSERT_EQ(ort_outputs1.size(), 1U);
+  const auto& output1 = ort_outputs1[0];
+  ASSERT_TRUE(output1.IsTensor());
+
+  
+  const char* input2_names[] = {"input"};
+  const char* const output2_names[] = {"matmul_1"};
+  auto ort_outputs2 = session2.Run(Ort::RunOptions{}, input2_names, ort_inputs.data(), ort_inputs.size(),
+                                   output2_names, 1);
+  ASSERT_EQ(ort_outputs2.size(), 1U);
+  const auto& output2 = ort_outputs2[0];
+  ASSERT_TRUE(output2.IsTensor());
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
