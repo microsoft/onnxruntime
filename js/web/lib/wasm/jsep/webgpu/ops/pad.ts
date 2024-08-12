@@ -155,11 +155,11 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
   const programUniforms: ProgramUniform[] =
       [{type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: attributes.pads}];
 
-  const isValueFromInput = (inputs.length >= 3 && inputs[2].data);
+  const isValueFromInput = inputs.length >= 3 && inputs[2].data;
   if (attributes.mode === 0) {
     programUniforms.push({
-      type: inputs[0].dataType == DataType.float16 ? (isValueFromInput ? DataType.float16 : DataType.float) :
-                                                     inputs[0].dataType,
+      type: inputs[0].dataType === DataType.float16 ? (isValueFromInput ? DataType.float16 : DataType.float) :
+                                                      inputs[0].dataType,
       data: attributes.value
     });
   }
@@ -177,7 +177,7 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
     if (attributes.mode === 0) {
       uniforms.push({
         name: 'constant_value',
-        type: dataType == 'f16' ? (isValueFromInput ? 'f16' : 'f32') : dataType as UniformDataElementType
+        type: dataType === 'f16' ? (isValueFromInput ? 'f16' : 'f32') : dataType as UniformDataElementType
       });
     }
 

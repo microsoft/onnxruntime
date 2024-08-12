@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array as Float16ArrayPolyfill} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -397,14 +398,14 @@ export class TensorResultValidator {
         const actualDataByteOffset = actualData.byteOffset;
         const actualDataLength = actualData.length;
         const actualDataFloat32Array =
-            new Float32Array(new Float16Array(actualDataBuffer, actualDataByteOffset, actualDataLength));
+            new Float32Array(new Float16ArrayPolyfill(actualDataBuffer, actualDataByteOffset, actualDataLength));
 
         const expectedData = expected.data as Uint16Array;
         const expectedDataBuffer = expectedData.buffer;
         const expectedDataByteOffset = expectedData.byteOffset;
         const expectedDataLength = expectedData.length;
         const expectedDataFloat32Array =
-            new Float32Array(new Float16Array(expectedDataBuffer, expectedDataByteOffset, expectedDataLength));
+            new Float32Array(new Float16ArrayPolyfill(expectedDataBuffer, expectedDataByteOffset, expectedDataLength));
 
         return this.floatEqual(actualDataFloat32Array, expectedDataFloat32Array);
       }
@@ -943,7 +944,7 @@ async function runProtoOpTestcase(
       } else if (input.type === 'int64') {
         data = BigInt64Array.from(input.data.map(BigInt));
       } else if (input.type === 'float16') {
-        const dataArr = Float16Array.from(input.data);
+        const dataArr = Float16ArrayPolyfill.from(input.data);
         data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
@@ -960,7 +961,7 @@ async function runProtoOpTestcase(
       } else if (output.type === 'int64') {
         data = BigInt64Array.from(output.data.map(BigInt));
       } else if (output.type === 'float16') {
-        const dataArr = Float16Array.from(output.data);
+        const dataArr = Float16ArrayPolyfill.from(output.data);
         data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       outputs.push(new ort.Tensor(output.type, data, output.dims));
