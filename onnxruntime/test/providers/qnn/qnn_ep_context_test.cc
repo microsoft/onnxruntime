@@ -801,6 +801,27 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so);
 }
 
+
+TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/weight_share1.onnx"), so);
+
+  Ort::SessionOptions so2;
+  so2.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
+  so2.AppendExecutionProvider("QNN", provider_options);
+  Ort::Session session2(*ort_env, ORT_TSTR("testdata/weight_share2.onnx"), so2);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

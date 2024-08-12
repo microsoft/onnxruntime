@@ -52,6 +52,18 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
+  std::vector<EpSharedContextsPtr> GetEpSharedContexts() const override {
+    return qnn_ep_shared_contexts_;
+  }
+
+  void SetEpSharedContexts(std::vector<EpSharedContextsPtr> qnn_ep_shared_contexts) override {
+    for (auto qnn_ep_shared_context : qnn_ep_shared_contexts) {
+      if (qnn_ep_shared_context->Type() == kQnnExecutionProvider) {
+        qnn_ep_shared_contexts_.push_back(qnn_ep_shared_context);
+      }
+    }
+  }
+
  private:
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                        const logging::Logger& logger) const;
@@ -62,7 +74,8 @@ class QNNExecutionProvider : public IExecutionProvider {
                                                     const logging::Logger& logger) const;
 
   Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
-                           const logging::Logger& logger);
+                           const logging::Logger& logger,
+                           bool use_shared_model = false);
 
   Status CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                              std::vector<NodeComputeInfo>& node_compute_funcs,
@@ -78,6 +91,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
+  std::unordered_map<std::string, std::shared_ptr<qnn::QnnModel>> qnn_models_shared_;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
   std::string context_node_name_prefix_ = "";
@@ -91,6 +105,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = false;
+  bool share_ep_contexts_ = false;
+  std::vector<EpSharedContextsPtr> qnn_ep_shared_contexts_;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif

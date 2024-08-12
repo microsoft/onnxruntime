@@ -1749,6 +1749,15 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
+    bool share_ep_contexts = 
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
+    // Get ep shared contexts from global environment
+    if (share_ep_contexts && !const_cast<Environment&>(environment_).GetEpSharedContexts().empty()) {
+      for (auto& ep : execution_providers_) {
+        ep->SetEpSharedContexts(const_cast<Environment&>(environment_).GetEpSharedContexts());
+      }
+    }
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
     session_state_->SetMemoryProfiler(&memory_profiler_);
@@ -2088,6 +2097,16 @@ common::Status InferenceSession::Initialize() {
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+
+    if (share_ep_contexts) {
+      for (auto& ep : execution_providers_) {
+        auto ep_shared_contexts = ep->GetEpSharedContexts();
+        if (ep_shared_contexts.empty()) {
+          continue;
+        }
+        const_cast<Environment&>(environment_).SetEpSharedContexts(ep_shared_contexts);
+      }
+    }
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }

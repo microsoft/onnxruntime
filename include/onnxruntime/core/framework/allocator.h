@@ -242,6 +242,22 @@ class IAllocator {
   OrtMemoryInfo memory_info_;
 };
 
+class IEpSharedContexts {
+ public:
+  IEpSharedContexts(std::string type) : type_{type} {};
+  virtual const std::string& Name() const = 0;
+  virtual ~IEpSharedContexts() = default;
+  const std::string& Type() const { return type_; }
+
+  IEpSharedContexts(const IEpSharedContexts&) = delete;
+  void operator=(const IEpSharedContexts&) = delete;
+
+ private:
+  const std::string type_;
+};
+
+using EpSharedContextsPtr = std::shared_ptr<IEpSharedContexts>;
+
 template <size_t alignment>
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept {
   return CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);

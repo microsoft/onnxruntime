@@ -325,6 +325,13 @@ class IExecutionProvider {
     return InlinedVector<const Node*>();
   }
 
+  virtual std::vector<EpSharedContextsPtr> GetEpSharedContexts() const {
+    std::vector<EpSharedContextsPtr> ep_shared_contexts;
+    return ep_shared_contexts;
+  }
+
+  virtual void SetEpSharedContexts(std::vector<EpSharedContextsPtr>) {}
+
  private:
   const std::string type_;
 

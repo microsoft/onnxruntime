@@ -23,11 +23,12 @@ struct QnnTensorInfo {
   size_t ort_index = 0;
 };
 
-class QnnModel {
+class QnnModel : public IEpSharedContexts {
  public:
   QnnModel(const logging::Logger& logger,
            QnnBackendManager* qnn_backend_manager)
-      : logger_(logger),
+      : IEpSharedContexts{kQnnExecutionProvider},
+        logger_(logger),
         qnn_backend_manager_(qnn_backend_manager) {
     qnn_backend_type_ = qnn_backend_manager_->GetQnnBackendType();
   }
@@ -102,7 +103,7 @@ class QnnModel {
     return outputs_info_;
   }
 
-  const std::string& Name() { return graph_info_->Name(); }
+  const std::string& Name() const override { return graph_info_->Name(); }
 
  private:
   const NodeUnit& GetNodeUnit(const Node* node,
