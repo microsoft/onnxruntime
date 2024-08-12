@@ -310,6 +310,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(TypeConstraints);
+ORT_RUNTIME_CLASS(NodeUnit);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -742,6 +743,19 @@ typedef struct OrtExecutionProvider {
 typedef struct OrtExecutionProviderFactory {
   OrtExecutionProvider*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
 } OrtExecutionProviderFactory;
+
+typedef struct OrtNodeUnit {
+  enum Type {
+    SingleNode,
+    QDQGroup,
+  } type;
+  OrtNode** dq_nodes;
+  size_t dq_nodes_len;
+  OrtNode** q_nodes;
+  size_t q_nodes_len;
+  OrtNode* target_node;
+  size_t input_edge_count;
+} OrtNodeUnit;
 
 /** \brief Thread work loop function
  *
