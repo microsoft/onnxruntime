@@ -388,9 +388,10 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
+  // skip QNN because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
-            kTensorrtExecutionProvider, kDmlExecutionProvider});
+            kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {

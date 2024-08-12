@@ -14,11 +14,16 @@
 namespace onnxruntime {
 namespace qnn {
 
+// Handles Gather and GatherElements
 class GatherOpBuilder : public BaseOpBuilder {
  public:
   GatherOpBuilder() : BaseOpBuilder("GatherOpBuilder") {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherOpBuilder);
 
+  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
  protected:
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
@@ -33,43 +38,55 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-class GatherElementsOpBuilder : public BaseOpBuilder {
- public:
-  GatherElementsOpBuilder() : BaseOpBuilder("GatherElementsOpBuilder") {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherElementsOpBuilder);
+Status GatherOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                                      const NodeUnit& node_unit,
+                                      const logging::Logger& logger) const {
+  // On QNN CPU backend, the QNN validator does not properly reject unsupported input shapes.
+  // This causes a Qnn graph execution error. So, reject those configs here.
+  // We should consider not using QNN CPU backend for onnxruntime unit tests.
+  const std::string& op_type = node_unit.OpType();
+  if (qnn_model_wrapper.GetQnnBackendType() == QnnBackendType::CPU && op_type == "GatherElements") {
+    const auto& input0 = node_unit.Inputs()[0];
+    std::vector<uint32_t> input0_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input0.node_arg, input0_shape),
+                      "Cannot get input[0] shape for ", op_type, " node ", node_unit.Name());
 
- protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       std::vector<std::string>& input_names,
-                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+    const size_t input0_rank = input0_shape.size();
+    ORT_RETURN_IF_NOT(input0_rank > 1 && input0_rank <= 4,
+                      "QNN CPU backend does not support ", op_type, " with input[0] of rank ", input0_rank);
+  }
 
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                     const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names,
-                                     const logging::Logger& logger,
-                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
-};
+  return BaseOpBuilder::IsOpSupported(qnn_model_wrapper, node_unit, logger);
+}
 
 // Makes negative indices positive and converts int64 indices to another integer type (typically int32 or uint32).
 // The input and output are both represented as byte arrays.
 template <typename SrcType, typename DstType>
-static void FixStaticIndices(const std::vector<uint8_t>& onnx_bytes,
+static bool FixStaticIndices(const std::vector<uint8_t>& onnx_bytes,
                              int64_t input0_axis_dim,
                              /*out*/ std::vector<uint8_t>& qnn_bytes) {
   const size_t num_elems = onnx_bytes.size() / sizeof(SrcType);
   gsl::span<const SrcType> onnx_indices{reinterpret_cast<const SrcType*>(onnx_bytes.data()), num_elems};
 
   qnn_bytes.resize(num_elems * sizeof(DstType));
-  DstType* qnn_indices_ptr = reinterpret_cast<DstType*>(qnn_bytes.data());
+  gsl::span<DstType> qnn_indices{reinterpret_cast<DstType*>(qnn_bytes.data()), num_elems};
 
-  std::transform(onnx_indices.begin(), onnx_indices.end(), qnn_indices_ptr, [&input0_axis_dim](SrcType index) {
-    if (index < 0) {
-      index += static_cast<SrcType>(input0_axis_dim);
+  for (size_t i = 0; i < num_elems; i++) {
+    SrcType onnx_index = onnx_indices[i];
+
+    // Try to make a negative index positive by adding rank.
+    if (onnx_index < 0) {
+      onnx_index += static_cast<SrcType>(input0_axis_dim);
     }
-    return SafeInt<DstType>(index);
-  });
+
+    if (onnx_index < 0 || static_cast<int64_t>(onnx_index) >= input0_axis_dim) {
+      return false;  // QNN does not support out-of-bounds indices.
+    }
+
+    qnn_indices[i] = static_cast<DstType>(onnx_index);
+  }
+
+  return true;
 }
 
 // Gets the size of input0 on the axis dimension.
@@ -135,10 +152,12 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*indices_info.initializer_tensor, onnx_indices_bytes));
 
     if (indices_info.qnn_data_type == QNN_DATATYPE_INT_64) {
-      FixStaticIndices<int64_t, int32_t>(onnx_indices_bytes, input0_axis_dim, qnn_indices_bytes);
+      ORT_RETURN_IF_NOT((FixStaticIndices<int64_t, int32_t>(onnx_indices_bytes, input0_axis_dim, qnn_indices_bytes)),
+                        "QNN does not support negative index values for Gather* ops");
       indices_info.qnn_data_type = QNN_DATATYPE_INT_32;
     } else if (indices_info.qnn_data_type == QNN_DATATYPE_INT_32) {
-      FixStaticIndices<int32_t, int32_t>(onnx_indices_bytes, input0_axis_dim, qnn_indices_bytes);
+      ORT_RETURN_IF_NOT((FixStaticIndices<int32_t, int32_t>(onnx_indices_bytes, input0_axis_dim, qnn_indices_bytes)),
+                        "QNN does not support negative index values for Gather* ops");
     } else {
       qnn_indices_bytes = std::move(onnx_indices_bytes);
     }
@@ -180,22 +199,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: Gather operator must have two inputs");
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
-
-  int64_t input0_axis_dim = 0;
-  ORT_RETURN_IF_ERROR(GetInpu0AxisDimValue(qnn_model_wrapper, node_unit, /*default_axis*/ 0, input0_axis_dim));
-
-  return ProcessIndicesInput(qnn_model_wrapper, inputs[1], input0_axis_dim, logger, input_names, do_op_validation);
-}
-
-Status GatherElementsOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                              const NodeUnit& node_unit,
-                                              const logging::Logger& logger,
-                                              std::vector<std::string>& input_names,
-                                              bool do_op_validation) const {
-  const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: GatherElements operator must have two inputs");
+  ORT_RETURN_IF(inputs.size() != 2, "QNN EP: ", node_unit.OpType(), " operator must have two inputs");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   int64_t input0_axis_dim = 0;
@@ -210,13 +214,23 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const logging::Logger& logger,
                                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
+  const bool is_gather_elems = node_unit.OpType() == "GatherElements";
+
+  // Create QNN 'axis' parameter.
   std::vector<std::string> param_tensor_names;
   int32_t axis_value = 0;
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
-  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_GATHER_PARAM_AXIS, axis_qnn_scalar);
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(),
+                             (is_gather_elems ? QNN_OP_GATHER_PARAM_AXIS : QNN_OP_GATHER_ELEMENTS_PARAM_AXIS),
+                             axis_qnn_scalar);
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+
+  if (is_gather_elems) {
+    return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
+                          logger, do_op_validation, GetQnnOpType(node_unit.OpType()));
+  }
 
   // if indicies is scalar shape, then need to add Reshape node
   const auto& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
@@ -301,29 +315,8 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   return Status::OK();
 }
 
-Status GatherElementsOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                            const NodeUnit& node_unit,
-                                                            std::vector<std::string>&& input_names,
-                                                            const logging::Logger& logger,
-                                                            bool do_op_validation) const {
-  std::vector<std::string> param_tensor_names;
-  int32_t axis_value = 0;
-  Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-  ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
-  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_GATHER_ELEMENTS_PARAM_AXIS, axis_qnn_scalar);
-  param_tensor_names.push_back(axis_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
-
-  return ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                        logger, do_op_validation, GetQnnOpType(node_unit.OpType()));
-}
-
 void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_type == "Gather") {
-    op_registrations.AddOpBuilder(op_type, std::make_unique<GatherOpBuilder>());
-  } else if (op_type == "GatherElements") {
-    op_registrations.AddOpBuilder(op_type, std::make_unique<GatherElementsOpBuilder>());
-  }
+  op_registrations.AddOpBuilder(op_type, std::make_unique<GatherOpBuilder>());
 }
 
 }  // namespace qnn
