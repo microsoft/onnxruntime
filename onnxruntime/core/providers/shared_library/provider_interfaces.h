@@ -1199,6 +1199,11 @@ struct ProviderHost {
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;
   virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
+
+  // IAllocatorImplWrappingOrtAllocator
+  virtual std::unique_ptr<IAllocatorImplWrappingOrtAllocator> IAllocatorImplWrappingOrtAllocator__construct(OrtAllocator* ort_allocator) = 0;
+  virtual void* IAllocatorImplWrappingOrtAllocator_Alloc(IAllocatorImplWrappingOrtAllocator* alloc, size_t size) = 0;
+  virtual void IAllocatorImplWrappingOrtAllocator_Free(IAllocatorImplWrappingOrtAllocator* alloc, void* p) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

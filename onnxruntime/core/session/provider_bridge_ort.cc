@@ -27,6 +27,7 @@
 #include "core/providers/common.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
@@ -1175,6 +1176,13 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) override { return std::make_unique<ONNX_NAMESPACE::ModelProto>(p->ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold)); };
   const ModelMetaData& Model__MetaData(const Model* p) const noexcept override { return p->MetaData(); };
   Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) override { return Model::Load(file_path, model_proto); }
+
+  // IAllocatorImplWrappingOrtAllocator (wrapped)
+  std::unique_ptr<IAllocatorImplWrappingOrtAllocator> IAllocatorImplWrappingOrtAllocator__construct(OrtAllocator* ort_allocator) { 
+      return std::make_unique<IAllocatorImplWrappingOrtAllocator>(ort_allocator);
+  }
+  void* Alloc(IAllocatorImplWrappingOrtAllocator* alloc, size_t size) { return alloc->Alloc(size); }
+  void Free(IAllocatorImplWrappingOrtAllocator* alloc, void* p) { alloc->Free(p); }
 
   // Graph (wrapped)
   std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }

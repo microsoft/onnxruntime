@@ -1419,6 +1419,15 @@ class ModelMetadefIdGenerator {
   int GenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) const { return g_host->ModelMetadefIdGenerator__GenerateId(this, graph_viewer, model_hash); }
 };
 
+class IAllocatorImplWrappingOrtAllocator final {
+  static std::unique_ptr<IAllocatorImplWrappingOrtAllocator> Create(OrtAllocator* ort_allocator) { return g_host->IAllocatorImplWrappingOrtAllocator__construct(ort_allocator); };
+  void* Alloc(size_t size) { return g_host->IAllocatorImplWrappingOrtAllocator_Alloc(this, size); };
+  void Free(void* p) { g_host->IAllocatorImplWrappingOrtAllocator_Free(this, p); };
+
+  IAllocatorImplWrappingOrtAllocator() = delete;
+  IAllocatorImplWrappingOrtAllocator(const IAllocatorImplWrappingOrtAllocator&) = delete;
+};
+
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 
