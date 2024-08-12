@@ -22,8 +22,8 @@ class IOpBuilder;
 class ModelBuilder {
  public:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-               const emscripten::val& context, const emscripten::val& builder,
-               const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type);
+               const emscripten::val& context, const DataLayout preferred_layout,
+               const WebnnDeviceType wnn_device_type);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -62,8 +62,8 @@ class ModelBuilder {
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
 
-  emscripten::val wnn_context_ = emscripten::val::object();
-  emscripten::val wnn_builder_ = emscripten::val::object();
+  emscripten::val wnn_context_ = emscripten::val::undefined();
+  emscripten::val wnn_builder_ = emscripten::val::undefined();
   DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;

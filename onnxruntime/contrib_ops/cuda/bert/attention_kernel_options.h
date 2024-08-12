@@ -50,6 +50,7 @@ class AttentionKernelOptions {
   bool use_unfused_{true};
 
   bool use_trt_flash_attention_{true};
+
   bool use_trt_cross_attention_{true};
 
   // Causal attention is disabled by default in #14732.
