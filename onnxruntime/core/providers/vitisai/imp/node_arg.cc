@@ -104,7 +104,7 @@ NodeArg& node_arg_new(Graph& graph, const std::string& name, const std::vector<i
   }
   return graph.GetOrCreateNodeArg(name, type_proto.release());
 }
-int node_arg_external_location(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t&checksum) {
+int node_arg_external_location(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum) {
   auto tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(graph.GetConstantInitializer(node_arg.Name(), true));
   vai_assert(tensor_proto != nullptr, (std::string("tensor_proto is not found: name=") + node_arg.Name()));
   auto ret = 0;
@@ -121,7 +121,7 @@ int node_arg_external_location(const Graph& graph, const NodeArg& node_arg, std:
         file = *data.mutable_value();
         ret = 1;
       } else if (*data.mutable_key() == "offset") {
-        offset = (size_t) std::strtoull(data.mutable_value()->data(), &end, 10);
+        offset = (size_t)std::strtoull(data.mutable_value()->data(), &end, 10);
       } else if (*data.mutable_key() == "length") {
         size = (size_t)std::strtoull(data.mutable_value()->data(), &end, 10);
       } else if (*data.mutable_key() == "checksum") {
