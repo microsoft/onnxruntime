@@ -281,7 +281,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64
   const std::vector<int64_t> input_shape = {12, 1024, 512};
   std::vector<float> input_data(12 * 1024 * 512);
   for (size_t i = 0; i < input_data.size(); i++) {
-    int32_t int_val = -98 + (i % 301);
+    int32_t int_val = -98 + (static_cast<int32_t>(i) % 301);
     input_data[i] = static_cast<float>(int_val);
   }
 
@@ -289,7 +289,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64
   const std::vector<int64_t> indices_shape = {12, 1024, 1024};
   std::vector<int64_t> indices(12 * 1024 * 1024);
   for (size_t i = 0; i < indices.size(); i++) {
-    indices[i] = -512 + (i % 1024);
+    indices[i] = static_cast<int64_t>(-512 + (static_cast<int32_t>(i) % 1024));
   }
 
   RunHTPQDQGatherElemsOpTest<uint16_t, int64_t>(
