@@ -89,7 +89,7 @@ class MultiHeadAttentionConfig:
         past_sequence_length: int = 0,
         kv_sequence_length=None,
         max_cache_sequence_length=None,
-        softmax_scale: float = 0.0,
+        scale: float = 0.0,
         provider="CPUExecutionProvider",
         device: Optional[torch.device] = None,
         enable_cuda_graph: bool = False,
@@ -99,7 +99,10 @@ class MultiHeadAttentionConfig:
         share_past_present_buffer: bool = False,
         input_format: int = InputFormats.Q_K_V_BSNH_BSNH_BSNH,
         verbose: bool = False,
-        has_bias: bool = False,
+        has_bias: bool = False,  # bias for input projection
+        has_attn_bias: bool = False,  # bias added before softmax. For example,relative position bias.
+        broadcast_attn_bias_dim_0: bool = False,  # broadcast attention bias dimension 0
+        broadcast_attn_bias_dim_1: bool = False,  # broadcast attention bias dimension 1
         mask_format: int = AttentionMaskFormat.Mask_None,
     ):
         self.operator = "MultiHeadAttention"
@@ -111,7 +114,7 @@ class MultiHeadAttentionConfig:
         self.num_heads = num_heads
         self.head_size = head_size
         self.causal = causal
-        self.softmax_scale = softmax_scale or (1.0 / (head_size**0.5))
+        self.scale = scale or (1.0 / (head_size**0.5))
 
         # Support the case that there is no past but need present output (for prompt case).
         self.has_past_input = has_past_input
@@ -151,6 +154,22 @@ class MultiHeadAttentionConfig:
         self.is_packed_kv = input_format == InputFormats.Q_KV_BSNH_BSN2H
         self.verbose = verbose
         self.has_bias = has_bias
+        self.has_attn_bias = has_attn_bias
+        self.broadcast_attn_bias_dim_0 = broadcast_attn_bias_dim_0
+        self.broadcast_attn_bias_dim_1 = broadcast_attn_bias_dim_1
+
+        assert mask_format in [
+            AttentionMaskFormat.Mask_None,
+            AttentionMaskFormat.Mask_1D_Key_SeqLen,
+            AttentionMaskFormat.Mask_2D_Key_PaddingMask,
+        ]
+        self.mask_format = mask_format
+
+        # mask_index_q and mask_index_kv will be updated in random_inputs() if mask_format is not Mask_None.
+        self.mask_index_kv = torch.ones(self.batch_size, dtype=torch.int32, device=self.device) * self.sequence_length
+        self.mask_index_q = (
+            torch.ones(self.batch_size, dtype=torch.int32, device=self.device) * self.total_sequence_length
+        )
 
         assert mask_format in [
             AttentionMaskFormat.Mask_None,
@@ -171,11 +190,14 @@ class MultiHeadAttentionConfig:
             f"num_heads={self.num_heads}, head_size={self.head_size}, "
             f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
             f"max_cache_sequence_length={self.max_cache_sequence_length},"
-            f"causal={self.causal}), softmax_scale={self.softmax_scale}, use_kv_cache={self.use_kv_cache}, "
+            f"causal={self.causal}), scale={self.scale}, use_kv_cache={self.use_kv_cache}, "
             f"share_past_present_buffer={self.share_past_present_buffer}, "
             f"provider={self.provider}, device={self.device}, enable_cuda_graph={self.enable_cuda_graph}, "
             f"dtype={self.dtype}, input_format={InputFormats.input_format_str(self.input_format)}, "
-            f"has_bias={self.has_bias}, mask_format={self.mask_format}"
+            f"has_bias={self.has_bias}, mask_format={self.mask_format}, "
+            f"has_attn_bias={self.has_attn_bias}, "
+            f"broadcast_attn_bias_dim_0={self.broadcast_attn_bias_dim_0}, "
+            f"broadcast_attn_bias_dim_1={self.broadcast_attn_bias_dim_1}, "
         )
 
     def shape_dict(self, input_format=None):
@@ -235,6 +257,14 @@ class MultiHeadAttentionConfig:
         else:
             assert self.mask_format == AttentionMaskFormat.Mask_None
 
+        if self.has_attn_bias:
+            shapes["attn_bias"] = (
+                1 if self.broadcast_attn_bias_dim_0 else self.batch_size,
+                1 if self.broadcast_attn_bias_dim_1 else self.num_heads,
+                self.sequence_length,
+                self.total_sequence_length,
+            )
+
         return shapes
 
     def symbolic_shape_dict(self, input_format=None):
@@ -288,11 +318,14 @@ class MultiHeadAttentionConfig:
             shapes["bias"] = (3 * self.num_heads * self.head_size,)
 
         if self.mask_format == AttentionMaskFormat.Mask_1D_Key_SeqLen:
-            shapes["mask"] = (self.batch_size,)
+            shapes["mask"] = ("batch_size",)
         elif self.mask_format == AttentionMaskFormat.Mask_2D_Key_PaddingMask:
-            shapes["mask"] = (self.batch_size, "total_sequence_length")
+            shapes["mask"] = ("batch_size", "total_sequence_length")
         else:
             assert self.mask_format == AttentionMaskFormat.Mask_None
+
+        if self.has_attn_bias:
+            shapes["attn_bias"] = ("batch_size_or_1", "num_heads_or_1", "sequence_length", "total_sequence_length")
 
         return shapes
 
@@ -406,6 +439,19 @@ class MultiHeadAttentionConfig:
         if mask is not None:
             feeds = {**feeds, "mask": mask.to(dtype=torch.int32)}  # mask is int32 (not bool) for MultiHeadAttention op.
 
+        if self.has_attn_bias:
+            attn_bias = torch.empty(
+                (
+                    1 if self.broadcast_attn_bias_dim_0 else self.batch_size,
+                    1 if self.broadcast_attn_bias_dim_1 else self.num_heads,
+                    self.sequence_length,
+                    self.total_sequence_length,
+                ),
+                device=self.device,
+                dtype=dtype,
+            ).normal_(mean=0, std=0.1)
+            feeds["attn_bias"] = attn_bias
+
         return feeds
 
     def get_input_output_names(self):
@@ -425,6 +471,9 @@ class MultiHeadAttentionConfig:
         if self.mask_format != AttentionMaskFormat.Mask_None:
             inputs = [*inputs, "mask"]
 
+        if self.has_attn_bias:
+            inputs = [*inputs, "attn_bias"]
+
         if self.has_past_input:
             inputs = [*inputs, "past_key", "past_value"]
 
@@ -435,7 +484,7 @@ class MultiHeadAttentionConfig:
 
 
 def fill_optional_mha_inputs(input_names):
-    inputs = ["query", "key", "value", "bias", "mask", "relative_position_bias", "past_key", "past_value"]
+    inputs = ["query", "key", "value", "bias", "mask", "attn_bias", "past_key", "past_value"]
 
     # Remove optional inputs that are not in input_names with empty string
     inputs_with_optional = [input if input in input_names else "" for input in inputs]
@@ -459,7 +508,7 @@ def create_multi_head_attention_onnx_model(config: MultiHeadAttentionConfig, use
             "MultiHeadAttention_0",
             num_heads=config.num_heads,
             unidirectional=int(config.causal),
-            scale=config.softmax_scale,
+            scale=config.scale,
             mask_filter_value=float("-inf"),
             domain="com.microsoft",
         ),
@@ -725,7 +774,12 @@ def run_tflops_test(
         # flash attention is available for sm >= 80
         sm = get_compute_capability()
         if sm >= 80:
-            backends = [SdpaKernel.DEFAULT, SdpaKernel.FLASH_ATTENTION, SdpaKernel.EFFICIENT_ATTENTION]
+            backends = [
+                SdpaKernel.DEFAULT,
+                SdpaKernel.FLASH_ATTENTION,
+                SdpaKernel.EFFICIENT_ATTENTION,
+                SdpaKernel.CUDNN_FLASH_ATTENTION,
+            ]
         else:
             backends = [SdpaKernel.DEFAULT, SdpaKernel.EFFICIENT_ATTENTION]
     else:
@@ -786,7 +840,11 @@ def run_tflops_test(
                 input_dict = config.random_inputs()
 
                 # warm up session
-                _ = measure_latency(session, input_dict)
+                try:
+                    _ = measure_latency(session, input_dict)
+                except Exception as e:
+                    print(f"Failed to run {kernel=} for {config=}. Exception: {e}")
+                    continue
 
                 latency_list = []
                 for _ in range(repeats):
@@ -1013,7 +1071,7 @@ def plot_prompt_performance(
             head_size=head_size,
             causal=False,
             past_sequence_length=0,
-            kv_sequence_length=sequence_length if input_format == InputFormats.get_name_list()[-1] else None,
+            kv_sequence_length=sequence_length if input_format == "Q,K',V'" else None,
             max_cache_sequence_length=max_seq_len,
             provider="CUDAExecutionProvider",
             enable_cuda_graph=False,

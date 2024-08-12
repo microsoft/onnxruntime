@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
@@ -68,7 +69,7 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  bool broadcast_res_pos_bias;
+  gsl::span<const int64_t> attention_bias_dims;
   float mask_filter_value;
   float scale;
   bool use_tf32;
@@ -88,8 +89,7 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  bool has_relative_position_bias;
-  bool broadcast_res_pos_bias;
+  gsl::span<const int64_t> attention_bias_dims;
   bool use_tf32;
 };
 

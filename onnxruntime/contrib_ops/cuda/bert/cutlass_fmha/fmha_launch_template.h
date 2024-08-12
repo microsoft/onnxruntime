@@ -184,35 +184,45 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.qk_head_size;
       p.v_strideH = params.v_head_size;
-      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
       p.q_strideM = params.num_heads * params.qk_head_size;
       p.k_strideM = params.num_heads * params.qk_head_size;
       p.v_strideM = params.num_heads * params.v_head_size;
       p.o_strideM = params.num_heads * params.v_head_size;
-      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
       p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
       p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.max_sequence_length;
       p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.max_sequence_length;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
     } else {
       // Input K, V format is BxNxSxH, Input Q is BxSxNxH, output is BxSxNxH
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.max_sequence_length * params.qk_head_size;
       p.v_strideH = params.max_sequence_length * params.v_head_size;
-      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
       p.q_strideM = params.num_heads * params.qk_head_size;
       p.k_strideM = params.qk_head_size;
       p.v_strideM = params.v_head_size;
       p.o_strideM = params.num_heads * params.v_head_size;
-      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
       p.q_strideB = params.num_heads * params.qk_head_size * params.sequence_length;
       p.k_strideB = params.num_heads * params.qk_head_size * params.max_sequence_length;
       p.v_strideB = params.num_heads * params.v_head_size * params.max_sequence_length;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
+    }
+
+    if (params.attn_bias != nullptr) {
+      auto& bias_dims = params.attn_bias_dims;
+      ORT_ENFORCE(bias_dims.size() == 4 &&
+                  (bias_dims[0] == 1 || bias_dims[0] == params.batch_size) &&
+                  (bias_dims[1] == 1 || bias_dims[1] == params.num_heads) &&
+                  bias_dims[2] == params.sequence_length &&
+                  bias_dims[3] == params.kv_sequence_length);
+      p.bias_strideH = p.num_queries * p.num_keys;
+      p.bias_strideM = p.num_keys;
+      p.bias_strideB = (bias_dims[0] == 1) ? 0 : (bias_dims[1] * p.num_queries * p.num_keys);
+    } else {
+      p.bias_strideH = 0;
+      p.bias_strideM = 0;
+      p.bias_strideB = 0;
     }
   }
 

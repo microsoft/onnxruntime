@@ -77,10 +77,8 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
     DUMP_TENSOR_D("V_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
   }
 
-  if (data.relative_position_bias != nullptr) {
-    DUMP_TENSOR_D("relative_position_bias", data.relative_position_bias,
-                  parameters.broadcast_res_pos_bias ? 1 : batch_size,
-                  num_heads, sequence_length, kv_sequence_length);
+  if (data.attention_bias != nullptr) {
+    DUMP_TENSOR_D("attention_bias", data.attention_bias, parameters.attention_bias_dims);
   }
 
   if (data.mask_index != nullptr) {
@@ -258,7 +256,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
 
   if (data.fused_cross_attention_kernel != nullptr) {
     assert(qk_head_size == v_head_size);
-    assert(data.relative_position_bias == nullptr);
+    assert(data.attention_bias == nullptr);
     assert(data.mask_index == nullptr);
     assert(parameters.hidden_size == parameters.v_hidden_size);
 
@@ -290,7 +288,7 @@ Status PrepareQkv_MHA_NoPast(contrib::AttentionParameters& parameters,
 #endif
   else if (data.fused_runner != nullptr) {
     assert(qk_head_size == v_head_size);
-    assert(data.relative_position_bias == nullptr);
+    assert(data.attention_bias == nullptr);
 
     // Query (BxSxNxH), Key (BxSxNxH), Value (BxSxNxH) => Q: BxSxNx(H + H + H)
     LaunchAddBiasTransposeTrt(
@@ -524,7 +522,7 @@ Status PrepareQkv_MHA_PackedQKV(contrib::AttentionParameters& parameters,
                            true, v_head_size, qkv_add_bias, 3);
     data.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   } else if (nullptr != data.fused_runner) {
-    assert(nullptr == data.relative_position_bias);
+    assert(nullptr == data.attention_bias);
     if (data.bias == nullptr) {
       // When there is no bias, we can directly use the original packed QKV input.
       // Need revisit this when we add support for causal.

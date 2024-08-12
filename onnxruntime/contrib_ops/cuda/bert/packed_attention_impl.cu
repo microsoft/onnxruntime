@@ -523,8 +523,8 @@ Status FusedScaledDotProductAttentionCutlass(
   p.query = query;
   p.key = key;
   p.value = value;
-  p.attn_bias = data.relative_position_bias;
-  p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
+  p.attn_bias = data.attention_bias;
+  p.attn_bias_dims = parameters.attention_bias_dims;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
@@ -603,14 +603,19 @@ Status UnfusedScaledDotProductAttention(
                                                sequence_length);
   T* attention_score = scaled_qk + (bytes / element_size);
 
+  bool broadcast_attn_bias_dim_0 = parameters.attention_bias_dims.size() > 0 && parameters.attention_bias_dims[0] == 1;
+  bool broadcast_attn_bias_dim_1 = parameters.attention_bias_dims.size() > 1 && parameters.attention_bias_dims[1] == 1;
+
   // Apply softmax and store result R to attention_score: BxNxSxS
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scaled_qk,
-      data.relative_position_bias,
-      parameters.broadcast_res_pos_bias,
+      data.attention_bias,
+      broadcast_attn_bias_dim_0,
+      broadcast_attn_bias_dim_1,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,
+      sequence_length,  // total sequence length
       num_heads,
       attention_score, stream));
 
