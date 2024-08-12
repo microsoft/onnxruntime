@@ -115,7 +115,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
-    // be filled out with zeros which is consistent with Eigen CPU impl behavior.
+    // be filled out with zeros.
     using CudaT = typename ToCudaType<T>::MappedType;
     Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(Y->MutableData<T>()), CudaT(0.f), narrow<int64_t>(output_size));
     return Status::OK();
