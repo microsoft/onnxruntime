@@ -213,7 +213,6 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
                                                     bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(logger);
   const bool is_gather_elems = node_unit.OpType() == "GatherElements";
 
   // Create QNN 'axis' parameter.
