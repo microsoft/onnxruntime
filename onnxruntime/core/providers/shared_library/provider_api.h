@@ -174,7 +174,6 @@ struct SparseTensor;
 class TensorSeq;
 class SessionState;
 class ModelMetadefIdGenerator;
-class IAllocatorImplWrappingOrtAllocator;
 
 class If;
 class Loop;
