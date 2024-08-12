@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "kompute/Kompute.hpp"
-// #include "vk_mem_alloc.h"  // Vulkan Memory Allocator
+#include "vk_mem_alloc.h"  // Vulkan Memory Allocator
 
 #include "include/ncnn/command.h"
 #include "include/ncnn/option.h"
@@ -55,20 +55,25 @@ struct VulkanExecutionProviderInfo {
 
 class VulkanExecutionProvider : public IExecutionProvider {
   struct NcnnModel;
+  struct KomputeModel;
 
  public:
   explicit VulkanExecutionProvider(const VulkanExecutionProviderInfo& info);
   virtual ~VulkanExecutionProvider();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanExecutionProvider);
 
-  // Starting with input/output on CPU so we don't need any of these.
-  // std::vector<AllocatorPtr> CreatePreferredAllocators() override;
-  // std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
-  //   return std::make_unique<vulkan::VulkanDataTransfer>(data_transfer_);
-  // }
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
-  const ncnn::VulkanDevice& Device() const { return vulkan_device_; }
+  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
+    return std::make_unique<vulkan::VulkanDataTransfer>(data_transfer_);
+  }
+
+  const ncnn::VulkanDevice& Device() const { return ncnn_vulkan_device_; }
   const ncnn::Option& NcnnOptions() const { return ncnn_options_; }
+
+  // temporary hack to enable execution of static kernels without Streams being setup
+  kp::Sequence& GetRunSequence() const {}
 
  private:
   // TODO: If we want to support concurrent execution we need to figure out an efficient way to manage the
@@ -80,15 +85,22 @@ class VulkanExecutionProvider : public IExecutionProvider {
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                 const IKernelLookup& kernel_lookup) const override;
 
-  common::Status UploadConstantInitializers(NcnnModel& model);
+  common::Status CompileNcnn(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                             std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  common::Status CompileKompute(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                std::vector<NodeComputeInfo>& node_compute_funcs);
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  common::Status UploadNcnnConstantInitializers(NcnnModel& model);
+  common::Status UploadKomputeConstantInitializers(KomputeModel& model, size_t num_initializers);
+
   ncnn::Option ncnn_options_;
 
   // TODO: ownership is currently in a global in NCNN code. TBD if we want to move it to be local to this instance.
-  const ncnn::VulkanDevice& vulkan_device_;
+  const ncnn::VulkanDevice& ncnn_vulkan_device_;
 
   // allocators for various operations.
   // they're in this class so they can be shared between VulkanAllocator and VulkanDataTransfer.
@@ -101,8 +113,6 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<ncnn::PipelineCache> pipeline_cache_;
 
-  // vulkan::VulkanDataTransferImpl data_transfer_;
-
   ModelMetadefIdGenerator metadef_id_generator_;
 
   struct NcnnModel {
@@ -110,10 +120,22 @@ class VulkanExecutionProvider : public IExecutionProvider {
     std::vector<size_t> output_indexes;
   };
 
+  struct KomputeModel {
+    std::vector<std::unique_ptr<vulkan::VulkanKernel>> layers;
+    std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers;
+  };
+
   // one entry per partition
   std::unordered_map<std::string, std::unique_ptr<NcnnModel>> models_;
 
   kp::Manager kompute_manager_;
+
+  bool use_kompute_{true};
+  VmaAllocator vma_allocator_{nullptr};  // start with one. might want a separate one for weights
+
+  vulkan::VulkanDataTransferImpl data_transfer_;
+
+  kp::Sequence run_sequence_;
 };
 
 }  // namespace onnxruntime

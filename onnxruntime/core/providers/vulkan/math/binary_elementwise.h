@@ -15,22 +15,37 @@ namespace vulkan {
 
 class BinaryElementwiseKernel : VulkanKernel {
  public:
-  static bool IsSupported(const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
-    // implement check here
-    // - data type/s - VulkanKernel does the overall check for types that are supported
-    // - any param values that are required to create the pipeline are constant initializers
-    //   - we _could_ create a pipeline on a per-Run basis to handle this but we don't support that currently
+  static bool IsSupported(bool use_kompute, const GraphViewer&, const onnxruntime::Node& node,
+                          const logging::Logger& logger) {
+    // VulkanKernel does the overall check for data types that are supported
 
-    // If the return will be false, log the reason why
+    if (use_kompute) {
+      LOGS(logger, VERBOSE) << "BinaryElementwiseKernel Kompute is not supported yet";
+      return false;
+    }
+
+    static const std::unordered_set<std::string_view> supported_ops = {
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+    };
+
+    if (supported_ops.count(node.OpType()) == 0) {
+      LOGS(logger, VERBOSE) << "BinaryElementwiseKernel op_type: " << node.OpType() << " is not supported.";
+      return false;
+    }
+
     return true;
   }
 
 // this setup is to avoid a big if/else if based on the node.OpType() string.
 #define BEK_CREATE(name, ncnn_op_type)                                                        \
   static std::unique_ptr<VulkanKernel> Create##name(const VulkanExecutionProvider& vulkan_ep, \
+                                                    bool use_kompute,                         \
                                                     const GraphViewer& graph_viewer,          \
                                                     const onnxruntime::Node& node) {          \
-    return Create(ncnn_op_type, vulkan_ep, graph_viewer, node);                               \
+    return Create(ncnn_op_type, vulkan_ep, use_kompute, graph_viewer, node);                  \
   }
 
   BEK_CREATE(Add, ncnn::BinaryOp::Operation_ADD)
@@ -42,19 +57,21 @@ class BinaryElementwiseKernel : VulkanKernel {
  private:
   static std::unique_ptr<VulkanKernel> Create(ncnn::BinaryOp::OperationType op_type,
                                               const VulkanExecutionProvider& vulkan_ep,
+                                              bool use_kompute,
                                               const GraphViewer&,
                                               const onnxruntime::Node& node) {
-    return std::unique_ptr<VulkanKernel>(new BinaryElementwiseKernel(op_type, vulkan_ep, node));
+    return std::unique_ptr<VulkanKernel>(new BinaryElementwiseKernel(op_type, vulkan_ep, use_kompute, node));
   }
 
   BinaryElementwiseKernel(ncnn::BinaryOp::OperationType ncnn_op_type,
                           const VulkanExecutionProvider& vulkan_ep,
+                          bool use_kompute,
                           const onnxruntime::Node& node)
-      : VulkanKernel{vulkan_ep, node},
+      : VulkanKernel{vulkan_ep, use_kompute, node},
         op_type_{ncnn_op_type} {
   }
 
-  Status SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
+  Status SetupNcnnParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
 
   std::string_view GetNcnnLayerName() const override { return "BinaryOp"; }
 

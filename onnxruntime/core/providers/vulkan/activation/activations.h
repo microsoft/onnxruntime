@@ -13,11 +13,12 @@ namespace vulkan {
 
 class SigmoidKernel : VulkanKernel {
  public:
-  static bool IsSupported(const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
+  static bool IsSupported(bool use_kompute, const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
     return true;
   }
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
+                                              bool use_kompute,
                                               const GraphViewer&,
                                               const onnxruntime::Node& node) {
     return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, node));
@@ -31,10 +32,12 @@ class SigmoidKernel : VulkanKernel {
 
 class ClipKernel : VulkanKernel {
  public:
-  static bool IsSupported(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+  static bool IsSupported(bool use_kompute, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                           const logging::Logger& logger);
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
+                                              bool use_kompute,
+                                              const GraphViewer&,
                                               const onnxruntime::Node& node) {
     return std::unique_ptr<VulkanKernel>(new ClipKernel(vulkan_ep, node));
   }

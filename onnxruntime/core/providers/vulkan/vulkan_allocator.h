@@ -3,17 +3,12 @@
 
 #pragma once
 
-#include <functional>
-#include <list>
-#include <unordered_map>
-#include <variant>
-
 #include "core/framework/allocator.h"
 
-#include "core/providers/vulkan/vulkan_utils.h"
+#include "vk_mem_alloc.h"  // VulkanMemoryAllocator
 
-namespace ncnn {
-class VkAllocator;
+namespace kp {
+class Manager;
 }
 
 namespace onnxruntime {
@@ -26,7 +21,7 @@ class VulkanBufferAllocator : public IAllocator {
   };
 
  public:
-  explicit VulkanBufferAllocator(OrtDevice device, ncnn::VkAllocator*& allocator);
+  explicit VulkanBufferAllocator(OrtDevice device, VmaAllocator& manager);
   ~VulkanBufferAllocator() = default;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanBufferAllocator);
@@ -35,9 +30,8 @@ class VulkanBufferAllocator : public IAllocator {
   void Free(void* p) override;
 
  private:
-  // reference to the allocator pointer in the VulkanExecutionProvider ncnn::Options struct.
-  // this gets swapped after session state finalization from the weight allocators to blob allocators.
-  ncnn::VkAllocator*& allocator_;
+  VmaAllocator& allocator_;
+  VmaMemoryUsage usage_;
 };
 
 }  // namespace vulkan

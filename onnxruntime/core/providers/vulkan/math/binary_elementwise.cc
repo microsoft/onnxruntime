@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace vulkan {
 
-Status BinaryElementwiseKernel::SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) {
+Status BinaryElementwiseKernel::SetupNcnnParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) {
   params.set(Params::kOperationType, op_type_);
 
   const auto& node = Node();

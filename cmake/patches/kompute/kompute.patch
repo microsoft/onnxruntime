@@ -1,0 +1,15 @@
+diff --git a/src/include/kompute/Manager.hpp b/src/include/kompute/Manager.hpp
+index 52f9ada..5e8404f 100644
+--- a/src/include/kompute/Manager.hpp
++++ b/src/include/kompute/Manager.hpp
+@@ -223,6 +223,10 @@ class Manager
+      **/
+     std::shared_ptr<vk::Instance> getVkInstance() const;
+ 
++    std::shared_ptr<vk::PhysicalDevice> getVkPhysicalDevice() const { return mPhysicalDevice; }
++
++    std::shared_ptr<vk::Device> getVkDevice() const { return mDevice; }
++
+   private:
+     // -------------- OPTIONALLY OWNED RESOURCES
+     std::shared_ptr<vk::Instance> mInstance = nullptr;

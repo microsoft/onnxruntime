@@ -22,17 +22,91 @@
 #include "core/providers/vulkan/activation/activations.h"
 
 namespace onnxruntime {
+namespace vulkan {
+
+template <>
+KernelCreateInfo BuildKernelCreateInfo<void>() {
+  KernelCreateInfo info;
+  return info;
+}
+
+// forward declarations of the kernel classes
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyToHost, 1);
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyFromHost, 1);
+class ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MatMul, 6, 12);
+class ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MatMul, 13);
+
+//
+// TODO: Do we need to apply any NCNN channel alignment logic when copying to/from GPU? Each channel is aligned
+// to 16 bytes.
+//
+// See ncnn::Mat::reshape where channel alignment is implemented.
+// We could maybe leverage Mat::reshape - first create a 1D Mat from the OrtValue and then reshape
+// to change it to the NCNN format.
+//
+// We may not as VkTransfer::record_upload has a flag to flatten the data and the NCNN channel alignment may be for
+// CPU only. VkCompute::record_upload does not have a flag though
+//
+// Also need to consider whether this alignment potentially invalidates ORT allocation planning as the required
+// buffer size when used by NCNN may differ from ORT. That may be okay as it's CPU vs GPU usage,
+//
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyFromHost,
+    kOnnxDomain,
+    1,
+    kVulkanExecutionProvider,
+    KernelDefBuilder()
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyToHost,
+    kOnnxDomain,
+    1,
+    kVulkanExecutionProvider,
+    KernelDefBuilder()
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+    Memcpy);
+
+Status RegisterVulkanKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyToHost, 1)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MemcpyFromHost, 1)>,
+      BuildKernelCreateInfo<ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MatMul, 6, 12)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VULKAN_KERNEL_CLASS_NAME(MatMul, 13)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+    }
+  }
+
+  return Status::OK();
+}
+
+std::shared_ptr<KernelRegistry> GetVulkanKernelRegistry() {
+  std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
+  ORT_THROW_IF_ERROR(RegisterVulkanKernels(*kernel_registry));
+  return kernel_registry;
+}
+}  // namespace vulkan
+
 namespace {
 using namespace vulkan;
 
 void DumpKomputeManagerInfo(kp::Manager& manager) {
   auto dump_props = [](vk::PhysicalDeviceProperties& props) {
-    LOGS_DEFAULT(INFO) << "Device: " << props.deviceName << " (id: " << props.deviceID << ")";
-    LOGS_DEFAULT(INFO) << "  Type: " << vk::to_string(props.deviceType);
-    LOGS_DEFAULT(INFO) << "  API Version: " << VK_VERSION_MAJOR(props.apiVersion) << "." << VK_VERSION_MINOR(props.apiVersion) << "." << VK_VERSION_PATCH(props.apiVersion);
-    LOGS_DEFAULT(INFO) << "  Driver Version: " << props.driverVersion;
-    LOGS_DEFAULT(INFO) << "  Vendor ID: " << props.vendorID;
-    LOGS_DEFAULT(INFO) << "  Device ID: " << props.deviceID;
+    LOGS_DEFAULT(VERBOSE) << "Device: " << props.deviceName << " (id: " << props.deviceID << ")";
+    LOGS_DEFAULT(VERBOSE) << "  Type: " << vk::to_string(props.deviceType);
+    LOGS_DEFAULT(VERBOSE) << "  API Version: " << VK_VERSION_MAJOR(props.apiVersion) << "." << VK_VERSION_MINOR(props.apiVersion) << "." << VK_VERSION_PATCH(props.apiVersion);
+    LOGS_DEFAULT(VERBOSE) << "  Driver Version: " << props.driverVersion;
+    LOGS_DEFAULT(VERBOSE) << "  Vendor ID: " << props.vendorID;
+    LOGS_DEFAULT(VERBOSE) << "  Device ID: " << props.deviceID;
   };
 
   auto devices = manager.listDevices();
@@ -43,7 +117,7 @@ void DumpKomputeManagerInfo(kp::Manager& manager) {
     dump_props(props);
   }
 
-  LOGS_DEFAULT(INFO) << "Current device: " << manager.getDeviceProperties().deviceID;
+  LOGS_DEFAULT(VERBOSE) << "Current device: " << manager.getDeviceProperties().deviceID;
 }
 
 ncnn::VulkanDevice& GetVulkanDevice(int device_id = -1) {
@@ -67,7 +141,29 @@ ncnn::VulkanDevice& GetVulkanDevice(int device_id = -1) {
   return *device;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onnxruntime::GraphViewer& graph_viewer,
+std::vector<std::unique_ptr<ComputeCapability>>
+GetCapabilityStaticKernels(const onnxruntime::GraphViewer& graph_viewer,
+                           const IExecutionProvider::IKernelLookup& kernel_lookup,
+                           const logging::Logger& logger) {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node); kernel_create_info != nullptr) {
+      if (!VulkanKernel::IsSupported(/*use_kompute*/ true, graph_viewer, node, logger)) {
+        continue;
+      }
+
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    }
+  }
+
+  return result;
+}
+
+std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(bool use_kompute,
+                                                                       const onnxruntime::GraphViewer& graph_viewer,
                                                                        ModelMetadefIdGenerator metadef_id_generator,
                                                                        const logging::Logger& logger) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
@@ -80,7 +176,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapabilityCompiling(const onn
       };
 
   const utils::IsNodeSupportedFn is_node_supported_fn = [&](const Node& node) -> bool {
-    return VulkanKernel::IsSupported(graph_viewer, node, logger);
+    return VulkanKernel::IsSupported(use_kompute, graph_viewer, node, logger);
   };
 
   // nothing required currently
@@ -216,12 +312,12 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
                                    // input/output of the compiled partition
                                    0)),
       ncnn_options_{},
-      vulkan_device_{GetVulkanDevice()},
-      weight_staging_allocator_{&vulkan_device_},
-      weight_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 8 MB. should it be different or configurable?
-      staging_allocator_{&vulkan_device_},
-      blob_allocator_{&vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
-      pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&vulkan_device_)},
+      ncnn_vulkan_device_{GetVulkanDevice()},
+      weight_staging_allocator_{&ncnn_vulkan_device_},
+      weight_allocator_{&ncnn_vulkan_device_},  // TODO: preferred_block_size is 8 MB. should it be different or configurable?
+      staging_allocator_{&ncnn_vulkan_device_},
+      blob_allocator_{&ncnn_vulkan_device_},  // TODO: preferred_block_size is 16 MB. should it be different or configurable?
+      pipeline_cache_{std::make_unique<ncnn::PipelineCache>(&ncnn_vulkan_device_)},
       // TODO: Figure out required extensions.
       // llama.cpp has a few it checks for
       // https://github.com/ggerganov/llama.cpp/blob/a21c6fd45032a20180e026773582d21294c85619/ggml/src/ggml-kompute.cpp#L217
@@ -229,34 +325,46 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
       // ncnn checks for a lot of VK_KHR_... values
       // https://github.com/search?q=repo%3ATencent%2Fncnn%20VK_KHR_&type=code
       // the 'support_' properties of GpuInfo might provide the superset of relevant ones, but what is
-      // 'required' vs 'available' is not clear.
+      // 'required' vs 'available' needs to be figured out as we add shaders.
       // https://github.com/Tencent/ncnn/blob/b9debee8fb92263cd3a087208d3657081a2e4f37/src/gpu.h#L262-L312
-      kompute_manager_{narrow<uint32_t>(info.device_id), {}, {"VK_KHR_maintenance4"}} {
-  DumpKomputeManagerInfo(kompute_manager_);
+      kompute_manager_{narrow<uint32_t>(info.device_id), {}, {"VK_KHR_maintenance4"}},
+      data_transfer_{kompute_manager_} {
+  if (use_kompute_) {
+    DumpKomputeManagerInfo(kompute_manager_);
+    vma_allocator_;
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.vulkanApiVersion = kompute_manager_.getDeviceProperties().apiVersion;
+    allocatorInfo.physicalDevice = kompute_manager_.getVkPhysicalDevice();
+    allocatorInfo.device = kompute_manager_.getVkDevice();
+    allocatorInfo.instance = kompute_manager_.getVkInstance();
 
-  ncnn_options_.use_vulkan_compute = true;
+    vmaCreateAllocator(&allocatorInfo, &vma_allocator_);
 
-  // this was the setup when using static kernels to try and ensure we use these allocators for weight upload only.
-  // with the compiling setup we plug these in explicitly during UploadConstantInitializers.
-  // ncnn_options_.staging_vkallocator = &weight_staging_allocator_;
-  // ncnn_options_.blob_vkallocator = &weight_allocator_;
+  } else {
+    ncnn_options_.use_vulkan_compute = true;
 
-  ncnn_options_.staging_vkallocator = &staging_allocator_;
-  ncnn_options_.blob_vkallocator = &blob_allocator_;
-  ncnn_options_.workspace_vkallocator = &blob_allocator_;
+    // this was the setup when using static kernels to try and ensure we use these allocators for weight upload only.
+    // with the compiling setup we plug these in explicitly during UploadConstantInitializers.
+    // ncnn_options_.staging_vkallocator = &weight_staging_allocator_;
+    // ncnn_options_.blob_vkallocator = &weight_allocator_;
 
-  ncnn_options_.pipeline_cache = pipeline_cache_.get();
+    ncnn_options_.staging_vkallocator = &staging_allocator_;
+    ncnn_options_.blob_vkallocator = &blob_allocator_;
+    ncnn_options_.workspace_vkallocator = &blob_allocator_;
 
-  // start with fp32
-  // NCNN can automatically convert from fp32 to fp16 if use_fp16_storage/use_fp16_packed is true.
-  ncnn_options_.use_fp16_packed = false;
-  ncnn_options_.use_fp16_storage = false;
-  ncnn_options_.use_fp16_arithmetic = false;
-  ncnn_options_.use_int8_packed = false;
-  ncnn_options_.use_int8_storage = false;
-  ncnn_options_.use_int8_arithmetic = false;
-  ncnn_options_.use_packing_layout = false;
-  ncnn_options_.use_image_storage = false;
+    ncnn_options_.pipeline_cache = pipeline_cache_.get();
+
+    // start with fp32
+    // NCNN can automatically convert from fp32 to fp16 if use_fp16_storage/use_fp16_packed is true.
+    ncnn_options_.use_fp16_packed = false;
+    ncnn_options_.use_fp16_storage = false;
+    ncnn_options_.use_fp16_arithmetic = false;
+    ncnn_options_.use_int8_packed = false;
+    ncnn_options_.use_int8_storage = false;
+    ncnn_options_.use_int8_arithmetic = false;
+    ncnn_options_.use_packing_layout = false;
+    ncnn_options_.use_image_storage = false;
+  }
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
@@ -275,14 +383,14 @@ VulkanExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                        const IKernelLookup& /*kernel_lookup*/) const {
   const auto& logger = *GetLogger();
 
-  std::vector<std::unique_ptr<ComputeCapability>> result =
-      GetCapabilityCompiling(graph_viewer, metadef_id_generator_, logger);
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  result = GetCapabilityCompiling(use_kompute_, graph_viewer, metadef_id_generator_, logger);
 
   return result;
 }
 
-common::Status VulkanExecutionProvider::UploadConstantInitializers(NcnnModel& model) {
-  ncnn::VkTransfer cmd(&vulkan_device_);
+common::Status VulkanExecutionProvider::UploadNcnnConstantInitializers(NcnnModel& model) {
+  ncnn::VkTransfer cmd(&ncnn_vulkan_device_);
 
   // use the weight allocators for the upload of constant initializers
   ncnn::Option upload_options(ncnn_options_);
@@ -290,7 +398,7 @@ common::Status VulkanExecutionProvider::UploadConstantInitializers(NcnnModel& mo
   upload_options.blob_vkallocator = &weight_allocator_;
 
   for (size_t i = 0, end = model.layers.size(); i < end; i++) {
-    ORT_RETURN_IF_ERROR(model.layers[i]->UploadConstantInitializers(cmd, upload_options));
+    ORT_RETURN_IF_ERROR(model.layers[i]->UploadNcnnConstantInitializers(cmd, upload_options));
   }
 
   RETURN_IF_NCNN_ERROR(cmd.submit_and_wait());
@@ -298,8 +406,115 @@ common::Status VulkanExecutionProvider::UploadConstantInitializers(NcnnModel& mo
   return Status::OK();
 }
 
+common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(KomputeModel& model,
+                                                                          size_t num_initializers) {
+  std::unordered_set<const NodeArg*> initializers_to_upload(num_initializers);
+
+  for (size_t i = 0, end = model.layers.size(); i < end; i++) {
+    model.layers[i]->GetKomputeConstantInitializersToUpload(initializers_to_upload);
+  }
+
+  // create a kp::Tensor for each initializer
+  std::vector<std::shared_ptr<kp::Tensor>> tensors;
+  tensors.reserve(initializers_to_upload.size());
+  for (const NodeArg* initializer : initializers_to_upload) {
+  }
+
+  // create a kp::Sequence
+
+  // add tensors
+
+  // copy to device
+  return Status::OK();
+}
+
 common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
+  if (use_kompute_) {
+    return CompileKompute(fused_nodes_and_graphs, node_compute_funcs);
+  } else {
+    return CompileNcnn(fused_nodes_and_graphs, node_compute_funcs);
+  }
+}
+
+common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                       std::vector<NodeComputeInfo>& node_compute_funcs) {
+  // https://kompute.cc/#mobile-enabled is a good example of creating pipeline including plugging in push constants
+
+  // Maybe the following would work:
+  // VulkanKernel ctor would create algo instance with spec constants and default push constants
+  // a Compute method would add the OpAlgoDispatch call
+
+  // to execute model we
+  // - create input Tensor and call OpTensorSyncDevice to copy to device
+  // - call Compute for each kernel to bind push constants
+  // - call OpTensorSyncLocal to download outputs
+
+  // Questions:
+  // - How do we map inputs/outputs between kernels and overall outputs
+  // - do we need to use streams so any scratch buffers required can be freed?
+  //   - see BindToDeviceStream in session_state.cc
+  //   - might be able to create a sequence instance via the create stream func
+  //     - IStreamCommandHandleRegistry::RegisterCreateStreamFn
+  //   - individual kernels can get the Stream from OpKernelContext
+  // - How do we free tensors once they're done?
+  //   - can this also be done via streams using the CUDA EP as a base implementation?
+
+  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
+    NodeComputeInfo compute_info;
+    const Node& fused_node = fused_node_and_graph.fused_node;
+    const GraphViewer& graph = fused_node_and_graph.filtered_graph;
+
+    auto model = std::make_unique<KomputeModel>();
+    std::vector<std::unique_ptr<vulkan::VulkanKernel>>& layers = model->layers;
+    model->layers.reserve(graph.NumberOfNodes());
+
+    // initializers that have been copied to GPU
+    // TODO: if we use static kernels we would handle this via DataTransferManager and ideally plugin a step
+    // to allocate memory for all initializers that we're copying to GPU in a single allocation (or by doing a
+    // something equivalent to a 'reserve' with the memory allocator we use for the initializers).
+    // Need to figure out how VMA can be used to simplify this sort of thing.
+    auto num_initializers = graph.GetAllInitializedTensors().size();
+    model->constant_initializers.reserve(num_initializers);
+
+    vulkan::VulkanKernel::ValueIndexes value_indexes;  // currently unused in Kompute based execution
+
+    // create layer for each node. we add the outputs from each layer to value_indexes when doing so
+    for (const Node& node : graph.Nodes()) {
+      std::unique_ptr<vulkan::VulkanKernel> layer;
+      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, graph, node, value_indexes, layer));
+      layers.push_back(std::move(layer));
+    }
+
+    ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(*model, num_initializers));
+
+    // ModelMetadefIdGenerator is broken if this happens
+    ORT_ENFORCE(models_.find(fused_node.Name()) == models_.end(), "Duplicate fused node names");
+    models_[fused_node.Name()] = std::move(model);
+
+    compute_info.create_state_func = [&model](ComputeContext* /*context*/, FunctionState* /*state*/) {
+      return 0;
+    };
+
+    compute_info.release_state_func = [](FunctionState /*state*/) {
+    };
+
+    compute_info.compute_func = [&fused_node, this](FunctionState /*state*/, const OrtApi* /*c_api*/,
+                                                    OrtKernelContext* context) -> Status {
+      // undo the indirection to the public API that is required for external operators
+      // this is an OpKernelContextInternal if we need that
+      auto& ctx = *reinterpret_cast<OpKernelContext*>(context);
+
+      auto model_iter = models_.find(ctx.GetNodeName());
+      ORT_ENFORCE(model_iter != models_.end(), "Model for compiled node was not found!");
+
+      return Status::OK();
+    }
+  }
+}
+
+common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                    std::vector<NodeComputeInfo>& node_compute_funcs) {
   // see Net::load_model
   // NCNN execution setup involves looping through all the layers defined in the model to create a pipeline for each.
 
@@ -327,7 +542,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     // create layer for each node. we add the outputs from each layer to value_indexes when doing so
     for (const Node& node : graph.Nodes()) {
       std::unique_ptr<vulkan::VulkanKernel> layer;
-      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, graph, node, value_indexes, layer));
+      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, graph, node, value_indexes, layer));
       layers.push_back(std::move(layer));
     }
 
@@ -346,7 +561,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     // initializers that need to be provided as an input to the NCNN layer. At the start of execution we could copy
     // that vector. Potentially significantly inefficient if there are a lot of initializers that fall into this
     // category. The VulkanKernel would need to handle uploading the data to create the VkMat in this step.
-    ORT_RETURN_IF_ERROR(UploadConstantInitializers(*model));
+    ORT_RETURN_IF_ERROR(UploadNcnnConstantInitializers(*model));
 
     // ModelMetadefIdGenerator is broken if this happens
     ORT_ENFORCE(models_.find(fused_node.Name()) == models_.end(), "Duplicate fused node names");
@@ -371,12 +586,12 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       NcnnModel& model = *model_iter->second;
 
       // create Vulkan compute instance to upload inputs (CPU to GPU), execute the nodes, and download outputs
-      ncnn::VkCompute cmd(&vulkan_device_);
+      ncnn::VkCompute cmd(&ncnn_vulkan_device_);
 
       // create vector for GPU based input/output values. the last output of the last layer is the highest index value.
       // init with empty instances
       std::vector<ncnn::VkMat> values;
-      values.resize(model.layers.back()->Layer().tops.back() + 1);
+      values.resize(model.layers.back()->NcnnLayer().tops.back() + 1);
 
       // setup inputs
       int input_idx = 0;
@@ -397,7 +612,7 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // RETURN_IF_NCNN_ERROR(cmd.submit_and_wait()); <-- Don't do this. Results in empty output.
 
       for (const auto& kernels : model.layers) {
-        const auto& layer = kernels->Layer();
+        const auto& layer = kernels->NcnnLayer();
         RETURN_IF_NCNN_ERROR(do_forward_layer(&layer, values, cmd, ncnn_options_));
       }
 
@@ -504,19 +719,9 @@ common::Status VulkanExecutionProvider::Compile(const std::vector<FusedNodeAndGr
   return Status::OK();
 }
 
-// std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
-//   // TODO: We may want to utilize VMA to ensure the preferred memory is used as this could be used for either
-//   // discrete or integrated GPUs.
-//   // VMA is from AMD
-//   // https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-//   // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/choosing_memory_type.html
-//
-//   // input/output is CPU based so we can use the CPU EP allocator initially.
-//   // If we wanted to try and enable input/output on GPU we'd need to hook up the NCNN logic around packing etc.
-//   // that is applied when it copies data to device.
-//
-//   std::vector<AllocatorPtr> allocators;
-//   return allocators;
-// }
+std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> allocators;
+  return allocators;
+}
 
 }  // namespace onnxruntime

@@ -11,7 +11,7 @@
 
 namespace onnxruntime {
 namespace vulkan {
-Status ConvKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& /*params*/) {
+Status ConvKernel::SetupNcnnParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& /*params*/) {
   // const auto& node = Node();
   // const auto& input_defs = node.InputDefs();
 
@@ -22,7 +22,7 @@ Status ConvKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::Par
   return Status::OK();
 }
 
-Status ConvKernel::SetupConstantInitializers(const GraphViewer& /*graph_viewer*/, ValueIndexes& /*value_indexes*/) {
+Status ConvKernel::SetupNcnnConstantInitializers(const GraphViewer& /*graph_viewer*/, ValueIndexes& /*value_indexes*/) {
   // auto& layer = Layer();
 
   // update the ncnn::Mat values in the base NCNN layer for any constant initializers

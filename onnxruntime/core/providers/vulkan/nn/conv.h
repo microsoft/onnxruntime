@@ -42,9 +42,9 @@ class ConvKernel : VulkanKernel {
     }
   }
 
-  Status SetupParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
+  Status SetupNcnnParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
 
-  Status SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) override;
+  Status SetupNcnnConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) override;
 
  private:
   ConvKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)

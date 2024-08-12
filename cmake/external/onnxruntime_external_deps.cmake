@@ -119,10 +119,18 @@ if (onnxruntime_USE_VULKAN)
     file(CREATE_LINK ${glslang_SOURCE_DIR} ${ncnn_SOURCE_DIR}/glslang SYMBOLIC)
   endif()
 
+  if(Patch_FOUND)
+    set(ONNXRUNTIME_KOMPUTE_PATCH_COMMAND
+        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/kompute/kompute.patch)
+  else()
+    message(FATAL_ERROR "Kompute must be patched but the patch executable was not found")
+  endif()
+
   FetchContent_Declare(
     kompute
     URL ${DEP_URL_kompute}
     URL_HASH SHA1=${DEP_SHA1_kompute}
+    PATCH_COMMAND ${ONNXRUNTIME_KOMPUTE_PATCH_COMMAND}
   )
 
   # kompute options

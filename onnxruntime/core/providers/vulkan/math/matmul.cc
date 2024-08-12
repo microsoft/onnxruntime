@@ -11,6 +11,7 @@
 #include "include/ncnn/layer/vulkan/innerproduct_vulkan.h"
 
 #include "core/common/safeint.h"
+#include "core/framework/transpose_helper.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/vulkan/vulkan_utils.h"
@@ -18,6 +19,21 @@
 
 namespace onnxruntime {
 namespace vulkan {
+
+#define REGISTER_VERSIONED_KERNEL(op, since_version, end_version)                                    \
+  REGISTER_ONNX_VERSIONED_OPERATOR_VULKAN_KERNEL(                                                    \
+      op, since_version, end_version,                                                                \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+      op);
+
+#define REGISTER_KERNEL(op, since_version)                                                           \
+  REGISTER_ONNX_OPERATOR_VULKAN_KERNEL(                                                              \
+      op, since_version,                                                                             \
+      KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+      op);
+
+REGISTER_VERSIONED_KERNEL(MatMul, 6, 12);
+REGISTER_KERNEL(MatMul, 13);
 
 MatMulKernel::InputInfo::InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                                    const logging::Logger& logger) {
@@ -31,7 +47,7 @@ MatMulKernel::InputInfo::InputInfo(const GraphViewer& graph_viewer, const onnxru
 }
 
 /* static */
-bool MatMulKernel::IsSupported(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+bool MatMulKernel::IsSupported(bool use_kompute, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                                const logging::Logger& logger) {
   // start with InnerProduct.
   InputInfo info(graph_viewer, node, logger);
@@ -43,18 +59,30 @@ bool MatMulKernel::IsSupported(const GraphViewer& graph_viewer, const onnxruntim
   bool a_ok = info.have_shape_A && info.shape_A.size() < 3 && !DoesShapeSpecifyZeroElements(info.shape_A);
   bool b_ok = info.constant_B && info.shape_B.size() == 2 && !DoesShapeSpecifyZeroElements(info.shape_B);
 
+  // same support for Kompute and NCNN in current implementation
   return a_ok && b_ok;
 }
 
 MatMulKernel::MatMulKernel(const VulkanExecutionProvider& vulkan_ep,
+                           bool use_kompute,
                            const GraphViewer& graph_viewer,
                            const onnxruntime::Node& node)
-    : VulkanKernel{vulkan_ep, node},
+    : VulkanKernel{vulkan_ep, use_kompute, node},
       input_info_{graph_viewer, Node(), Logger()},
       use_inner_product_{input_info_.constant_B && input_info_.shape_B.size() == 2} {
 }
 
-Status MatMulKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& params) {
+Status MatMulKernel::ComputeImpl(OpKernelContext& context) const {
+  // const auto& logger = Logger();
+  const auto& input_tensor_A = *context.Input<Tensor>(0);
+  ORT_ENFORCE(transposed_b_tensor_);  // should have been set in PrePack
+  TensorShape output_shape{input_tensor_A.Shape()[0], transposed_b_tensor_->Shape()[0]};
+
+  const auto& output_tensor = *context.Output(0, output_shape);
+
+}
+
+Status MatMulKernel::SetupNcnnParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& params) {
   // const auto& logger = Logger();
 
   if (use_inner_product_) {
@@ -121,10 +149,10 @@ Status MatMulKernel::SetupParamDict(const GraphViewer& /*graph_viewer*/, ncnn::P
   return Status::OK();
 }
 
-Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& /*value_indexes*/) {
+Status MatMulKernel::SetupNcnnConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& /*value_indexes*/) {
   // const auto& logger = Logger();
   const auto& node = Node();
-  ncnn::Layer& layer = Layer();
+  ncnn::Layer& layer = NcnnLayer();
   const auto& input_defs = node.InputDefs();
 
   if (use_inner_product_) {
@@ -169,16 +197,16 @@ Status MatMulKernel::SetupConstantInitializers(const GraphViewer& graph_viewer, 
   return Status::OK();
 }
 
-Status MatMulKernel::UploadConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) {
-  ORT_RETURN_IF_ERROR(VulkanKernel::UploadConstantInitializers(cmd, upload_options));
+Status MatMulKernel::UploadNcnnConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) {
+  ORT_RETURN_IF_ERROR(VulkanKernel::UploadNcnnConstantInitializers(cmd, upload_options));
 
   // was using this to free data but using CreatePipeline to cleanup data in InnerProduct, and
   // upload_model cleans up data in InnerProduct_vulkan
   return Status::OK();
 }
 
-Status MatMulKernel::CreatePipeline() {
-  ORT_RETURN_IF_ERROR(VulkanKernel::CreatePipeline());
+Status MatMulKernel::CreateNcnnPipeline() {
+  ORT_RETURN_IF_ERROR(VulkanKernel::CreateNcnnPipeline());
   if (use_inner_product_) {
     // This happens in InnerProduct_vulkan::create_pipeline when lightmode is on (it is by default)
     // ncnn::InnerProduct& inner_product = static_cast<ncnn::InnerProduct&>(Layer());
@@ -189,6 +217,31 @@ Status MatMulKernel::CreatePipeline() {
 
   return Status::OK();
 }
+
+Status MatMulKernel::AddToKomputeSequence(kp::Manager& manager, kp::Sequence& sequence,
+                                          std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers) const {
+  auto tensorInB = constant_initializers.at(Node().InputDefs()[1]);
+}
+
+Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                       /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+
+  if (input_idx == 1) {
+    auto orig_shape = tensor.Shape();
+    const auto rank = orig_shape.NumDimensions();
+
+    InlinedVector<size_t> perm{1, 0};
+    TensorShapeVector new_dims{orig_shape[1], orig_shape[0]};
+
+    auto packed_b = std::make_unique<Tensor>(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+
+    SingleAxisTranspose(perm, tensor, *packed_b, /*from*/ 0, /*to*/ 1);
+
+    matmul_kernel_->SetPrepackedB(std::move(packed_b));
+
+    is_packed = true;
+  }
 
 }  // namespace vulkan
 }  // namespace onnxruntime

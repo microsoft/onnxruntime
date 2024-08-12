@@ -1,0 +1,40 @@
+#define sfp float
+#define sfpvec2 vec2
+#define sfpvec4 vec4
+#define sfpvec8 mat2x4
+#define sfpmat4 mat4
+#define afp float
+#define afpvec2 vec2
+#define afpvec4 vec4
+#define afpvec8 mat2x4
+#define afpmat4 mat4
+#define lfp float
+#define lfpvec4 vec4
+#define sfp2lfp(v) v
+#define sfp2lfpvec4(v) v
+#define lfp2afp(v) v
+#define lfp2afpvec4(v) v
+#define buffer_ld1(buf,i) buf[i]
+#define buffer_st1(buf,i,v) {buf[i]=v;}
+#define buffer_cp1(buf,i,sbuf,si) {buf[i]=sbuf[si];}
+#define buffer_cp1to4(buf,i,sbuf,si4) {buf[i]=vec4(sbuf[si4.r],sbuf[si4.g],sbuf[si4.b],sbuf[si4.a]);}
+#define buffer_cp1to8(buf,i,sbuf,si4,sii4) {buf[i]=mat2x4(sbuf[si4.r],sbuf[si4.g],sbuf[si4.b],sbuf[si4.a],sbuf[sii4.r],sbuf[sii4.g],sbuf[sii4.b],sbuf[sii4.a]);}
+#define buffer_ld2(buf,i) buf[i]
+#define buffer_st2(buf,i,v) {buf[i]=v;}
+#define buffer_cp2(buf,i,sbuf,si) {buf[i]=sbuf[si];}
+#define buffer_ld4(buf,i) buf[i]
+#define buffer_st4(buf,i,v) {buf[i]=v;}
+#define buffer_cp4(buf,i,sbuf,si) {buf[i]=sbuf[si];}
+#define buffer_cp4to1(buf,i4,sbuf,si) {vec4 _v=sbuf[si]; buf[i4.r]=_v.r;buf[i4.g]=_v.g;buf[i4.b]=_v.b;buf[i4.a]=_v.a;}
+#define buffer_cp4to8(buf,i,sbuf,si2) {buf[i]=mat2x4(sbuf[si2.r],sbuf[si2.g]);}
+#define buffer_ld8(buf,i) buf[i]
+#define buffer_st8(buf,i,v) {buf[i]=v;}
+#define buffer_cp8(buf,i,sbuf,si) {buf[i]=sbuf[si];}
+#define buffer_cp8to1(buf,i4,ii4,sbuf,si) {mat2x4 _v=sbuf[si]; buf[i4.r]=_v[0].r;buf[i4.g]=_v[0].g;buf[i4.b]=_v[0].b;buf[i4.a]=_v[0].a; buf[ii4.r]=_v[1].r;buf[ii4.g]=_v[1].g;buf[ii4.b]=_v[1].b;buf[ii4.a]=_v[1].a;}
+#define buffer_cp8to4(buf,i2,sbuf,si) {mat2x4 _v=sbuf[si]; buf[i2.r]=_v[0];buf[i2.g]=_v[1];}
+#define sfp2afpmat4(v) v
+#define afp2sfpmat4(v) v
+#define psc(x) (x==0?p.x:x)
+#define NCNN_fp16_uniform 1
+#define NCNN_int8_uniform 1
+#define NCNN_shader_local_memory 1
