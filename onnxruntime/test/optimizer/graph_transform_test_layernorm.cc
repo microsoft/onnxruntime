@@ -322,9 +322,9 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
   std::unique_ptr<GraphTransformer> transformer_1 = std::make_unique<LayerNormFusion>();
   std::unique_ptr<GraphTransformer> transformer_2 =
       std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2);
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {18}, *logger_, std::move(transformer_1),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer_1),
                                         TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14}, *logger_, std::move(transformer_2),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
 }
 
@@ -351,9 +351,9 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_6) {
   std::unique_ptr<GraphTransformer> transformer_1 = std::make_unique<LayerNormFusion>();
   std::unique_ptr<GraphTransformer> transformer_2 =
       std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2);
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {18}, *logger_, std::move(transformer_1),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer_1),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker));
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14}, *logger_, std::move(transformer_2),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
@@ -383,9 +383,9 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_7) {
   std::unique_ptr<GraphTransformer> transformer_1 = std::make_unique<LayerNormFusion>();
   std::unique_ptr<GraphTransformer> transformer_2 =
       std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2);
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {18}, *logger_, std::move(transformer_1),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer_1),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker));
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14}, *logger_, std::move(transformer_2),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
@@ -412,9 +412,9 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_8) {
   std::unique_ptr<GraphTransformer> transformer_1 = std::make_unique<LayerNormFusion>();
   std::unique_ptr<GraphTransformer> transformer_2 =
       std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2);
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {18}, *logger_, std::move(transformer_1),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer_1),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker));
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14}, *logger_, std::move(transformer_2),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
@@ -445,9 +445,9 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_9) {
   std::unique_ptr<GraphTransformer> transformer_1 = std::make_unique<LayerNormFusion>();
   std::unique_ptr<GraphTransformer> transformer_2 =
       std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2);
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {18}, *logger_, std::move(transformer_1),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer_1),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker));
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14}, *logger_, std::move(transformer_2),
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer_2),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
