@@ -267,6 +267,39 @@ TEST_F(QnnHTPBackendTests, GatherElems_DataUint16_StaticNegIndicesInt64_Large) {
       /*opset*/ 21);
 }
 
+// Test QDQ GatherElements op on HTP backend with large number of indices.
+// TODO: Investigate inaccuracy.
+// Negative input[0] values seem to cause inaccuracies with 2M+ indices.
+// Inaccuracy detected for output 'output_0', element 131072
+// output_range=300, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 121
+// qdq@QNN_EP val: -97.999542236328125 (err: 218.99954223632812, err/output_range: 72.999847412109375%)
+// qdq@CPU_EP val: 120.99794006347656 (err: 0.0020599365234375, err/output_range: 0.0006866455078125%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 72.999160766601562%
+TEST_F(QnnHTPBackendTests, DISABLED_GatherElems_DataUint16_StaticNegIndicesInt64_Large2) {
+  // Input data with sequential values from -98.0f to 202.0f
+  const std::vector<int64_t> input_shape = {12, 1024, 512};
+  std::vector<float> input_data(12 * 1024 * 512);
+  for (size_t i = 0; i < input_data.size(); i++) {
+    int32_t int_val = -98 + (i % 301);
+    input_data[i] = static_cast<float>(int_val);
+  }
+
+  // Indices with values between -512 to 511.
+  const std::vector<int64_t> indices_shape = {12, 1024, 1024};
+  std::vector<int64_t> indices(12 * 1024 * 1024);
+  for (size_t i = 0; i < indices.size(); i++) {
+    indices[i] = -512 + (i % 1024);
+  }
+
+  RunHTPQDQGatherElemsOpTest<uint16_t, int64_t>(
+      TestInputDef<float>(input_shape, false, input_data),
+      TestInputDef<int64_t>(indices_shape, true, indices),
+      {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+      ExpectedEPNodeAssignment::All,
+      /*opset*/ 21);
+}
+
 // Test GatherElements op on HTP backend:
 // Tests that dynamic int64 indices are supported on HTP backend if the indices are a graph input.
 // QNN SDK 2.23 added support for Cast from int64 to int32.
