@@ -509,7 +509,6 @@ struct ProviderHost {
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
 
-
   // FunctionProto
   virtual std::unique_ptr<ONNX_NAMESPACE::FunctionProto> FunctionProto__construct() = 0;
   virtual void FunctionProto__operator_delete(ONNX_NAMESPACE::FunctionProto* p) = 0;

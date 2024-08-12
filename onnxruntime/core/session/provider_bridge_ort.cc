@@ -624,7 +624,6 @@ struct ProviderHostImpl : ProviderHost {
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
-
   // FunctionProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::FunctionProto> FunctionProto__construct() override { return std::make_unique<ONNX_NAMESPACE::FunctionProto>(); }
   void FunctionProto__operator_delete(ONNX_NAMESPACE::FunctionProto* p) override { delete p; }
