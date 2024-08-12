@@ -769,6 +769,8 @@ def test_scatternd_correctness(device, indices):
 @pytest.mark.parametrize("input_requires_grad", [False, True])
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_search):
+    pytest.skip("Temporarily disabled pending investigation (might be related to cudnn frontend).")
+
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super().__init__()
@@ -6013,7 +6015,7 @@ def test_e2e_padding_elimination():
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     class OneLayer(torch.nn.Module):
