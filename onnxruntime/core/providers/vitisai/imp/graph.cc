@@ -160,7 +160,7 @@ Node& graph_fuse(Graph& graph, const std::string& name,
   }
   return fused_node;
 }
-Model* model_clone(const Model& original_model) {
+Model* model_clone(const Model& original_model, int64_t external_data_threshold) {
   // create an empty mode
   auto& original_graph = const_cast<Model&>(original_model).MainGraph();
   auto& logger = logging::LoggingManager::DefaultLogger();
@@ -210,7 +210,7 @@ Model* model_clone(const Model& original_model) {
       cloned_tensor->add_dims(dim);
       size = size * dim;
     }
-    constexpr int64_t THRESHOLD = 512;
+    constexpr int64_t THRESHOLD = external_data_threshold;
     if (size >= THRESHOLD) {
       cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
       auto external_data = cloned_tensor->mutable_external_data();

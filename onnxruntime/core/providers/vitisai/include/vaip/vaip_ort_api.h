@@ -28,10 +28,10 @@ struct OrtApiForVaip {
   onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
-  Model* (*model_load)(const std::string& file);  // [0]
-  void (*model_delete)(Model* model);             // [1]
-  Model* (*model_clone)(const Model& model);      // [2]
-  Graph& (*model_main_graph)(Model& model);       // [3]
+  Model* (*model_load)(const std::string& file);                               // [0]
+  void (*model_delete)(Model* model);                                          // [1]
+  Model* (*model_clone)(const Model& model, int64_t external_data_threshold);  // [2]
+  Graph& (*model_main_graph)(Model& model);                                    // [3]
   void (*model_set_meta_data)(Model& model, const std::string& key,
                               const std::string& value);  // [4]
   DllSafe<std::string> (*model_get_meta_data)(const Model& model,
