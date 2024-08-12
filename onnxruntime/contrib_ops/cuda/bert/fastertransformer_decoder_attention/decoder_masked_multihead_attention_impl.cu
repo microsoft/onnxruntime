@@ -154,6 +154,18 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   // The offset in the Q and K buffer also accounts for the batch.
   int qk_offset = qkv_base_offset + tidx * QK_VEC_SIZE;
 
+  // The offset of attention bias for current head.
+  int64_t attn_bias_offset = 0;
+  if (params.attention_bias != nullptr && params.attention_bias_dims.size() == 4) {
+    // Support broadcasting the first and second dimensions of attention bias.
+    if (params.attention_bias_dims[0] > 1) {
+      attn_bias_offset = static_cast<int64_t>(bbi) * params.num_heads * params.sequence_length * params.total_sequence_length;
+    }
+    if (params.attention_bias_dims[1] > 1) {
+      attn_bias_offset += static_cast<int64_t>(hi) * params.sequence_length * params.total_sequence_length;
+    }
+  }
+
   // Trigger the loads from the Q and K buffers.
   Qk_vec_k q;
   zero(q);
@@ -286,9 +298,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (tidx == 0) {
       // Normalize qk.
       qk *= inv_sqrt_dh;
-      if (params.relative_attention_bias != nullptr) {
-        qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + tlength]);
+      if (params.attention_bias != nullptr) {
+        qk = add_vec(qk, reinterpret_cast<T*>(params.attention_bias)[attn_bias_offset + tlength]);
       }
       qk_max = qk;
       qk_smem[tlength] = qk;
@@ -386,9 +397,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
       // Store the product to shared memory. There's one qk value per timestep. Update the max.
       if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-        if (params.relative_attention_bias != nullptr) {
-          qk = add_vec(qk,
-                       reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+        if (params.attention_bias != nullptr) {
+          qk = add_vec(qk, reinterpret_cast<T*>(params.attention_bias)[attn_bias_offset + ti]);
         }
         qk_max = fmaxf(qk_max, qk);
         qk_smem[ti] = qk;
@@ -479,9 +489,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 #pragma unroll
       for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
         if (time_bounds_cond[k_unroll] && (tidx % THREADS_PER_KEY == 0)) {
-          if (params.relative_attention_bias != nullptr) {
+          if (params.attention_bias != nullptr) {
             qk[k_unroll] = add_vec(qk[k_unroll],
-                                   reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + time_step[k_unroll]]);
+                                   reinterpret_cast<T*>(params.attention_bias)[attn_bias_offset + time_step[k_unroll]]);
           }
           qk_max = fmaxf(qk_max, qk[k_unroll]);
           qk_smem[time_step[k_unroll]] = qk[k_unroll];

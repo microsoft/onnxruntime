@@ -249,7 +249,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       fused_cross_attention_kernel == nullptr &&
       !disable_memory_efficient_attention_ &&
       is_long_sequence &&
-      // Check whether the relative position bias alignment is good for memory efficient attention.
+      // Check whether the attention bias alignment is good for memory efficient attention.
       (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
