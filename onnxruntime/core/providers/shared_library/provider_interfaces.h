@@ -567,6 +567,7 @@ struct ProviderHost {
 
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
   virtual bool HasSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
+  virtual Status RegisterKernelCreateInfo(KernelRegistry* p, const std::string& domain, const OrtCustomOp* op) = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;

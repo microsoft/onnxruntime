@@ -173,47 +173,11 @@ std::optional<std::vector<Node*>> create_ep_context_nodes(
   return std::nullopt;
 }
 
-struct MyCustomOpKernel : OpKernel {
-  MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    op_kernel_ =
-        op_.CreateKernel(&op_, Ort::Global<void>::api_, reinterpret_cast<const OrtKernelInfo*>(&info));
-  }
-
-  ~MyCustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
-
-  Status Compute(OpKernelContext* ctx) const override {
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MyCustomOpKernel);
-
-  const OrtCustomOp& op_;
-  void* op_kernel_;
-};
-
 void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
   s_kernel_registry_vitisaiep = KernelRegistry::Create();
   for (const auto& domain : domains) {
     for (const auto* op : domain->custom_ops_) {
-      auto def_builder = KernelDefBuilder::Create();
-      def_builder->SetName(op->GetName(op));
-      def_builder->SetDomain(domain->domain_.c_str());
-      def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
-      if (op->version > 12) {
-        auto input_count = op->GetInputTypeCount(op);
-        for (auto i = 0u; i < input_count; i++) {
-          def_builder->InputMemoryType(op->GetInputMemoryType(op, i), i);
-        }
-      }
-      def_builder->Provider(onnxruntime::kVitisAIExecutionProvider);
-      KernelCreateFn kernel_create_fn =
-          [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        out = std::make_unique<MyCustomOpKernel>(info, *op);
-        return Status::OK();
-      };
-      std::ignore = s_kernel_registry_vitisaiep->Register(KernelCreateInfo(def_builder->Build(), kernel_create_fn));
+      std::ignore = Provider_GetHost()->RegisterKernelCreateInfo(s_kernel_registry_vitisaiep.get(), domain->domain_, op);
     }
   }
 }

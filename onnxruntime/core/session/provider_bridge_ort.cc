@@ -138,6 +138,7 @@ ProviderHostCPU& GetProviderHostCPU();
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
+KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
 
@@ -743,6 +744,9 @@ struct ProviderHostImpl : ProviderHost {
   }
   bool HasSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {
     return ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(name, maxInclusiveVersion, domain) != nullptr;
+  }
+  Status RegisterKernelCreateInfo(KernelRegistry* p, const std::string& domain, const OrtCustomOp* op) override {
+    return p->Register(CreateKernelCreateInfo(domain, op));
   }
 
   // ConfigOptions (wrapped)
