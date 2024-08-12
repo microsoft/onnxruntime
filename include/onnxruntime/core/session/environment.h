@@ -93,7 +93,7 @@ class Environment {
   }
 
   void SetEpSharedContexts(std::vector<EpSharedContextsPtr> ep_shared_contexts) {
-    for (int i = 0; i < ep_shared_contexts.size(); ++i) {
+    for (size_t i = 0; i < ep_shared_contexts.size(); ++i) {
       const std::string& key = ep_shared_contexts[i]->Name();
       auto it = find_if(ep_shared_contexts_.begin(), ep_shared_contexts_.end(),
                         [&key](const EpSharedContextsPtr& obj) { return obj->Name() == key; });
