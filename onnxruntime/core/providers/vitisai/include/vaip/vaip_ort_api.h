@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (4u)
+#define VAIP_ORT_API_MAJOR (5u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -228,6 +228,7 @@ struct OrtApiForVaip {
   Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);  //[91]
   void (*graph_set_inputs)(Graph& graph,
                            gsl::span<const NodeArg* const> inputs);  // [92]
+  int(*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
 };
 
 #ifndef USE_VITISAI
