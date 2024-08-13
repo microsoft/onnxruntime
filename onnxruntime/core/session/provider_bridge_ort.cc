@@ -30,6 +30,7 @@
 #include "core/session/ort_apis.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/session/allocator_adapters.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/graph/graph_proto_serializer.h"
@@ -236,6 +237,7 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef USE_CUDA
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
+  std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) override { return std::make_unique<IAllocatorImplWrappingOrtAllocator>(alloc); }
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }

@@ -1845,14 +1845,14 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
   AllocatorCreationInfo default_memory_info(
       [this](OrtDevice::DeviceId device_id) {
         ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<IAllocatorImplWrappingOrtAllocator>(cuda_allocator_);
+        return CreateCUDAOrtAllocator(cuda_allocator_.get());
       },
       narrow<OrtDevice::DeviceId>(device_id_));
 
   AllocatorCreationInfo pinned_allocator_info(
       [this](OrtDevice::DeviceId device_id) {
         ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<IAllocatorImplWrappingOrtAllocator>(cuda_pinned_allocator_);
+        return CreateCUDAOrtAllocator(cuda_pinned_allocator_.get());
       },
       0);
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
