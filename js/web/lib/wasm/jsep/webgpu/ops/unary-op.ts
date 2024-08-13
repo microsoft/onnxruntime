@@ -161,7 +161,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
 };
 
 export const clip = (context: ComputeContext, clipAttributes: ClipAttributes): void => {
-  const attributes = context.inputs.length === 1 ? clipAttributes : generateClipAttributesFromInputs(context.inputs);
+  const attributes = clipAttributes ? clipAttributes : generateClipAttributesFromInputs(context.inputs);
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
   context.compute(
       createElementwiseProgramInfo(
