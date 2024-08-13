@@ -679,9 +679,9 @@ Q4Int8GemmR1xC1BlkLen16Avx512(
                 const __m512i av_01_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + 64));
 
                 if constexpr (vnni) {
-                    accumulate_blklen16_r1c1blk8_avx512(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
-                } else {
                     accumulate_blklen16_r1c1blk8_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
+                } else {
+                    accumulate_blklen16_r1c1blk8_avx512(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
                 }
 
                 QuantAPtr += BlkLen16 * PerAccuBlk8;
