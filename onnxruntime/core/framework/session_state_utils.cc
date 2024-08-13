@@ -196,7 +196,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 }
 
-const common::Status AllocateTensor(
+common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,
     std::unique_ptr<onnxruntime::Tensor>& p_tensor,
     const onnxruntime::DataTypeImpl* const& type,
@@ -215,7 +215,7 @@ const common::Status AllocateTensor(
   return common::Status::OK();
 }
 
-const common::Status AllocateTensorOnDeviceOrMemory(
+common::Status AllocateTensorOnDeviceOrMemory(
     bool use_device_allocator_for_initializers,
     onnxruntime::TensorShape& tensor_shape,
     const onnxruntime::DataTypeImpl* const& type,
@@ -234,7 +234,7 @@ const common::Status AllocateTensorOnDeviceOrMemory(
   return common::Status::OK();
 }
 
-const common::Status CopyTensorFromCPUToDevice(
+common::Status CopyTensorFromCPUToDevice(
     const onnxruntime::DataTransferManager& data_transfer_mgr,
     std::unique_ptr<onnxruntime::Tensor>& p_deserialize_tensor,
     std::unique_ptr<onnxruntime::Tensor>& p_tensor,
