@@ -373,7 +373,7 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   // Only per-tensor or per-output channel (axis == 1) quantization is supported
   const auto& dq_attrs = dq_nodes[1]->GetAttributes();
   if (const auto a_iter = dq_attrs.find("axis");
-      a_iter == dq_attrs.end() || a_iter->second.i() != 1) {
+      a_iter != dq_attrs.end() && a_iter->second.i() != 1) {
     return false;
   }
 
