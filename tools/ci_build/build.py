@@ -311,6 +311,13 @@ def parse_arguments():
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.",
     )
+    parser.add_argument(
+        "--cmake_extra_options",
+        nargs="+",
+        action="append",
+        help="Raw compiler options to add to the script-built CMAKE_C/CXX_FLAGS.",
+    )
+    parser.add_argument("--use_seh", action="store_true", help="Build with structured exception handling.")
     parser.add_argument("--target", help="Build a specific target, e.g. winml_dll")
     # This flag is needed when :
     # 1. The OS is 64 bits Windows
@@ -1632,6 +1639,11 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if args.use_cuda:
                     cudaflags = cflags.copy()
+        # copy the requested flags to the end of the list. This gives them the best chance of overriding existing flags
+        if (args.cmake_extra_options!=None):
+            for option in args.cmake_extra_options:
+                cflags += option
+                cxxflags += option
         if cxxflags is None and cflags is not None and len(cflags) != 0:
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
