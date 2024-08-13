@@ -317,7 +317,6 @@ def parse_arguments():
         action="append",
         help="Raw compiler options to add to the script-built CMAKE_C/CXX_FLAGS.",
     )
-    parser.add_argument("--use_seh", action="store_true", help="Build with structured exception handling.")
     parser.add_argument("--target", help="Build a specific target, e.g. winml_dll")
     # This flag is needed when :
     # 1. The OS is 64 bits Windows
