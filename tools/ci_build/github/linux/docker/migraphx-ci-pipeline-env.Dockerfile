@@ -83,4 +83,4 @@ RUN apt update && apt install -y migraphx
 RUN pip install numpy packaging ml_dtypes==0.3.0
 
 RUN apt install -y git
-RUN pip install pytest
+RUN pip install pytest==7.4.4 pytest-xdist pytest-rerunfailures
