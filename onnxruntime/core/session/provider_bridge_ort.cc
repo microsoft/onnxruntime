@@ -237,7 +237,6 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef USE_CUDA
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
-  std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) override { return std::make_unique<IAllocatorImplWrappingOrtAllocator>(alloc); }
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
@@ -248,6 +247,10 @@ struct ProviderHostImpl : ProviderHost {
 
   Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg, file, line); }
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg, file, line); }
+#endif
+
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+  std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) override { return std::make_unique<IAllocatorImplWrappingOrtAllocator>(alloc); }
 #endif
 
 #ifdef USE_MIGRAPHX

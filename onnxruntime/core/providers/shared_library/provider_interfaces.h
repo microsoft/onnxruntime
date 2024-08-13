@@ -168,7 +168,6 @@ struct ProviderHost {
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -178,6 +177,10 @@ struct ProviderHost {
 
   virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
   virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
+#endif
+
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+  virtual std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) = 0;
 #endif
 
 #ifdef USE_MIGRAPHX

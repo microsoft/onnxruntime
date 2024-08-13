@@ -347,12 +347,14 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
   return g_host->CreateCUDAPinnedAllocator(name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) {
-  return g_host->CreateCUDAOrtAllocator(alloc);
-}
-
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
   return g_host->CreateGPUDataTransfer();
+}
+#endif
+
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) {
+  return g_host->CreateCUDAOrtAllocator(alloc);
 }
 #endif
 
