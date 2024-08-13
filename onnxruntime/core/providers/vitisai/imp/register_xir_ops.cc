@@ -12,7 +12,7 @@ namespace vaip {
 void register_xir_ops(const std::vector<OrtCustomOpDomain*>& domains) {
   for (auto domain : domains) {
     for (auto op : domain->custom_ops_) {
-      if (!Provider_GetHost()->HasSchema(op->GetName(op), ORT_API_VERSION, domain->domain_)) {
+      if (Provider_GetHost()->GetSchema(op->GetName(op), op->GetStartVersion(op), domain->domain_) == nullptr) {
         Provider_GetHost()->RegisterSchema(domain->domain_, op);
       }
     }

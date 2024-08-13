@@ -27,8 +27,6 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
     // const ProviderOptions& info, const SessionOptions* p_sess_opts)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
-  CreateKernelRegistry();
-
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";
   it = info_.find("ep_context_embed_mode");
@@ -39,14 +37,6 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
   LOGS_DEFAULT(VERBOSE) << "EP Context cache enabled: " << ep_ctx_enabled_;
   LOGS_DEFAULT(VERBOSE) << "EP context cache embed mode: " << ep_ctx_embed_mode_;
   LOGS_DEFAULT(VERBOSE) << "User specified EP context cache path: " << ep_ctx_model_path_cfg_;
-}
-
-void VitisAIExecutionProvider::CreateKernelRegistry() {
-  for (const auto& domain : get_domains_vitisaiep()) {
-    for (const auto* op : domain->custom_ops_) {
-      vitisai_optypes_.insert(domain->domain_ + ":" + op->GetName(op));
-    }
-  }
 }
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
@@ -129,7 +119,7 @@ void VitisAIExecutionProvider::FulfillEPContextEnablement(
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
-    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
+    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const {
   bool is_ep_ctx_model = GraphHasEPContextNode(graph_viewer.GetGraph());
   // TODO: platform dependency (Linux vs Windows).
   model_path_str_ = ToPathString(GetTopLevelModelPath(graph_viewer).string());
@@ -175,7 +165,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     return {};
   }
   execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
-  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), vitisai_optypes_);
+  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), kernel_lookup);
   size_t index = 0u;
   for (auto& ep : **execution_providers_) {
     result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph_viewer, ep.get(), index));

@@ -840,17 +840,9 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     }
   }
 
-  auto schema = ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(op->GetName(op), op->GetStartVersion(op), domain);
   for (size_t i = 0; i < input_count; i++) {
     const auto input_type = op->GetInputType(op, i);
-    auto input_name = "Input" + std::to_string(i);
-    if (schema != nullptr) {
-      if ( schema->typeConstraintMap().count(schema->inputs()[i].GetTypeStr())){
-        input_name = schema->inputs()[i].GetTypeStr();
-      }else{
-        input_name = schema->inputs()[i].GetName();
-      }
-    }
+    const auto input_name = "Input" + std::to_string(i);
     if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(input_name, SUPPORTED_TENSOR_TYPES);
     } else {
@@ -861,14 +853,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 
   for (size_t i = 0; i < output_count; i++) {
     const auto output_type = op->GetOutputType(op, i);
-    auto output_name = "Output" + std::to_string(i);
-    if (schema != nullptr) {
-      if ( schema->typeConstraintMap().count(schema->outputs()[i].GetTypeStr())){
-        output_name = schema->outputs()[i].GetTypeStr();
-      }else{
-        output_name = schema->outputs()[i].GetName();
-      }
-    }
+    const auto output_name = "Output" + std::to_string(i);
     if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
       def_builder.TypeConstraint(output_name, SUPPORTED_TENSOR_TYPES);
     } else {
