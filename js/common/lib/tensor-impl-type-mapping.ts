@@ -19,6 +19,8 @@ export const NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP = new Map<string, SupportedTy
   ['bool', Uint8Array],
   ['float64', Float64Array],
   ['uint32', Uint32Array],
+  ['int4', Uint8Array],
+  ['uint4', Uint8Array],
 ]);
 
 // a runtime map that maps type string to TypedArray constructor. Should match Tensor.DataTypeMap.

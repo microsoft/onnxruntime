@@ -11,7 +11,7 @@ import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
-import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
+import {calculateTensorSizeInBytes, dataLocationStringToEnum, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 import {loadFile} from './wasm-utils-load-file';
@@ -432,8 +432,7 @@ export const prepareInputOutputTensor =
 
       if (location === 'gpu-buffer') {
         const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
-        const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
-        dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+        dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
         const registerBuffer = wasm.jsepRegisterBuffer;
         if (!registerBuffer) {
@@ -659,8 +658,8 @@ export const run = async(
               throw new Error('preferredLocation "gpu-buffer" is not supported without using WebGPU.');
             }
             const gpuBuffer = getBuffer(dataOffset);
-            const elementSize = getTensorElementSize(dataType);
-            if (elementSize === undefined || !isGpuBufferSupportedType(type)) {
+            const bufferSize = calculateTensorSizeInBytes(dataType, size);
+            if (bufferSize === undefined || !isGpuBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
 
@@ -670,7 +669,7 @@ export const run = async(
             output.push([
               type, dims, {
                 gpuBuffer,
-                download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
+                download: wasm.jsepCreateDownloader!(gpuBuffer, bufferSize, type),
                 dispose: () => {
                   wasm._OrtReleaseTensor(tensor);
                 }

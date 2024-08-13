@@ -16,7 +16,7 @@ import {onnx} from '../lib/onnxjs/ort-schema/protobuf/onnx';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 import {createView} from '../lib/wasm/jsep/tensor-view';
-import {getTensorElementSize, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
+import {calculateTensorSizeInBytes, isGpuBufferSupportedType, tensorDataTypeStringToEnum} from '../lib/wasm/wasm-common';
 
 import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
@@ -424,6 +424,8 @@ export class TensorResultValidator {
       case 'uint32':
       case 'int64':
       case 'bool':
+      case 'int4':
+      case 'uint4':
         return TensorResultValidator.integerEqual(
             actual.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array,
             expected.data as number[] | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array);
@@ -539,8 +541,7 @@ function createGpuTensorForOutput(type: ort.Tensor.Type, dims: readonly number[]
     throw new Error(`createGpuTensorForOutput can not work with ${type} tensor`);
   }
 
-  const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(type))!;
-  const size = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+  const size = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(type), dims)!;
 
   const device = ort.env.webgpu.device as GPUDevice;
   const gpuBuffer = device.createBuffer({
@@ -936,18 +937,33 @@ async function runProtoOpTestcase(
     validator: TensorResultValidator): Promise<void> {
   const feeds: Record<string, ort.Tensor> = {};
   const fetches: Record<string, Pick<ort.Tensor, 'dims'|'type'>> = {};
+
+  const createTensor = (type: ort.Tensor.Type, data: number[], dims: readonly number[]): ort.Tensor => {
+    let buffer: number[]|BigUint64Array|BigInt64Array|Uint16Array|Uint8Array = data;
+    if (type === 'uint64') {
+      buffer = BigUint64Array.from(data.map(BigInt));
+    } else if (type === 'int64') {
+      buffer = BigInt64Array.from(data.map(BigInt));
+    } else if (type === 'float16') {
+      const dataArr = Float16ArrayPolyfill.from(data);
+      buffer = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
+    } else if (type === 'uint4' || type === 'int4') {
+      buffer = new Uint8Array(calculateTensorSizeInBytes(tensorDataTypeStringToEnum(type), dims)!);
+      // encode (u)int4 data into Uint8Array
+      for (let j = 0; j < data.length; j++) {
+        /* eslint-disable no-bitwise */
+        const byteIndex = j >> 1;
+        const bitOffset = (j & 1) << 2;
+        buffer[byteIndex] |= data[j] << bitOffset;
+        /* eslint-enable no-bitwise */
+      }
+    }
+    return new ort.Tensor(type, buffer, dims);
+  };
+
   testCase.inputs.forEach((input, i) => {
     if (input.data) {
-      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = input.data;
-      if (input.type === 'uint64') {
-        data = BigUint64Array.from(input.data.map(BigInt));
-      } else if (input.type === 'int64') {
-        data = BigInt64Array.from(input.data.map(BigInt));
-      } else if (input.type === 'float16') {
-        const dataArr = Float16ArrayPolyfill.from(input.data);
-        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
-      }
-      feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
+      feeds[`input_${i}`] = createTensor(input.type, input.data, input.dims);
     }
   });
 
@@ -955,16 +971,7 @@ async function runProtoOpTestcase(
   const expectedOutputNames: string[] = [];
   testCase.outputs.forEach((output, i) => {
     if (output.data) {
-      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = output.data;
-      if (output.type === 'uint64') {
-        data = BigUint64Array.from(output.data.map(BigInt));
-      } else if (output.type === 'int64') {
-        data = BigInt64Array.from(output.data.map(BigInt));
-      } else if (output.type === 'float16') {
-        const dataArr = Float16ArrayPolyfill.from(output.data);
-        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
-      }
-      outputs.push(new ort.Tensor(output.type, data, output.dims));
+      outputs.push(createTensor(output.type, output.data, output.dims));
       expectedOutputNames.push(`output_${i}`);
       fetches[`output_${i}`] = {dims: output.dims, type: output.type};
     }

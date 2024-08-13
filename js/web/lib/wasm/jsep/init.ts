@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import type {OrtWasmModule} from '../wasm-types';
-import {DataType, getTensorElementSize} from '../wasm-common';
+import {DataType, calculateTensorSizeInBytes} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
@@ -112,11 +112,10 @@ class ComputeContextImpl implements ComputeContext {
     const createKernelOutput = (index: number, dataType: number, dims: readonly number[]): TensorView =>
         new TensorViewImpl(this.module, dataType, this.output(index, dims), dims);
     const createTemporaryOutput = (dataType: number, dims: readonly number[]): TensorView => {
-      const elementSize = getTensorElementSize(dataType);
-      if (!elementSize) {
+      const bufferSize = calculateTensorSizeInBytes(dataType, dims);
+      if (!bufferSize) {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
-      const bufferSize = elementSize * ShapeUtil.size(dims);
       const gpuDataId = bufferSize > 0 ? this.backend.gpuDataManager.create(bufferSize).id : 0;
       return new TensorViewImpl(this.module, dataType, gpuDataId, dims);
     };
