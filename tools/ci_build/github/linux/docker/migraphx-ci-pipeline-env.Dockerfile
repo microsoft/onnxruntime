@@ -16,15 +16,15 @@ RUN apt-get update && \
     curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
-    apt-get update && apt-get install -y --no-install-recommends  \
-    sudo   \
-    libelf1   \
-    kmod   \
-    file   \
-    python3   \
-    python3-pip   \
-    rocm-dev   \
-    rocm-libs   \
+    apt-get update && apt-get install -y --no-install-recommends \
+    sudo \
+    libelf1 \
+    kmod \
+    file \
+    python3 \
+    python3-pip \
+    rocm-dev \
+    rocm-libs \
     build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -83,4 +83,4 @@ RUN apt update && apt install -y migraphx
 RUN pip install numpy packaging ml_dtypes==0.3.0
 
 RUN apt install -y git
-RUN pip install pytest==7.4.4 pytest-xdist pytest-rerunfailures
+RUN pip install pytest==7.4.4 pytest-xdist pytest-rerunfailures scipy==1.10.0 numpy=1.24.1
