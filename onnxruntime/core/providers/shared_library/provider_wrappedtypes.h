@@ -452,7 +452,7 @@ struct FunctionProto final {
   void operator=(const FunctionProto&) = delete;
 };
 
-struct OpSchema final{
+struct OpSchema final {
   const TypeConstraintMap& typeConstraintMap() const { return g_host->OpSchema__typeConstraintMap(this); }
   const std::string& inputs__GetName(const int i) const { return g_host->OpSchema__inputs__GetName(this, i); };
   const std::string& inputs__GetTypeStr(const int i) const { return g_host->OpSchema__inputs__GetTypeStr(this, i); };

@@ -214,7 +214,7 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
       for (size_t i = 0; i < input_count; i++) {
         const auto input_type = op->GetInputType(op, i);
         auto input_name = schema->inputs__GetName(i);
-        if ( schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))){
+        if (schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))) {
           input_name = schema->inputs__GetTypeStr(i);
         }
         if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
@@ -227,14 +227,14 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
         const auto output_type = op->GetOutputType(op, i);
         auto output_name = schema->outputs__GetName(i);
         if (schema != nullptr) {
-          if ( schema->typeConstraintMap().count(schema->outputs__GetTypeStr(i))){
+          if (schema->typeConstraintMap().count(schema->outputs__GetTypeStr(i))) {
             output_name = schema->outputs__GetTypeStr(i);
           }
         }
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
           def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
         } else {
-          def_builder->TypeConstraint(output_name.c_str(),DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
+          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
         }
       }
       KernelCreateFn kernel_create_fn =
