@@ -46,9 +46,9 @@ struct CUDAAllocator : OrtAllocator {
 struct CUDAPinnedAllocator : OrtAllocator {
   CUDAPinnedAllocator(const char* name = onnxruntime::CUDA_PINNED_ALLOCATOR) {
     OrtAllocator::version = ORT_API_VERSION;
-    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CUDAAllocator*>(this_)->Alloc(size); };
-    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CUDAAllocator*>(this_)->Free(p); };
-    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const CUDAAllocator*>(this_)->Info(); };
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CUDAPinnedAllocator*>(this_)->Alloc(size); };
+    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CUDAPinnedAllocator*>(this_)->Free(p); };
+    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const CUDAPinnedAllocator*>(this_)->Info(); };
     mem_info_ = new OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                                   OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device always with id 0*/),
                                   0, OrtMemTypeCPUOutput);
@@ -60,8 +60,8 @@ struct CUDAPinnedAllocator : OrtAllocator {
   const OrtMemoryInfo* Info() const;
 
  private:
-  CUDAPinnedAllocator(const CUDAAllocator&) = delete;
-  CUDAPinnedAllocator& operator=(const CUDAAllocator&) = delete;
+  CUDAPinnedAllocator(const CUDAPinnedAllocator&) = delete;
+  CUDAPinnedAllocator& operator=(const CUDAPinnedAllocator&) = delete;
 
   OrtMemoryInfo* mem_info_;
 };
