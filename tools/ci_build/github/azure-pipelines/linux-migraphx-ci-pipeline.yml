@@ -219,7 +219,7 @@ jobs:
           --device=/dev/dri/renderD$DRIVER_RENDER \
           --group-add $(video) \
           --group-add $(render) \
-          --user onnxruntimedev \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           -e OPENBLAS_NUM_THREADS=1 \

@@ -95,7 +95,7 @@ TEST_P(ModelTest, Run) {
 
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
-    if (provider_name == "cuda" || provider_name == "openvino" || provider_name =="rocm") {
+    if (provider_name == "cuda" || provider_name == "openvino" || provider_name == "rocm") {
       per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
@@ -679,12 +679,10 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
     bool provider_cuda_or_rocm = provider_name == provider_name_cuda;
-#ifdef USE_ROCM
     if (provider_name == provider_name_rocm) {
       provider_cuda_or_rocm = true;
       all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
     }
-#endif
     if (provider_cuda_or_rocm) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     } else if (provider_name == provider_name_dml) {
