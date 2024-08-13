@@ -97,7 +97,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   common::Status UploadNcnnConstantInitializers(NcnnModel& model);
   common::Status UploadKomputeConstantInitializers(const GraphViewer& graph_viewer,
-                                                   KomputeModel& model, size_t num_initializers);
+                                                   KomputeModel& model);
 
   ncnn::Option ncnn_options_;
 

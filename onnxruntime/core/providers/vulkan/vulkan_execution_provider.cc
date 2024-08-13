@@ -407,10 +407,7 @@ common::Status VulkanExecutionProvider::UploadNcnnConstantInitializers(NcnnModel
 }
 
 common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(const GraphViewer& graph_viewer,
-                                                                          KomputeModel& model,
-                                                                          size_t num_initializers) {
-  std::unordered_set<const NodeArg*> initializers_to_upload(num_initializers);
-
+                                                                          KomputeModel& model) {
   // assembly all the kp::Tensor instances to upload
   for (size_t i = 0, end = model.layers.size(); i < end; i++) {
     model.layers[i]->KomputeProcessConstantInitializers(graph_viewer, kompute_manager_, model.constant_initializers);
@@ -418,8 +415,8 @@ common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(const 
 
   // create a kp::Tensor for each initializer
   std::vector<std::shared_ptr<kp::Tensor>> tensors;
-  tensors.reserve(initializers_to_upload.size());
-  std::for_each(initializers_to_upload.begin(), initializers_to_upload.end(),
+  tensors.reserve(model.constant_initializers.size());
+  std::for_each(model.constant_initializers.begin(), model.constant_initializers.end(),
                 [&tensors](const auto& pair) {
                   tensors.push_back(pair.second);
                 });
@@ -489,7 +486,7 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
       layers.push_back(std::move(layer));
     }
 
-    ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(graph, *model, num_initializers));
+    ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(graph, *model));
 
     // ModelMetadefIdGenerator is broken if this happens
     ORT_ENFORCE(kompute_models_.find(fused_node.Name()) == kompute_models_.end(), "Duplicate fused node names");
@@ -511,14 +508,60 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
       auto model_iter = kompute_models_.find(ctx.GetNodeName());
       ORT_ENFORCE(model_iter != kompute_models_.end(), "Model for compiled node was not found!");
 
+      std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>> values;
+      // if the kernels track value_indexes we can do lookup into `values` using that instead of hashing ptr.
+      // not sure it would make much difference.
+      // would need to populate constant_initializers differently though
+      values = model_iter->second->constant_initializers;  // copy
+
       // copy input to device. might be able to just create a kp::Tensor as that will be to staging memory.
       // if necessary use OpTensorSyncDevice
+      int input_idx = 0;
+      std::vector<std::shared_ptr<kp::Tensor>> input_tensors;
+      input_tensors.reserve(fused_node.InputDefs().size());
 
-      // run layers
+      for (const auto* def : fused_node.InputDefs()) {
+        assert(def->Exists());  // fused node shouldn't have missing optional inputs
+        const Tensor& input_tensor = *ctx.Input<Tensor>(input_idx);
+        // create kp::Tensor from input_tensor
+        input_tensors.push_back(
+            kompute_manager_.tensor(const_cast<void*>(input_tensor.DataRaw()),
+                                    narrow<uint32_t>(input_tensor.Shape().Size()),
+                                    sizeof(float), kp::Tensor::TensorDataTypes::eFloat));
+      }
 
-      // copy output tensors to host.
+      int output_idx = 0;
+      std::vector<std::shared_ptr<kp::Tensor>> output_tensors;
+      std::vector<Tensor*> ort_output_tensors;
+      output_tensors.reserve(fused_node.OutputDefs().size());
+      ort_output_tensors.reserve(fused_node.OutputDefs().size());
 
-      // ??? how do we get the output tensors? need NodeArg to kp::Tensor map
+      for (const auto* def : fused_node.OutputDefs()) {
+        auto shape = utils::GetTensorShapeFromTensorShapeProto(*def->Shape());
+        ORT_ENFORCE(shape.Size() > 0, "Output shape must be known and not empty.");
+
+        Tensor& output_tensor = *ctx.Output(output_idx, shape);
+        ort_output_tensors.push_back(&output_tensor);
+
+        // create kp::Tensor from output_tensor
+        output_tensors.push_back(
+            kompute_manager_.tensor(output_tensor.MutableDataRaw(), narrow<uint32_t>(shape.Size()), sizeof(float),
+                                    kp::Tensor::TensorDataTypes::eFloat));
+      }
+
+      auto seq = kompute_manager_.sequence();
+      // copy inputs to device
+      seq->record<kp::OpTensorSyncDevice>(input_tensors);
+
+      // for each kernel, call KomputeExecute
+      for (const auto& layer : model_iter->second->layers) {
+        ORT_RETURN_IF_ERROR(layer->KomputeExecute(kompute_manager_, *seq, values));
+      }
+
+      seq->record<kp::OpTensorSyncLocal>(output_tensors);
+      seq->eval();
+
+      // do we need to copy from the values in output_tensors to the ORT output tensors?
       return Status::OK();
     };
 
@@ -740,12 +783,12 @@ std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
   if (use_kompute_) {
     allocators.push_back(std::make_unique<vulkan::VulkanBufferAllocator>(
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, /*device_id*/ 0),
-        ncnn_options_.blob_vkallocator));
+        vma_allocator_));
 
     // using 'CUDA_PINNED' for staging memory
     allocators.push_back(std::make_unique<vulkan::VulkanBufferAllocator>(
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, /*device_id*/ 0),
-        ncnn_options_.staging_vkallocator));
+        vma_allocator_));
   };
 
   return allocators;

@@ -58,7 +58,7 @@ class BinaryElementwiseKernel : VulkanKernel {
   static std::unique_ptr<VulkanKernel> Create(ncnn::BinaryOp::OperationType op_type,
                                               const VulkanExecutionProvider& vulkan_ep,
                                               bool use_kompute,
-                                              const GraphViewer&,
+                                              const GraphViewer*,
                                               const onnxruntime::Node& node) {
     return std::unique_ptr<VulkanKernel>(new BinaryElementwiseKernel(op_type, vulkan_ep, use_kompute, node));
   }
