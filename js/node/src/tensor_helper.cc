@@ -27,7 +27,10 @@ static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64 == 13, "definition not consis
 static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64 == 14, "definition not consistent with OnnxRuntime");
 static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128 == 15, "definition not consistent with OnnxRuntime");
 static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16 == 16, "definition not consistent with OnnxRuntime");
-constexpr size_t ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT = 17;
+static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4X2 == 17, "definition not consistent with OnnxRuntime");
+static_assert(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4X2 == 18, "definition not consistent with OnnxRuntime");
+
+constexpr size_t ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT = 19;
 
 // size of element in bytes for each data type. 0 indicates not supported.
 constexpr size_t DATA_TYPE_ELEMENT_SIZE_MAP[] = {
@@ -47,7 +50,9 @@ constexpr size_t DATA_TYPE_ELEMENT_SIZE_MAP[] = {
     8, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64
     0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64     not supported
     0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128    not supported
-    0  // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
+    0, // ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16      not supported
+    1, // ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4X2
+    1, // ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4X2
 };
 static_assert(sizeof(DATA_TYPE_ELEMENT_SIZE_MAP) == sizeof(size_t) * ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT,
               "definition not matching");

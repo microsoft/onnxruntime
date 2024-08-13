@@ -243,7 +243,10 @@ const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, s
         throw new Error('bool must be vec4');
       }
       return ['u32', 'vec4<bool>'];
-
+    case DataType.int4x2:
+      return 'i32';
+    case DataType.uint4x2:
+      return 'u32';
     default:
       throw new Error(`Unknown data type: ${type}`);
   }

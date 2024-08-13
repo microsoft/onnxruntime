@@ -81,6 +81,8 @@ export declare namespace Tensor {
     // complex64: never;
     // complex128: never;
     // bfloat16: never;
+    uint4x2: Uint8Array;
+    int4x2: Int8Array;
   }
 
   interface ElementTypeMap {
@@ -100,6 +102,8 @@ export declare namespace Tensor {
     // complex64: never;
     // complex128: never;
     // bfloat16: never;
+    uint4x2: number;
+    int4x2: number;
   }
 
   type DataType = DataTypeMap[Type];

@@ -31,7 +31,9 @@ export const enum DataType {
   uint64 = 13,
   complex64 = 14,
   complex128 = 15,
-  bfloat16 = 16
+  bfloat16 = 16,
+  uint4x2 = 21,
+  int4x2 = 22
 }
 
 /**
@@ -65,7 +67,10 @@ export const tensorDataTypeStringToEnum = (type: string): DataType => {
       return DataType.int64;
     case 'uint64':
       return DataType.uint64;
-
+    case 'uint4x2':
+      return DataType.uint4x2;
+    case 'int4x2':
+      return DataType.int4x2;
     default:
       throw new Error(`unsupported data type: ${type}`);
   }
@@ -102,6 +107,10 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
       return 'int64';
     case DataType.uint64:
       return 'uint64';
+    case DataType.uint4x2:
+      return 'uint4x2';
+    case DataType.int4x2:
+      return 'int4x2';
 
     default:
       throw new Error(`unsupported data type: ${typeProto}`);
