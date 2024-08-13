@@ -13,13 +13,24 @@ nav_order: 1
 * TOC placeholder
 {:toc}
 
-## Pre-requisites
 
-### ONNX Runtime
+## Python package installation
 
-ONNX Runtime generate() versions 0.3.0 and earlier came bundled with the core ONNX Runtime binaries. From version 0.4.0 onwards, the packages are separated to allow a better developer experience. 
+Note: only one of these sets of packages (CPU, DirectML, CUDA) should be installed in your environment.
 
-Platform specific instructions to install ONNX Runtime are included in each section below.
+### CPU
+
+```bash
+pip install numpy
+pip install onnxruntime-genai
+```
+
+### DirectML
+
+```bash
+pip install numpy
+pip install onnxruntime-genai-directml
+```
 
 ### CUDA
 
@@ -29,149 +40,56 @@ The CUDA toolkit can be downloaded from the [CUDA Toolkit Archive](https://devel
 
 Ensure that the `CUDA_PATH` environment variable is set to the location of your CUDA installation.
 
-
-## Python packages
-
-Note: only one of these sets of packages (CPU, DirectML, CUDA) should be installed in your environment.
-
-### CPU
-
-#### x64
-
-```bash
-# Install ONNX Runtime nightly. Update this to the released version when it is available.
-pip install ort-nightly --extra-index-url
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-nightly/pypi/simple
-
-
-pip install onnxruntime-genai --pre
-```
-
-#### Arm64
-
-```bash
-# Install ONNX Runtime nightly QNN version (which supports Arm CPU). Update this to the released version when it is available.
-pip install ort-nightly-qnn --extra-index-url
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-nightly/pypi/simple
-
-pip install onnxruntime-genai --pre
-```
-
-
-### DirectML
-
-```bash
-# Install the nightly version of ONNX Runtime. Update this to the released version when it is available.
-pip install ort-nightly-directml --extra-index-url
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-nightly/pypi/simple
-
-pip install onnxruntime-genai-directml --pre
-```
-
-### CUDA
-
 #### CUDA 11
 
 ```bash
-# Install the nightly version of ONNX Runtime. Update this to the released version when it is available.
-pip install ort-nightly-gpu --extra-index-url
-https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nightly/pypi/simple
-
-
-# Install onnxruntime-genai built for CUDA 11
-pip install onnxruntime-genai-cuda-11 --pre
+pip install numpy
+pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
 ```
 
 #### CUDA 12
 
 ```bash
-# Install ORT nightly CUDA 12, change this to released version when it is released
-pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
-
-# Install onnxruntime-genai build for CUDA 12
-pip install onnxruntime-genai-cuda --pre
+pip install numpy
+pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 ```
 
-## Nuget packages
+
+## Nuget package installation
 
 Note: only one of these set of packages (CPU, DirectML, CUDA) should be installed in your project.
 
-### CPU
+### Pre-requisites
 
-Add the following lines to a `nuget.config` file in the same folder as your `.csproj` file.
+#### ONNX Runtime dependency
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="ORT-Nightly" value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
+ONNX Runtime generate() versions 0.3.0 and earlier came bundled with the core ONNX Runtime binaries. From version 0.4.0 onwards, the packages are separated to allow a more flexible developer experience.
+
+Version 0.4.0-rc1 depends on the ONNX Runtime version 1.19.0 RC. To install 0.4.0-rc1, add the following nuget source *before* installing the ONNX Runtime generate() nuget package.
+
+```
+dotnet nuget add source https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json --name ORT-Nightly
 ```
 
+Install only one of the following packages: CPU, CUDA or DirectML.
+
+### CPU
+
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntime --source ORT-Nightly --prerelease
 dotnet add package Microsoft.ML.OnnxRuntimeGenAI --prerelease
 ```
 
 ### CUDA 
 
-#### CUDA 11
-
-Add the following lines to a `nuget.config` file in the same folder as your `.csproj` file.
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="ORT-Nightly" value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
-```
+Note: only CUDA 11 is supported for versions 0.3.0 and earlier, and only CUDA 12 is supported for versions 0.4.0 and later.
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntime.Gpu --source ORT-Nightly --prerelease
-dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --source --prerelease
-```
-
-#### CUDA 12
-
-Add the following lines to a `nuget.config` file in the same folder as your `.csproj` file.
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="ORT-Nightly" value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
-```
-
-
-```bash
-dotnet add package Microsoft.ML.OnnxRuntime.Gpu --source ORT-Nightly --prerelease
 dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda --prerelease
 ```
 
 ### DirectML
 
-Add the following lines to a `nuget.config` file in the same folder as your `.csproj` file.
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="ORT-Nightly" value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
-```
-
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntime.DirectML --source ORT-Nightly --prerelease
 dotnet add package Microsoft.ML.OnnxRuntimeGenAI.DirectML --prerelease
 ```
 
