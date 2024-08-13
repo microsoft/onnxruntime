@@ -407,9 +407,7 @@ static constexpr ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
 #endif
 static constexpr ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
 static constexpr ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
-#ifdef USE_ROCM
 static constexpr ORT_STRING_VIEW provider_name_rocm = ORT_TSTR("rocm");
-#endif
 static constexpr ORT_STRING_VIEW provider_name_dnnl = ORT_TSTR("dnnl");
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
@@ -449,9 +447,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #ifdef USE_CUDA
   provider_names[provider_name_cuda] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
-#ifdef USE_ROCM
   provider_names[provider_name_rocm] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
-#endif
 #ifdef USE_DNNL
   provider_names[provider_name_dnnl] = {opset10};
 #endif
