@@ -210,8 +210,7 @@ Model* model_clone(const Model& original_model, int64_t external_data_threshold)
       cloned_tensor->add_dims(dim);
       size = size * dim;
     }
-    constexpr int64_t THRESHOLD = external_data_threshold;
-    if (size >= THRESHOLD) {
+    if (size >= external_data_threshold) {
       cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
       auto external_data = cloned_tensor->mutable_external_data();
       auto p = external_data->Add();
