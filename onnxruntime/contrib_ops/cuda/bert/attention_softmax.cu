@@ -50,7 +50,6 @@ __device__ inline void Softmax(const int total_sequence_length,
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is partitioned to blocks by TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;
@@ -138,7 +137,6 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is within one block size TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;
@@ -226,7 +224,6 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is partitioned by TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;
@@ -319,12 +316,10 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
   __shared__ float max_block;
 
   float max_thread_data = -CUDART_INF_F;
-  const int size_per_batch = gridDim.x * total_sequence_length;
 
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is partitioned by TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;
@@ -443,7 +438,6 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is within one block size TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;
@@ -647,7 +641,6 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
   // grid size is (sequence_length, num_heads, batch_size); total_sequence_length is within TPB.
   const int sequence_length = gridDim.x;
   const int num_heads = gridDim.y;
-  const int batch_size = gridDim.z;
   const int s = blockIdx.x;
   const int n = blockIdx.y;
   const int b = blockIdx.z;

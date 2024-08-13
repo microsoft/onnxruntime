@@ -181,7 +181,7 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
 
 inline Status CheckAttentionBias(
     const gsl::span<const int64_t>& attention_bias_dims,
-    int batch_size, int num_heads, int sequence_length, int total_sequence_length) {
+    int64_t batch_size, int64_t num_heads, int64_t sequence_length, int64_t total_sequence_length) {
   if (attention_bias_dims.size() != 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'attention_bias' is expected to have 4 dimensions, got ",

@@ -74,8 +74,8 @@ def get_atten_bias_support():
         (False, False, False),
         (True, False, False),  # [b, n, s_q, s_kv]
         (True, True, False),  # [1, n, s_q, s_kv]
-        # (True, False, True), # [b, 1, s_q, s_kv]
-        # (True, True, True),  # [1, 1, s_q, s_kv]
+        (True, False, True),  # [b, 1, s_q, s_kv]
+        (True, True, True),  # [1, 1, s_q, s_kv]
     ]
     return atten_bias_options
 

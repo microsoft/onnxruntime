@@ -216,7 +216,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
                   (bias_dims[1] == 1 || bias_dims[1] == params.num_heads) &&
                   bias_dims[2] == params.sequence_length &&
                   bias_dims[3] == params.kv_sequence_length);
-      p.bias_strideH = p.num_queries * p.num_keys;
+      p.bias_strideH = (bias_dims[1] == 1) ? 0 : p.num_queries * p.num_keys;
       p.bias_strideM = p.num_keys;
       p.bias_strideB = (bias_dims[0] == 1) ? 0 : (bias_dims[1] * p.num_queries * p.num_keys);
     } else {
