@@ -310,7 +310,6 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(TypeConstraints);
-ORT_RUNTIME_CLASS(NodeUnit);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -743,19 +742,6 @@ typedef struct OrtExecutionProvider {
 typedef struct OrtExecutionProviderFactory {
   OrtExecutionProvider*(ORT_API_CALL* CreateExecutionProvider)(OrtExecutionProviderFactory* this_, const char* const* ep_option_keys, const char* const* ep_option_values, size_t option_size);
 } OrtExecutionProviderFactory;
-
-typedef struct OrtNodeUnit {
-  enum Type {
-    SingleNode,
-    QDQGroup,
-  } type;
-  OrtNode** dq_nodes;
-  size_t dq_nodes_len;
-  OrtNode** q_nodes;
-  size_t q_nodes_len;
-  OrtNode* target_node;
-  size_t input_edge_count;
-} OrtNodeUnit;
 
 /** \brief Thread work loop function
  *
@@ -4745,7 +4731,25 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
+  ORT_API2_STATUS(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Out_ size_t* len, _Outptr_ const OrtNode*** consumers); // TODO(leca): ValueConsumers::comprehensive ?
+
+  ORT_API2_STATUS(OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** producer);
+
+  ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
+
+  ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description);
+
+  ORT_API2_STATUS(OrtNode_GetDomain, const OrtNode* node, _Out_ const char** domain);
+
+  ORT_API2_STATUS(OrtNode_SinceVersion, const OrtNode* node, _Out_ int* since_version);
+
+  ORT_API2_STATUS(OrtNode_GetExecutionProviderType, const OrtNode* node, _Out_ const char** ep_type);
+
   ORT_API2_STATUS(OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type);
+
+  ORT_API2_STATUS(OrtNode_GetImplicitInputSize, const OrtNode* node, _Out_ size_t* input_size);
+
+  ORT_API2_STATUS(OrtNode_GetIthImplicitInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name);
 
   ORT_API2_STATUS(OrtNode_GetInputSize, const OrtNode* node, _Out_ size_t* input_size);
 
@@ -4754,6 +4758,26 @@ struct OrtApi {
   ORT_API2_STATUS(OrtNode_GetOutputSize, const OrtNode* node, _Out_ size_t* output_size);
 
   ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name);
+
+  ORT_API2_STATUS(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* index);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* attr_size);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* count);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeIntSize, const OrtNode* node, const char* key, _Out_ int* int_size);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeFloatSize, const OrtNode* node, const char* key, _Out_ int* float_size);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeStringSize, const OrtNode* node, const char* key, _Out_ int* str_size);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeIthInt, const OrtNode* node, const char* key, int i, _Out_ int64_t* ints);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeIthFloat, const OrtNode* node, const char* key, int i, _Out_ float* floats);
+
+  ORT_API2_STATUS(OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Out_ const char** strs);
+
+  ORT_API2_STATUS(OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs);
 
   ORT_API2_STATUS(OrtKernelRegistry_RegisterKernel, OrtKernelRegistry* kernel_registry, OrtCustomOp* custom_op, OrtTypeConstraints* type_constraints);
 

@@ -2404,9 +2404,68 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOrtNode, const OrtGraphViewer* graph, s
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Out_ size_t* len, _Outptr_ const OrtNode*** consumers) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  std::vector<const ::onnxruntime::Node*> consumer_nodes = graph_viewer->GetConsumerNodes(input_name);
+  len = new size_t (consumer_nodes.size());
+  *consumers = new const OrtNode* [*len];
+  for (size_t i = 0; i < consumer_nodes.size(); i++) (*consumers)[i] = reinterpret_cast<const OrtNode*>(consumer_nodes[i]);
+
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** producer) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *producer = reinterpret_cast<const OrtNode*>(graph_viewer->GetProducerNode(output_name));
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *name = n->Name().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *description = n->Description().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetDomain, const OrtNode* node, _Out_ const char** domain) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *domain = n->Domain().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_SinceVersion, const OrtNode* node, _Out_ int* since_version) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *since_version = n->SinceVersion();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetExecutionProviderType, const OrtNode* node, _Out_ const char** ep_type) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *ep_type = n->GetExecutionProviderType().c_str();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetOpType, const OrtNode* node, _Out_ const char** op_type) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *op_type = n->OpType().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetImplicitInputSize, const OrtNode* node, _Out_ size_t* input_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *input_size = n->ImplicitInputDefs().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthImplicitInputName, const OrtNode* node, size_t i, _Out_ const char** ith_input_name) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  assert(i < n->ImplicitInputDefs().size());
+  *ith_input_name = n->ImplicitInputDefs()[i]->Name().c_str();
   return nullptr;
 }
 
@@ -2433,6 +2492,72 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   assert(i < n->OutputDefs().size());
   *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* index) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *index = n->Index();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeSize, const OrtNode* node, _Out_ size_t* attr_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *attr_size = n->GetAttributes().size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeKeyCount, const OrtNode* node, const char* key, _Out_ size_t* count) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *count = n->GetAttributes().count(key);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeIntSize, const OrtNode* node, const char* key, _Out_ int* int_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *int_size = n->GetAttributes().at(key).ints_size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeFloatSize, const OrtNode* node, const char* key, _Out_ int* float_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *float_size = n->GetAttributes().at(key).floats_size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeStringSize, const OrtNode* node, const char* key, _Out_ int* str_size) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *str_size = n->GetAttributes().at(key).strings_size();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeIthInt, const OrtNode* node, const char* key, int i, _Out_ int64_t* ints) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *ints = n->GetAttributes().at(key).ints(i);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeIthFloat, const OrtNode* node, const char* key, int i, _Out_ float* floats) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *floats = n->GetAttributes().at(key).floats(i);
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeIthStr, const OrtNode* node, const char* key, int i, _Out_ const char** strs) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  *strs = n->GetAttributes().at(key).strings(i).c_str();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  std::vector<gsl::not_null<const Graph*>> subg = n->GetSubgraphs();
+  len = new size_t (subg.size());
+  *subgraphs = new const OrtGraphViewer* [*len];
+  for (size_t i = 0; i < subg.size(); i++) {
+    const ::onnxruntime::GraphViewer* graph_viewer = new const ::onnxruntime::GraphViewer(*subg[i]);
+    (*subgraphs)[i] = reinterpret_cast<const OrtGraphViewer*>(graph_viewer);
+  }
   return nullptr;
 }
 
@@ -2842,11 +2967,30 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_IsConstantInitializer,
     &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtApis::OrtGraph_GetOrtNode,
+    &OrtApis::OrtGraph_GetNodesConsumingInput,
+    &OrtApis::OrtGraph_GetNodeProducingOutput,
+    &OrtApis::OrtNode_GetName,
+    &OrtApis::OrtNode_GetDescription,
+    &OrtApis::OrtNode_GetDomain,
+    &OrtApis::OrtNode_SinceVersion,
+    &OrtApis::OrtNode_GetExecutionProviderType,
     &OrtApis::OrtNode_GetOpType,
+    &OrtApis::OrtNode_GetImplicitInputSize,
+    &OrtApis::OrtNode_GetIthImplicitInputName,
     &OrtApis::OrtNode_GetInputSize,
     &OrtApis::OrtNode_GetIthInputName,
     &OrtApis::OrtNode_GetOutputSize,
     &OrtApis::OrtNode_GetIthOutputName,
+    &OrtApis::OrtNode_GetIndex,
+    &OrtApis::OrtNode_GetAttributeSize,
+    &OrtApis::OrtNode_GetAttributeKeyCount,
+    &OrtApis::OrtNode_GetAttributeIntSize,
+    &OrtApis::OrtNode_GetAttributeFloatSize,
+    &OrtApis::OrtNode_GetAttributeStringSize,
+    &OrtApis::OrtNode_GetAttributeIthInt,
+    &OrtApis::OrtNode_GetAttributeIthFloat,
+    &OrtApis::OrtNode_GetAttributeIthStr,
+    &OrtApis::OrtNode_GetSubgraphs,
     &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,
     &OrtApis::AddTypeConstraint,
