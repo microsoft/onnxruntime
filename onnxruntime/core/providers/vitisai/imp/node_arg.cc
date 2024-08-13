@@ -111,7 +111,7 @@ int node_arg_external_location(const Graph& graph, const NodeArg& node_arg, std:
   offset = 0;
   size = 0;
   checksum = 0;
-  if (tensor_proto->data_location() != ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL) {
+  if (tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL) {
     auto external_data = tensor_proto->mutable_external_data();
     auto external_data_size = external_data->size();
     for (auto i = 0; i < external_data_size; ++i) {
