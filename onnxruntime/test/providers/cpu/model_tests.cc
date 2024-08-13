@@ -447,7 +447,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #ifdef USE_CUDA
   provider_names[provider_name_cuda] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
+#ifdef USE_ROCM
   provider_names[provider_name_rocm] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+#endif
 #ifdef USE_DNNL
   provider_names[provider_name_dnnl] = {opset10};
 #endif
@@ -751,7 +753,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           continue;
         }
         std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().native();
-        // std::cout << "Adding test: " << test_case_name << std::endl;
         if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
           test_case_name = test_case_name.substr(5);
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
