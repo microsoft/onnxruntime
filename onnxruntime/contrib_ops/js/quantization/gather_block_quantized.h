@@ -10,6 +10,7 @@ namespace js {
 
 using onnxruntime::js::JsKernel;
 
+template <typename T1, typename Tind>
 class GatherBlockQuantized : public JsKernel {
  public:
   GatherBlockQuantized(const OpKernelInfo& info) : JsKernel(info) {
