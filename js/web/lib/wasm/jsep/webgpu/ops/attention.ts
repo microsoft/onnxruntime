@@ -218,7 +218,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
         attentionBias.dims[1] !== attributes.numHeads ||
         attentionBias.dims[2] !== sequenceLength ||
         attentionBias.dims[3] !== totalSequenceLength) {
-      throw new Error('Input "attention_bias" shape shall be (batch_size, num_heads, sequence_length, total_sequence_length)');
+      throw new Error('Expect "attention_bias" shape (batch_size, num_heads, sequence_length, total_sequence_length)');
     }
   }
 

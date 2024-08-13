@@ -31,7 +31,7 @@ static void RunMultiHeadAttentionTest(
     const std::vector<float>& kv_data,                  // packed_kv:  [batch_size, kv_sequence_length, num_heads, 2, head_size]
     const std::vector<float>& qkv_data,                 // packed_qkv:  [batch_size, sequence_length, num_heads, 3, head_size]
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size] or empty
-    const std::vector<float>& attention_bias_data,      // relative_position_bias: [1, num_heads, sequence_length, total_sequence_length]
+    const std::vector<float>& attention_bias_data,      // attention_bias: [1, num_heads, sequence_length, total_sequence_length]
     const std::vector<float>& past_key_data,            // past_key: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& past_value_data,          // past_value: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& present_key_data,         // present_key: [batch_size, num_heads, total_sequence_length, head_size]
@@ -145,7 +145,7 @@ static void RunMultiHeadAttentionTest(
       }
 
       if (attention_bias_data.size()) {
-        tester.AddInput<MLFloat16>("relative_position_bias", attention_bias_dims, ToFloat16(attention_bias_data));
+        tester.AddInput<MLFloat16>("attention_bias", attention_bias_dims, ToFloat16(attention_bias_data));
       } else {
         tester.AddOptionalInputEdge<MLFloat16>();
       }
@@ -209,7 +209,7 @@ static void RunMultiHeadAttentionTest(
       }
 
       if (attention_bias_data.size()) {
-        tester.AddInput<float>("relative_position_bias", attention_bias_dims, attention_bias_data);
+        tester.AddInput<float>("attention_bias", attention_bias_dims, attention_bias_data);
       } else {
         tester.AddOptionalInputEdge<float>();
       }
@@ -276,7 +276,7 @@ static void RunMultiHeadAttentionKernel(
     const std::vector<float>& kv_data,                  // packed_kv:  [batch_size, kv_sequence_length, num_heads, 2, head_size]
     const std::vector<float>& qkv_data,                 // packed_qkv:  [batch_size, sequence_length, num_heads, 3, head_size]
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size]
-    const std::vector<float>& attention_bias_data,      // relative_position_bias: [1, num_heads, sequence_length, total_sequence_length]
+    const std::vector<float>& attention_bias_data,      // attention_bias: [1, num_heads, sequence_length, total_sequence_length]
     const std::vector<float>& past_key_data,            // past_key: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& past_value_data,          // past_value: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& present_key_data,         // present_key: [batch_size, num_heads, total_sequence_length, head_size]
