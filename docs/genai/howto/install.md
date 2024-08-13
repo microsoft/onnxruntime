@@ -57,7 +57,7 @@ pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio
 
 ## Nuget package installation
 
-Note: only one of these set of packages (CPU, DirectML, CUDA) should be installed in your project.
+Note: install only one of these packages (CPU, DirectML, CUDA) in your project.
 
 ### Pre-requisites
 
@@ -70,8 +70,6 @@ Version 0.4.0-rc1 depends on the ONNX Runtime version 1.19.0 RC. To install 0.4.
 ```
 dotnet nuget add source https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json --name ORT-Nightly
 ```
-
-Install only one of the following packages: CPU, CUDA or DirectML.
 
 ### CPU
 
