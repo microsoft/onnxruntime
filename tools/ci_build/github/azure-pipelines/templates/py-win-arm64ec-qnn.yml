@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.25.0.240728
+  default: 2.24.0.240626
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -94,7 +94,7 @@ jobs:
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update
+            --parallel --update --arm64ec
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -102,7 +102,7 @@ jobs:
         displayName: 'Build'
         inputs:
           solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: 'x64'
+          platform: 'arm64ec'
           configuration: RelWithDebInfo
           msbuildArchitecture: 'x64'
           maximumCpuCount: true

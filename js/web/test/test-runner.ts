@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Float16Array as Float16ArrayPolyfill} from '@petamoriken/float16';
 import {expect} from 'chai';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
@@ -390,6 +391,24 @@ export class TensorResultValidator {
     switch (actualType) {
       case 'string':
         return this.strictEqual(actual.data, expected.data);
+
+      case 'float16': {
+        const actualData = actual.data as Uint16Array;
+        const actualDataBuffer = actualData.buffer;
+        const actualDataByteOffset = actualData.byteOffset;
+        const actualDataLength = actualData.length;
+        const actualDataFloat32Array =
+            new Float32Array(new Float16ArrayPolyfill(actualDataBuffer, actualDataByteOffset, actualDataLength));
+
+        const expectedData = expected.data as Uint16Array;
+        const expectedDataBuffer = expectedData.buffer;
+        const expectedDataByteOffset = expectedData.byteOffset;
+        const expectedDataLength = expectedData.length;
+        const expectedDataFloat32Array =
+            new Float32Array(new Float16ArrayPolyfill(expectedDataBuffer, expectedDataByteOffset, expectedDataLength));
+
+        return this.floatEqual(actualDataFloat32Array, expectedDataFloat32Array);
+      }
 
       case 'float32':
       case 'float64':
@@ -919,11 +938,14 @@ async function runProtoOpTestcase(
   const fetches: Record<string, Pick<ort.Tensor, 'dims'|'type'>> = {};
   testCase.inputs.forEach((input, i) => {
     if (input.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = input.data;
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = input.data;
       if (input.type === 'uint64') {
         data = BigUint64Array.from(input.data.map(BigInt));
       } else if (input.type === 'int64') {
         data = BigInt64Array.from(input.data.map(BigInt));
+      } else if (input.type === 'float16') {
+        const dataArr = Float16ArrayPolyfill.from(input.data);
+        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       feeds[`input_${i}`] = new ort.Tensor(input.type, data, input.dims);
     }
@@ -933,11 +955,14 @@ async function runProtoOpTestcase(
   const expectedOutputNames: string[] = [];
   testCase.outputs.forEach((output, i) => {
     if (output.data) {
-      let data: number[]|BigUint64Array|BigInt64Array = output.data;
+      let data: number[]|BigUint64Array|BigInt64Array|Uint16Array = output.data;
       if (output.type === 'uint64') {
         data = BigUint64Array.from(output.data.map(BigInt));
       } else if (output.type === 'int64') {
         data = BigInt64Array.from(output.data.map(BigInt));
+      } else if (output.type === 'float16') {
+        const dataArr = Float16ArrayPolyfill.from(output.data);
+        data = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
       }
       outputs.push(new ort.Tensor(output.type, data, output.dims));
       expectedOutputNames.push(`output_${i}`);
