@@ -17,7 +17,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-//#include "core/session/allocator_adapters.h"
+#include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include <gsl/gsl>
 #include <unordered_map>
@@ -1843,16 +1843,16 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
   cuda_pinned_allocator_ = std::make_unique<CUDAPinnedAllocator>();
   
   AllocatorCreationInfo default_memory_info(
-      [&](OrtDevice::DeviceId device_id) {
+      [this](OrtDevice::DeviceId device_id) {
         ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<onnxruntime::IAllocatorImplWrappingOrtAllocator>(cuda_allocator_.get()); 
+        return std::make_unique<IAllocatorImplWrappingOrtAllocator>(cuda_allocator_);
       },
       narrow<OrtDevice::DeviceId>(device_id_));
 
   AllocatorCreationInfo pinned_allocator_info(
-      [&](OrtDevice::DeviceId device_id) {
+      [this](OrtDevice::DeviceId device_id) {
         ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<onnxruntime::IAllocatorImplWrappingOrtAllocator>(cuda_pinned_allocator_.get());
+        return std::make_unique<IAllocatorImplWrappingOrtAllocator>(cuda_pinned_allocator_);
       },
       0);
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
