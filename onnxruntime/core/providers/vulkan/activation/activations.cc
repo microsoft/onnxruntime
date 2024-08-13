@@ -11,8 +11,12 @@
 namespace onnxruntime {
 namespace vulkan {
 
-bool ClipKernel::IsSupported(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+bool ClipKernel::IsSupported(bool use_kompute, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                              const logging::Logger& logger) {
+  if (use_kompute) {
+    return false;
+  }
+
   if (node.SinceVersion() < 11) {
     // min/max are attributes
     return true;

@@ -8,12 +8,15 @@
 #include "kompute/Manager.hpp"
 
 #include "core/framework/ortdevice.h"
+#include "core/providers/vulkan/ort_kompute_tensor.h"
 
 namespace onnxruntime {
 namespace vulkan {
 
 namespace {
 OrtMemoryInfo CreateMemoryInfo(OrtDevice device) {
+  // TODO: If this in integrated GPU we should be able to use device memory for both.
+  // May not matter here though as it might be handled in the implementation of MemcpyToHost
   if (device.MemType() == OrtDevice::MemType::DEFAULT) {
     return OrtMemoryInfo("VulkanAllocator",
                          OrtAllocatorType::OrtDeviceAllocator,
@@ -30,35 +33,51 @@ OrtMemoryInfo CreateMemoryInfo(OrtDevice device) {
 }
 }  // namespace
 
+// This doesn't work with Kompute as you can't plugin an existing allocation to the Tensor class
+// Long term this is closer to what we want.
+// c.f. the fork of Kompute used in llama.cpp had 'Allow pre-allocated memory from vulkan for staging host.'
+// as one of the first changes made.
+// https://github.com/KomputeProject/kompute/commit/d3ad3aa657a8732f23cca11f2286a1f9196b94c8
+//
+#ifdef VULKAN_EP_USE_VMA
 VulkanBufferAllocator::VulkanBufferAllocator(OrtDevice device, VmaAllocator& allocator)
-    : IAllocator(CreateMemoryInfo(device)), allocator_{allocator} {
+    : IAllocator(CreateMemoryInfo(device)),
+      allocator_{allocator},
+      allocate_device_memory_{device.MemType() == OrtDevice::MemType::DEFAULT} {
+  ;
 }
 
 void* VulkanBufferAllocator::Alloc(size_t size) {
-  VkBufferCreateInfo bufferInfo = {};
-  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufferInfo.size = size;  // assuming aligned externally
-  bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                     VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  auto* kompute_tensor = new KomputeTensor(allocator_, narrow<uint32_t>(size), allocate_device_memory_);
 
-  VmaAllocationCreateInfo allocInfo = {};
-  allocInfo.usage = usage_;
-
-  VkBuffer buffer;
-  VmaAllocation allocation;
-  vmaCreateBuffer(allocator_, &bufferInfo, &allocInfo, &buffer, &allocation, nullptr);
-
-  return new std::pair<VkBuffer, VmaAllocation>(buffer, allocation);
+  // we return this as the data pointer. consumer needs to
+  return kompute_tensor;
 }
 
 void VulkanBufferAllocator::Free(void* p) {
-  auto pair = static_cast<std::pair<VkBuffer, VmaAllocation>*>(p);
-  auto [buffer, allocation] = *pair;
-  vmaDestroyBuffer(allocator_, buffer, allocation);
-
-  delete pair;
+  KomputeTensor* tensor = static_cast<KomputeTensor*>(p);
+  tensor->destroy();
+  delete tensor;
 }
+#else
+VulkanBufferAllocator::VulkanBufferAllocator(OrtDevice device, kp::Manager& manager)
+    : IAllocator(CreateMemoryInfo(device)), manager_{manager} {
+}
+
+void* VulkanBufferAllocator::Alloc(size_t size) {
+  // this creates staging/device memory and copies to staging
+
+  // we need to set this as the staging or primary buffer in the kp::Tensor depending on usage.
+  //
+
+  static const std::vector<float> dummy = {1.2f, 3.4f, 5.6f, 7.8f};
+  auto tensor = manager_.tensor(dummy);
+}
+
+void VulkanBufferAllocator::Free(void* p) {
+  delete p;
+}
+#endif
 
 }  // namespace vulkan
 }  // namespace onnxruntime

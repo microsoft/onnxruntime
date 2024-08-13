@@ -5,13 +5,11 @@
 
 #include <optional>
 
-// TODO: Would Vulkan Memory Allocator add value? If so we'd need to patch kp::Manager so we can initializer the
-// VmaAllocator with the device/physical device/instance in that.
-// #include "vk_mem_alloc.h"  // Vulkan Memory Allocator
 #include "kompute/Kompute.hpp"
 
 #include "core/common/common.h"
 #include "core/framework/data_transfer.h"
+#include "core/providers/vulkan/vulkan_memory_allocator.h"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -25,7 +23,7 @@ class VulkanDataTransferImpl {
   common::Status CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const;
 
  private:
-  common::Status CopyTensorImpl(const Tensor& src, Tensor& dst, std::optional<kp::Sequence> batch) const;
+  common::Status CopyTensorImpl(const Tensor& src, Tensor& dst) const;
 
   kp::Manager& manager_;
 };

@@ -15,6 +15,8 @@ class Logger;
 }
 
 namespace vulkan {
+class KomputeTensor;
+;
 class VulkanKernel {
  public:
   virtual ~VulkanKernel() = default;
@@ -62,11 +64,18 @@ class VulkanKernel {
     return Status::OK();
   }
 
-  virtual void GetKomputeConstantInitializersToUpload(
-      std::unordered_set<const NodeArg*>& initializers_to_upload) const {}
+  // Add constant initializers that need to be uploaded to the device to initializers_to_upload by creating with
+  // manager.tensor or manager.tensorT. This allows pre-packing to happen in the operation implementation.
+  //
+  // NOTE: this isn't necessarily all the constant inputs to the node - some might be provided to the shader as
+  // specialization constants or push constants.
+  virtual void KomputeProcessConstantInitializers(
+      const GraphViewer& /*graph_viewer*/, kp::Manager& /*manager*/,
+      std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& /*initializers_to_upload*/) const {
+  }
 
-  virtual Status AddToKomputeSequence(kp::Manager&, kp::Sequence&,
-                                      std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers) const {
+  virtual Status KomputeExecute(kp::Manager& /*manager*/, kp::Sequence& /*sequence*/,
+                                std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& /*values*/) const {
     ORT_NOT_IMPLEMENTED("Kernel must override");
   }
 

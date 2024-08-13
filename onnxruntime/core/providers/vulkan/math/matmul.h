@@ -50,16 +50,12 @@ class MatMulKernel : VulkanKernel {
 
   Status CreateNcnnPipeline() override;
 
-  void GetKomputeConstantInitializersToUpload(std::unordered_set<const NodeArg*>& initializers_to_upload) const override {
-    // we only support usage with a constant B currently
-    const NodeArg* const_B = Node().InputDefs()[1];
+  void KomputeProcessConstantInitializers(
+      const GraphViewer& graph_viewer, kp::Manager& manager,
+      std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& initializers_to_upload) const override;
 
-    // doesn't matter if it already exists
-    ORT_IGNORE_RETURN_VALUE(initializers_to_upload.insert(const_B));
-  }
-
-  Status AddToKomputeSequence(kp::Manager&, kp::Sequence&,
-                              std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers) const override;
+  Status KomputeExecute(kp::Manager& manager, kp::Sequence& sequence,
+                        std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& values) const override;
   struct InputInfo {
     InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node, const logging::Logger& logger);
 

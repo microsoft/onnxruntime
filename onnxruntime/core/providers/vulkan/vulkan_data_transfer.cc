@@ -5,7 +5,7 @@
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/tensor.h"
-// #include "core/providers/vulkan/vulkan_utils.h"
+#include "core/providers/vulkan/ort_kompute_tensor.h"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -22,32 +22,26 @@ bool VulkanDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
           src_device.MemType() != dst_device.MemType());
 }
 
-Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst,
-                                              std::optional<kp::Sequence> batch) const {
+Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst) const {
   const auto& src_device = src.Location().device;
   const auto& dst_device = dst.Location().device;
 
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) {
     ORT_RETURN_IF_NOT(src.ByteOffset() == 0, "Copy with byte offset is not supported");
 
-    // TODO: Map kp::Tensor::TensorDataTypes types to ONNX types
-    // Not clear how we'll handle 8-bit data as there's only 1, 4 and 8 bytes data types. not sure if it matters though
-    // as the actual type info is plugged in by each kernel.
-    // Right now we're only handling float so it doesn't matter
-    // TODO: Clarify if the data buffer arg must be non-const. We can't allow modification of the buffer.
-    auto kp_tensor = manager_.tensor(const_cast<void*>(src.DataRaw()), src.Shape().Size(), sizeof(float),
-                                     kp::Tensor::TensorDataTypes::eFloat);
+    // get Tensor from dst data pointer
+    // do we vkMapBuffer here or in allocator?
+    // copy into staging buffer
+    // do we need to set data type/shape etc. in the kp::Tensor? possibly not.
 
-    if (batch) {
-      batch->record<kp::OpTensorSyncDevice>({kp_tensor});
-    } else {
-      auto seq = manager_.sequence();
-      seq->record<kp::OpTensorSyncDevice>({kp_tensor});
-      seq->eval();
-    }
+    KomputeTensor* kp_dst = static_cast<KomputeTensor*>(dst.MutableDataRaw());
+    kp_dst->SyncWithOrtTensor(dst);  // sync data type and shape
 
   } else if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) {
     ORT_RETURN_IF_NOT(dst.ByteOffset() == 0, "Copy with byte offset is not supported");
+
+    const KomputeTensor* kp_src = static_cast<const KomputeTensor*>(src.DataRaw());
+    kp_src->CopyToOrtTensor(dst);
 
   } else if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU) {
     ORT_NOT_IMPLEMENTED("Unclear if this is needed");
@@ -61,7 +55,6 @@ Status VulkanDataTransferImpl::CopyTensorImpl(const Tensor& src, Tensor& dst,
 
 common::Status VulkanDataTransferImpl::CopyTensor(const Tensor& src, Tensor& dst) const {
   ORT_RETURN_IF_ERROR(CopyTensorImpl(src, dst));
-
   return Status::OK();
 }
 
@@ -80,5 +73,3 @@ common::Status VulkanDataTransferImpl::CopyTensors(const std::vector<IDataTransf
 
 }  // namespace vulkan
 }  // namespace onnxruntime
-
-**** /

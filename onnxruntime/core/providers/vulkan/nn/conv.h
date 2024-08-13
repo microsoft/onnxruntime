@@ -19,8 +19,9 @@ class ConvKernel : VulkanKernel {
   }
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
+                                              bool use_kompute,
                                               const onnxruntime::Node& node) {
-    return std::unique_ptr<VulkanKernel>(new ConvKernel(vulkan_ep, node));
+    return std::unique_ptr<VulkanKernel>(new ConvKernel(vulkan_ep, use_kompute, node));
   }
 
   std::string_view GetNcnnLayerName() const override {
@@ -47,8 +48,8 @@ class ConvKernel : VulkanKernel {
   Status SetupNcnnConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) override;
 
  private:
-  ConvKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)
-      : VulkanKernel{vulkan_ep, node} {
+  ConvKernel(const VulkanExecutionProvider& vulkan_ep, bool use_kompute, const onnxruntime::Node& node)
+      : VulkanKernel{vulkan_ep, use_kompute, node} {
     // TODO: set op_type_ based on node if possible. If we need a GraphViewer we can set it up in CreateNcnnKernel.
     // - Convolution
     // - ConvolutionDepthWise

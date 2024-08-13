@@ -17,6 +17,8 @@
 #include "core/providers/vulkan/vulkan_utils.h"
 #include "core/providers/vulkan/shape_utils.h"
 
+#include "core/providers/vulkan/shaders/include/shaderncnn.innerproduct_gemm.hpp"
+
 namespace onnxruntime {
 namespace vulkan {
 
@@ -35,6 +37,23 @@ namespace vulkan {
 REGISTER_VERSIONED_KERNEL(MatMul, 6, 12);
 REGISTER_KERNEL(MatMul, 13);
 
+namespace {
+static void TransposeB(const GraphViewer& graph_viewer, const std::string& input_name,
+                       const std::vector<int64_t>& shape_B, gsl::span<float> dst_data) {
+  const auto& tensorproto_B = *graph_viewer.GetConstantInitializer(input_name);
+  Initializer data_B(tensorproto_B);
+  auto src_data = data_B.DataAsSpan<float>();
+
+  auto cur_K = narrow<int32_t>(shape_B[0]);
+  auto cur_M = narrow<int32_t>(shape_B[1]);
+
+  for (size_t x = 0; x < cur_K; x++) {
+    for (size_t y = 0; y < cur_M; y++) {
+      dst_data[y * cur_K + x] = src_data[x * cur_M + y];
+    }
+  }
+}
+}  // namespace
 MatMulKernel::InputInfo::InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                                    const logging::Logger& logger) {
   auto input_defs = node.InputDefs();
@@ -47,7 +66,7 @@ MatMulKernel::InputInfo::InputInfo(const GraphViewer& graph_viewer, const onnxru
 }
 
 /* static */
-bool MatMulKernel::IsSupported(bool use_kompute, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+bool MatMulKernel::IsSupported(bool /*use_kompute*/, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                                const logging::Logger& logger) {
   // start with InnerProduct.
   InputInfo info(graph_viewer, node, logger);
@@ -79,7 +98,14 @@ Status MatMulKernel::ComputeImpl(OpKernelContext& context) const {
   TensorShape output_shape{input_tensor_A.Shape()[0], transposed_b_tensor_->Shape()[0]};
 
   const auto& output_tensor = *context.Output(0, output_shape);
+  ORT_UNUSED_PARAMETER(output_tensor);
 
+  // TODO: Create the algo in the ctor and use here.
+  // Call set_tensors to plug in the values for this execution.
+  // TODO: Is this whole setup thread safe or do we need a way for the tensors to be plugged in during record
+  // instead of being Algorithm class members?
+
+  return Status::OK();
 }
 
 Status MatMulKernel::SetupNcnnParamDict(const GraphViewer& /*graph_viewer*/, ncnn::ParamDict& params) {
@@ -156,27 +182,18 @@ Status MatMulKernel::SetupNcnnConstantInitializers(const GraphViewer& graph_view
   const auto& input_defs = node.InputDefs();
 
   if (use_inner_product_) {
-    // need to transpose from K, N to N, K when setting up constant initializers
+    // need to transpose from K, M to M, K when setting up constant initializers
     const auto& shape_B = input_info_.shape_B;
-
-    const auto& tensorproto_B = *graph_viewer.GetConstantInitializer(input_defs[1]->Name());
-    Initializer data_B(tensorproto_B);
-    auto src_data = data_B.DataAsSpan<float>();
-
     auto cur_K = narrow<int32_t>(shape_B[0]);
     auto cur_M = narrow<int32_t>(shape_B[1]);
 
     // there's no existing way to access the ORT CPU EP allocator to use it with the Mat allocations, but it probably
-    // doesn't matter given a) we shouldn't need to transpose too many intializers and b) the memory is freed once
+    // doesn't matter given a) we shouldn't need to transpose too many initializers and b) the memory is freed once
     // we upload to GPU, all of which happens during model loading.
     ncnn::Mat transposed_data(/* w */ cur_K, /* h */ cur_M);
-    float* dst_data = static_cast<float*>(transposed_data.data);
+    gsl::span<float> dst_data = gsl::make_span(static_cast<float*>(transposed_data.data), size_t(cur_K * cur_M));
 
-    for (size_t x = 0; x < cur_K; x++) {
-      for (size_t y = 0; y < cur_M; y++) {
-        dst_data[y * cur_K + x] = src_data[x * cur_M + y];
-      }
-    }
+    TransposeB(graph_viewer, input_defs[1]->Name(), shape_B, dst_data);
 
     ncnn::InnerProduct& inner_product = static_cast<ncnn::InnerProduct&>(layer);
 
@@ -218,9 +235,94 @@ Status MatMulKernel::CreateNcnnPipeline() {
   return Status::OK();
 }
 
-Status MatMulKernel::AddToKomputeSequence(kp::Manager& manager, kp::Sequence& sequence,
-                                          std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers) const {
-  auto tensorInB = constant_initializers.at(Node().InputDefs()[1]);
+void MatMulKernel::KomputeProcessConstantInitializers(
+    const GraphViewer& graph_viewer, kp::Manager& manager,
+    std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& initializers_to_upload) const {
+  // we only support usage with a constant B currently
+  const NodeArg* const_B = Node().InputDefs()[1];
+
+  // as we're going to transform the data to match the shader we don't expect the initializer to already exist.
+  // it's valid if multiple MatMul nodes share the same initializer, but not if a non-MatMul node is using it.
+  ORT_ENFORCE(initializers_to_upload.count(const_B) == 0,
+              "Constant initializer was already added. Layout may differ.");
+
+  size_t num_elements = input_info_.shape_B[0] * input_info_.shape_B[1];
+  std::vector<float> data(num_elements);
+  TransposeB(graph_viewer, const_B->Name(), input_info_.shape_B, data);
+
+  initializers_to_upload[const_B] = manager.tensor(data);
+}
+
+Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence,
+                                    std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& values) const {
+  auto tensorInA = values.at(Node().InputDefs()[0]);
+  auto tensorInB = values.at(Node().InputDefs()[1]);
+
+  // this is stupidly inefficient as it allocates device and staging buffers and copies data into the staging buffer
+  auto num_output_elements = input_info_.shape_A[0] * input_info_.shape_B[1];
+  auto tensorOutA = manager.tensor(std::vector<float>(num_output_elements, 0.f));
+  values[Node().OutputDefs()[0]] = tensorOutA;
+
+  auto shader_bytes = gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv,
+                                     kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv_len);
+  // TODO: Can we avoid this copy? Seems unnecessary
+  std::vector<uint32_t> spirv(shader_bytes.begin(), shader_bytes.end());
+
+  /*
+  NCNN source
+        std::vector<vk_specialization_type> specializations(4 + 10);
+        specializations[0].i = bias_term;
+        specializations[1].i = activation_type;
+        specializations[2].f = activation_params.w >= 1 ? activation_params[0] : 0.f;
+        specializations[3].f = activation_params.w == 2 ? activation_params[1] : 0.f;
+        specializations[4 + 0].i = shape.dims;
+        specializations[4 + 1].i = shape.w;
+        specializations[4 + 2].i = shape.h;
+        specializations[4 + 3].i = shape.c;
+        specializations[4 + 4].i = shape.cstep;
+        specializations[4 + 5].i = out_shape.dims;
+        specializations[4 + 6].i = out_shape.w;
+        specializations[4 + 7].i = out_shape.h;
+        specializations[4 + 8].i = out_shape.c;
+        specializations[4 + 9].i = out_shape.cstep;
+
+        Mat local_size_xyz(std::min(16, num_output / out_elempack), 4, 1, (void*)0);
+        if (out_shape.dims != 0)
+        {
+            local_size_xyz.w = std::min(16, out_shape.w / out_elempack);
+            local_size_xyz.h = std::min(4, out_shape.h);
+            local_size_xyz.c = 1;
+        }
+
+  */
+
+  // assuming ordering is the same as NCNN but have not validated.
+  // num_output == M
+  kp::Workgroup workgroup({std::min(16U, narrow<uint32_t>(input_info_.shape_B[1])),
+                           std::min(4U, narrow<uint32_t>(input_info_.shape_B[0])),
+                           1});
+  std::vector<float> specializations(14, 0.f);
+  specializations[4] = 2;
+  specializations[5] = narrow<uint32_t>(input_info_.shape_A[1]);
+  specializations[6] = narrow<uint32_t>(input_info_.shape_A[0]);
+  specializations[7] = 1;
+  specializations[8] = narrow<uint32_t>(input_info_.shape_A[0] * input_info_.shape_A[1]);
+  specializations[9] = 2;
+  specializations[10] = narrow<uint32_t>(input_info_.shape_B[1]);
+  specializations[11] = narrow<uint32_t>(input_info_.shape_A[0]);
+  specializations[12] = 1;
+  specializations[13] = num_output_elements;
+
+  // only using static inputs at the moment so all values are set by specializations and none by push constants
+  std::vector<float> pushConstsA(14, 0.f);
+
+  std::vector<std::shared_ptr<kp::Tensor>> bindings = {tensorInA, tensorInB, tensorOutA};
+
+  // TODO: This should be created upfront so we're re-using for multiple Run calls. Looks like the intended
+  // usage is to call `rebuild` to plugin different inputs
+  auto algo = manager.algorithm(bindings, spirv, workgroup, specializations, pushConstsA);
+
+  sequence.record<kp::OpAlgoDispatch>(algo);
 }
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -243,5 +345,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     is_packed = true;
   }
 
+  return Status::OK();
+}
 }  // namespace vulkan
 }  // namespace onnxruntime

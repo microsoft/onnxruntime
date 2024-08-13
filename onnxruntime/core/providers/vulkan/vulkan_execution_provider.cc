@@ -334,9 +334,9 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
     vma_allocator_;
     VmaAllocatorCreateInfo allocatorInfo = {};
     allocatorInfo.vulkanApiVersion = kompute_manager_.getDeviceProperties().apiVersion;
-    allocatorInfo.physicalDevice = kompute_manager_.getVkPhysicalDevice();
-    allocatorInfo.device = kompute_manager_.getVkDevice();
-    allocatorInfo.instance = kompute_manager_.getVkInstance();
+    allocatorInfo.physicalDevice = *kompute_manager_.getVkPhysicalDevice();
+    allocatorInfo.device = *kompute_manager_.getVkDevice();
+    allocatorInfo.instance = *kompute_manager_.getVkInstance();
 
     vmaCreateAllocator(&allocatorInfo, &vma_allocator_);
 
@@ -406,25 +406,28 @@ common::Status VulkanExecutionProvider::UploadNcnnConstantInitializers(NcnnModel
   return Status::OK();
 }
 
-common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(KomputeModel& model,
+common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(const GraphViewer& graph_viewer,
+                                                                          KomputeModel& model,
                                                                           size_t num_initializers) {
   std::unordered_set<const NodeArg*> initializers_to_upload(num_initializers);
 
+  // assembly all the kp::Tensor instances to upload
   for (size_t i = 0, end = model.layers.size(); i < end; i++) {
-    model.layers[i]->GetKomputeConstantInitializersToUpload(initializers_to_upload);
+    model.layers[i]->KomputeProcessConstantInitializers(graph_viewer, kompute_manager_, model.constant_initializers);
   }
 
   // create a kp::Tensor for each initializer
   std::vector<std::shared_ptr<kp::Tensor>> tensors;
   tensors.reserve(initializers_to_upload.size());
-  for (const NodeArg* initializer : initializers_to_upload) {
-  }
+  std::for_each(initializers_to_upload.begin(), initializers_to_upload.end(),
+                [&tensors](const auto& pair) {
+                  tensors.push_back(pair.second);
+                });
 
-  // create a kp::Sequence
+  auto seq = kompute_manager_.sequence();
+  seq->record<kp::OpTensorSyncDevice>(tensors);
+  seq->eval();
 
-  // add tensors
-
-  // copy to device
   return Status::OK();
 }
 
@@ -482,15 +485,15 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
     // create layer for each node. we add the outputs from each layer to value_indexes when doing so
     for (const Node& node : graph.Nodes()) {
       std::unique_ptr<vulkan::VulkanKernel> layer;
-      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, graph, node, value_indexes, layer));
+      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, &graph, node, value_indexes, layer));
       layers.push_back(std::move(layer));
     }
 
-    ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(*model, num_initializers));
+    ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(graph, *model, num_initializers));
 
     // ModelMetadefIdGenerator is broken if this happens
-    ORT_ENFORCE(models_.find(fused_node.Name()) == models_.end(), "Duplicate fused node names");
-    models_[fused_node.Name()] = std::move(model);
+    ORT_ENFORCE(kompute_models_.find(fused_node.Name()) == kompute_models_.end(), "Duplicate fused node names");
+    kompute_models_[fused_node.Name()] = std::move(model);
 
     compute_info.create_state_func = [&model](ComputeContext* /*context*/, FunctionState* /*state*/) {
       return 0;
@@ -505,12 +508,22 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
       // this is an OpKernelContextInternal if we need that
       auto& ctx = *reinterpret_cast<OpKernelContext*>(context);
 
-      auto model_iter = models_.find(ctx.GetNodeName());
-      ORT_ENFORCE(model_iter != models_.end(), "Model for compiled node was not found!");
+      auto model_iter = kompute_models_.find(ctx.GetNodeName());
+      ORT_ENFORCE(model_iter != kompute_models_.end(), "Model for compiled node was not found!");
 
+      // copy input to device. might be able to just create a kp::Tensor as that will be to staging memory.
+      // if necessary use OpTensorSyncDevice
+
+      // run layers
+
+      // copy output tensors to host.
+
+      // ??? how do we get the output tensors? need NodeArg to kp::Tensor map
       return Status::OK();
-    }
+    };
   }
+
+  return Status::OK();
 }
 
 common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
@@ -542,7 +555,7 @@ common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeA
     // create layer for each node. we add the outputs from each layer to value_indexes when doing so
     for (const Node& node : graph.Nodes()) {
       std::unique_ptr<vulkan::VulkanKernel> layer;
-      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, graph, node, value_indexes, layer));
+      ORT_RETURN_IF_ERROR(vulkan::VulkanKernel::Create(*this, use_kompute_, &graph, node, value_indexes, layer));
       layers.push_back(std::move(layer));
     }
 
@@ -564,8 +577,8 @@ common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeA
     ORT_RETURN_IF_ERROR(UploadNcnnConstantInitializers(*model));
 
     // ModelMetadefIdGenerator is broken if this happens
-    ORT_ENFORCE(models_.find(fused_node.Name()) == models_.end(), "Duplicate fused node names");
-    models_[fused_node.Name()] = std::move(model);
+    ORT_ENFORCE(ncnn_models_.find(fused_node.Name()) == ncnn_models_.end(), "Duplicate fused node names");
+    ncnn_models_[fused_node.Name()] = std::move(model);
 
     compute_info.create_state_func = [&model](ComputeContext* /*context*/, FunctionState* /*state*/) {
       return 0;
@@ -580,8 +593,8 @@ common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeA
       // this is an OpKernelContextInternal if we need that
       auto& ctx = *reinterpret_cast<OpKernelContext*>(context);
 
-      auto model_iter = models_.find(ctx.GetNodeName());
-      ORT_ENFORCE(model_iter != models_.end(), "Model for compiled node was not found!");
+      auto model_iter = ncnn_models_.find(ctx.GetNodeName());
+      ORT_ENFORCE(model_iter != ncnn_models_.end(), "Model for compiled node was not found!");
 
       NcnnModel& model = *model_iter->second;
 
@@ -721,6 +734,18 @@ common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeA
 
 std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators;
+
+  if (use_kompute_) {
+    allocators.push_back(std::make_unique<vulkan::VulkanBufferAllocator>(
+        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, /*device_id*/ 0),
+        ncnn_options_.blob_vkallocator));
+
+    // using 'CUDA_PINNED' for staging memory
+    allocators.push_back(std::make_unique<vulkan::VulkanBufferAllocator>(
+        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, /*device_id*/ 0),
+        ncnn_options_.staging_vkallocator));
+  };
+
   return allocators;
 }
 

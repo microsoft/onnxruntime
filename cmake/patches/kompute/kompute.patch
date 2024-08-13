@@ -1,3 +1,39 @@
+diff --git a/src/Algorithm.cpp b/src/Algorithm.cpp
+index a354157..eae27ff 100644
+--- a/src/Algorithm.cpp
++++ b/src/Algorithm.cpp
+@@ -400,4 +400,9 @@ Algorithm::getTensors()
+     return this->mTensors;
+ }
+ 
++void
++Algorithm::setTensors(const std::vector<std::shared_ptr<Tensor>>& tensors)
++{
++    this->mTensors = tensors;
++}
+ }
+diff --git a/src/include/kompute/Algorithm.hpp b/src/include/kompute/Algorithm.hpp
+index 1917dd3..68ae95e 100644
+--- a/src/include/kompute/Algorithm.hpp
++++ b/src/include/kompute/Algorithm.hpp
+@@ -210,7 +210,7 @@ class Algorithm
+      * @param size The number of data elements provided in the data
+      * @param memorySize The memory size of each of the data elements in bytes.
+      */
+-    void setPushConstants(void* data, uint32_t size, uint32_t memorySize)
++    void setPushConstants(const void* data, uint32_t size, uint32_t memorySize)
+     {
+ 
+         uint32_t totalSize = memorySize * size;
+@@ -273,6 +273,8 @@ class Algorithm
+      */
+     const std::vector<std::shared_ptr<Tensor>>& getTensors();
+ 
++    void setTensors(const std::vector<std::shared_ptr<Tensor>>& tensors);
++
+     void destroy();
+ 
+   private:
 diff --git a/src/include/kompute/Manager.hpp b/src/include/kompute/Manager.hpp
 index 52f9ada..5e8404f 100644
 --- a/src/include/kompute/Manager.hpp
@@ -13,3 +49,45 @@ index 52f9ada..5e8404f 100644
    private:
      // -------------- OPTIONALLY OWNED RESOURCES
      std::shared_ptr<vk::Instance> mInstance = nullptr;
+diff --git a/src/include/kompute/Tensor.hpp b/src/include/kompute/Tensor.hpp
+index a2bcd18..a854b63 100644
+--- a/src/include/kompute/Tensor.hpp
++++ b/src/include/kompute/Tensor.hpp
+@@ -74,14 +74,14 @@ class Tensor
+      * @param data Vector of data to use to initialise vector from
+      * @param tensorType The type to use for the tensor
+      */
+-    void rebuild(void* data,
+-                 uint32_t elementTotalCount,
+-                 uint32_t elementMemorySize);
++    virtual void rebuild(void* data,
++                         uint32_t elementTotalCount,
++                         uint32_t elementMemorySize);
+ 
+     /**
+      * Destroys and frees the GPU resources which include the buffer and memory.
+      */
+-    void destroy();
++    virtual void destroy();
+ 
+     /**
+      * Check whether tensor is initialized based on the created gpu resources.
+@@ -252,7 +252,6 @@ class Tensor
+     uint32_t mDataTypeMemorySize;
+     void* mRawData;
+ 
+-  private:
+     // -------------- NEVER OWNED RESOURCES
+     std::shared_ptr<vk::PhysicalDevice> mPhysicalDevice;
+     std::shared_ptr<vk::Device> mDevice;
+@@ -267,7 +266,9 @@ class Tensor
+     std::shared_ptr<vk::DeviceMemory> mStagingMemory;
+     bool mFreeStagingMemory = false;
+ 
+-    void allocateMemoryCreateGPUResources(); // Creates the vulkan buffer
++  private:
++    virtual void
++    allocateMemoryCreateGPUResources(); // Creates the vulkan buffer
+     void createBuffer(std::shared_ptr<vk::Buffer> buffer,
+                       vk::BufferUsageFlags bufferUsageFlags);
+     void allocateBindMemory(std::shared_ptr<vk::Buffer> buffer,

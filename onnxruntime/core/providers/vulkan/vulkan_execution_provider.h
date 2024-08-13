@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "kompute/Kompute.hpp"
-#include "vk_mem_alloc.h"  // Vulkan Memory Allocator
+#include "core/providers/vulkan/vulkan_memory_allocator.h"
 
 #include "include/ncnn/command.h"
 #include "include/ncnn/option.h"
@@ -24,6 +24,7 @@ class Layer;
 }
 
 namespace onnxruntime {
+class NodeArg;
 namespace vulkan {
 class VulkanKernel;
 }
@@ -95,7 +96,8 @@ class VulkanExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   common::Status UploadNcnnConstantInitializers(NcnnModel& model);
-  common::Status UploadKomputeConstantInitializers(KomputeModel& model, size_t num_initializers);
+  common::Status UploadKomputeConstantInitializers(const GraphViewer& graph_viewer,
+                                                   KomputeModel& model, size_t num_initializers);
 
   ncnn::Option ncnn_options_;
 
@@ -122,11 +124,12 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   struct KomputeModel {
     std::vector<std::unique_ptr<vulkan::VulkanKernel>> layers;
-    std::unordered_map<const NodeArg*, kp::Tensor*> constant_initializers;
+    std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>> constant_initializers;
   };
 
   // one entry per partition
-  std::unordered_map<std::string, std::unique_ptr<NcnnModel>> models_;
+  std::unordered_map<std::string, std::unique_ptr<NcnnModel>> ncnn_models_;
+  std::unordered_map<std::string, std::unique_ptr<KomputeModel>> kompute_models_;
 
   kp::Manager kompute_manager_;
 
@@ -135,7 +138,7 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   vulkan::VulkanDataTransferImpl data_transfer_;
 
-  kp::Sequence run_sequence_;
+  std::shared_ptr<kp::Sequence> run_sequence_;
 };
 
 }  // namespace onnxruntime

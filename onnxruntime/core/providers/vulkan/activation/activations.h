@@ -13,7 +13,7 @@ namespace vulkan {
 
 class SigmoidKernel : VulkanKernel {
  public:
-  static bool IsSupported(bool use_kompute, const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
+  static bool IsSupported(bool /*use_kompute*/, const GraphViewer&, const onnxruntime::Node&, const logging::Logger&) {
     return true;
   }
 
@@ -21,12 +21,12 @@ class SigmoidKernel : VulkanKernel {
                                               bool use_kompute,
                                               const GraphViewer&,
                                               const onnxruntime::Node& node) {
-    return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, node));
+    return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, use_kompute, node));
   }
 
  private:
-  SigmoidKernel(const VulkanExecutionProvider& vulkan_ep, const onnxruntime::Node& node)
-      : VulkanKernel{vulkan_ep, node} {
+  SigmoidKernel(const VulkanExecutionProvider& vulkan_ep, bool use_kompute, const onnxruntime::Node& node)
+      : VulkanKernel{vulkan_ep, use_kompute, node} {
   }
 };
 
@@ -39,7 +39,7 @@ class ClipKernel : VulkanKernel {
                                               bool use_kompute,
                                               const GraphViewer&,
                                               const onnxruntime::Node& node) {
-    return std::unique_ptr<VulkanKernel>(new ClipKernel(vulkan_ep, node));
+    return std::unique_ptr<VulkanKernel>(new ClipKernel(vulkan_ep, use_kompute, node));
   }
 
   // std::string_view GetNcnnLayerName() const override {
@@ -47,9 +47,8 @@ class ClipKernel : VulkanKernel {
   // }
 
  private:
-  ClipKernel(const VulkanExecutionProvider& vulkan_ep,
-             const onnxruntime::Node& node)
-      : VulkanKernel{vulkan_ep, node} {
+  ClipKernel(const VulkanExecutionProvider& vulkan_ep, bool use_kompute, const onnxruntime::Node& node)
+      : VulkanKernel{vulkan_ep, use_kompute, node} {
   }
 };
 

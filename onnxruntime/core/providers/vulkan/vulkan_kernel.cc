@@ -14,9 +14,9 @@ namespace vulkan {
 
 namespace {
 using IsSupportedFn = std::function<bool(bool use_kompute,
-                                         const GraphViewer& graph_viewer,
+                                         const GraphViewer&,
                                          const onnxruntime::Node&,
-                                         const logging::Logger& logger)>;
+                                         const logging::Logger&)>;
 
 using CreateFn = std::function<std::unique_ptr<VulkanKernel>(const VulkanExecutionProvider&,
                                                              bool use_kompute,
