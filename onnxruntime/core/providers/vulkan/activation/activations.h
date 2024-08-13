@@ -19,7 +19,7 @@ class SigmoidKernel : VulkanKernel {
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
                                               bool use_kompute,
-                                              const GraphViewer&,
+                                              const GraphViewer*,
                                               const onnxruntime::Node& node) {
     return std::unique_ptr<VulkanKernel>(new SigmoidKernel(vulkan_ep, use_kompute, node));
   }

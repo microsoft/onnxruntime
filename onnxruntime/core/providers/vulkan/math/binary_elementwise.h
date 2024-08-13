@@ -43,7 +43,7 @@ class BinaryElementwiseKernel : VulkanKernel {
 #define BEK_CREATE(name, ncnn_op_type)                                                        \
   static std::unique_ptr<VulkanKernel> Create##name(const VulkanExecutionProvider& vulkan_ep, \
                                                     bool use_kompute,                         \
-                                                    const GraphViewer& graph_viewer,          \
+                                                    const GraphViewer* graph_viewer,          \
                                                     const onnxruntime::Node& node) {          \
     return Create(ncnn_op_type, vulkan_ep, use_kompute, graph_viewer, node);                  \
   }

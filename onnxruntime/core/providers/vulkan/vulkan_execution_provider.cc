@@ -521,6 +521,8 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
       // ??? how do we get the output tensors? need NodeArg to kp::Tensor map
       return Status::OK();
     };
+
+    node_compute_funcs.push_back(std::move(compute_info));
   }
 
   return Status::OK();

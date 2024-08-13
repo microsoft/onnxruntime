@@ -22,9 +22,10 @@ class MatMulKernel : VulkanKernel {
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
                                               bool use_kompute,
-                                              const GraphViewer& graph_viewer,
+                                              const GraphViewer* graph_viewer,
                                               const onnxruntime::Node& node) {
-    return std::unique_ptr<VulkanKernel>(new MatMulKernel(vulkan_ep, use_kompute, graph_viewer, node));
+    assert(graph_viewer);  // expecting compile only usage
+    return std::unique_ptr<VulkanKernel>(new MatMulKernel(vulkan_ep, use_kompute, *graph_viewer, node));
   }
 
   // static kernel usage.

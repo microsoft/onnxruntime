@@ -302,16 +302,16 @@ Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence
                            std::min(4U, narrow<uint32_t>(input_info_.shape_B[0])),
                            1});
   std::vector<float> specializations(14, 0.f);
-  specializations[4] = 2;
-  specializations[5] = narrow<uint32_t>(input_info_.shape_A[1]);
-  specializations[6] = narrow<uint32_t>(input_info_.shape_A[0]);
-  specializations[7] = 1;
-  specializations[8] = narrow<uint32_t>(input_info_.shape_A[0] * input_info_.shape_A[1]);
-  specializations[9] = 2;
-  specializations[10] = narrow<uint32_t>(input_info_.shape_B[1]);
-  specializations[11] = narrow<uint32_t>(input_info_.shape_A[0]);
-  specializations[12] = 1;
-  specializations[13] = num_output_elements;
+  specializations[4] = 2.f;
+  specializations[5] = narrow<float>(input_info_.shape_A[1]);
+  specializations[6] = narrow<float>(input_info_.shape_A[0]);
+  specializations[7] = 1.f;
+  specializations[8] = narrow<float>(input_info_.shape_A[0] * input_info_.shape_A[1]);
+  specializations[9] = 2.f;
+  specializations[10] = narrow<float>(input_info_.shape_B[1]);
+  specializations[11] = narrow<float>(input_info_.shape_A[0]);
+  specializations[12] = 1.f;
+  specializations[13] = narrow<float>(num_output_elements);
 
   // only using static inputs at the moment so all values are set by specializations and none by push constants
   std::vector<float> pushConstsA(14, 0.f);
@@ -331,7 +331,6 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
   if (input_idx == 1) {
     auto orig_shape = tensor.Shape();
-    const auto rank = orig_shape.NumDimensions();
 
     InlinedVector<size_t> perm{1, 0};
     TensorShapeVector new_dims{orig_shape[1], orig_shape[0]};
