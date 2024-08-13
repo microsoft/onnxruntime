@@ -248,6 +248,28 @@ def fix_output_shapes(model: onnx.ModelProto):
             if is_fixed_size_tensor(new_o):
                 o.type.tensor_type.shape.CopyFrom(new_o.type.tensor_type.shape)
 
+def fix_output_shapes_path(model: onnx.ModelProto, model_path: str | pathlib.Path,
+                           output_path: str | pathlib.Path = ""):
+    """
+    This is the same function as :func:`fix_output_shapes` but supports >2GB models
+    The function outputs the inferred model to the `output_path`. The original model path
+    is used if not specified.
+    :param model: Model that had input shapes fixed.
+    """
+
+    # get a version of the model with shape inferencing info in it. this will provide fixed output shapes if possible.
+    onnx.shape_inference.infer_shapes_path(model_path, output_path)
+    if output_path == "":
+        output_path = model_path
+    onnx.checker.check_model(output_path)
+    m2 = onnx.load_model(output_path)
+
+    for idx, o in enumerate(model.graph.output):
+        if not is_fixed_size_tensor(o):
+            new_o = m2.graph.output[idx]
+            if is_fixed_size_tensor(new_o):
+                o.type.tensor_type.shape.CopyFrom(new_o.type.tensor_type.shape)
+
 
 def _create_producer_consumer_link(
     node_to_producers: dict, node_to_consumers: dict, producer: onnx.NodeProto, consumer: onnx.NodeProto
