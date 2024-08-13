@@ -217,7 +217,6 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
         if ( schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))){
           input_name = schema->inputs__GetTypeStr(i);
         }
-        std::cout << input_name << " "<< input_type<<" "<< ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED << std::endl;
         if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
           def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::AllTensorTypes());
         } else {
@@ -232,7 +231,6 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
             output_name = schema->outputs__GetTypeStr(i);
           }
         }
-        std::cout << output_name << " "<< output_type<<" "<< ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED << std::endl;
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
           def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
         } else {

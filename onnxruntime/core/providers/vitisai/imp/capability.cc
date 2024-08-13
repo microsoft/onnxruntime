@@ -52,15 +52,9 @@ GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
   std::vector<NodeIndex> node_indexs = graph.GetNodesInTopologicalOrder();
   node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_nodes_included_eps.count(index) > 0; }), node_indexs.end());
   node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(),
-                                   [&](NodeIndex index) {
-                                    auto node = graph.GetNode(index);
-                                    const KernelCreateInfo* kernel_def = kernel_lookup.LookUpKernel(*node);
-  std::cout << "index "<< index <<" "<<(const void*) kernel_def <<" "<< node->OpType()<<" "
-  << node->Name()<<" "<<node->GetExecutionProviderType()<< std::endl;
-                                    return kernel_def == nullptr; }),
+                                   [&](NodeIndex index) { return kernel_lookup.LookUpKernel(*graph.GetNode(index)) == nullptr; }),
                     node_indexs.end());
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::cout << "node_indexs.size() "<< node_indexs.size() << std::endl;
   for (auto& n : node_indexs) {
     auto indexed_subgraph = IndexedSubGraph::Create();
     indexed_subgraph->Nodes() = {n};
