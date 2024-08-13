@@ -21,8 +21,8 @@ namespace onnxruntime
 }
 
 using MLFloat16 = onnxruntime::MLFloat16;
-using MLUInt4 = onnxruntime::Int4x2Base<false>;
-using MLInt4 = onnxruntime::Int4x2Base<true>;
+using MLUInt4x2 = onnxruntime::Int4x2Base<false>;
+using MLInt4x2 = onnxruntime::Int4x2Base<true>;
 
 //
 // Traits for numeric attribute types

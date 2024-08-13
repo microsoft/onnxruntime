@@ -625,7 +625,8 @@ public:
         std::vector<DML_TENSOR_DESC> quantizationTensors;
         quantizationTensors.push_back(inputDescs[1]);
 
-        const bool isSignedQuantization = inputDataType == DML_TENSOR_DATA_TYPE_INT4 ||
+        const bool isSignedQuantization =
+            inputDataType == DML_TENSOR_DATA_TYPE_INT4 ||
             outputDataType == DML_TENSOR_DATA_TYPE_INT4 ||
             inputDataType == DML_TENSOR_DATA_TYPE_INT8 ||
             outputDataType == DML_TENSOR_DATA_TYPE_INT8;
@@ -678,10 +679,10 @@ public:
             quantizationOpDesc.OutputTensor = &outputDescs[0];
             DML_OPERATOR_DESC quantizationOpDmlDesc = { ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &quantizationOpDesc };
 
-            std::vector<const DML_OPERATOR_DESC*> opDescs;
-            opDescs.reserve(2);
-            opDescs.push_back(&zeroPointConstantDmlDesc);
-            opDescs.push_back(&quantizationOpDmlDesc);
+            std::array<const DML_OPERATOR_DESC*, 2> opDescs = {
+                &zeroPointConstantDmlDesc,
+                &quantizationOpDmlDesc,
+            };
 
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
             inputEdges.reserve(2);

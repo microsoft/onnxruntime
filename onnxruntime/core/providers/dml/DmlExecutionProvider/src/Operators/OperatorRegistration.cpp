@@ -1261,8 +1261,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
 
             // Scalars
             if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(TensorEdgeDesc<float>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt4  )) edgeDescs.push_back(TensorEdgeDesc<::MLUInt4>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int4   )) edgeDescs.push_back(TensorEdgeDesc<::MLInt4>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt4  )) edgeDescs.push_back(TensorEdgeDesc<::MLUInt4x2>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int4   )) edgeDescs.push_back(TensorEdgeDesc<::MLInt4x2>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(TensorEdgeDesc<uint8_t>());
             if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(TensorEdgeDesc<int8_t>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(TensorEdgeDesc<uint16_t>());
