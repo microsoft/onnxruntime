@@ -3,10 +3,10 @@
 
 import Long from 'long';
 
-import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
-import {onnx} from './ort-schema/protobuf/onnx';
-import {Tensor} from './tensor';
-import {decodeUtf8String, LongUtil} from './util';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import { onnx } from './ort-schema/protobuf/onnx';
+import { Tensor } from './tensor';
+import { decodeUtf8String, LongUtil } from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
@@ -30,7 +30,7 @@ type ValueTypes = Attribute.DataTypeMap[Attribute.DataType];
 type Value = [ValueTypes, Attribute.DataType];
 
 export class Attribute {
-  constructor(attributes: onnx.IAttributeProto[]|ortFbs.Attribute[]|null|undefined) {
+  constructor(attributes: onnx.IAttributeProto[] | ortFbs.Attribute[] | null | undefined) {
     this._attributes = new Map();
     if (attributes !== null && attributes !== undefined) {
       for (const attr of attributes) {
@@ -85,7 +85,10 @@ export class Attribute {
   }
 
   private get<V extends Attribute.DataTypeMap[Attribute.DataType]>(
-      key: string, type: Attribute.DataType, defaultValue?: V): V {
+    key: string,
+    type: Attribute.DataType,
+    defaultValue?: V,
+  ): V {
     const valueAndType = this._attributes.get(key);
     if (valueAndType === undefined) {
       if (defaultValue !== undefined) {
@@ -99,8 +102,8 @@ export class Attribute {
     return valueAndType[0] as V;
   }
 
-  private static getType(attr: onnx.IAttributeProto|ortFbs.Attribute): Attribute.DataType {
-    const type = attr instanceof onnx.AttributeProto ? (attr).type : (attr as ortFbs.Attribute).type();
+  private static getType(attr: onnx.IAttributeProto | ortFbs.Attribute): Attribute.DataType {
+    const type = attr instanceof onnx.AttributeProto ? attr.type : (attr as ortFbs.Attribute).type();
     switch (type) {
       case onnx.AttributeProto.AttributeType.FLOAT:
         return 'float';
@@ -123,7 +126,7 @@ export class Attribute {
     }
   }
 
-  private static getValue(attr: onnx.IAttributeProto|ortFbs.Attribute) {
+  private static getValue(attr: onnx.IAttributeProto | ortFbs.Attribute) {
     const attrType = attr instanceof onnx.AttributeProto ? attr.type : (attr as ortFbs.Attribute).type();
     if (attrType === onnx.AttributeProto.AttributeType.GRAPH || attrType === onnx.AttributeProto.AttributeType.GRAPHS) {
       throw new Error('graph attribute is not supported yet');
@@ -138,7 +141,7 @@ export class Attribute {
 
     // cast LONG[] to number[]
     if (attrType === onnx.AttributeProto.AttributeType.INTS) {
-      const arr = (value as Array<number|Long|flatbuffers.Long>);
+      const arr = value as Array<number | Long | flatbuffers.Long>;
       const numberValue: number[] = new Array<number>(arr.length);
 
       for (let i = 0; i < arr.length; i++) {
@@ -151,18 +154,19 @@ export class Attribute {
 
     // cast onnx.TensorProto to onnxjs.Tensor
     if (attrType === onnx.AttributeProto.AttributeType.TENSOR) {
-      return attr instanceof onnx.AttributeProto ? Tensor.fromProto(value as onnx.ITensorProto) :
-                                                   Tensor.fromOrtTensor(value as ortFbs.Tensor);
+      return attr instanceof onnx.AttributeProto
+        ? Tensor.fromProto(value as onnx.ITensorProto)
+        : Tensor.fromOrtTensor(value as ortFbs.Tensor);
     }
 
     // cast onnx.TensorProto[] to onnxjs.Tensor[]
     if (attrType === onnx.AttributeProto.AttributeType.TENSORS) {
       if (attr instanceof onnx.AttributeProto) {
         const tensorProtos = value as onnx.ITensorProto[];
-        return tensorProtos.map(value => Tensor.fromProto(value));
+        return tensorProtos.map((value) => Tensor.fromProto(value));
       } else if (attr instanceof ortFbs.Attribute) {
         const tensorProtos = value as ortFbs.Tensor[];
-        return tensorProtos.map(value => Tensor.fromOrtTensor(value));
+        return tensorProtos.map((value) => Tensor.fromOrtTensor(value));
       }
     }
 
@@ -189,9 +193,10 @@ export class Attribute {
     return value as ValueTypes;
   }
 
-  private static getValueNoCheck(attr: onnx.IAttributeProto|ortFbs.Attribute) {
-    return attr instanceof (onnx.AttributeProto) ? this.getValueNoCheckFromOnnxFormat(attr) :
-                                                   this.getValueNoCheckFromOrtFormat(attr as ortFbs.Attribute);
+  private static getValueNoCheck(attr: onnx.IAttributeProto | ortFbs.Attribute) {
+    return attr instanceof onnx.AttributeProto
+      ? this.getValueNoCheckFromOnnxFormat(attr)
+      : this.getValueNoCheckFromOrtFormat(attr as ortFbs.Attribute);
   }
 
   private static getValueNoCheckFromOnnxFormat(attr: onnx.IAttributeProto) {

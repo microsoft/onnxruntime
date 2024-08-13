@@ -11,8 +11,8 @@ export * from 'onnxruntime-common';
 import * as ort from 'onnxruntime-common';
 export default ort;
 
-import {registerBackend, env} from 'onnxruntime-common';
-import {version} from './version';
+import { registerBackend, env } from 'onnxruntime-common';
+import { version } from './version';
 
 if (!BUILD_DEFS.DISABLE_WEBGL) {
   const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
@@ -20,8 +20,9 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
 }
 
 if (!BUILD_DEFS.DISABLE_WASM) {
-  const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('./backend-wasm-inference').wasmBackend :
-                                                    require('./backend-wasm-training').wasmBackend;
+  const wasmBackend = BUILD_DEFS.DISABLE_TRAINING
+    ? require('./backend-wasm-inference').wasmBackend
+    : require('./backend-wasm-training').wasmBackend;
   if (!BUILD_DEFS.DISABLE_JSEP) {
     registerBackend('webgpu', wasmBackend, 5);
     registerBackend('webnn', wasmBackend, 5);
@@ -30,4 +31,4 @@ if (!BUILD_DEFS.DISABLE_WASM) {
   registerBackend('wasm', wasmBackend, 10);
 }
 
-Object.defineProperty(env.versions, 'web', {value: version, enumerable: true});
+Object.defineProperty(env.versions, 'web', { value: version, enumerable: true });
