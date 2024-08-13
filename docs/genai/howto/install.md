@@ -79,7 +79,7 @@ https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-11-nigh
 
 
 # Install onnxruntime-genai built for CUDA 11
-pip install onnxruntime-genai-cuda-11 --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+pip install onnxruntime-genai-cuda-11 --pre
 ```
 
 #### CUDA 12
@@ -89,7 +89,7 @@ pip install onnxruntime-genai-cuda-11 --pre --extra-index-url https://aiinfra.pk
 pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 
 # Install onnxruntime-genai build for CUDA 12
-pip install onnxruntime-genai-cuda --pre --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+pip install onnxruntime-genai-cuda --pre
 ```
 
 ## Nuget packages
