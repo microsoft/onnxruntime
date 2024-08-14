@@ -97,16 +97,29 @@ static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) 
   const Node* source_node = graph.GetProducerNode(quantize_node->InputDefs()[0]->Name());
   const int source_node_output_index = source_node ? quantize_node->InputEdgesBegin()->GetSrcArgIndex() : -1;
 
+  auto input_node_arg = quantize_node->MutableInputDefs()[0];
+  auto constant_initializer = graph.GetConstantInitializer(input_node_arg->Name(), true);
+
+  NodeArg* constant_initializer_node_arg = nullptr;
+
+  if (constant_initializer) {
+    auto initializer_copy = *constant_initializer;
+    initializer_copy.set_name(constant_initializer->name() + "_copy");
+    constant_initializer_node_arg = &graph_utils::AddInitializer(graph, initializer_copy);
+  }
+
   // Disconnect the source node from the quantize node
   if (source_node) {
     graph.RemoveEdge(source_node->Index(), quantize_node_index, source_node_output_index, 0);
   }
 
-  auto input_node_arg = quantize_node->InputDefs()[0];
-
   // Disconnect the quantize node from the dequantize nodes, and connect the source node to the outputs of dequantize
   for (gsl::not_null<Node*> dequantize_node : dequantize_nodes) {
     graph.RemoveEdge(quantize_node_index, dequantize_node->Index(), 0, 0);
+
+    if (source_node && dequantize_node->GetOutputEdgesCount() == 0) {
+      graph.GetNode(source_node->Index())->MutableOutputDefs()[source_node_output_index] = dequantize_node->MutableOutputDefs()[0];
+    }
 
     while (dequantize_node->GetOutputEdgesCount() > 0) {
       auto output_iter = dequantize_node->OutputEdgesBegin();
@@ -118,12 +131,11 @@ static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) 
       if (source_node) {
         graph.AddEdge(source_node->Index(), target_node->Index(), source_node_output_index, target_arg_index);
       } else {
-        // If there's no source node, it means that the input to quantize is an input of the graph, so we need to clone the input arg
-        // and assign it to the input of each target
-        NodeArg input_node_arg_copy(input_node_arg->Name(), input_node_arg->TypeAsProto());
-        input_node_arg_copy.SetShape(*input_node_arg->Shape());
-
-        *target_node->MutableInputDefs()[target_arg_index] = std::move(input_node_arg_copy);
+        if (constant_initializer_node_arg) {
+          target_node->MutableInputDefs()[target_arg_index] = constant_initializer_node_arg;
+        } else {
+          target_node->MutableInputDefs()[target_arg_index] = input_node_arg;
+        }
       }
     }
 
