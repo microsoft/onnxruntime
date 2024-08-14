@@ -76,6 +76,7 @@ def add_github_dep(name, parsed_url):
         print(f"requesting {url} ...")
         res = requests.get(url, auth=(args.username, args.token))
         response_json = res.json()
+        print(response_json)
         tag_object = response_json["object"]
         if tag_object["type"] == "commit":
             commit = tag_object["sha"]
