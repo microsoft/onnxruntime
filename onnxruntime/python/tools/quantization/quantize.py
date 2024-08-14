@@ -11,7 +11,6 @@ from typing import Union
 import onnx
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
-from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -689,11 +688,10 @@ def quantize_dynamic(
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
-
 def quantize(
     model_input: Union[str, Path, onnx.ModelProto],
     model_output: Union[str, Path],
-    quant_config: Union[QuantConfig, WeightOnlyQuantConfig],
+    quant_config: QuantConfig,
 ):
     """Quantize a model with QuantConfig.
 
@@ -702,17 +700,7 @@ def quantize(
         model_output (str | Path): Path to save the quantized model.
         quant_config (QuantConfig | WeightOnlyQuantConfig): Quantization Configuration.
     """
-
-    if isinstance(quant_config, WeightOnlyQuantConfig):
-        model = (
-            save_and_reload_model_with_shape_infer(model_input)
-            if isinstance(model_input, onnx.ModelProto)
-            else load_model_with_shape_infer(Path(model_input))
-        )
-        quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
-        quant.process()
-        quant.model.save_model_to_file(model_output, True)
-    elif isinstance(quant_config, StaticQuantConfig):
+    if isinstance(quant_config, StaticQuantConfig):
         quantize_static(
             model_input,
             model_output,
@@ -744,4 +732,15 @@ def quantize(
             extra_options=quant_config.extra_options,
         )
     else:
-        raise TypeError("Invalid quantization config type, it must be either StaticQuantConfig or DynamicQuantConfig.")
+        # training package doesn't has quantize_matmul_4bits, avoid global import
+        from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
+        if isinstance(quant_config, WeightOnlyQuantConfig):
+            model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)
+            quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
+            quant.process()
+            quant.model.save_model_to_file(model_output, True)
+        else:
+            raise TypeError(
+                "Invalid quantization config type, it must be either StaticQuantConfig, "
+                "DynamicQuantConfig, or WeightOnlyQuantConfig."
+            )
