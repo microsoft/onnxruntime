@@ -16,6 +16,7 @@ import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
 import {fastGelu} from './ops/fast-gelu';
 import {gather, parseGatherAttributes} from './ops/gather';
+import {gatherBlockQuantized, parseGatherBlockQuantizedAttributes} from './ops/gather-block-quantized';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {groupQueryAttention, parseGroupQueryAttentionAttributes} from './ops/group-query-attention';
@@ -85,6 +86,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['FusedConv', [conv, parseConvAttributes]],
   ['Gather', [gather, parseGatherAttributes]],
   ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
+  ['GatherBlockQuantized', [gatherBlockQuantized, parseGatherBlockQuantizedAttributes]],
   ['Gelu', [unaryOps.gelu]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],

@@ -7,12 +7,12 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglValueType, UniformsArrayType} from './common';
 
 export interface GatherBlockQuantizedAttributes extends AttributeWithCacheKey {
-  blockSize: number;
   gatherAxis: number;
   quantizeAxis: number;
+  blockSize: number;
 }
 export const validateInputs = (inputs: readonly TensorView[], attributes: GatherBlockQuantizedAttributes): void => {
   if (inputs.length < 3 || inputs.length > 4) {
@@ -24,17 +24,21 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
   const scales = inputs[2];
   const zeroPoint = inputs.length === 4 ? inputs[3] : undefined;
   if (scales.dims.length !== data.dims.length ||
-      data.dims.map((d, i) => i === quantizeAxis ? Math.ceil(d / blockSize) === scales.dims[i] : d === scales.dims[i])
-          .reduce((a, b) => a && b, true)) {
-    throw new Error('Scales must have the same rank as the input tensor.');
+      !data.dims.map((d, i) => i === quantizeAxis ? Math.ceil(d / blockSize) === scales.dims[i] : d === scales.dims[i])
+           .reduce((a, b) => a && b, true)) {
+    throw new Error(
+        `Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.
+        The size of the quantizeAxis should be ceil(inputSize/blockSize).`);
   }
   if (zeroPoint) {
     if (zeroPoint.dataType !== data.dataType) {
       throw new Error('Zero point must have the same data type as the input tensor.');
     }
     if (zeroPoint.dims.length !== scales.dims.length ||
-       zeroPoint.dims.map((d, i) => d === scales.dims[i]).reduce((a, b) => a && b, true)) {
-      throw new Error('Zero point must have the same rank as the input tensor.');
+        !zeroPoint.dims.map((d, i) => d === scales.dims[i]).reduce((a, b) => a && b, true)) {
+      throw new Error(
+          `Zero point must have the same rank as the input tensor and the dims should match except on quantizeAxis.
+          The size of the quantizeAxis should be ceil(inputSize/blockSize).`);
     }
   }
 };
@@ -50,10 +54,12 @@ const createGatherBlockQuantizedProgramInfo =
       outputShape.splice(gatherAxis, 1, ...indicesShape);
       const outputSize = ShapeUtil.size(outputShape);
       const outputType = inputs[2].dataType;
+      const inputType = inputs[0].dataType;
+      const isSigned = inputType === DataType.int4x2;  // input data type is either int4x2 or uint4x2.
       const programUniforms: ProgramUniform[] = [
-        {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: quantizeAxis},
-        {type: DataType.uint32, data: gatherAxis},
-        ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape)
+        {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: quantizeAxis},
+        {type: DataType.uint32, data: gatherAxis}, {type: DataType.uint32, data: attributes.blockSize},
+        ...createTensorShapeVariables(...inputs.map((input, _) => input.dims), outputShape)
       ];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -68,17 +74,64 @@ const createGatherBlockQuantizedProgramInfo =
           inputVariables.push(zeroPoint);
         }
         const uniforms: UniformsArrayType = [
-          {name: 'output_size', type: 'u32'}, {name: 'quantize_axis', type: 'i32'}, {name: 'gather_axis', type: 'u32'}
+          {name: 'output_size', type: 'u32'}, {name: 'quantize_axis', type: 'u32'}, {name: 'gather_axis', type: 'u32'},
+          {name: 'block_size', type: 'u32'}
         ];
         return `
+        fn ${isSigned ? 'unpack8xI4(packed: i32) -> array<i32, 8>' : 'unpack8xU4(packed: u32) -> array<u32, 8>'} {
+          return array<${isSigned ? 'i32' : 'u32'}, 8>(
+          ${Array.from({length: 8}, (_, i) => `(packed << ${(7 - i) * 4}) >> 28`).join(', ')});
+        }
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart()}
+        var output_indices = ${output.offsetToIndices('global_idx')};
+        var indices_indices = ${indices.type.indices}(0);
+        ${
+            indicesShape.length > 1 ?
+                `
+          for (var i: u32 = 0; i < ${indicesShape.length}; i++) {
+            var index = ${output.indicesGet('output_indices', 'uniforms.gather_axis + i')};
+            ${indices.indicesSet('indices_indices', 'i', 'index')};
+          }` :
+                `indices_indices = ${output.indicesGet('output_indices', 'uniforms.gather_axis')};`}
+        var data_indices = ${data.type.indices}(0);
+        for (var i: u32 = 0; i < uniforms.gather_axis; i++) {
+          data_indices[i] = output_indices[i];
+        }
+        data_indices[uniforms.gather_axis] = u32(${indices.getByIndices('indices_indices')});
+        for (var i = uniforms.gather_axis + 1; i < ${outputShape.length}; i++) {
+          data_indices[i] = output_indices[i];
+        }
+        var data_offset = ${data.indicesToOffset('data_indices')};
+        var packed_quantized_value = ${data.getByOffset('data_offset / 8')};
+        var quanta = data_offset % 8;
+        var unpacked_quantized_data_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_quantized_value);
+        var quantized_data = unpacked_quantized_data_array[quanta];
+        var scale_indices = data_indices;
+        var quantize_axis_index = ${
+            scales.indicesGet('scale_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
+        ${scales.indicesSet('scale_indices', 'uniforms.quantize_axis', 'quantize_axis_index')};
+        var scale = ${scales.getByIndices('scale_indices')};
+        ${(() => {
+          if (!zeroPoint) {
+            return 'var zero_point = 0';
+          } else {
+            return `
+        var zero_point_indices = scale_indices;
+        var zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
+        var zero_point_packed = ${zeroPoint.getByOffset('zero_point_offset / 8')};
+        var zero_point_unpacked = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(zero_point_packed);
+        var zero_point = zero_point_unpacked[quanta];`;
+          }
+        })()};
+        var dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
+        ${output.setByOffset('global_idx', 'dequantized_data')}
     }`;
       };
       return {
         name: 'GatherBlockQuantized',
         shaderCache:
-            {hint: attributes.cacheKey, inputDependencies: Array.from({length: inputs.length}, (_v, _i) => 'rank')},
+            {hint: attributes.cacheKey + inputType.toString, inputDependencies: Array.from({length: inputs.length}, (_v, _i) => 'rank')},
         getRunData: () => ({
           outputs: [
             {dims: outputShape, dataType: outputType},
