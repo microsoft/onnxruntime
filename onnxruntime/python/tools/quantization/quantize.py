@@ -688,6 +688,7 @@ def quantize_dynamic(
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
 
+
 def quantize(
     model_input: Union[str, Path, onnx.ModelProto],
     model_output: Union[str, Path],
@@ -734,6 +735,7 @@ def quantize(
     else:
         # training package doesn't has quantize_matmul_4bits, avoid global import
         from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
+
         if isinstance(quant_config, WeightOnlyQuantConfig):
             model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)
             quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
