@@ -646,7 +646,7 @@ Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::
   return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
   const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
