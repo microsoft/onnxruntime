@@ -1839,7 +1839,7 @@ void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
 
 #ifdef BUILD_TENSORRT_STANDALONE_CUDA
 std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
-  cuda_allocator_ = std::make_unique<CUDAAllocator>(device_id_);
+  cuda_allocator_ = std::make_unique<CUDAAllocator>(static_cast<OrtDevice::DeviceId>(device_id_));
   cuda_pinned_allocator_ = std::make_unique<CUDAPinnedAllocator>();
   
   AllocatorCreationInfo default_memory_info(
