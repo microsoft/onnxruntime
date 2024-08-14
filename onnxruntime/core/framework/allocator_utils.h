@@ -42,4 +42,7 @@ struct AllocatorCreationInfo {
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
+// The functionality of the function is same as CreateAllocator(), it's mainly for out-of-tree/plugin EP framework
+AllocatorPtr CreateAllocator(std::unique_ptr<IAllocator> alloc, const OrtAllocatorCreationInfo& info);
+
 }  // namespace onnxruntime

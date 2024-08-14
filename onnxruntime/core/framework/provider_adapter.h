@@ -3,7 +3,11 @@
 
 #pragma once
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/allocator_adapters.h"
+#include "core/framework/execution_provider.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/allocator.h"
+#include "core/framework/allocator_utils.h"
 
 namespace onnxruntime {
 class ExecutionProviderAdapter : public IExecutionProvider {
@@ -14,6 +18,7 @@ public:
       ep_impl_->RegisterKernels(reinterpret_cast<OrtKernelRegistry*>(kernel_registry_.get()));
     }
   }
+
   virtual std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const override {
     size_t cnt = 0;
     OrtIndexedSubGraph** indexed_subgraph = nullptr;
@@ -86,8 +91,26 @@ public:
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return kernel_registry_; }
-private:
+
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+    size_t cnt = 0;
+    OrtAllocator** allocators = nullptr;
+    OrtAllocatorCreationInfo** alloc_create_info = nullptr;
+    if (ep_impl_->CreatePreferredAllocators) ep_impl_->CreatePreferredAllocators(ep_impl_, &cnt, &allocators, &alloc_create_info);
+
+    if (cnt == 0) return IExecutionProvider::CreatePreferredAllocators();
+
+    std::vector<AllocatorPtr> ret;
+    for (size_t i = 0; i < cnt; i++) {
+      auto ort_allocator_wrapper = std::make_unique<IAllocatorImplWrappingOrtAllocator>(allocators[i]);
+      ret.push_back(CreateAllocator(std::move(ort_allocator_wrapper), *alloc_create_info[i]));
+    }
+    return ret;
+  }
+
+ private:
   OrtExecutionProvider* ep_impl_;
   std::shared_ptr<KernelRegistry> kernel_registry_; // TODO(leca): should be static local
+  //std::vector<std::unique_ptr<OrtAllocator>> ort_allocators_;
 };
 }

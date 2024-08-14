@@ -15,25 +15,28 @@
 namespace onnxruntime {
 using namespace common;
 
-AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
-  auto device_allocator = info.device_alloc_factory(info.device_id);
-
-  if (info.use_arena) {
-    size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
-    int initial_chunk_size_bytes = info.arena_cfg.initial_chunk_size_bytes == -1
+AllocatorPtr CreateAllocatorImpl(std::unique_ptr<IAllocator> device_allocator,
+                                 OrtDevice::DeviceId device_id = 0,
+                                 bool use_arena = true,
+                                 OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1, -1L},
+                                 bool use_stream_aware_arena = false,
+                                 bool enable_cross_stream_reusing = false) {
+  if (use_arena) {
+    size_t max_mem = arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : arena_cfg.max_mem;
+    int initial_chunk_size_bytes = arena_cfg.initial_chunk_size_bytes == -1
                                        ? BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES
-                                       : info.arena_cfg.initial_chunk_size_bytes;
-    int max_dead_bytes_per_chunk = info.arena_cfg.max_dead_bytes_per_chunk == -1
+                                       : arena_cfg.initial_chunk_size_bytes;
+    int max_dead_bytes_per_chunk = arena_cfg.max_dead_bytes_per_chunk == -1
                                        ? BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK
-                                       : info.arena_cfg.max_dead_bytes_per_chunk;
-    int initial_growth_chunk_size_bytes = info.arena_cfg.initial_growth_chunk_size_bytes == -1
+                                       : arena_cfg.max_dead_bytes_per_chunk;
+    int initial_growth_chunk_size_bytes = arena_cfg.initial_growth_chunk_size_bytes == -1
                                               ? BFCArena::DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES
-                                              : info.arena_cfg.initial_growth_chunk_size_bytes;
-    int64_t max_power_of_two_extend_bytes = info.arena_cfg.max_power_of_two_extend_bytes == -1
+                                              : arena_cfg.initial_growth_chunk_size_bytes;
+    int64_t max_power_of_two_extend_bytes = arena_cfg.max_power_of_two_extend_bytes == -1
                                                 ? BFCArena::DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES
-                                                : info.arena_cfg.max_power_of_two_extend_bytes;
+                                                : arena_cfg.max_power_of_two_extend_bytes;
     ArenaExtendStrategy arena_extend_str;
-    switch (info.arena_cfg.arena_extend_strategy) {
+    switch (arena_cfg.arena_extend_strategy) {
       case static_cast<int>(ArenaExtendStrategy::kSameAsRequested):
         arena_extend_str = ArenaExtendStrategy::kSameAsRequested;
         break;
@@ -43,16 +46,16 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         break;
       default:
         LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy "
-                            << info.arena_cfg.arena_extend_strategy;
+                            << arena_cfg.arena_extend_strategy;
         return nullptr;
     }
 
-    if (info.use_stream_aware_arena) {
+    if (use_stream_aware_arena) {
 #ifdef ORT_ENABLE_STREAM
       return AllocatorPtr(
           std::make_unique<StreamAwareArena>(std::move(device_allocator),
                                              max_mem,
-                                             info.enable_cross_stream_reusing,
+                                             enable_cross_stream_reusing,
                                              arena_extend_str,
                                              initial_chunk_size_bytes,
                                              max_dead_bytes_per_chunk,
@@ -73,6 +76,25 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   } else {
     return device_allocator;
   }
+}
+
+AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
+  auto device_allocator = info.device_alloc_factory(info.device_id);
+  return CreateAllocatorImpl(std::move(device_allocator),
+                             info.device_id,
+                             info.use_arena,
+                             info.arena_cfg,
+                             info.use_stream_aware_arena,
+                             info.enable_cross_stream_reusing);
+}
+
+AllocatorPtr CreateAllocator(std::unique_ptr<IAllocator> device_allocator, const OrtAllocatorCreationInfo& info) {
+  return CreateAllocatorImpl(std::move(device_allocator),
+                             info.device_id,
+                             info.use_arena,
+                             info.arena_cfg,
+                             info.use_stream_aware_arena,
+                             info.enable_cross_stream_reusing);
 }
 
 }  // namespace onnxruntime

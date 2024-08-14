@@ -729,6 +729,14 @@ typedef struct OrtNodeComputeInfo {
   void(ORT_API_CALL* DestroyFunctionStateFunc)(void*);
 } OrtNodeComputeInfo;
 
+typedef struct OrtAllocatorCreationInfo {
+  OrtDevice::DeviceId device_id; // TODO: OrtDevice should also be exposed as part of C API.
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
+  bool use_stream_aware_arena;
+  bool enable_cross_stream_reusing;
+} OrtAllocatorCreationInfo;
+
 typedef struct OrtExecutionProvider {
 #ifdef __cplusplus
   OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr} {}
@@ -736,6 +744,7 @@ typedef struct OrtExecutionProvider {
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
   void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
   void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
+  void(ORT_API_CALL* CreatePreferredAllocators)(const OrtExecutionProvider* this_, size_t* cnt, OrtAllocator***, OrtAllocatorCreationInfo***);
   const char* type;
 } OrtExecutionProvider;
 
