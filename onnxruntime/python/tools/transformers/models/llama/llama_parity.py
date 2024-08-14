@@ -21,7 +21,6 @@ from llama_inputs import (
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
     verify_ort_inputs,
-    get_dynamo_inputs
 )
 from llama_torch import setup_torch_model
 from transformers import AutoConfig
@@ -42,10 +41,8 @@ def get_inputs(args: argparse.Namespace, config: AutoConfig):
     world_size = get_size()
     batch_size = 2
     past_sequence_length, sequence_length, max_sequence_length = get_sequence_lengths(args, config)
-    
-    if args.dynamo:
-        inputs = get_dynamo_inputs(config, args.device, batch_size, sequence_length, return_dict=True)
-    elif args.merged:
+
+    if args.merged:
         inputs = get_merged_sample_with_past_kv_inputs(
             config,
             args.device,
@@ -169,7 +166,6 @@ def verify_parity(
 def get_args(argv: list[str]):
     parser = argparse.ArgumentParser()
 
-   
     parser.add_argument(
         "-m",
         "--model_name",
@@ -240,14 +236,6 @@ def get_args(argv: list[str]):
         choices=["int4", "int8", "fp16", "fp32"],
         help="Precision of model",
     )
-    
-    parser.add_argument(
-        "--dynamo",
-        action="store_true",
-        help="Use Dynamo model inputs for parity check",
-    )
-    parser.set_defaults(dynamo=False)
-
 
     parser.add_argument(
         "--cache_dir",
