@@ -172,7 +172,7 @@ The following execution providers are available in ONNX Runtime Web:
 
 - `'wasm'`: The default CPU execution provider.
 - `'webgpu'`: The WebGPU execution provider. See [WebGPU EP](./ep-webgpu.md) for more details.
-- `'webnn'`: The WebNN execution provider.
+- `'webnn'`: The WebNN execution provider. See [WebNN EP](./ep-webnn.md) for more details.
 - `'webgl'`: The WebGL execution provider.
 
 ```js
