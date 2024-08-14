@@ -19,7 +19,7 @@ using onnxruntime::js::JsepSupportedFloatTypes;
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())      \
           .TypeConstraint("T2", JsepSupportedFloatTypes())              \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
-      GatherBlockQuantized<T1, Tind>);
+      GatherBlockQuantized);
 
 ONNX_GATHER_BLOCK_QUANTIZED_KERNELS(UInt4x2, int32_t);
 ONNX_GATHER_BLOCK_QUANTIZED_KERNELS(UInt4x2, int64_t);
