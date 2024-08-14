@@ -1,0 +1,154 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+#include "core/optimizer/int16_qdq_pairs_remover.h"
+#include <cassert>
+#include <string>
+
+#include "core/common/span_utils.h"
+#include "core/common/inlined_containers_fwd.h"
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
+
+namespace onnxruntime {
+
+/// <summary>
+/// Returns the zero-point type from the given QuantizeLinear node.
+/// </summary>
+/// <param name="graph">Graph</param>
+/// <param name="q_node">QuantizeLinear node</param>
+/// <param name="zp_data_type">Output parameter to store the zero-point data type</param>
+/// <returns>True if successfully extracted the zero-point data type</returns>
+static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
+                                  /*out*/ ONNX_NAMESPACE::TensorProto_DataType& zp_data_type) {
+  assert(q_node.OpType() == "QuantizeLinear");
+  const auto input_defs = q_node.InputDefs();
+
+  if (QDQ::InputIndex::ZERO_POINT_ID >= input_defs.size() || !input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
+    // If a zero_point input is absent, get the type from the "output_dtype" attribute or default to uint8.
+    // The "output_dtype" attribute was added in ONNX opset 21.
+    const auto* attr = graph_utils::GetNodeAttribute(q_node, "output_dtype");
+    zp_data_type = attr != nullptr ? static_cast<ONNX_NAMESPACE::TensorProto_DataType>(attr->i())
+                                   : ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+    return true;
+  }
+
+  const auto* zp_proto = graph.GetConstantInitializer(input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name(), true);
+  if (zp_proto == nullptr) {
+    return false;
+  }
+
+  zp_data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(zp_proto->data_type());
+  return true;
+}
+
+/// <summary>
+/// Tries to reduce a double QDQ sequence (Q1 -> DQ1 -> Q2 -> DQ2*) beginning with the provided Q1 node index.
+/// The scale/zero-point values of the outer Q1 and DQ2* nodes may need to be recomputed.
+/// Supports multiple identical DQ2 nodes.
+/// </summary>
+/// <param name="graph">Graph to modify</param>
+/// <param name="q1_index">Index of potential Q1 node</param>
+/// <returns>True if the double QDQ sequence was reduced</returns>
+static bool TryRemoveInt16QDQPairs(Graph& graph, NodeIndex quantize_node_index) {
+  const auto get_constant_initializer = [&graph](const std::string& initializer_name) {
+    return graph.GetConstantInitializer(initializer_name, true);
+  };
+
+  Node* quantize_node = graph.GetNode(quantize_node_index);
+
+  if (quantize_node == nullptr ||
+      quantize_node->OpType() != "QuantizeLinear" ||
+      graph.NodeProducesGraphOutput(*quantize_node)) {
+    return false;
+  }
+
+  auto quant_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (!GetQNodeZeroPointType(graph, *quantize_node, quant_type)) {
+    return false;
+  }
+
+  // Ensure that the quantization type is int16 or uint16
+  if (quant_type != ONNX_NAMESPACE::TensorProto_DataType_UINT16 && quant_type != ONNX_NAMESPACE::TensorProto_DataType_INT16) {
+    return false;
+  }
+
+  // All of q2's children should be DQ nodes with zero-point and scale values equal to those of q2.
+  InlinedVector<gsl::not_null<Node*>> dequantize_nodes;
+  dequantize_nodes.reserve(quantize_node->GetOutputEdgesCount());
+
+  for (auto it = quantize_node->OutputEdgesBegin(); it != quantize_node->OutputEdgesEnd(); it++) {
+    NodeIndex dequantize_node_index = it->GetNode().Index();
+    Node* dequantize_node = graph.GetNode(dequantize_node_index);
+
+    if (dequantize_node == nullptr || dequantize_node->OpType() != "DequantizeLinear") {
+      // Child is not a DQ op.
+      return false;
+    }
+
+    // The Q2 and DQ2 nodes must have equal zero-point and scale values (scalar/constant).
+    if (!QDQ::IsQDQPairSupported(*quantize_node, *dequantize_node, get_constant_initializer, graph.ModelPath())) {
+      return false;
+    }
+
+    dequantize_nodes.push_back(dequantize_node);
+  }
+
+  const Node* source_node = graph.GetProducerNode(quantize_node->InputDefs()[0]->Name());
+  const int source_node_output_index = source_node ? quantize_node->InputEdgesBegin()->GetSrcArgIndex() : -1;
+
+  // Disconnect the source node from the quantize node
+  if (source_node) {
+    graph.RemoveEdge(source_node->Index(), quantize_node_index, source_node_output_index, 0);
+  }
+
+  auto input_node_arg = quantize_node->InputDefs()[0];
+
+  // Disconnect the quantize node from the dequantize nodes, and connect the source node to the outputs of dequantize
+  for (gsl::not_null<Node*> dequantize_node : dequantize_nodes) {
+    graph.RemoveEdge(quantize_node_index, dequantize_node->Index(), 0, 0);
+
+    while (dequantize_node->GetOutputEdgesCount() > 0) {
+      auto output_iter = dequantize_node->OutputEdgesBegin();
+      auto target_node = graph.GetNode(output_iter->GetNode().Index());
+      const int target_arg_index = output_iter->GetDstArgIndex();
+
+      graph.RemoveEdge(dequantize_node->Index(), target_node->Index(), output_iter->GetSrcArgIndex(), target_arg_index);
+
+      if (source_node) {
+        graph.AddEdge(source_node->Index(), target_node->Index(), source_node_output_index, target_arg_index);
+      } else {
+        // If there's no source node, it means that the input to quantize is an input of the graph, so we need to clone the input arg
+        // and assign it to the input of each target
+        NodeArg input_node_arg_copy(input_node_arg->Name(), input_node_arg->TypeAsProto());
+        input_node_arg_copy.SetShape(*input_node_arg->Shape());
+
+        *target_node->MutableInputDefs()[target_arg_index] = std::move(input_node_arg_copy);
+      }
+    }
+
+    graph.RemoveNode(dequantize_node->Index());
+  }
+
+  graph.RemoveNode(quantize_node_index);
+
+  return true;
+}
+
+Status Int16QDQPairsRemover::ApplyImpl(
+    Graph& graph,
+    bool& modified,
+    int /*graph_level*/,
+    const logging::Logger& /*logger*/) const {
+  const GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+
+  for (NodeIndex node_index : node_topology_list) {
+    if (TryRemoveInt16QDQPairs(graph, node_index)) {
+      modified = true;
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace onnxruntime

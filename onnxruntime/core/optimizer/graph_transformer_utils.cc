@@ -46,6 +46,7 @@
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
+#include "core/optimizer/int16_qdq_pairs_remover.h"
 #include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
@@ -216,6 +217,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
+
+      transformers.emplace_back(std::make_unique<Int16QDQPairsRemover>(dml_ep));
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes consume different initializers with same value, by default,
