@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {isNode} from './wasm-utils-env';
+import { isNode } from './wasm-utils-env';
 
 /**
  * Load a file into a Uint8Array.
@@ -9,17 +9,17 @@ import {isNode} from './wasm-utils-env';
  * @param file - the file to load. Can be a URL/path, a Blob, an ArrayBuffer, or a Uint8Array.
  * @returns a Uint8Array containing the file data.
  */
-export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Promise<Uint8Array> => {
+export const loadFile = async (file: string | Blob | ArrayBufferLike | Uint8Array): Promise<Uint8Array> => {
   if (typeof file === 'string') {
     if (isNode) {
       // load file into ArrayBuffer in Node.js
       try {
-        const {readFile} = require('node:fs/promises');
+        const { readFile } = require('node:fs/promises');
         return new Uint8Array(await readFile(file));
       } catch (e) {
         if (e.code === 'ERR_FS_FILE_TOO_LARGE') {
           // file is too large, use fs.createReadStream instead
-          const {createReadStream} = require('node:fs');
+          const { createReadStream } = require('node:fs');
           const stream = createReadStream(file);
           const chunks: Uint8Array[] = [];
           for await (const chunk of stream) {
@@ -56,7 +56,7 @@ export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Pro
           if (e instanceof RangeError) {
             // use WebAssembly Memory to allocate larger ArrayBuffer
             const pages = Math.ceil(fileSize / 65536);
-            buffer = new WebAssembly.Memory({initial: pages, maximum: pages}).buffer;
+            buffer = new WebAssembly.Memory({ initial: pages, maximum: pages }).buffer;
           } else {
             throw e;
           }
@@ -65,7 +65,7 @@ export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Pro
         let offset = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          const {done, value} = await reader.read();
+          const { done, value } = await reader.read();
           if (done) {
             break;
           }
@@ -77,7 +77,6 @@ export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Pro
         return new Uint8Array(buffer, 0, fileSize);
       }
     }
-
   } else if (file instanceof Blob) {
     return new Uint8Array(await file.arrayBuffer());
   } else if (file instanceof Uint8Array) {
