@@ -10,10 +10,10 @@ namespace js {
 using onnxruntime::js::JsepSupportedFloatTypes;
 
 #define ONNX_GATHER_BLOCK_QUANTIZED_KERNELS(T1, Tind)                   \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                              \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
       GatherBlockQuantized,                                             \
       kMSDomain, 1,                                                     \
-      T1, Tind,                                                                                                   \
+      T1, Tind,                                                         \
       kJsExecutionProvider,                                             \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())      \
