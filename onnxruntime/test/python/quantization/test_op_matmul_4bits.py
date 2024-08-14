@@ -184,8 +184,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
         quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
-        ops_to_quantize: tuple[str, ...] = ("MatMul",),
-        quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
+        ops_to_quantize: Tuple[str, ...] = ("MatMul",),
+        quant_axes: Tuple[Tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
     ):
