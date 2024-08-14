@@ -1360,6 +1360,8 @@
       "floor.jsonc",
       "fused-conv.jsonc",
       "fused-conv3dncdhw.jsonc",
+      "gather.jsonc",
+      "gather-block-quantized.jsonc",
       "gather-elements.jsonc",
       "gemm.jsonc",
       "global-average-pool.jsonc",

@@ -189,7 +189,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "uint4x2",
+                          "int4x2"
                         ]
                       },
                       "data": {
