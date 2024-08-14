@@ -693,7 +693,7 @@ def quantize_dynamic(
 def quantize(
     model_input: Union[str, Path, onnx.ModelProto],
     model_output: Union[str, Path],
-    quant_config: QuantConfig | WeightOnlyQuantConfig,
+    quant_config: Union[QuantConfig, WeightOnlyQuantConfig],
 ):
     """Quantize a model with QuantConfig.
 
