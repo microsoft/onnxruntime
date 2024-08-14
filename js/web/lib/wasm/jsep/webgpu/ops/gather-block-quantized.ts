@@ -124,7 +124,7 @@ const createGatherBlockQuantizedProgramInfo =
           }
         })()};
         var dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
-        ${output.setByOffset('global_idx', 'dequantized_data')}
+        ${output.setByOffset('global_idx', 'dequantized_data')};
     }`;
       };
       return {
