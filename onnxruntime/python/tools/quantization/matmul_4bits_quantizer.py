@@ -603,9 +603,11 @@ class DefaultWeightOnlyQuantizer:
 
     @staticmethod
     def quant_slice_symmetric(data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        max_val = np.max(np.abs(data), axis=1, keepdims=True)
+        max_val = np.max(data, axis=1, keepdims=True)
+        min_val = np.min(data, axis=1, keepdims=True)
+        abs_max = np.where(np.abs(max_val) > np.abs(min_val), max_val, min_val)
 
-        scale = -max_val / 8.0
+        scale = abs_max / -8.0 # if max == min, max may be clipped
         quantized_slice = np.where(scale == 0, 0, data / scale).round().clip(-8, 7).astype(np.int8)
 
         return quantized_slice, scale
@@ -637,7 +639,7 @@ class DefaultWeightOnlyQuantizer:
         quantize_axis: int,
         block_size: int,
         is_symmetric: bool,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         """Quantize ndarray data to int4 using numpy, return (quantized data, scales, zero points)."""
         # Get the shape of the matrix
         m = 1  # dimension of the matrix before the quantize axis
@@ -650,6 +652,8 @@ class DefaultWeightOnlyQuantizer:
                 n *= dim
 
         k_blocks = (k + block_size - 1) // block_size
+        scales_shape = list(data.shape)
+        scales_shape[quantize_axis] = k_blocks
 
         data_reshape = data.reshape((m, k, n))
         scales = np.zeros((m, k_blocks, n), dtype=data.dtype)
@@ -679,9 +683,10 @@ class DefaultWeightOnlyQuantizer:
 
         # pack int8 to int4
         quant_data_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(quant_data_int8)
+        zero_point_int4 = None
         if not is_symmetric:
             zero_point_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(zero_point_int8)
-
+        scales = scales.reshape(scales_shape)
         return quant_data_int4, scales, zero_point_int4
 
     def quantize_gather(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
