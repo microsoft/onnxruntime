@@ -53,8 +53,8 @@ To use WebNN EP, you just need to make 3 small changes:
      const session = await ort.InferenceSession.create(modelPath, { ..., executionProviders: ['webnn'] });
      ```
      WebNN EP also offers a set of options for creating diverse types of WebNN MLContext.
-     - `deviceType`: `'cpu'`|`'gpu'`|`'npu'`(default value is `'cpu'`), specifies the preferred type of device to be used for the MLContext.
-     - `powerPreference`: `'default'`|`'low-power'`|`'high-performance'`(default value is `default`), specifies the preferred type of power consumption to be used for the MLContext.
+     - `deviceType`: `'cpu'|'gpu'|'npu'`(default value is `'cpu'`), specifies the preferred type of device to be used for the MLContext.
+     - `powerPreference`: `'default'|'low-power'|'high-performance'`(default value is `'default'`), specifies the preferred type of power consumption to be used for the MLContext.
      - `numThreads`: type of number, allows users to specify the number of multi-threads for `'cpu'` device type.
      - `context`: type of `MLContext`, allows users to pass a pre-created `MLContext` to WebNN EP, it is required in IO binding feature. If this option is provided, the other options will be ignored.
 
