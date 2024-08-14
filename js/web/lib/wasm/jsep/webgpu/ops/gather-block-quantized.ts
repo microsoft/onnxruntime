@@ -14,6 +14,7 @@ export interface GatherBlockQuantizedAttributes extends AttributeWithCacheKey {
   quantizeAxis: number;
   blockSize: number;
 }
+
 export const validateInputs = (inputs: readonly TensorView[], attributes: GatherBlockQuantizedAttributes): void => {
   if (inputs.length < 3 || inputs.length > 4) {
     throw new Error('GatherBlockQuantized requires 3 or 4 inputs.');
