@@ -144,7 +144,7 @@ export const createMatMulNBitsProgramInfo = (
           ${b.indicesSet('b_indices', '2', 'word')};
           let b_data = ${b.getByIndices('b_indices')};
           for (var i: u32 = 0; i < ${bComponents}; i++) {
-            let b_value: u32 = ${bComponents === 1 ? 'b_data' : 'b_data[word + i]'};
+            let b_value: u32 = ${bComponents === 1 ? 'b_data' : 'b_data[i]'};
             let b_mask: u32 = 0x0F0F0F0Fu;
             let b_value_lower: vec4<u32> = unpack4xU8(b_value & b_mask);
             let b_value_upper: vec4<u32> = unpack4xU8((b_value >> 4) & b_mask);
@@ -326,13 +326,192 @@ export const createMatMulNBitsProgramInfo = (
   };
 };
 
+// zeroPoints = null
+export const createMatMulNBitsBlockwiseProgramInfo = (
+  inputs: readonly TensorView[],
+  attributes: MatMulNBitsAttributes,
+): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const aRank = inputShape.length;
+  const nBlocksPerCol = Math.floor((attributes.k + attributes.blockSize - 1) / attributes.blockSize);
+  const dimAOuter = inputShape[aRank - 2];
+  const dimInner = attributes.k;
+  const dimBOuter = attributes.n;
+  const batchDims = inputShape.slice(0, aRank - 2);
+  const batchSize = ShapeUtil.size(batchDims);
+  const blobSize = (attributes.blockSize / 8) * attributes.bits;
+  const blobSizeInWords = blobSize / 4;
+  const dataType = inputs[0].dataType;
+  const aComponents = getMaxComponents(attributes.k);
+  const bComponents = getMaxComponents(blobSizeInWords);
+  const useBlockwiseMatMulNBits = true;
+  const components = getMaxComponents(dimBOuter);
+  const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
+
+  const programUniforms: ProgramUniform[] = [];
+  const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
+  const bShape = ShapeUtil.convertShape(inputs[1].dims).slice();
+  bShape.splice(-1, 1, blobSizeInWords / bComponents);
+  programUniforms.push(...createTensorShapeVariables(inputShapeTemp));
+  programUniforms.push(...createTensorShapeVariables(bShape));
+  programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+  const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
+  programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
+
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const inputRank = inputShapeTemp.length;
+    const a = inputVariable('a', inputs[0].dataType, inputRank, aComponents);
+    const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
+    const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
+    const inputVariables = [a, b, scales];
+    const zeroPoints =
+      inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
+    if (zeroPoints) {
+      inputVariables.push(zeroPoints);
+    }
+    const outputRank = outputShapeTemp.length;
+    const output = outputVariable('output', inputs[0].dataType, outputRank, components);
+    const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+
+    const qDqDataType = (() => {
+      switch (aComponents) {
+        case 1:
+          return `array<${dataType}, 8>`;
+        case 2:
+          return `mat4x2<${dataType}>`;
+        case 4:
+          return `mat2x4<${dataType}>`;
+        default:
+          throw new Error(`${aComponents}-component is not supported.`);
+      }
+    })();
+
+    const processOneWord = (): string => {
+      let calcStr = `
+          // reuse a data
+            var input_offset = ${a.indicesToOffset(`${a.type.indices}(batch, row, word_offset)`)};
+            var a_data: ${qDqDataType};
+            for (var j: u32 = 0; j < ${8 / aComponents}; j++) {
+              a_data[j] = ${a.getByOffset('input_offset')};
+              input_offset++;
+            }
+          `;
+      for (let c = 0; c < components; c++) {
+        calcStr += `
+            b_value = ${bComponents === 1 ? `b${c}_data` : `b${c}_data[i]`};
+            b_value_lower = unpack4xU8(b_value & b_mask);
+            b_value_upper = unpack4xU8((b_value >> 4) & b_mask);
+            b_quantized_values = ${qDqDataType}(${Array.from(
+              { length: 4 },
+              (_, i) => `${dataType}(b_value_lower[${i}]), ${dataType}(b_value_upper[${i}])`,
+            ).join(', ')});
+            b_dequantized_values = ${(() => {
+              if (aComponents === 1) {
+                return `${qDqDataType}(${Array.from(
+                  { length: 8 },
+                  (_, i) => `(b_quantized_values[${i}] - zero_point) * scale${c}`,
+                ).join(', ')});`;
+              } else {
+                return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale${c};`;
+              }
+            })()};
+            workgroup_shared[block]${components > 1 ? `[${c}]` : ''} += ${Array.from(
+              { length: 8 / aComponents },
+              (_, i) =>
+                `${
+                  aComponents === 1
+                    ? `a_data[${i}] * b_dequantized_values[${i}]`
+                    : `dot(a_data[${i}], b_dequantized_values[${i}])`
+                }`,
+            ).join(' + ')};
+          `;
+      }
+      return calcStr;
+    };
+
+    const prepareScaleAndBData = (): string => {
+      let calcStr = `var colIndex = col * ${components};`;
+      for (let c = 0; c < components; c++) {
+        calcStr += `
+            let scale${c} = ${scales.getByOffset(`colIndex * ${nBlocksPerCol} + block`)};
+            let b${c}_data = ${b.getByIndices(`${b.type.indices}(colIndex, block, word)`)};
+            colIndex += 1;`;
+      }
+      calcStr += `
+            var b_value: u32;
+            let b_mask: u32 = 0x0F0F0F0Fu;
+            var b_value_lower: vec4<u32>;
+            var b_value_upper: vec4<u32>;
+            var b_quantized_values: ${qDqDataType};
+            var b_dequantized_values: ${qDqDataType};`;
+      return calcStr;
+    };
+
+    return `
+        var<workgroup> workgroup_shared: array<${output.type.value}, ${nBlocksPerCol}>;
+        ${shaderHelper.declareVariables(...inputVariables, output)}
+        ${shaderHelper.mainStart([nBlocksPerCol, 1, 1])}
+          var block = local_id.x;
+          var col = workgroup_id.x;
+          var row = workgroup_id.y;
+          var batch = workgroup_id.z;
+
+          // Two zero points are packed into one byte when uniforms.bits is 4.
+          let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
+          var word_offset: u32 = block * ${attributes.blockSize / aComponents};
+
+          //process one block
+          for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
+            ${prepareScaleAndBData()}
+            for (var i: u32 = 0; i < ${bComponents}; i++) {
+              ${processOneWord()}
+              word_offset += ${8 / aComponents};
+            }
+          }
+          workgroupBarrier();
+
+            if (local_id.x < 1) {
+              var output_value: ${output.type.value} = ${output.type.value}(0);
+              var workgroup_shared_offset: u32 = local_id.x;
+              for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
+                output_value += workgroup_shared[workgroup_shared_offset];
+                workgroup_shared_offset += 1;
+              }
+              ${output.setByIndices(`${output.type.indices}(batch, row, col)`, 'output_value')};
+            }
+        }`;
+  };
+  return {
+    name: useBlockwiseMatMulNBits ? 'BlockwiseMatMulNBits' : 'MatMulNBits',
+    shaderCache: {
+      hint: `${attributes.cacheKey};${dimAOuter};${dataType};${inputs.length}`,
+      inputDependencies: Array(inputs.length).fill('rank'),
+    },
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType }],
+      dispatchGroup: { x: Math.ceil(dimBOuter / components), y: dimAOuter, z: batchSize },
+      programUniforms,
+    }),
+    getShaderSource,
+  };
+};
+
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
-  const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
-  context.compute(
-    createMatMulNBitsProgramInfo(context.inputs, attributes, maxComputeWorkgroupSizes, maxComputeWorkgroupStorageSize),
-  );
+  if (context.inputs.length < 4) {
+    context.compute(createMatMulNBitsBlockwiseProgramInfo(context.inputs, attributes));
+  } else {
+    const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
+    const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
+    context.compute(
+      createMatMulNBitsProgramInfo(
+        context.inputs,
+        attributes,
+        maxComputeWorkgroupSizes,
+        maxComputeWorkgroupStorageSize,
+      ),
+    );
+  }
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
