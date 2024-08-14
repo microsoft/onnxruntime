@@ -82,12 +82,12 @@ class ComputeContextImpl implements ComputeContext {
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = module.getValue(ptrSize * dataIndex++, type);
-      const data = module.getValue(ptrSize * dataIndex++, '*');
-      const dim = module.getValue(ptrSize * dataIndex++, type);
+      const dataType = Number(module.getValue(ptrSize * dataIndex++, type));
+      const data = Number(module.getValue(ptrSize * dataIndex++, '*'));
+      const dim = Number(module.getValue(ptrSize * dataIndex++, type));
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(module.getValue(ptrSize * dataIndex++, type));
+        dims.push(Number(module.getValue(ptrSize * dataIndex++, type)));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
