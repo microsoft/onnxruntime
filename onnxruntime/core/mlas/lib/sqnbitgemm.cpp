@@ -322,6 +322,14 @@ SQ4BitGemm_CompFp32(
 
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
 
+    //MLAS_UNREFERENCED_PARAMETER(BlkLen);
+    //MLAS_UNREFERENCED_PARAMETER(K);
+    //MLAS_UNREFERENCED_PARAMETER(DataParams);
+    //MLAS_UNREFERENCED_PARAMETER(RangeCountM);
+    //MLAS_UNREFERENCED_PARAMETER(RangeCountN);
+    //MLAS_UNREFERENCED_PARAMETER(RangeStartM);
+    //MLAS_UNREFERENCED_PARAMETER(RangeStartN);
+
     const size_t lda = DataParams->lda;
     const size_t ldc = DataParams->ldc;
 
@@ -329,7 +337,7 @@ SQ4BitGemm_CompFp32(
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
 
-    const float* A = DataParams->A + RangeStartM * lda;
+    const MLAS_FP16* A = DataParams->A + RangeStartM * lda;
 
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
@@ -347,7 +355,7 @@ SQ4BitGemm_CompFp32(
         for (size_t n = 0; n < RangeCountN; n += CountN) {
             CountN = std::min(RangeCountN - n, size_t{128});
 
-            const float* a_row = A;
+            const MLAS_FP16* a_row = A;
             const std::byte* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
             const std::byte* b_col_zp =
@@ -385,7 +393,7 @@ SQ4BitGemm_CompFp32(
         //
         // Step through each slice of matrix A along the M dimension.
         //
-        const float* a_row = A;
+        const MLAS_FP16* a_row = A;
         const std::byte* b_col = QuantBData + n * ldb;
         const float* b_col_scale = QuantBScale + n * k_blks;
         const std::byte* b_col_zp =
@@ -401,9 +409,11 @@ SQ4BitGemm_CompFp32(
         size_t RowsRemaining = RangeCountM;
         while (RowsRemaining > 0) {
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
-            auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-                a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f, true
-            );
+            assert(false);
+            auto RowsHandled = 0;
+            //auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+            //    a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f, true
+            //);
 #else
             auto RowsHandled = MlasSgemmKernelZero(a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f);
 #endif
@@ -585,26 +595,26 @@ InitializeWorkspace_CompInt8(
     const auto QuantizeARow2 = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
     if (QuantizeARow) {
-        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
-            const auto& data = DataParams[gemm_idx];
+        //const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
+        // MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+        //    const auto& data = DataParams[gemm_idx];
 
-            const float* ARowPtr = data.A;
-            std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            for (size_t m = 0; m < M; ++m) {
-                QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+        //    const MLAS_FP16* ARowPtr = data.A;
+        //    std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
+        //    for (size_t m = 0; m < M; ++m) {
+        //        QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
 
-                ARowPtr += data.lda;
-                QuantARowPtr += QuantAStride;
-            }
-        });
+        //        ARowPtr += data.lda;
+        //        QuantARowPtr += QuantAStride;
+        //    }
+        //});
     } else {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
-            const float* ARowPtr = data.A;
+            const MLAS_FP16* ARowPtr = data.A;
 
             void* PerGemmWorkspace = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
             PerGemmQuantAWorkspace quant_a_data(PerGemmWorkspace, M, BlockCountK, BlkLen);

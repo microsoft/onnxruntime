@@ -186,7 +186,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      */
     typedef void(SQ4BitGemmM1Kernel_CompFp32_Fn)(
         size_t BlkLen,
-        const float* A,
+        const MLAS_FP16* A,
         const std::byte* QuantBData,
         const float* QuantBScale,
         const std::byte* QuantBZeroPoint,
@@ -330,7 +330,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     typedef void(QuantizeARowComputeBlkSum_CompInt8_Fn)(
         size_t BlkLen,
-        const float* A,
+        const MLAS_FP16* A,
         size_t CountK,
         std::byte* QuantA,
         float* QuantAScale,

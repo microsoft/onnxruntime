@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "test_util.h"
+#include "test_fp16.h"
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
@@ -36,7 +37,7 @@ static constexpr const char* ComputeTypeName(MLAS_SQNBIT_GEMM_COMPUTE_TYPE Compu
 template <size_t BlkBitWidth, size_t BlkLen>
 class MlasSQNBitGemmTest : public MlasTestBase {
  private:
-  MatrixGuardBuffer<float> BufferA;
+  MatrixGuardBuffer<MLFp16> BufferA;
   MatrixGuardBuffer<int8_t> BufferQuantAData;
   MatrixGuardBuffer<float> BufferQuantAScale;
   MatrixGuardBuffer<float> BufferB;
@@ -53,7 +54,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   void CallGemm(size_t M,
                 size_t N,
                 size_t K,
-                const float* A,
+                const MLFp16* A,
                 size_t lda,
                 const void* /*QuantBData*/,
                 const void* PackedQuantBDataWorkspace,
@@ -66,7 +67,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                 MLAS_THREADPOOL* Threadpool) {
     MLAS_SQNBIT_GEMM_DATA_PARAMS params;
-    params.A = A;
+    params.A = reinterpret_cast<const MLAS_FP16*>(A);
     params.lda = lda;
     params.Bias = Bias;
     params.C = C;
@@ -84,13 +85,13 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
   }
 
-  void QuantizeA(size_t M, size_t K, const float* A, int8_t* QuantAData, float* QuantAScale) {
+  void QuantizeA(size_t M, size_t K, const MLFp16* A, int8_t* QuantAData, float* QuantAScale) {
     const size_t BlockCountK = (K + BlkLen - 1) / BlkLen;
     const size_t lda = K;
     for (size_t m = 0; m < M; ++m) {
       for (size_t k = 0, k_blk = 0; k < K; k += BlkLen, ++k_blk) {
         const size_t local_blk_len = std::min(K - k, BlkLen);
-        float blk_a[BlkLen]{};
+        MLFp16 blk_a[BlkLen]{};
         std::copy_n(A + m * lda + k, local_blk_len, blk_a);
 
         float amax = 0.0f;  // max of absolute values of A block
@@ -120,7 +121,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   void CallReferenceGemm_CompInt8(size_t M,
                                   size_t N,
                                   size_t K,
-                                  const float* A,
+                                  const MLFp16* A,
                                   const uint8_t* QuantBData,
                                   const float* QuantBScale,
                                   const uint8_t* QuantBZeroPoint,
@@ -170,7 +171,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   void CallReferenceGemm_CompFp32(size_t M,
                                   size_t N,
                                   size_t K,
-                                  const float* A,
+                                  const MLFp16* A,
                                   const uint8_t* QuantBData,
                                   const float* QuantBScale,
                                   const uint8_t* QuantBZeroPoint,
@@ -184,7 +185,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
     for (size_t m = 0; m < M; m++) {
       for (size_t n = 0; n < N; n++) {
-        const float* a = A + m * K;
+        const MLFp16* a = A + m * K;
         const float* b = DequantizedBData + n * K;
         float* c = C + (m * N) + n;
 
@@ -205,7 +206,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
             bool WithThreadpool, bool Symmetric, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
-    const float* A = BufferA.GetBuffer(K * M);
+    const MLFp16* A = BufferA.GetBuffer(K * M);
 
     const float* B = BufferB.GetBuffer(N * K);
 
@@ -215,7 +216,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
 #if 0
-    auto print_matrix = [](size_t nrows, size_t ncols, const float* data) {
+    auto print_matrix1 = [](size_t nrows, size_t ncols, const MLFp16* data) {
       for (size_t row = 0; row < nrows; ++row) {
         for (size_t col = 0; col < ncols; ++col) {
           std::cout << data[row * ncols + col] << ", ";
@@ -224,7 +225,16 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       }
     };
 
-    auto print_matrix_col = [](size_t nrows, size_t ncols, size_t col, const float* data) {
+    auto print_matrix2 = [](size_t nrows, size_t ncols, const float* data) {
+      for (size_t row = 0; row < nrows; ++row) {
+        for (size_t col = 0; col < ncols; ++col) {
+          std::cout << data[row * ncols + col] << ", ";
+        }
+        std::cout << "\n";
+      }
+    };
+
+    auto print_matrix_col = [](size_t nrows, size_t ncols, size_t col, const MLFp16* data) {
       for (size_t row = 0; row < nrows; ++row) {
         std::cout << data[row * ncols + col] << ", ";
       }
@@ -232,9 +242,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     };
 
     std::cout << "A:\n";
-    print_matrix(M, K, A);
+    print_matrix1(M, K, A);
     std::cout << "B:\n";
-    print_matrix(K, N, B);
+    print_matrix2(K, N, B);
 #endif
 
     float* C = BufferC.GetBuffer(N * M, true);
