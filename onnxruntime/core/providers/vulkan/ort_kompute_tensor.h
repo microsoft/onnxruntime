@@ -4,7 +4,7 @@
 #pragma once
 
 #include <memory>
-#include "kompute/Tensor.hpp"
+#include "kompute/Kompute.hpp"
 
 #include "core/framework/tensor.h"
 #include "core/providers/vulkan/vulkan_memory_allocator.h"

@@ -9,16 +9,17 @@ from pathlib import Path
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Convert shaders from GLSL to bytecode",
-         usage="""
+        usage="""
          Run the script to convert shaders from various sources to compiled bytecode.
          The convert_shaders.py script from kompute is used.
          All output directories are relative to the location of this script.
-         
-         Shaders from various sources can be pre-processed and added to 'compiled_shaders'. 
+
+         Shaders from various sources can be pre-processed and added to 'compiled_shaders'.
          glslangValidator is used to compile all .comp files in 'compiled_shaders'.
-         
+
          Headers containing the compiled shader byte code are written to the 'compiled_headers' folder.
-         """)
+         """,
+    )
 
     parser.add_argument("--build_dir", type=Path, required=True,
                         help="The ORT build output directory that contains the '_deps' folder with 3rd party source")
@@ -120,7 +121,7 @@ def convert_shaders():
         print(f"Running conversion script: {' '.join(cmd)}")
         subprocess.run(cmd, check=True) # , capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
-        print("Error running shader conversion script")
+        print(f"Error running shader conversion script: {e}")
         print("To see the actual error, run the shader binary with `-V <shader_file> -o <output_file>` manually.")
         exit(1)
 

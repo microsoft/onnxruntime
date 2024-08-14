@@ -6,6 +6,10 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/vulkan/vulkan_kernel.h"
 
+namespace kp {
+class Algorithm;
+}
+
 namespace ncnn {
 class Mat;
 }
@@ -51,12 +55,12 @@ class MatMulKernel : VulkanKernel {
 
   Status CreateNcnnPipeline() override;
 
-  void KomputeProcessConstantInitializers(
-      const GraphViewer& graph_viewer, kp::Manager& manager,
-      std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& initializers_to_upload) const override;
+  void KomputeProcessConstantInitializers(const GraphViewer& graph_viewer, kp::Manager& manager,
+                                          NodeArgToKpTensorMap& initializers_to_upload) const override;
 
-  Status KomputeExecute(kp::Manager& manager, kp::Sequence& sequence,
-                        std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& values) const override;
+  Status KomputeCreateKernel(kp::Manager& manager, NodeArgToKpTensorMap& initializers) override;
+  Status KomputeExecute(kp::Manager& manager, kp::Sequence& sequence, NodeArgToKpTensorMap& values) const override;
+
   struct InputInfo {
     InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node, const logging::Logger& logger);
 
@@ -73,6 +77,8 @@ class MatMulKernel : VulkanKernel {
 
   std::optional<ncnn::Mat> transposed_b_;
   std::unique_ptr<Tensor> transposed_b_tensor_;
+
+  mutable std::shared_ptr<kp::Algorithm> kompute_kernel_;
 };
 
 // wrapper to use as OpKernel while testing both paths

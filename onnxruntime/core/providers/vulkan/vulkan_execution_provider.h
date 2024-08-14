@@ -99,6 +99,8 @@ class VulkanExecutionProvider : public IExecutionProvider {
   common::Status UploadKomputeConstantInitializers(const GraphViewer& graph_viewer,
                                                    KomputeModel& model);
 
+  common::Status CreateKomputeKernels(KomputeModel& model);
+
   ncnn::Option ncnn_options_;
 
   // TODO: ownership is currently in a global in NCNN code. TBD if we want to move it to be local to this instance.

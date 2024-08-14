@@ -368,14 +368,16 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
-  staging_allocator_.clear();
-  blob_allocator_.clear();
-  weight_staging_allocator_.clear();
-  weight_allocator_.clear();
+  if (!use_kompute_) {
+    staging_allocator_.clear();
+    blob_allocator_.clear();
+    weight_staging_allocator_.clear();
+    weight_allocator_.clear();
 
-  ncnn_options_.pipeline_cache->clear();
+    ncnn_options_.pipeline_cache->clear();
 
-  ncnn::destroy_gpu_instance();
+    ncnn::destroy_gpu_instance();
+  }
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -424,6 +426,15 @@ common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(const 
   auto seq = kompute_manager_.sequence();
   seq->record<kp::OpTensorSyncDevice>(tensors);
   seq->eval();
+
+  return Status::OK();
+}
+
+common::Status VulkanExecutionProvider::CreateKomputeKernels(KomputeModel& model) {
+  for (size_t i = 0, end = model.layers.size(); i < end; i++) {
+    ORT_RETURN_IF_ERROR(
+        model.layers[i]->KomputeCreateKernel(kompute_manager_, model.constant_initializers));
+  }
 
   return Status::OK();
 }
@@ -487,6 +498,8 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
     }
 
     ORT_RETURN_IF_ERROR(UploadKomputeConstantInitializers(graph, *model));
+
+    ORT_RETURN_IF_ERROR(CreateKomputeKernels(*model));
 
     // ModelMetadefIdGenerator is broken if this happens
     ORT_ENFORCE(kompute_models_.find(fused_node.Name()) == kompute_models_.end(), "Duplicate fused node names");
@@ -558,6 +571,7 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
         ORT_RETURN_IF_ERROR(layer->KomputeExecute(kompute_manager_, *seq, values));
       }
 
+      // ??? Do we need an OpMemoryBarrier on the output tensors prior to calling OpTensorSyncLocal
       seq->record<kp::OpTensorSyncLocal>(output_tensors);
       seq->eval();
 
@@ -775,6 +789,11 @@ common::Status VulkanExecutionProvider::CompileNcnn(const std::vector<FusedNodeA
   }
 
   return Status::OK();
+}
+
+std::shared_ptr<KernelRegistry> VulkanExecutionProvider::GetKernelRegistry() const {
+  static std::shared_ptr<KernelRegistry> kernel_registry = vulkan::GetVulkanKernelRegistry();
+  return kernel_registry;
 }
 
 std::vector<AllocatorPtr> VulkanExecutionProvider::CreatePreferredAllocators() {

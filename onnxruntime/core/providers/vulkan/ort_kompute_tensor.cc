@@ -14,7 +14,7 @@ KomputeTensor::KomputeTensor(VmaAllocator allocator, uint32_t size, bool allocat
 
   // set mDevice so ~Tensor calls destroy. that should be all it's used for given we're manually managing
   // mPrimaryBuffer and mStagingBuffer.
-  mDevice = std::make_shared<vk::Device>(allocator->m_hDevice);
+  mDevice = std::make_shared<vk::Device>(vma::GetAllocatorDevice(allocator));
 
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

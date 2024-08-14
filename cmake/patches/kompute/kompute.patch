@@ -1,8 +1,44 @@
 diff --git a/src/Algorithm.cpp b/src/Algorithm.cpp
-index a354157..eae27ff 100644
+index a354157..82d978c 100644
 --- a/src/Algorithm.cpp
 +++ b/src/Algorithm.cpp
-@@ -400,4 +400,9 @@ Algorithm::getTensors()
+@@ -180,6 +180,14 @@ Algorithm::createParameters()
+                                           this->mDescriptorSet.get());
+     this->mFreeDescriptorSet = true;
+ 
++    bindDescriptorSet();
++
++    KP_LOG_DEBUG("Kompute Algorithm successfully run init");
++}
++
++void
++Algorithm::bindDescriptorSet()
++{
+     KP_LOG_DEBUG("Kompute Algorithm updating descriptor sets");
+     for (size_t i = 0; i < this->mTensors.size(); i++) {
+         std::vector<vk::WriteDescriptorSet> computeWriteDescriptorSets;
+@@ -199,8 +207,6 @@ Algorithm::createParameters()
+         this->mDevice->updateDescriptorSets(computeWriteDescriptorSets,
+                                             nullptr);
+     }
+-
+-    KP_LOG_DEBUG("Kompute Algorithm successfully run init");
+ }
+ 
+ void
+@@ -370,8 +376,9 @@ Algorithm::setWorkgroup(const Workgroup& workgroup, uint32_t minSize)
+ 
+     KP_LOG_INFO("Kompute OpAlgoCreate setting dispatch size");
+ 
+-    // The dispatch size is set up based on either explicitly provided template
+-    // parameters or by default it would take the shape and size of the tensors
++    // The dispatch size is set up based on either explicitly provided
++    // template parameters or by default it would take the shape and size of
++    // the tensors
+     if (workgroup[0] > 0) {
+         // If at least the x value is provided we use mainly the parameters
+         // provided
+@@ -400,4 +407,10 @@ Algorithm::getTensors()
      return this->mTensors;
  }
  
@@ -10,10 +46,11 @@ index a354157..eae27ff 100644
 +Algorithm::setTensors(const std::vector<std::shared_ptr<Tensor>>& tensors)
 +{
 +    this->mTensors = tensors;
++    bindDescriptorSet();
 +}
  }
 diff --git a/src/include/kompute/Algorithm.hpp b/src/include/kompute/Algorithm.hpp
-index 1917dd3..68ae95e 100644
+index 1917dd3..bfd728c 100644
 --- a/src/include/kompute/Algorithm.hpp
 +++ b/src/include/kompute/Algorithm.hpp
 @@ -210,7 +210,7 @@ class Algorithm
@@ -34,6 +71,16 @@ index 1917dd3..68ae95e 100644
      void destroy();
  
    private:
+@@ -312,6 +314,9 @@ class Algorithm
+ 
+     // Parameters
+     void createParameters();
++
++    // bind/rebind descriptor set with current value in mTensors
++    void bindDescriptorSet();
+ };
+ 
+ } // End namespace kp
 diff --git a/src/include/kompute/Manager.hpp b/src/include/kompute/Manager.hpp
 index 52f9ada..5e8404f 100644
 --- a/src/include/kompute/Manager.hpp
@@ -50,7 +97,7 @@ index 52f9ada..5e8404f 100644
      // -------------- OPTIONALLY OWNED RESOURCES
      std::shared_ptr<vk::Instance> mInstance = nullptr;
 diff --git a/src/include/kompute/Tensor.hpp b/src/include/kompute/Tensor.hpp
-index a2bcd18..a854b63 100644
+index a2bcd18..37eff21 100644
 --- a/src/include/kompute/Tensor.hpp
 +++ b/src/include/kompute/Tensor.hpp
 @@ -74,14 +74,14 @@ class Tensor
@@ -91,3 +138,88 @@ index a2bcd18..a854b63 100644
      void createBuffer(std::shared_ptr<vk::Buffer> buffer,
                        vk::BufferUsageFlags bufferUsageFlags);
      void allocateBindMemory(std::shared_ptr<vk::Buffer> buffer,
+@@ -307,7 +308,7 @@ class TensorT : public Tensor
+       : Tensor(physicalDevice,
+                device,
+                (void*)data.data(),
+-               data.size(),
++               uint32_t(data.size()),
+                sizeof(T),
+                this->dataType(),
+                tensorType)
+diff --git a/test/TestMultipleAlgoExecutions.cpp b/test/TestMultipleAlgoExecutions.cpp
+index f3d7315..3a92383 100644
+--- a/test/TestMultipleAlgoExecutions.cpp
++++ b/test/TestMultipleAlgoExecutions.cpp
+@@ -271,3 +271,71 @@ TEST(TestMultipleAlgoExecutions, TestAlgorithmUtilFunctions)
+     EXPECT_EQ(algorithm->getPushConstants<float>(), pushConsts);
+     EXPECT_EQ(algorithm->getSpecializationConstants<float>(), specConsts);
+ }
++
++TEST(TestMultipleAlgoExecutions, ChangeTensors)
++{
++    kp::Manager mgr;
++
++    std::string shader = (R"(
++        #version 450
++
++        // The input tensors bind index is relative to index in parameter passed
++        layout(set = 0, binding = 0) buffer buf_in_a { float in_a[]; };
++        layout(set = 0, binding = 1) buffer buf_in_b { float in_b[]; };
++        layout(set = 0, binding = 2) buffer buf_out_a { float out_a[]; };
++
++        // Kompute supports push constants updated on dispatch
++        layout(push_constant) uniform PushConstants {
++            uint input_size;
++        } push_const;
++
++
++        void main() {
++            uint index = gl_GlobalInvocationID.x;
++            if (index < push_const.input_size)
++                out_a[index]  = in_a[index] * in_b[index];
++        }
++    )");
++
++    auto tensorInA = mgr.tensor({ 2., 2., 2. });
++    auto tensorInB = mgr.tensor({ 1., 2., 3. });
++    auto tensorOutA = mgr.tensor({ 0, 0, 0 });
++
++    std::vector<std::shared_ptr<kp::Tensor>> params = { tensorInA,
++                                                        tensorInB,
++                                                        tensorOutA };
++
++    kp::Workgroup workgroup({ 8, 1, 1 });
++    std::vector<uint32_t> constants({ 3 });
++    auto algorithm =
++      mgr.algorithm(params, compileSource(shader), workgroup, {}, constants);
++
++    std::shared_ptr<kp::Sequence> sq = mgr.sequence();
++
++    sq->record<kp::OpTensorSyncDevice>({ tensorInA, tensorInB });
++    sq->record<kp::OpAlgoDispatch>(algorithm, constants);
++    sq->record<kp::OpTensorSyncLocal>({ tensorOutA });
++    sq->eval();
++
++    EXPECT_EQ(tensorOutA->vector(), std::vector<float>({ 2, 4, 6 }));
++
++    // change inputs, including the size of the tensors
++    auto tensorInC = mgr.tensor({ 3., 2., 1., 2., 1. });
++    auto tensorInD = mgr.tensor({ 5., 4., 3., 2., 1. });
++    auto tensorOutB = mgr.tensor({ 0, 0, 0, 0, 0 });
++
++    algorithm->setTensors({ tensorInC, tensorInD, tensorOutB });
++    constants[0] = 5; // this works at limiting the values processed but
++                      // something else is causing it to stop at 3
++
++    // need to record again to udpate the barriers etc. in the algorithm to use
++    // the new tensors
++    sq = mgr.sequence();
++
++    sq->record<kp::OpTensorSyncDevice>({ tensorInC, tensorInD });
++    sq->record<kp::OpAlgoDispatch>(algorithm, constants);
++    sq->record<kp::OpTensorSyncLocal>({ tensorOutB });
++    sq->eval();
++
++    EXPECT_EQ(tensorOutB->vector(), std::vector<float>({ 15, 8, 3, 4, 1 }));
++}

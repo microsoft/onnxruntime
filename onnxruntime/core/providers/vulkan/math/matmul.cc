@@ -18,6 +18,7 @@
 #include "core/providers/vulkan/shape_utils.h"
 
 #include "core/providers/vulkan/shaders/include/shaderncnn.innerproduct_gemm.hpp"
+#include "core/providers/vulkan/shaders/include/shaderncnn.innerproduct_gemm_wp4.hpp"
 
 namespace onnxruntime {
 namespace vulkan {
@@ -237,7 +238,7 @@ Status MatMulKernel::CreateNcnnPipeline() {
 
 void MatMulKernel::KomputeProcessConstantInitializers(
     const GraphViewer& graph_viewer, kp::Manager& manager,
-    std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& initializers_to_upload) const {
+    NodeArgToKpTensorMap& initializers_to_upload) const {
   // we only support usage with a constant B currently
   const NodeArg* const_B = Node().InputDefs()[1];
 
@@ -253,18 +254,25 @@ void MatMulKernel::KomputeProcessConstantInitializers(
   initializers_to_upload[const_B] = manager.tensor(data);
 }
 
-Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence,
-                                    std::unordered_map<const NodeArg*, std::shared_ptr<kp::Tensor>>& values) const {
-  auto tensorInA = values.at(Node().InputDefs()[0]);
-  auto tensorInB = values.at(Node().InputDefs()[1]);
+Status MatMulKernel::KomputeCreateKernel(
+    kp::Manager& manager,
+    NodeArgToKpTensorMap& initializers) {
+  // current WIP implementation requires the shape of A to work as it assumes M is known
+  ORT_ENFORCE(input_info_.have_shape_A);
+  auto dummy_tensor = manager.tensor(std::vector<float>{0.f, 0.f});
+  auto tensorInB = initializers.at(Node().InputDefs()[1]);  // might as well use the existing tensor for B
 
-  // this is stupidly inefficient as it allocates device and staging buffers and copies data into the staging buffer
-  auto num_output_elements = input_info_.shape_A[0] * input_info_.shape_B[1];
-  auto tensorOutA = manager.tensor(std::vector<float>(num_output_elements, 0.f));
-  values[Node().OutputDefs()[0]] = tensorOutA;
+  const auto N = input_info_.shape_A[0];
+  const auto M = input_info_.shape_B[1];
 
-  auto shader_bytes = gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv,
-                                     kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv_len);
+  auto num_output_elements = N * M;
+  bool use_pack4 = input_info_.have_shape_A && N % 4 == 0 && M % 4 == 0;  // fixed inputs so safe to use pack4
+  auto shader_bytes = use_pack4
+                          ? gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv,
+                                           kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv_len)
+                          : gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv,
+                                           kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv_len);
+
   // TODO: Can we avoid this copy? Seems unnecessary
   std::vector<uint32_t> spirv(shader_bytes.begin(), shader_bytes.end());
 
@@ -296,33 +304,65 @@ Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence
 
   */
 
-  // assuming ordering is the same as NCNN but have not validated.
-  // num_output == M
-  kp::Workgroup workgroup({std::min(16U, narrow<uint32_t>(input_info_.shape_B[1])),
-                           std::min(4U, narrow<uint32_t>(input_info_.shape_B[0])),
+  kp::Workgroup workgroup({std::min(16U, narrow<uint32_t>(M)),
+                           std::min(4U, narrow<uint32_t>(N)),
                            1});
+
+  // these are setup to handle the shape of A being unknown but other code isn't
   std::vector<float> specializations(14, 0.f);
   specializations[4] = 2.f;
-  specializations[5] = narrow<float>(input_info_.shape_A[1]);
-  specializations[6] = narrow<float>(input_info_.shape_A[0]);
+  specializations[5] = input_info_.have_shape_A ? narrow<float>(input_info_.shape_A[1]) : 0.f;
+  specializations[6] = input_info_.have_shape_A ? narrow<float>(input_info_.shape_A[0]) : 0.f;
   specializations[7] = 1.f;
-  specializations[8] = narrow<float>(input_info_.shape_A[0] * input_info_.shape_A[1]);
+  specializations[8] = input_info_.have_shape_A ? narrow<float>(input_info_.shape_A[0] * input_info_.shape_A[1]) : 0.f;
   specializations[9] = 2.f;
   specializations[10] = narrow<float>(input_info_.shape_B[1]);
-  specializations[11] = narrow<float>(input_info_.shape_A[0]);
+  specializations[11] = input_info_.have_shape_A ? narrow<float>(input_info_.shape_A[0]) : 0.f;
   specializations[12] = 1.f;
   specializations[13] = narrow<float>(num_output_elements);
 
   // only using static inputs at the moment so all values are set by specializations and none by push constants
   std::vector<float> pushConstsA(14, 0.f);
 
+  std::vector<std::shared_ptr<kp::Tensor>> bindings = {dummy_tensor, tensorInB, dummy_tensor};
+
+  kompute_kernel_ = manager.algorithm(bindings, spirv, workgroup, specializations, pushConstsA);
+
+  return Status::OK();
+}
+
+Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence, NodeArgToKpTensorMap& values) const {
+  auto tensorInA = values.at(Node().InputDefs()[0]);
+  auto tensorInB = values.at(Node().InputDefs()[1]);
+
+  const auto N = input_info_.shape_A[0];
+  const auto M = input_info_.shape_B[1];
+  auto num_output_elements = N * M;
+  // this is unnecessarily inefficient as it allocates device and staging buffers and copies data into the
+  // staging buffer. at the very least that copy is pointless. and if this is an integrated GPU we can potentially
+  // use the ORT CPU Tensor buffer as the staging buffer.
+  auto tensorOutA = manager.tensor(std::vector<float>(num_output_elements, 0.f));
+  values[Node().OutputDefs()[0]] = tensorOutA;
+
+  // only using static inputs at the moment so all values are set by specializations and none by push constants
+  // TODO: have base set of push constants which are a copy of the specializations and override values as needed.
+  // the NCNN kernel always prefers specialization constants so it doesn't matter if we set the same value in both
+  // std::vector<float> push_constants(14, 0.f);
+
+  // update the Algorithm instance to use the new data.
+  // NOTE: this is obviously not threadsafe and not clear what would be required to make it so.
   std::vector<std::shared_ptr<kp::Tensor>> bindings = {tensorInA, tensorInB, tensorOutA};
+  kompute_kernel_->setTensors(bindings);
 
-  // TODO: This should be created upfront so we're re-using for multiple Run calls. Looks like the intended
-  // usage is to call `rebuild` to plugin different inputs
-  auto algo = manager.algorithm(bindings, spirv, workgroup, specializations, pushConstsA);
+  // if the input sizes changed we would also need to call setWorkgroup
+  // kp::Workgroup workgroup({std::min(16U, narrow<uint32_t>(M)),
+  //                          std::min(4U, narrow<uint32_t>(N)),
+  //                          1});
+  // kompute_kernel_->setWorkgroup(workgroup);
 
-  sequence.record<kp::OpAlgoDispatch>(algo);
+  sequence.record<kp::OpAlgoDispatch>(kompute_kernel_ /*, push_constants */);
+
+  return Status::OK();
 }
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
