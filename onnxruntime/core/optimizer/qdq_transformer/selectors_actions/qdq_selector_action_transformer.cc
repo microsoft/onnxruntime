@@ -82,7 +82,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"Squeeze", {}},
-                                                          {"Unsqueeze", {}}},
+                                                          {"Unsqueeze", {}},
+                                                          {"Softmax", {}}},
                                                          std::move(selector),
                                                          std::move(drop_action));
 #else
@@ -131,8 +132,7 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
                                                           {"GlobalAveragePool", {}},
-                                                          {"Sigmoid", {}},
-                                                          {"Softmax", {}}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
