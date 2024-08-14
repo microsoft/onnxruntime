@@ -26,8 +26,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
   if (scales.dims.length !== data.dims.length ||
       !data.dims.map((d, i) => i === quantizeAxis ? Math.ceil(d / blockSize) === scales.dims[i] : d === scales.dims[i])
            .reduce((a, b) => a && b, true)) {
-    throw new Error(
-        `Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.
+    throw new Error(`Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.
         The size of the quantizeAxis should be ceil(inputSize/blockSize).`);
   }
   if (zeroPoint) {
@@ -103,10 +102,10 @@ const createGatherBlockQuantizedProgramInfo =
           data_indices[i] = output_indices[i];
         }
         var data_offset = ${data.indicesToOffset('data_indices')};
-        var packed_quantized_value = ${data.getByOffset('data_offset / 8')};
-        var quanta = data_offset % 8;
-        var unpacked_quantized_data_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_quantized_value);
-        var quantized_data = unpacked_quantized_data_array[quanta];
+        var packed_quantized_data = ${data.getByOffset('data_offset / 8')};
+        var array_index = data_offset % 8;
+        var quantized_data_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_quantized_data);
+        var quantized_data = quantized_data_array[array_index];
         var scale_indices = data_indices;
         var quantize_axis_index = ${
             scales.indicesGet('scale_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
@@ -117,11 +116,11 @@ const createGatherBlockQuantizedProgramInfo =
             return 'var zero_point = 0';
           } else {
             return `
-        var zero_point_indices = scale_indices;
-        var zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
-        var zero_point_packed = ${zeroPoint.getByOffset('zero_point_offset / 8')};
-        var zero_point_unpacked = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(zero_point_packed);
-        var zero_point = zero_point_unpacked[quanta];`;
+              var zero_point_indices = scale_indices;
+              var zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
+              var packed_zero_point = ${zeroPoint.getByOffset('zero_point_offset / 8')};
+              var zero_point_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_zero_point);
+              var zero_point = zero_point_array[zero_point_offset % 8];`;
           }
         })()};
         var dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
@@ -131,7 +130,7 @@ const createGatherBlockQuantizedProgramInfo =
       return {
         name: 'GatherBlockQuantized',
         shaderCache:
-            {hint: attributes.cacheKey + inputType.toString, inputDependencies: Array.from({length: inputs.length}, (_v, _i) => 'rank')},
+            {hint: attributes.cacheKey, inputDependencies: Array.from({length: inputs.length}, (_v, _i) => 'rank')},
         getRunData: () => ({
           outputs: [
             {dims: outputShape, dataType: outputType},
