@@ -15,6 +15,12 @@
 namespace onnxruntime {
 namespace test {
 
+// Information for activation node placed between the Conv and Q.
+struct OutputActivationInfo {
+  std::string op_type;  // Relu or Clip
+  std::vector<float> const_inputs;
+};
+
 // Creates a graph with a single float32 Conv operator. Used for testing CPU backend.
 static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, const TestInputDef<float>& input_def,
                                            const TestInputDef<float>& weights_def,
@@ -23,9 +29,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
                                            const std::vector<int64_t>& pads,
                                            const std::vector<int64_t>& dilations,
                                            std::optional<int64_t> group,
-                                           const std::string& auto_pad = "NOTSET") {
+                                           const std::string& auto_pad = "NOTSET",
+                                           std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, group, auto_pad](ModelTestBuilder& builder) {
+          dilations, group, auto_pad, output_activation](ModelTestBuilder& builder) {
     std::vector<NodeArg*> conv_inputs = {
         MakeTestInput(builder, input_def),
         MakeTestInput(builder, weights_def)};
@@ -34,9 +41,9 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
       conv_inputs.push_back(MakeTestInput(builder, bias_def));
     }
 
-    auto* output = builder.MakeOutput();
+    auto* conv_output = output_activation.has_value() ? builder.MakeIntermediate() : builder.MakeOutput();
 
-    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {output});
+    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {conv_output});
     conv_node.AddAttribute("auto_pad", auto_pad);
 
     if (group.has_value()) {
@@ -53,6 +60,15 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
 
     if (!dilations.empty()) {
       conv_node.AddAttribute("dilations", dilations);
+    }
+
+    if (output_activation.has_value()) {
+      NodeArg* output = builder.MakeOutput();
+      std::vector<NodeArg*> activation_inputs = {conv_output};
+      for (auto val : output_activation->const_inputs) {
+        activation_inputs.push_back(builder.MakeScalarInitializer(val));
+      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {output});
     }
   };
 }
@@ -88,19 +104,22 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
 
 // Creates a graph with a single Q/DQ Conv operator. Used for testing HTP backend.
 template <typename ActivationQType, typename WeightQType>
-static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(const std::string& conv_op_type,
-                                                               const TestInputDef<float>& input_def,
-                                                               const TestInputDef<float>& weights_def,
-                                                               const TestInputDef<float>& bias_def,
-                                                               const std::vector<int64_t>& strides,
-                                                               const std::vector<int64_t>& pads,
-                                                               const std::vector<int64_t>& dilations,
-                                                               std::optional<int64_t> group,
-                                                               const std::string& auto_pad = "NOTSET",
-                                                               bool use_contrib_qdq = false) {
+static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
+    const std::string& conv_op_type,
+    const TestInputDef<float>& input_def,
+    const TestInputDef<float>& weights_def,
+    const TestInputDef<float>& bias_def,
+    const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& pads,
+    const std::vector<int64_t>& dilations,
+    std::optional<int64_t> group,
+    const std::string& auto_pad = "NOTSET",
+    bool use_contrib_qdq = false,
+    std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, group, auto_pad, use_contrib_qdq](ModelTestBuilder& builder,
-                                                       std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          dilations, group, auto_pad,
+          use_contrib_qdq, output_activation](ModelTestBuilder& builder,
+                                              std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -144,27 +163,39 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(const std::string
       conv_node.AddAttribute("dilations", dilations);
     }
 
-    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, conv_output, output_qparams[0].scale,
+    NodeArg* q_input = conv_output;
+    if (output_activation.has_value()) {
+      q_input = builder.MakeIntermediate();
+      std::vector<NodeArg*> activation_inputs = {conv_output};
+      for (auto val : output_activation->const_inputs) {
+        activation_inputs.push_back(builder.MakeScalarInitializer(val));
+      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
+    }
+
+    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, q_input, output_qparams[0].scale,
                                                            output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
 
 template <typename ActivationQType, typename WeightQType>
-static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const std::string& conv_op_type,
-                                                                         const TestInputDef<float>& input_def,
-                                                                         const TestInputDef<float>& weights_def,
-                                                                         const TestInputDef<float>& bias_def,
-                                                                         int64_t weight_quant_axis,
-                                                                         const std::vector<int64_t>& strides,
-                                                                         const std::vector<int64_t>& pads,
-                                                                         const std::vector<int64_t>& dilations,
-                                                                         std::optional<int64_t> group,
-                                                                         const std::string& auto_pad = "NOTSET",
-                                                                         bool use_contrib_qdq = false) {
+static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(
+    const std::string& conv_op_type,
+    const TestInputDef<float>& input_def,
+    const TestInputDef<float>& weights_def,
+    const TestInputDef<float>& bias_def,
+    int64_t weight_quant_axis,
+    const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& pads,
+    const std::vector<int64_t>& dilations,
+    std::optional<int64_t> group,
+    const std::string& auto_pad = "NOTSET",
+    bool use_contrib_qdq = false,
+    std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
           dilations, group, auto_pad, use_contrib_qdq,
-          weight_quant_axis](ModelTestBuilder& builder,
-                             std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          weight_quant_axis, output_activation](ModelTestBuilder& builder,
+                                                std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -248,7 +279,17 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(const s
       conv_node.AddAttribute("dilations", dilations);
     }
 
-    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, conv_output, output_qparams[0].scale,
+    NodeArg* q_input = conv_output;
+    if (output_activation.has_value()) {
+      q_input = builder.MakeIntermediate();
+      std::vector<NodeArg*> activation_inputs = {conv_output};
+      for (auto val : output_activation->const_inputs) {
+        activation_inputs.push_back(builder.MakeScalarInitializer(val));
+      }
+      builder.AddNode(output_activation->op_type, activation_inputs, {q_input});
+    }
+
+    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, q_input, output_qparams[0].scale,
                                                            output_qparams[0].zero_point, use_contrib_qdq);
   };
 }
@@ -267,7 +308,8 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              ExpectedEPNodeAssignment expected_ep_assignment,
                              bool use_contrib_qdq = false,
                              int opset = 13,
-                             QDQTolerance tolerance = QDQTolerance()) {
+                             QDQTolerance tolerance = QDQTolerance(),
+                             std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -277,10 +319,11 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
 #endif
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                            group, auto_pad),
+                                            group, auto_pad, output_activation),
                        BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                           bias_def, strides, pads, dilations,
-                                                                          group, auto_pad, use_contrib_qdq),
+                                                                          group, auto_pad, use_contrib_qdq,
+                                                                          output_activation),
                        provider_options,
                        opset,
                        expected_ep_assignment,
@@ -302,7 +345,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        ExpectedEPNodeAssignment expected_ep_assignment,
                                        bool use_contrib_qdq = false,
                                        int opset = 13,
-                                       QDQTolerance tolerance = QDQTolerance()) {
+                                       QDQTolerance tolerance = QDQTolerance(),
+                                       std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -312,11 +356,11 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
 #endif
 
   auto f32_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                     group, auto_pad);
+                                     group, auto_pad, output_activation);
   auto qdq_fn = BuildQDQPerChannelConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                              bias_def, weight_quant_axis, strides,
                                                                              pads, dilations, group, auto_pad,
-                                                                             use_contrib_qdq);
+                                                                             use_contrib_qdq, output_activation);
   TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
 }
 
@@ -764,6 +808,140 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
                                               21);    // opset
 }
 
+// Test fusion of DQs -> Conv -> Relu/Clip -> Q.
+// User per-tensor quantization.
+TEST_F(QnnHTPBackendTests, ConvU8U8S32_ReluClipFusion) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  // DQs -> Conv (w/ bias) -> Relu -> Q
+  OutputActivationInfo relu_info = {"Relu", {}};
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     input_def,
+                                     weight_def,
+                                     bias_def,
+                                     {1, 1},        // Strides
+                                     {0, 0, 0, 0},  // Pads
+                                     {1, 1},        // Dilations
+                                     1,             // default group
+                                     "NOTSET",
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     21,     // opset
+                                     QDQTolerance(),
+                                     relu_info);
+
+  // DQs -> Conv (NO bias) -> Relu -> Q
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     input_def,
+                                     weight_def,
+                                     TestInputDef<float>(),
+                                     {1, 1},        // Strides
+                                     {0, 0, 0, 0},  // Pads
+                                     {1, 1},        // Dilations
+                                     1,             // default group
+                                     "NOTSET",
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     21,     // opset
+                                     QDQTolerance(),
+                                     relu_info);
+
+  // DQs -> Conv (w/ bias) -> Clip -> Q
+  // Opset 6 Clip uses attributes for min/max
+  OutputActivationInfo clip_info = {"Clip", {0.0f, 2.0f}};
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     input_def,
+                                     weight_def,
+                                     bias_def,
+                                     {1, 1},        // Strides
+                                     {0, 0, 0, 0},  // Pads
+                                     {1, 1},        // Dilations
+                                     1,             // default group
+                                     "NOTSET",
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     19,     // opset
+                                     QDQTolerance(),
+                                     clip_info);
+
+  // DQs -> Conv (NO bias) -> Clip -> Q
+  OutputActivationInfo clip_info_2 = {"Clip", {-6.0f, 6.0f}};
+  RunHTPConvOpTest<uint16_t, uint8_t>("Conv",
+                                      input_def,
+                                      weight_def,
+                                      TestInputDef<float>(),
+                                      {1, 1},        // Strides
+                                      {0, 0, 0, 0},  // Pads
+                                      {1, 1},        // Dilations
+                                      1,             // default group
+                                      "NOTSET",
+                                      ExpectedEPNodeAssignment::All,
+                                      false,  // use_qdq_contrib_ops
+                                      21,     // opset
+                                      QDQTolerance(),
+                                      clip_info_2);
+}
+
+// Test fusion of DQs -> Conv -> Relu/Clip -> Q.
+// User per-channel quantization.
+TEST_F(QnnHTPBackendTests, ConvS8S8S32_PerChannel_ReluClipFusion) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  // DQs -> Conv (w/ bias) -> Relu -> Q
+  OutputActivationInfo relu_info = {"Relu", {}};
+  RunHTPConvOpPerChannelTest<int8_t, int8_t>("Conv",
+                                             input_def,
+                                             weight_def,
+                                             bias_def,
+                                             0,             // weight quant axis
+                                             {1, 1},        // Strides
+                                             {0, 0, 0, 0},  // Pads
+                                             {1, 1},        // Dilations
+                                             1,             // default group
+                                             "NOTSET",
+                                             ExpectedEPNodeAssignment::All,
+                                             false,  // use_qdq_contrib_ops
+                                             21,     // opset
+                                             QDQTolerance(),
+                                             relu_info);
+
+  // DQs -> Conv (w/ bias) -> Clip -> Q
+  OutputActivationInfo clip_info = {"Clip", {0.0f, 6.0f}};
+  RunHTPConvOpPerChannelTest<int8_t, int8_t>("Conv",
+                                             input_def,
+                                             weight_def,
+                                             bias_def,
+                                             0,             // weight quant axis
+                                             {1, 1},        // Strides
+                                             {0, 0, 0, 0},  // Pads
+                                             {1, 1},        // Dilations
+                                             1,             // default group
+                                             "NOTSET",
+                                             ExpectedEPNodeAssignment::All,
+                                             false,  // use_qdq_contrib_ops
+                                             21,     // opset
+                                             QDQTolerance(),
+                                             clip_info);
+}
+
 // Test per-channel QDQ Conv with INT4 weights and a negative weight quantization axis that still points to dimension 0.
 TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
@@ -799,7 +977,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_NegativeWeightQuantAxis) {
 // CPU EP (f32 model): 25.143 21.554 17.964 10.785 7.195 3.605  -3.574  -7.164  -10.753
 // CPU EP (qdq model): 24.670 21.103 17.536 10.254 6.689 2.972  -4.161  -7.728  -10.700
 // QNN EP (qdq model): 27.186 27.186 27.186 21.541 6.685 -8.022 -10.548 -10.548 -10.548
-TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S4S32_PerChannel_AccuracyIssue) {
+TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel_AccuracyIssue) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -835,7 +1013,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_ConvU16S4S32_PerChannel_AccuracyIssue) {
                                               "NOTSET",
                                               ExpectedEPNodeAssignment::All,
                                               false,  // use_qdq_contrib_ops
-                                              21);    // opset
+                                              21,     // opset
+                                              QDQTolerance(0.005f));
 }
 
 // Test per-channel QDQ Conv is rejected with weight axis != 0

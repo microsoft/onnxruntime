@@ -249,16 +249,15 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
 
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
-                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
-                           cudaStream_t stream,
-                           int max_threads_per_block,
+                           int sequence_length, int total_sequence_length,
+                           cudaStream_t stream, int max_threads_per_block,
                            AttentionData<T>& data) {
   // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
   // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
   // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
   // When there is past state, the head size for Q/K/V shall be same: H == H_v.
 
-  if (nullptr != data.present) {
+  if (nullptr != data.present) { // Attention op
     assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
            data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
 
@@ -270,58 +269,52 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
     // Update pointers to present_k and present_v.
     data.k = data.present;
     data.v = data.present + batch_size * num_heads * total_sequence_length * qk_head_size;
-  } else if (nullptr != data.past_key || nullptr != data.present_key) {
-    if (nullptr != data.past_key && nullptr == data.present_key) {
-      data.k = const_cast<T*>(data.past_key);
-      data.v = const_cast<T*>(data.past_value);
-    } else if (nullptr == data.past_key && nullptr != data.present_key) {
-      if (data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+  } else  { // MultiHeadAttention op
+    if (nullptr != data.present_key) {
+      ORT_ENFORCE(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
+                  data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH);
+      if (nullptr != data.past_key) {
+        assert(data.past_key != data.k);
+        assert(data.past_value != data.v);
+
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                      batch_size, qk_head_size, num_heads,
+                                      max_threads_per_block, 1, data.past_key, data.k, data.present_key));
+        ORT_RETURN_IF_ERROR(
+            LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
+                                      batch_size, v_head_size, num_heads,
+                                      max_threads_per_block, 1, data.past_value, data.v, data.present_value));
+        // Update pointers to present_k and present_v.
         data.k = data.present_key;
         data.v = data.present_value;
-      } else {
-        assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-        data.k = data.temp_k_workspace;
-        data.v = data.temp_v_workspace;
-      }
-    } else if (pass_past_in_kv) {
-      // past_key and past_value are used directly as key and value in attention computations
-      data.k = const_cast<T*>(data.past_key);
-      data.v = const_cast<T*>(data.past_value);
+      } else { // nullptr == data.past_key && nullptr != data.present_key
+        if (data.k != data.present_key) {
+          int64_t k_size = (int64_t)batch_size * num_heads * total_sequence_length * qk_head_size;
+          cudaMemcpyAsync(data.present_key, data.k, k_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+        }
 
-      // This path has a memory copy from past_key and past_value to present_key and present_value
-      // Avoid this path since the memory copy is unnecessary because past_key == present_key and
-      // past_value == present_value
-      int64_t k_size = (int64_t)batch_size * num_heads * total_sequence_length * qk_head_size;
-      int64_t v_size = (int64_t)batch_size * num_heads * total_sequence_length * v_head_size;
-      cudaMemcpyAsync(data.present_key, data.past_key, k_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
-      cudaMemcpyAsync(data.present_value, data.past_value, v_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
-    } else {
-      ORT_RETURN_IF_ERROR(
-          LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
-                                     batch_size, qk_head_size, num_heads,
-                                     max_threads_per_block, 1, data.past_key, data.k, data.present_key));
-      ORT_RETURN_IF_ERROR(
-          LaunchConcatTensorToTensor(stream, total_sequence_length, sequence_length,
-                                     batch_size, v_head_size, num_heads,
-                                     max_threads_per_block, 1, data.past_value, data.v, data.present_value));
-      // Update pointers to present_k and present_v.
-      data.k = data.present_key;
-      data.v = data.present_value;
+        if (data.v != data.present_value) {
+          int64_t v_size = (int64_t)batch_size * num_heads * total_sequence_length * v_head_size;
+          cudaMemcpyAsync(data.present_value, data.v, v_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+        }
+      }
     }
   }
+
 
   return CUDA_CALL(cudaGetLastError());
 }
 
 // Template Instantiation
 template Status ConcatPastToPresent<float>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
-                                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                                           int sequence_length, int total_sequence_length,
                                            cudaStream_t stream,
                                            int max_threads_per_block,
                                            AttentionData<float>& data);
 
 template Status ConcatPastToPresent<half>(int batch_size, int num_heads, int qk_head_size, int v_head_size,
-                                          int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                                          int sequence_length, int total_sequence_length,
                                           cudaStream_t stream,
                                           int max_threads_per_block,
                                           AttentionData<half>& data);
