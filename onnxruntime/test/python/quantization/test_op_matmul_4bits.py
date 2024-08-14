@@ -52,13 +52,13 @@ class TestOpMatMul4Bits(unittest.TestCase):
         return line.reshape(shape)
 
     def input_feeds(
-            self,
-            n: int,
-            name2shape: Dict[str, int | Tuple[int, ...]],
-            low: int = -1,
-            high: int = 2,
-            dtype: type = np.float32,
-        ) -> TestDataFeeds:
+        self,
+        n: int,
+        name2shape: Dict[str, int | Tuple[int, ...]],
+        low: int = -1,
+        high: int = 2,
+        dtype: type = np.float32,
+    ) -> TestDataFeeds:
         input_data_list = []
         for _i in range(n):
             inputs = {}
@@ -119,14 +119,14 @@ class TestOpMatMul4Bits(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def construct_model_gather(
-            self,
-            output_model_path: str,
-            symmetric: bool,
-            tdata: TensorProto.DataType,
-            tind: TensorProto.DataType,
-            vocab_size: int = 545,
-            embedding_len: int = 228,
-        ) -> None:
+        self,
+        output_model_path: str,
+        symmetric: bool,
+        tdata: TensorProto.DataType,
+        tind: TensorProto.DataType,
+        vocab_size: int = 545,
+        embedding_len: int = 228,
+    ) -> None:
         #      (input)
         #         |
         #       Gather

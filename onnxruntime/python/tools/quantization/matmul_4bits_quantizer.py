@@ -607,7 +607,7 @@ class DefaultWeightOnlyQuantizer:
         min_val = np.min(data, axis=1, keepdims=True)
         abs_max = np.where(np.abs(max_val) > np.abs(min_val), max_val, min_val)
 
-        scale = abs_max / -8.0 # if max == min, max may be clipped
+        scale = abs_max / -8.0  # if max == min, max may be clipped
         quantized_slice = np.where(scale == 0, 0, data / scale).round().clip(-8, 7).astype(np.int8)
 
         return quantized_slice, scale
