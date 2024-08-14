@@ -156,12 +156,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // The offset of attention bias for current head.
   int64_t attn_bias_offset = 0;
-  if (params.attention_bias != nullptr && params.attention_bias_dims.size() == 4) {
+  if (params.attention_bias != nullptr) {
     // Support broadcasting the first and second dimensions of attention bias.
-    if (params.attention_bias_dims[0] > 1) {
+    if (!params.broadcast_attention_bias_dim_0) {
       attn_bias_offset = static_cast<int64_t>(bbi) * params.num_heads * params.sequence_length * params.total_sequence_length;
     }
-    if (params.attention_bias_dims[1] > 1) {
+    if (!params.broadcast_attention_bias_dim_1) {
       attn_bias_offset += static_cast<int64_t>(hi) * params.sequence_length * params.total_sequence_length;
     }
   }

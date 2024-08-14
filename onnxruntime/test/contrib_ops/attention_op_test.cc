@@ -419,7 +419,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {
                    0, false, false, disable_rocm, false, qkv_sizes);
 }
 
-TEST(AttentionTest, AttentionBatch1RelativePositionBias) {
+TEST(AttentionTest, AttentionBatch1AttentionBias) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -460,7 +460,7 @@ TEST(AttentionTest, AttentionBatch1RelativePositionBias) {
                    0, disable_cpu, disable_cuda, disable_rocm, disable_dml, qkv_sizes, attention_bias);
 }
 
-TEST(AttentionTest, AttentionBatch2RelativePositionBias) {
+TEST(AttentionTest, AttentionBatch2AttentionBias) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;

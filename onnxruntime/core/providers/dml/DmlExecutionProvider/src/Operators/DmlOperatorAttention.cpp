@@ -346,7 +346,7 @@ public:
             mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.AttentionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
+        mhaOperatorDesc.RelativePositionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);

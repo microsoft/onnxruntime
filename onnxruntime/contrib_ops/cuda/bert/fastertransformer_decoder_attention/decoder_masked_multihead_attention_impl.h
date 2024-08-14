@@ -38,6 +38,8 @@ struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   void* v_bias = nullptr;
 
   void* attention_bias = nullptr;
+  bool broadcast_attention_bias_dim_0 = false;
+  bool broadcast_attention_bias_dim_1 = false;
 
   void* k_cache = nullptr;
   void* v_cache = nullptr;

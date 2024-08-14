@@ -172,7 +172,7 @@ TEST(PackedAttentionTest, NoPack) {
       batch_size * sequence_length);
 }
 
-TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
+TEST(PackedAttentionTest, NoPackWithAttentionBias) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -223,7 +223,7 @@ TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
       attention_bias);
 }
 
-TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
+TEST(PackedAttentionTest, PackedWithAttentionBias) {
   int batch_size = 2;
   int sequence_length = 4;
   int hidden_size = 4;

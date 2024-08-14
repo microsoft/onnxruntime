@@ -415,7 +415,7 @@ public:
             mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[maskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.AttentionBiasTensor = nullptr;
+        mhaOperatorDesc.RelativePositionBiasTensor = nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
         // Set MaskFilterValue to lowest float for Causal Mask

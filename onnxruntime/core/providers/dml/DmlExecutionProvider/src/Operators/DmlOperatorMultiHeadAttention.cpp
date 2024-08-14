@@ -283,7 +283,7 @@ public:
         mhaDesc.StackedQueryKeyValueTensor = stackedQkv ? &inputDescs[dmlStackedQueryKeyValueIndex] : nullptr;
         mhaDesc.BiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
         mhaDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
-        mhaDesc.AttentionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
+        mhaDesc.RelativePositionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
         mhaDesc.PastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
         mhaDesc.PastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
         mhaDesc.OutputTensor = &outputDescs[outputIndex];
