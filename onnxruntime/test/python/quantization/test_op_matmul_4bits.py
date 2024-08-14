@@ -54,7 +54,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     def input_feeds(
         self,
         n: int,
-        name2shape: Dict[str, int | Tuple[int, ...]],
+        name2shape: Dict[str, Union[int, Tuple[int, ...]]],
         low: int = -1,
         high: int = 2,
         dtype: type = np.float32,
@@ -137,7 +137,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         initializers = []
 
         def make_gather(
-            indices_name, data_shape: int | Tuple[int, ...], data_name: str, output_name: str, node_name: str
+            indices_name, data_shape: Union[int, Tuple[int, ...]], data_name: str, output_name: str, node_name: str
         ):
             weight_data = self.fill_int4_data(data_shape, symmetric).astype(
                 np.float32 if tdata == TensorProto.FLOAT else np.float16
