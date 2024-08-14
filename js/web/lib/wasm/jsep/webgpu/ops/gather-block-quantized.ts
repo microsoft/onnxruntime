@@ -26,8 +26,8 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
   if (scales.dims.length !== data.dims.length ||
       !data.dims.map((d, i) => i === quantizeAxis ? Math.ceil(d / blockSize) === scales.dims[i] : d === scales.dims[i])
            .reduce((a, b) => a && b, true)) {
-    throw new Error(`Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.
-        The size of the quantizeAxis should be ceil(inputSize/blockSize).`);
+    throw new Error(
+        'Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.');
   }
   if (zeroPoint) {
     if (zeroPoint.dataType !== data.dataType) {
@@ -36,8 +36,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
     if (zeroPoint.dims.length !== scales.dims.length ||
         !zeroPoint.dims.map((d, i) => d === scales.dims[i]).reduce((a, b) => a && b, true)) {
       throw new Error(
-          `Zero point must have the same rank as the input tensor and the dims should match except on quantizeAxis.
-          The size of the quantizeAxis should be ceil(inputSize/blockSize).`);
+          'Zero point must have the same rank as the input tensor and the dims should match except on quantizeAxis.');
     }
   }
 };
