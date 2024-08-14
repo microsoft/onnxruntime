@@ -28,13 +28,13 @@ const createElementwiseProgramShader =
 
       const input = inputVariable('inputData', inputDataType, [vecSize], 4);
       const output = outputVariable('outputData', outputDataType, [vecSize], 4);
+      const uniforms: UniformsArrayType = [{name: 'vec_size', type: 'u32'}];
+      if (additionalUniformsType) {
+        uniforms.push(...additionalUniformsType);
+      }
 
       return `
-      ${
-          (additionalUniformsType ?
-               shaderHelper.registerUniforms([...additionalUniformsType, {name: 'vec_size', type: 'u32'}]) :
-               shaderHelper.registerUniform('vec_size', 'u32'))
-              .declareVariables(input, output)}
+      ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
 
   ${additionalImplementation ?? ''}
 
@@ -49,28 +49,27 @@ const createElementwiseProgramShader =
 const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
      cacheKey?: string, outputDataType: number = input.dataType, additionalUniforms?: ProgramUniform[],
-     additionalUniformsType?: UniformsArrayType):
-        ProgramInfo =>
-            ({
-              name,
-              shaderCache: {hint: cacheKey, inputDependencies: ['type']},
-              getShaderSource: shaderHelper => createElementwiseProgramShader(
-                  shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall,
-                  additionalImplementation, additionalUniformsType),
-              getRunData: (inputTensors) => ({
-                outputs: [{dims: input.dims, dataType: outputDataType}],
-                dispatchGroup:
-                    {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
-                programUniforms: additionalUniforms ?
-                    [
-                      ...additionalUniforms,
-                      {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
-                    ] :
-                    [
-                      {type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4)},
-                    ],
-              })
-            });
+     additionalUniformsType?: UniformsArrayType): ProgramInfo => {
+      const programUniforms: ProgramUniform[] =
+          [{type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4)}];
+      if (additionalUniforms) {
+        programUniforms.push(...additionalUniforms);
+      }
+
+      return {
+        name, shaderCache: {hint: cacheKey, inputDependencies: ['type']},
+            getShaderSource:
+                shaderHelper => createElementwiseProgramShader(
+                    shaderHelper, ShapeUtil.size(input.dims), input.dataType, outputDataType, funcCall,
+                    additionalImplementation, additionalUniformsType),
+                getRunData: (inputTensors) => ({
+                  outputs: [{dims: input.dims, dataType: outputDataType}],
+                  dispatchGroup:
+                      {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
+                  programUniforms
+                })
+      }
+    };
 
 export const abs = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfo(context.inputs[0], 'Abs', 'abs'));

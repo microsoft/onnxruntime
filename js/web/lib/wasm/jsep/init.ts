@@ -46,7 +46,7 @@ class TensorViewImpl implements TensorView {
   }
 
   getUint16Array(): Uint16Array {
-    if (this.dataType !== DataType.float16) {
+    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
       throw new Error('Invalid data type');
     }
     const elementCount = ShapeUtil.size(this.dims);
