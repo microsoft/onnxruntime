@@ -99,7 +99,7 @@ const createGatherBlockQuantizedProgramInfo =
         }
         data_indices[uniforms.gather_axis] = u32(${indices.getByIndices('indices_indices')});
         for (var i = uniforms.gather_axis + 1; i < ${outputShape.length}; i++) {
-          data_indices[i] = output_indices[i];
+          data_indices[i] = output_indices[i + ${indicesShape.length} - 1];
         }
         var data_offset = ${data.indicesToOffset('data_indices')};
         var packed_quantized_data = ${data.getByOffset('data_offset / 8')};
