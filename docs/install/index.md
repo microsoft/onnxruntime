@@ -147,20 +147,10 @@ dotnet add package Microsoft.AI.MachineLearning
 
 ## Install on web and mobile
 
-Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support
-for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be
-referred to as "mobile packages". If you use mobile packages, your model must only use the
-supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.14.md).
+The pre-built packages have full support for all ONNX opsets and operators.
 
-Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size.
-These packages are referred to as "full packages".
-
-If the pre-built mobile package supports your model/s but is too large, you can create
-a [custom build](../build/custom.md). A custom build can include just the opsets and operators in your model/s to reduce
-the size.
-
-If the pre-built mobile package does not include the opsets or operators in your model/s, you can either use the full
-package if available, or create a custom build.
+If the pre-built package is too large, you can create a [custom build](../build/custom.md).
+A custom build can include just the opsets and operators in your model/s to reduce the size.
 
 ### JavaScript Installs
 
@@ -190,18 +180,14 @@ npm install onnxruntime-react-native
 
 ### Install on iOS
 
-In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `onnxruntime-objc`,
-or `onnxruntime-mobile-objc` pod, depending on whether you want to use a full or mobile package and which API you want
-to use.
+In your CocoaPods `Podfile`, add the `onnxruntime-c` or `onnxruntime-objc` pod, depending on which API you want to use.
 
 #### C/C++
 
   ```ruby
   use_frameworks!
 
-  # choose one of the two below:
-  pod 'onnxruntime-c'  # full package
-  #pod 'onnxruntime-mobile-c'  # mobile package
+  pod 'onnxruntime-c'
   ```
 
 #### Objective-C
@@ -209,9 +195,7 @@ to use.
   ```ruby
   use_frameworks!
 
-  # choose one of the two below:
-  pod 'onnxruntime-objc'  # full package
-  #pod 'onnxruntime-mobile-objc'  # mobile package
+  pod 'onnxruntime-objc'
   ```
 
 Run `pod install`.
@@ -238,19 +222,14 @@ In your Android Studio Project, make the following changes to:
 
     ```gradle
     dependencies {
-        // choose one of the two below:
-        implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'  // full package
-        //implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'  // mobile package
+        implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
     }
     ```
 
 #### C/C++
 
-Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) (
-full package) or [onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) (
-mobile package) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the
-header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in
-your NDK project.
+Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it.
+Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 #### Custom build
 
@@ -438,9 +417,9 @@ below:
 | WinML        | [**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)                                                   | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/NuGet/Microsoft.AI.MachineLearning/overview)  | [View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites) |
 | Java         | CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)                         |                                                                                                                                               | [View](../api/java)                                                                            |
 |              | GPU (CUDA/TensorRT): [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) |                                                                                                                                               | [View](../api/java)                                                                            |
-| Android      | [**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile)                |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
-| iOS (C/C++)  | CocoaPods: **onnxruntime-mobile-c**                                                                                                               |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
-| Objective-C  | CocoaPods: **onnxruntime-mobile-objc**                                                                                                            |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
+| Android      | [**com.microsoft.onnxruntime:onnxruntime-android**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-android)              |                                                                                                                                               | [View](../install/index.md#install-on-android)                                                 |
+| iOS (C/C++)  | CocoaPods: **onnxruntime-c**                                                                                                                      |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
+| Objective-C  | CocoaPods: **onnxruntime-objc**                                                                                                                   |                                                                                                                                               | [View](../install/index.md#install-on-ios)                                                     |
 | React Native | [**onnxruntime-react-native** (latest)](https://www.npmjs.com/package/onnxruntime-react-native)                                                   | [onnxruntime-react-native (dev)](https://www.npmjs.com/package/onnxruntime-react-native?activeTab=versions)                                   | [View](../api/js)                                                                              |
 | Node.js      | [**onnxruntime-node** (latest)](https://www.npmjs.com/package/onnxruntime-node)                                                                   | [onnxruntime-node (dev)](https://www.npmjs.com/package/onnxruntime-node?activeTab=versions)                                                   | [View](../api/js)                                                                              |
 | Web          | [**onnxruntime-web** (latest)](https://www.npmjs.com/package/onnxruntime-web)                                                                     | [onnxruntime-web (dev)](https://www.npmjs.com/package/onnxruntime-web?activeTab=versions)                                                     | [View](../api/js)                                                                              |

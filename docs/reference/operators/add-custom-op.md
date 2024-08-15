@@ -2,7 +2,7 @@
 title: Custom operators
 parent: Operators
 grand_parent: Reference
-nav_order: 4
+nav_order: 3
 ---
 
 # Custom operators
