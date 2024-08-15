@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -1181,12 +1182,12 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds the ARM Compute Library as an execution backend.
      *
-     * @param useArena If true use the arena memory allocator.
+     * @param enableFastMath Enable fast math mode in ACL.
      * @throws OrtException If there was an error in native code.
      */
-    public void addACL(boolean useArena) throws OrtException {
+    public void addACL(boolean enableFastMath) throws OrtException {
       checkClosed();
-      addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+      addACL(OnnxRuntime.ortApiHandle, nativeHandle, enableFastMath);
     }
 
     /**
@@ -1354,7 +1355,8 @@ public class OrtSession implements AutoCloseable {
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
-    private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+    private native void addACL(long apiHandle, long nativeHandle,
+        boolean enableFastMath) throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;

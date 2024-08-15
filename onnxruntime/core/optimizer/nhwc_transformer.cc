@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <deque>
@@ -183,7 +184,8 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // If the node is not supported in the CPU EP, skip it
-    if (node->GetExecutionProviderType() != kCpuExecutionProvider) {
+    const auto ep = node->GetExecutionProviderType();
+    if ((ep != kCpuExecutionProvider) && (ep != kAclExecutionProvider)) {
       continue;
     }
 

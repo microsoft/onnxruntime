@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -511,9 +512,42 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
+#if defined(_MSC_VER)
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif  // defined(_MSC_VER)
+    std::istringstream ss(ov_string);
+    std::string token;
+    bool enable_fast_math = false;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [ACL] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "enable_fast_math") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          enable_fast_math = (value == "true") || (value == "True");
+        } else {
+          ORT_THROW(
+              "[ERROR] [ACL] You have selcted an invalid value for the key 'enable_fast_math'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [ACL] Unrecognized option: ", key);
+      }
+    }
     Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
-                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+        OrtSessionOptionsAppendExecutionProvider_ACL(session_options, enable_fast_math));
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif

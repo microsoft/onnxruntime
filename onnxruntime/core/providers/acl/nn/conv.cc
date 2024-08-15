@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2019-2020, NXP Semiconductor, Inc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #ifdef _WIN32
@@ -19,17 +20,12 @@
 
 // ACL
 #include "arm_compute/core/TensorInfo.h"
+#include "arm_compute/core/ITensorPack.h"
+#include "src/cpu/operators/CpuConv2d.h"
 
 // NEON
-#include "arm_compute/runtime/NEON/functions/NEConvolutionLayer.h"
 #include "arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h"
 
-#ifdef ACL_1902
-#include "arm_compute/core/NEON/kernels/NEDepthwiseConvolutionLayer3x3Kernel.h"
-#endif
-#if defined(ACL_1905) || defined(ACL_1908)
-#include "arm_compute/runtime/NEON/functions/assembly/NEDepthwiseConvolutionAssemblyDispatch.h"
-#endif
 
 #define CONV_ACL
 #undef DEPTHWISE_CPU
@@ -37,13 +33,69 @@
 #define PREF_DIM 4
 
 namespace onnxruntime {
+
 namespace acl {
 
-template <typename T>
-thread_local std::map<OpKernel*, ACLNEConv> Conv<T>::convLayers;
+struct ConvConfig {
+  bool isQuantized;
+  bool is_channels_last;
+  bool isDepthwise;
+  TensorShape inShapeIn;
+  TensorShape kShapeIn;
+  const std::string *inType;
+  const std::string *kType;
+};
 
-template <typename T>
-arm_compute::TensorShape Conv<T>::ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel) const {
+Status ParseConv(const onnxruntime::Node& node, ConvConfig &config) {
+  onnxruntime::ProtoHelperNodeContext ctx(node);
+  onnxruntime::OpNodeProtoHelper<ProtoHelperNodeContext> attrs(&ctx);
+  const auto inputDefs = node.InputDefs();
+
+  config.isQuantized = node.OpType() == "QLinearConv";
+
+  if (config.isQuantized) {
+    TensorShape scaleShape;
+    ORT_RETURN_IF_ERROR(GetArgShape(inputDefs[4], scaleShape));
+    ORT_RETURN_IF(scaleShape.Size() > 1, "ACL execution provider does not support per-channel quantization");
+  }
+
+  config.is_channels_last = node.OpType() == "NhwcConv";
+  if (!config.is_channels_last) {
+    int64_t cl_ret = 0;
+    attrs.GetAttr("channels_last", &cl_ret);
+    config.is_channels_last = (bool) cl_ret;
+  }
+
+  int64_t group = 1;
+  attrs.GetAttr("group", &group);
+
+  const NodeArg *kDef = inputDefs[config.isQuantized? 3 : 1];
+
+  ORT_RETURN_IF_ERROR(GetArgShape(inputDefs[0], config.inShapeIn));
+  ORT_RETURN_IF_ERROR(GetArgShape(kDef, config.kShapeIn));
+
+  ORT_RETURN_IF(config.kShapeIn.NumDimensions() > 4, "ACL execution provider supports 1D and 2D Conv only");
+
+  config.inType = inputDefs[0]->Type();
+  config.kType = kDef->Type();
+  const bool mixedType = config.inType != config.kType;
+
+  config.isDepthwise = group > 1;
+  if (config.isDepthwise) {
+    const size_t channels = config.inShapeIn[config.is_channels_last? config.inShapeIn.NumDimensions() - 1 : 1];
+    ORT_RETURN_IF(group != channels, "ACL does not support grouping unless group == channels");
+    ORT_RETURN_IF(mixedType, "ACL does not support mixed input types for depthwise Conv");
+  }
+
+  return Status::OK();
+}
+
+Status ValidateConv(const onnxruntime::Node& node) {
+  ConvConfig config;
+  return ParseConv(node, config);
+}
+
+arm_compute::TensorShape Conv::ACLReshapeWeightsDepthwise(arm_compute::Tensor* kernel) const {
   arm_compute::TensorShape shape = arm_compute::TensorShape(kernel->info()->tensor_shape());
   shape[2] = shape[2] * shape[3];
   shape[3] = 1;
@@ -51,43 +103,91 @@ arm_compute::TensorShape Conv<T>::ACLReshapeWeightsDepthwise(arm_compute::Tensor
   return shape;
 }
 
-#ifdef CONV_ACL
-template <typename T>
-Status Conv<T>::Compute(OpKernelContext* context) const {
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
+Conv::Conv(const OpKernelInfo& info) : onnxruntime::OpKernel(info), conv_attrs_(info) {
+  provider_ = (const_cast<ACLExecutionProvider*>(
+      static_cast<const ACLExecutionProvider*>(info.GetExecutionProvider())));
 
-  ACLNEConv* pConv;
-  ConvLayersIterator it = Conv::convLayers.find((OpKernel*)this);
-  if (it != Conv::convLayers.end()) {
-    pConv = &it->second;
-    if (pConv->isDepthwiseCPU == true) {
-      Status s = onnxruntime::Conv<T>::Compute(context);
-      return s;
-    }
+  ConvConfig config;
+  ORT_THROW_IF_ERROR(ParseConv(OpKernel::Node(), config));
+  isQuantized = config.isQuantized;
+  is_channels_last = config.is_channels_last;
+
+  size_t num_inputs = OpKernel::Node().InputDefs().size();
+  has_bias = isQuantized? (num_inputs == 9) : (num_inputs == 3);
+
+  const Tensor *tmp = nullptr;
+  const bool kIsConst = info.TryGetConstantInput(1, &tmp);
+  ORT_ENFORCE(kIsConst, "ACL does not support Conv with mutable weights");
+
+  in = std::make_shared<arm_compute::Tensor>();
+  k = std::make_shared<arm_compute::Tensor>();
+  if (has_bias)
+    b = std::make_shared<arm_compute::Tensor>();
+  out = std::make_shared<arm_compute::Tensor>();
+
+  const arm_compute::DataLayout data_layout = is_channels_last?
+      arm_compute::DataLayout::NHWC : arm_compute::DataLayout::NCHW;
+
+  TensorShape inShape = config.inShapeIn;
+  if (is_channels_last && config.inShapeIn.NumDimensions() < 4) {
+    inShape = TensorShape({config.inShapeIn[0], config.inShapeIn[1], 1, config.inShapeIn[2]});
   }
 
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
-  const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
+  arm_compute::DataType inType = ACLDataType(*config.inType);
+  in->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(inShape, PREF_DIM), 1, inType, data_layout));
 
-  const int64_t N = X->Shape()[0];
-  const int64_t M = W->Shape()[0];
+  arm_compute::DataType kType = ACLDataType(*config.kType);
+
+  TensorShapeVector kShapeVec = config.kShapeIn.AsShapeVector();
+  while(kShapeVec.size() < 4) {
+    kShapeVec.push_back(1);
+  }
+
+  const TensorShape kShape = is_channels_last?
+      TensorShape({kShapeVec[0], kShapeVec[2], kShapeVec[3], kShapeVec[1]}) : TensorShape(kShapeVec);
+
+  k->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(kShape), 1, kType, data_layout));
+
+  TensorShape bShape;
+  if (has_bias) {
+    const Tensor *bias = nullptr;
+    const bool biasIsConst = info.TryGetConstantInput(isQuantized? 8 : 2, &bias);
+    ORT_ENFORCE(biasIsConst, "ACL does not support Conv with mutable bias");
+
+    const auto bDef = OpKernel::Node().InputDefs()[isQuantized? 8 : 2];
+    ORT_THROW_IF_ERROR(GetArgShape(bDef, bShape));
+    arm_compute::DataType bType = ACLDataType(*bDef->Type());
+    b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(bShape), 1, bType, data_layout));
+
+    const void* b_data = bias->DataRaw();
+    ORT_THROW_IF_ERROR(ACLImportMemory(b->allocator(), (void*)b_data, 0));
+  }
+
+  ORT_THROW_IF_ERROR(GetArgShape(OpKernel::Node().OutputDefs()[0], outShape));
+  TensorShape outShapeACL = outShape;
+  if (is_channels_last && outShape.NumDimensions() < 4) {
+    outShapeACL = TensorShape({outShape[0], outShape[1], 1, outShape[2]});
+  }
+
+  out->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(outShapeACL, PREF_DIM), 1, inType, data_layout));
+
+  if (isQuantized) {
+    ORT_THROW_IF_ERROR(LoadQuantizationInfo(info, in.get(), 1, 2, false));
+    ORT_THROW_IF_ERROR(LoadQuantizationInfo(info, k.get(), 4, 5, false));
+    ORT_THROW_IF_ERROR(LoadQuantizationInfo(info, out.get(), 6, 7, false));
+  }
 
   LOGS_DEFAULT(VERBOSE) << "Conv ACL:";
-  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
-  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
-  if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
-
-  if (X->Shape().NumDimensions() != PREF_DIM) {
-    LOGS_DEFAULT(WARNING) << "ACL does not have support for tensors with 4 or more dimensions; defaulting to cpu implementation";
-    Status s = onnxruntime::Conv<T>::Compute(context);
-    return s;
+  LOGS_DEFAULT(VERBOSE) << "X " << inShape.ToString().c_str();
+  LOGS_DEFAULT(VERBOSE) << "W " << config.kShapeIn.ToString().c_str();
+  if (has_bias) {
+    LOGS_DEFAULT(VERBOSE) << "B " << bShape.ToString().c_str();
   }
 
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+  ORT_THROW_IF_ERROR(conv_attrs_.ValidateInputShape(config.inShapeIn, config.kShapeIn, config.is_channels_last));
 
   TensorShapeVector kernel_shape;
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
+  ORT_THROW_IF_ERROR(conv_attrs_.ComputeKernelShape(config.kShapeIn, kernel_shape));
 
   ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
@@ -102,16 +202,13 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  TensorShapeVector Y_dims;
-  Y_dims.insert(Y_dims.begin(), {N, M});
-  TensorShape input_shape = X->Shape().Slice(2);
-#ifdef ACL_2308
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
-#else
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
-#endif
-  Tensor* Y = context->Output(0, TensorShape(Y_dims));
-  LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str();
+  TensorShape input_shape = config.inShapeIn.Slice(2);
+  TensorShapeVector out_shape;
+  ORT_THROW_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(
+      input_shape, kernel_shape, strides, dilations,
+      pads, out_shape));
+
+  LOGS_DEFAULT(VERBOSE) << "Y " << outShape.ToString().c_str();
 
   arm_compute::ActivationLayerInfo::ActivationFunction acl_activ_func;
   bool acl_activ_enabled = false;
@@ -136,243 +233,277 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     ORT_NOT_IMPLEMENTED("Not implemented fused activation: ", activation_type);
   }
 
-  if (it == Conv::convLayers.end()) {
-    auto mm_layer = ACLCreateMemoryManager();
+  const size_t idx_channel = arm_compute::get_data_layout_dimension_index(data_layout, arm_compute::DataLayoutDimension::CHANNEL);
+  isDepthwiseCPU = config.isDepthwise;
 
-    ACLNEConv tconv;
-    tconv.mm_layer = std::move(mm_layer);
+  std::vector<int64_t> aclStrides(2);
+  aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
+  aclStrides[1] = strides[0];
 
-    tconv.in = std::make_shared<arm_compute::Tensor>();
-    tconv.k = std::make_shared<arm_compute::Tensor>();
-    if (B != nullptr)
-      tconv.b = std::make_shared<arm_compute::Tensor>();
-    tconv.out = std::make_shared<arm_compute::Tensor>();
-
-    tconv.in->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(X->Shape(), PREF_DIM), arm_compute::Format::F32));
-    tconv.k->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(W->Shape()), arm_compute::Format::F32));
-    if (B != nullptr) {
-      tconv.b->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(B->Shape()), arm_compute::Format::F32));
-    }
-    tconv.out->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(Y->Shape(), PREF_DIM), arm_compute::Format::F32));
-
-    const arm_compute::DataLayout data_layout = tconv.in->info()->data_layout();
-    const int idx_channel = arm_compute::get_data_layout_dimension_index(data_layout, arm_compute::DataLayoutDimension::CHANNEL);
-    bool isDepthwise = (conv_attrs_.group > 1 && conv_attrs_.group == tconv.in->info()->tensor_shape()[idx_channel]);
-    tconv.isDepthwiseCPU = isDepthwise;
-
-    std::vector<int64_t> aclStrides(2);
-    aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
-    aclStrides[1] = strides[0];
-
-    std::vector<int64_t> aclPads(4);
-    // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
-    if (pads.size() == 2) {
-      if (strides.size() == 1) {
-        aclPads[0] = 0;
-        aclPads[1] = 0;
-        aclPads[2] = pads[1];
-        aclPads[3] = pads[0];
-      } else {
-        aclPads[0] = pads[1];
-        aclPads[1] = pads[0];
-        aclPads[2] = pads[1];
-        aclPads[3] = pads[0];
-      }
+  std::vector<int64_t> aclPads(4);
+  // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
+  if (pads.size() == 2) {
+    if (strides.size() == 1) {
+      aclPads[0] = 0;
+      aclPads[1] = 0;
+      aclPads[2] = pads[0];
+      aclPads[3] = pads[1];
     } else {
       aclPads[0] = pads[1];
-      aclPads[1] = pads[3];
-      aclPads[2] = pads[0];
-      aclPads[3] = pads[2];
+      aclPads[1] = pads[0];
+      aclPads[2] = pads[1];
+      aclPads[3] = pads[0];
+    }
+  } else {
+    aclPads[0] = pads[1];
+    aclPads[1] = pads[3];
+    aclPads[2] = pads[0];
+    aclPads[3] = pads[2];
+  }
+
+  arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(
+      (unsigned int) aclStrides[0], (unsigned int) aclStrides[1],
+      (unsigned int) aclPads[0], (unsigned int) aclPads[1],
+      (unsigned int) aclPads[2], (unsigned int) aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
+  size_t aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
+
+  LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
+  LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
+
+  if (config.isDepthwise) {
+    LOGS_DEFAULT(VERBOSE) << "Depthwise convolution";
+    k->info()->set_tensor_shape(ACLReshapeWeightsDepthwise(k.get()));
+    auto dl = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
+    dl->configure(in.get(), k.get(), (has_bias) ? b.get() : nullptr, out.get(),
+                  aclPadStride, 1 /* depth multiplier */,
+                  acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
+                  arm_compute::Size2D(aclDilation0, dilations[0]));
+    depthwise_layer = std::move(dl);
+    isDepthwiseCPU = false;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "ACL 2D convolution";
+    auto cl = std::make_shared<arm_compute::cpu::CpuConv2d>();
+    cl->configure(in->info(), k->info(), (has_bias) ? b->info() : nullptr, out->info(),
+                  aclPadStride,
+                  arm_compute::WeightsInfo(), arm_compute::Size2D(aclDilation0, dilations[0]),
+                  acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
+                  provider_->info.enable_fast_math, (unsigned int) conv_attrs_.group);
+    conv_layer = std::move(cl);
+
+    memory_group = arm_compute::MemoryGroup(provider_->memory_manager);
+    run_pack = {{arm_compute::ACL_SRC_0, in.get()}, {arm_compute::ACL_SRC_1, k.get()},
+                {arm_compute::ACL_SRC_2, b.get()}, {arm_compute::ACL_DST, out.get()}};
+    prep_pack = {{arm_compute::ACL_SRC_1, k.get()}, {arm_compute::ACL_SRC_2, b.get()}};
+
+    PopulateWorkspace(conv_layer->workspace(), workspace, memory_group, run_pack, prep_pack);
+  }
+
+  ACLPrintTensorShape("X", *in.get());
+  ACLPrintTensorShape("Y", *out.get());
+}
+
+#ifdef CONV_ACL
+Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+        /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) {
+
+  is_packed = false;
+  if (isQuantized? (input_idx != 3) : ( input_idx != 1)) {
+    return Status::OK();
+  }
+
+  if (!workspace.persistent_tensors.empty()) {
+    size_t packedSize = 0;
+    size_t alignment = 0;
+    GetPackingInfo(workspace.persistent_tensors, packedSize, alignment);
+    auto buffSize = packedSize + alignment;
+
+    pkRaw = IAllocator::MakeUniquePtr<void>(alloc, buffSize, true);
+    ORT_RETURN_IF_ERROR(LoadPackedTensors(workspace.persistent_tensors, pkRaw.get(), packedSize, alignment));
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(pkRaw));
+      prepacked_weights->buffer_sizes_.push_back(buffSize);
     }
 
-    arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1],
-                                                                         aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
-    unsigned int aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
+    is_packed = true;
+  }
 
-    LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
-    LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
-
-    if (isDepthwise) {
-      LOGS_DEFAULT(VERBOSE) << "Depthwise convolution";
-#ifdef DEPTHWISE_CPU
-      Status s = onnxruntime::Conv<T>::Compute(context);
-      std::pair<ConvLayersIterator, bool> ret;
-      ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
-      return s;
-#else
-      tconv.k->info()->set_tensor_shape(ACLReshapeWeightsDepthwise(tconv.k.get()));
-
-      // in the configure function for NEDepthwiseConvolutionLayer3x3, there is a separation based on the optimization
-#ifdef ACL_1902
-      bool optimizable =
-          arm_compute::NEDepthwiseConvolutionLayer3x3Kernel::is_optimized_execution_possible(tconv.in->info()->tensor_shape(),
-                                                                                             aclPadStride,
-                                                                                             tconv.in->info()->data_type(),
-                                                                                             1 /* depth multiplier */,
-                                                                                             tconv.in->info()->data_layout());
-#elif defined(ACL_1905) || defined(ACL_1908)
-      bool optimizable =
-          arm_compute::NEDepthwiseConvolutionAssemblyDispatch::is_optimized_supported(tconv.in->info(),
-                                                                                      tconv.k->info(),
-                                                                                      aclPadStride,
-                                                                                      1 /* depth multiplier */,
-                                                                                      arm_compute::Size2D(aclDilation0, dilations[0]));
-#elif defined(ACL_2002)
-      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayerOptimized::validate(tconv.in->info(),
-                                                                                          tconv.k->info(),
-                                                                                          (B != nullptr) ? tconv.b->info() : nullptr,
-                                                                                          tconv.out->info(),
-                                                                                          aclPadStride,
-                                                                                          1 /* depth multiplier */,
-                                                                                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                                                                                          arm_compute::Size2D(aclDilation0, dilations[0])));
-#elif defined(ACL_2308)
-      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayer::validate(tconv.in->info(),
-                                                                                 tconv.k->info(),
-                                                                                 (B != nullptr) ? tconv.b->info() : nullptr,
-                                                                                 tconv.out->info(),
-                                                                                 aclPadStride,
-                                                                                 1 /* depth multiplier */,
-                                                                                 acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                                                                                 arm_compute::Size2D(aclDilation0, dilations[0])));
-#endif
-
-      if (optimizable) {
-        LOGS_DEFAULT(VERBOSE) << "ACL optimized depthwise convolution";
-#if defined(ACL_1902) || defined(ACL_1905)
-        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
-#elif defined(ACL_1908)
-        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
-#elif defined(ACL_2002) || defined(ACL_2308)
-        auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
-#endif
-
-#ifdef ACL_1902
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride, 1 /* depth multiplier */,
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002) || defined(ACL_2308)
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride, 1 /* depth multiplier */,
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                         arm_compute::Size2D(aclDilation0, dilations[0]));
-#endif
-        tconv.layer = std::move(layer);
-        tconv.isDepthwiseCPU = false;
-      } else {
-        LOGS_DEFAULT(VERBOSE) << "CPU depthwise convolution";
-        Status s = onnxruntime::Conv<T>::Compute(context);
-        std::pair<ConvLayersIterator, bool> ret;
-        ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
-        return s;
-      }
-#endif  // DEPTHWISE_CPU
-    } else {
-      if (tconv.k->info()->tensor_shape()[0] == 1 && tconv.k->info()->tensor_shape()[1] == 1) {
-        LOGS_DEFAULT(VERBOSE) << "CPU pointwise convolution";
-        Status s = onnxruntime::Conv<T>::Compute(context);
-        return s;
-      } else {
-        if (tconv.k->info()->tensor_shape()[0] == 9 && tconv.k->info()->tensor_shape()[1] == 9) {
-          LOGS_DEFAULT(WARNING) << "9x9 DirectConvolution does not have an implementation in NCHW layout; defaulting to cpu implementation";
-          Status s = onnxruntime::Conv<T>::Compute(context);
-          return s;
-        }
-        LOGS_DEFAULT(VERBOSE) << "ACL 2D convolution";
-        auto layer = std::make_shared<arm_compute::NEConvolutionLayer>(mm_layer);
-        layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
-                         aclPadStride,
-                         arm_compute::WeightsInfo(), arm_compute::Size2D(aclDilation0, dilations[0]),
-                         acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
-                         false, conv_attrs_.group);
-        tconv.layer = std::move(layer);
-      }
+  bool free_k = false;
+  const void* k_data = tensor.DataRaw();
+  if (is_channels_last) {
+    TensorShape shape = tensor.Shape();
+    if (shape.NumDimensions() < 4) {
+      shape = TensorShape({shape[0], shape[1], shape[2], 1});
     }
 
-    tconv.out->info()->set_format(tconv.in->info()->format());
+    arm_compute::Tensor kIn;
+    kIn.allocator()->init(arm_compute::TensorInfo(ACLTensorShape(shape), 1,
+        k->info()->data_type(), arm_compute::DataLayout::NCHW));
+    kIn.info()->set_quantization_info(k->info()->quantization_info());
 
-    std::pair<ConvLayersIterator, bool> ret;
-    ret = Conv::convLayers.insert(std::pair<OpKernel*, ACLNEConv>((OpKernel*)this, tconv));
-    pConv = &ret.first->second;
+    ORT_RETURN_IF_ERROR(ACLImportMemory(kIn.allocator(), (void*)k_data, 0));
+    k->allocator()->allocate();
+    free_k = is_packed;
+    is_packed = true;
 
-    ACLPrintTensorShape("X", *tconv.in.get());
-    ACLPrintTensorShape("Y", *tconv.out.get());
-
+    arm_compute::NEPermute perm_layer;
+    perm_layer.configure(&kIn, k.get(), {2, 0, 1, 3});
+    perm_layer.run();
   } else {
-    // TODO: valildate shapes
-    pConv = &it->second;
+    ORT_RETURN_IF_ERROR(ACLImportMemory(k->allocator(), (void*)k_data, 0));
   }
 
-  const T* x_data = X->Data<T>();
-  if (X->Shape().Size() != 0 && pConv->in->info()->has_padding()) {
-    pConv->in->allocator()->allocate();
-    importDataToTensor<T>(pConv->in.get(), x_data);
+  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+    prep_tensor->allocator()->allocate();
+  }
+
+  if (conv_layer) {
+    conv_layer->prepare(prep_pack);
   } else {
-    ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
+    depthwise_layer->prepare();
   }
 
-  const T* k_data = W->Data<T>();
-  ACLImportMemory(pConv->k->allocator(), (void*)k_data, W->Shape().Size() * 4);
-
-  if (B != nullptr) {
-    const T* b_data = B->Data<T>();
-    ACLImportMemory(pConv->b->allocator(), (void*)b_data, B->Shape().Size() * 4);
+  for (std::unique_ptr<arm_compute::Tensor> &prep_tensor : workspace.prepare_tensors) {
+    prep_tensor->allocator()->free();
   }
 
-  T* y_data = Y->MutableData<T>();
-  if (Y->Shape().Size() != 0 && pConv->out->info()->has_padding()) {
-    pConv->out->allocator()->allocate();
+  if (free_k) {
+    k->allocator()->free();
+  }
+
+  return Status::OK();
+}
+
+Status Conv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                 int input_idx, /*out*/ bool& used_shared_buffers) {
+
+  used_shared_buffers = false;
+  if (isQuantized? (input_idx != 3) : ( input_idx != 1)) {
+    return Status::OK();
+  }
+
+  if (!workspace.persistent_tensors.empty()) {
+    size_t packedSize = 0;
+    size_t alignment = 0;
+    GetPackingInfo(workspace.persistent_tensors, packedSize, alignment);
+
+    ORT_RETURN_IF_ERROR(LoadPackedTensors(workspace.persistent_tensors, prepacked_buffers[0].get(),
+      packedSize, alignment));
+
+    used_shared_buffers = true;
+  }
+
+  return Status::OK();
+}
+
+Status Conv::Compute(OpKernelContext* context) const {
+  provider_->SetThreadPool(context->GetOperatorThreadPool());
+
+  const Tensor* X = context->Input<Tensor>(0);
+
+  Tensor* Y = context->Output(0, outShape);
+
+  const void* x_data = X->DataRaw();
+  ORT_RETURN_IF(X->Shape().Size() != 0 && in->info()->has_padding(), "Padded ACL input tensor not supported");
+  ORT_RETURN_IF_ERROR(ACLImportMemory(in->allocator(), (void*)x_data, 0));
+
+  void* y_data = Y->MutableDataRaw();
+  ORT_RETURN_IF(Y->Shape().Size() != 0 && out->info()->has_padding(), "Padded ACL output tensor not supported");
+  ORT_RETURN_IF_ERROR(ACLImportMemory(out->allocator(), (void*)y_data, 0));
+
+  if (conv_layer) {
+    arm_compute::MemoryGroupResourceScope scope_mg(const_cast<arm_compute::MemoryGroup&>(memory_group));
+    conv_layer->run(const_cast<arm_compute::ITensorPack&>(run_pack));
   } else {
-    ACLImportMemory(pConv->out->allocator(), (void*)y_data, Y->Shape().Size() * 4);
+    depthwise_layer->run();
   }
 
-  arm_compute::Allocator alloc_mm{};
-  pConv->mm_layer->populate(alloc_mm, 1);
-  pConv->layer->run();
-  pConv->mm_layer->clear();
-
-  if (Y->Shape().Size() != 0 && pConv->out->info()->has_padding()) {
-    importDataFromTensor<T>(pConv->out.get(), y_data);
-  }
-
-  pConv->in->allocator()->free();
-  pConv->k->allocator()->free();
-  if (B != nullptr)
-    pConv->b->allocator()->free();
-  pConv->out->allocator()->free();
+  in->allocator()->free();
+  k->allocator()->free();
+  out->allocator()->free();
 
   LOGS_DEFAULT(VERBOSE) << std::endl;
 
   return Status::OK();
-}
-#else
-template <typename T>
-Status Conv<T>::Compute(OpKernelContext* context) const {
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
-
-  const Tensor* X = context->Input<Tensor>(0);
-  const Tensor* W = context->Input<Tensor>(1);
-  const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
-
-  LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
-  LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
-  if (B != nullptr)
-    LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
-
-  LOGS_DEFAULT(VERBOSE) << std::endl;
-
-  Status s = onnxruntime::Conv<T>::Compute(context);
-  return s;
 }
 #endif
 
 ONNX_OPERATOR_KERNEL_EX(
     Conv,
     kOnnxDomain,
+    11,
+    kAclExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    Conv,
+    kOnnxDomain,
+    11,
+    MLFloat16,
+    kAclExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Conv);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NhwcConv,
+    kMSDomain,
     1,
     kAclExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Conv<float>);
+    Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kOnnxDomain,
+    10,
+    uint8_t,
+    kAclExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kOnnxDomain,
+    10,
+    int8_t,
+    kAclExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    uint8_t,
+    kAclExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    Conv);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    int8_t,
+    kAclExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    Conv);
 
 }  // namespace acl
 }  // namespace onnxruntime

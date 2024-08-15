@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 #pragma once
 #include "core/common/optional.h"
@@ -53,7 +54,7 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena = true);
+std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math = false);
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op = false);
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram = false);

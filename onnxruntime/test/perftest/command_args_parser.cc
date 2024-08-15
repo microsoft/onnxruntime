@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "command_args_parser.h"
@@ -66,6 +67,7 @@ namespace perftest {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
+      "\t    [ACL only] [enable_fast_math]: Options: 'true', 'false', default: 'false', \n"
       "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
       "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
       "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"

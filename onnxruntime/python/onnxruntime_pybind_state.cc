@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_exceptions.h"
@@ -1141,8 +1142,25 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
-    return onnxruntime::ACLProviderFactoryCreator::Create(
-               session_options.enable_cpu_mem_arena)
+    bool enable_fast_math = false;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "enable_fast_math") {
+          std::set<std::string> supported_values = {"true", "True", "false", "False"};
+          if (supported_values.find(option.second) != supported_values.end()) {
+            enable_fast_math = (option.second == "true") || (option.second == "True");
+          } else {
+            ORT_THROW(
+                "Invalid value for enable_fast_math. "
+                "Select from 'true' or 'false'\n");
+          }
+        } else {
+          ORT_THROW("Unrecognized option: ", option.first);
+        }
+      }
+    }
+    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math)
         ->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
