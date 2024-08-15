@@ -6,15 +6,28 @@
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="jsep/webnn/webnn.d.ts" />
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import { Env, InferenceSession, Tensor } from 'onnxruntime-common';
 
-import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
-import {setRunOptions} from './run-options';
-import {setSessionOptions} from './session-options';
-import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
-import {getInstance} from './wasm-factory';
-import {allocWasmString, checkLastError} from './wasm-utils';
-import {loadFile} from './wasm-utils-load-file';
+import {
+  SerializableInternalBuffer,
+  SerializableSessionMetadata,
+  SerializableTensorMetadata,
+  TensorMetadata,
+} from './proxy-messages';
+import { setRunOptions } from './run-options';
+import { setSessionOptions } from './session-options';
+import {
+  dataLocationStringToEnum,
+  getTensorElementSize,
+  isGpuBufferSupportedType,
+  logLevelStringToEnum,
+  tensorDataTypeEnumToString,
+  tensorDataTypeStringToEnum,
+  tensorTypeToTypedArrayConstructor,
+} from './wasm-common';
+import { getInstance } from './wasm-factory';
+import { allocWasmString, checkLastError } from './wasm-utils';
+import { loadFile } from './wasm-utils-load-file';
 
 // #region Initializations
 
@@ -69,7 +82,7 @@ import {loadFile} from './wasm-utils-load-file';
 const initOrt = (numThreads: number, loggingLevel: number): void => {
   const errorCode = getInstance()._OrtInit(numThreads, loggingLevel);
   if (errorCode !== 0) {
-    checkLastError('Can\'t initialize onnxruntime.');
+    checkLastError("Can't initialize onnxruntime.");
   }
 };
 
@@ -77,7 +90,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  * initialize runtime environment.
  * @param env passed in the environment config object.
  */
-export const initRuntime = async(env: Env): Promise<void> => {
+export const initRuntime = async (env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 };
@@ -88,7 +101,7 @@ export const initRuntime = async(env: Env): Promise<void> => {
  * @param env
  * @param epName
  */
-export const initEp = async(env: Env, epName: string): Promise<void> => {
+export const initEp = async (env: Env, epName: string): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
@@ -103,24 +116,31 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
       if (!adapter) {
         // if adapter is not set, request a new adapter.
         const powerPreference = env.webgpu.powerPreference;
-        if (powerPreference !== undefined && powerPreference !== 'low-power' &&
-            powerPreference !== 'high-performance') {
+        if (
+          powerPreference !== undefined &&
+          powerPreference !== 'low-power' &&
+          powerPreference !== 'high-performance'
+        ) {
           throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
         }
         const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
         if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
           throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
         }
-        adapter = await navigator.gpu.requestAdapter({powerPreference, forceFallbackAdapter});
+        adapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
         if (!adapter) {
           throw new Error(
-              'Failed to get GPU adapter. ' +
-              'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+            'Failed to get GPU adapter. ' +
+              'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
+          );
         }
       } else {
         // if adapter is set, validate it.
-        if (typeof adapter.limits !== 'object' || typeof adapter.features !== 'object' ||
-            typeof adapter.requestDevice !== 'function') {
+        if (
+          typeof adapter.limits !== 'object' ||
+          typeof adapter.features !== 'object' ||
+          typeof adapter.requestDevice !== 'function'
+        ) {
           throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
         }
       }
@@ -129,7 +149,7 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
     }
     if (epName === 'webnn') {
       // perform WebNN availability check
-      if (typeof navigator === 'undefined' || !(navigator as unknown as {ml: unknown}).ml) {
+      if (typeof navigator === 'undefined' || !(navigator as unknown as { ml: unknown }).ml) {
         throw new Error('WebNN is not supported in current environment');
       }
 
@@ -143,7 +163,7 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
 /**
  * valid data locations for input/output tensors.
  */
-type SupportedTensorDataLocationForInputOutput = 'cpu'|'cpu-pinned'|'gpu-buffer';
+type SupportedTensorDataLocationForInputOutput = 'cpu' | 'cpu-pinned' | 'gpu-buffer';
 
 type IOBindingState = {
   /**
@@ -168,8 +188,12 @@ type IOBindingState = {
  *  tuple elements are: InferenceSession ID; inputNamesUTF8Encoded; outputNamesUTF8Encoded; bindingState
  */
 type SessionMetadata = [
-  inferenceSessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[],
-  bindingState: IOBindingState|null, enableGraphCapture: boolean, inputOutputBound: boolean
+  inferenceSessionId: number,
+  inputNamesUTF8Encoded: number[],
+  outputNamesUTF8Encoded: number[],
+  bindingState: IOBindingState | null,
+  enableGraphCapture: boolean,
+  inputOutputBound: boolean,
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
@@ -187,7 +211,7 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
     const dataOffset = wasm.stackAlloc(2 * ptrSize);
     const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + ptrSize);
     if (errorCode !== 0) {
-      checkLastError('Can\'t get session input/output count.');
+      checkLastError("Can't get session input/output count.");
     }
     const type = ptrSize === 4 ? 'i32' : 'i64';
     return [Number(wasm.getValue(dataOffset, type)), Number(wasm.getValue(dataOffset + ptrSize, type))];
@@ -220,9 +244,10 @@ export const copyFromExternalBuffer = (model: Uint8Array): [number, number] => {
  * @param options an optional session options object.
  * @returns a 3-elements tuple containing [session handle, input names, output names]
  */
-export const createSession = async(
-    modelData: Uint8Array|SerializableInternalBuffer,
-    options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
+export const createSession = async (
+  modelData: Uint8Array | SerializableInternalBuffer,
+  options?: InferenceSession.SessionOptions,
+): Promise<SerializableSessionMetadata> => {
   let modelDataOffset: number, modelDataLength: number;
   const wasm = getInstance();
 
@@ -251,9 +276,11 @@ export const createSession = async(
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
-        loadingPromises.push(loadFile(typeof file === 'string' ? file : file.data).then(data => {
-          wasm.mountExternalData!(path, data);
-        }));
+        loadingPromises.push(
+          loadFile(typeof file === 'string' ? file : file.data).then((data) => {
+            wasm.mountExternalData!(path, data);
+          }),
+        );
       }
 
       // wait for all external data files to be loaded
@@ -278,7 +305,7 @@ export const createSession = async(
           } else if (gpuDevice) {
             wasm.currentContext = await navigator.ml.createContext(gpuDevice);
           } else {
-            wasm.currentContext = await navigator.ml.createContext({deviceType, numThreads, powerPreference});
+            wasm.currentContext = await navigator.ml.createContext({ deviceType, numThreads, powerPreference });
           }
         } else {
           wasm.currentContext = await navigator.ml.createContext();
@@ -289,7 +316,7 @@ export const createSession = async(
 
     sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
     if (sessionHandle === 0) {
-      checkLastError('Can\'t create a session.');
+      checkLastError("Can't create a session.");
     }
 
     // clear current MLContext after session creation
@@ -307,7 +334,7 @@ export const createSession = async(
     for (let i = 0; i < inputCount; i++) {
       const name = wasm._OrtGetInputName(sessionHandle, i);
       if (name === 0) {
-        checkLastError('Can\'t get an input name.');
+        checkLastError("Can't get an input name.");
       }
       inputNamesUTF8Encoded.push(name);
       inputNames.push(wasm.UTF8ToString(name));
@@ -315,7 +342,7 @@ export const createSession = async(
     for (let i = 0; i < outputCount; i++) {
       const name = wasm._OrtGetOutputName(sessionHandle, i);
       if (name === 0) {
-        checkLastError('Can\'t get an output name.');
+        checkLastError("Can't get an output name.");
       }
       outputNamesUTF8Encoded.push(name);
       const nameString = wasm.UTF8ToString(name);
@@ -326,42 +353,51 @@ export const createSession = async(
           outputPreferredLocations.push('gpu-buffer');
           continue;
         }
-        const location = typeof options?.preferredOutputLocation === 'string' ?
-            options.preferredOutputLocation :
-            options?.preferredOutputLocation?.[nameString] ?? 'cpu';
+        const location =
+          typeof options?.preferredOutputLocation === 'string'
+            ? options.preferredOutputLocation
+            : (options?.preferredOutputLocation?.[nameString] ?? 'cpu');
         if (location !== 'cpu' && location !== 'cpu-pinned' && location !== 'gpu-buffer') {
           throw new Error(`Not supported preferred output location: ${location}.`);
         }
         if (enableGraphCapture && location !== 'gpu-buffer') {
-          throw new Error(`Not supported preferred output location: ${
-              location}. Only 'gpu-buffer' location is supported when enableGraphCapture is true.`);
+          throw new Error(
+            `Not supported preferred output location: ${
+              location
+            }. Only 'gpu-buffer' location is supported when enableGraphCapture is true.`,
+          );
         }
         outputPreferredLocations.push(location);
       }
     }
 
     // use IO binding only when at least one output is preffered to be on GPU.
-    let bindingState: IOBindingState|null = null;
-    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some(l => l === 'gpu-buffer')) {
+    let bindingState: IOBindingState | null = null;
+    if (!BUILD_DEFS.DISABLE_JSEP && outputPreferredLocations.some((l) => l === 'gpu-buffer')) {
       ioBindingHandle = wasm._OrtCreateBinding(sessionHandle);
       if (ioBindingHandle === 0) {
-        checkLastError('Can\'t create IO binding.');
+        checkLastError("Can't create IO binding.");
       }
 
       bindingState = {
         handle: ioBindingHandle,
         outputPreferredLocations,
-        outputPreferredLocationsEncoded: outputPreferredLocations.map(l => dataLocationStringToEnum(l)),
+        outputPreferredLocationsEncoded: outputPreferredLocations.map((l) => dataLocationStringToEnum(l)),
       };
     }
 
-    activeSessions.set(
-        sessionHandle,
-        [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState, enableGraphCapture, false]);
+    activeSessions.set(sessionHandle, [
+      sessionHandle,
+      inputNamesUTF8Encoded,
+      outputNamesUTF8Encoded,
+      bindingState,
+      enableGraphCapture,
+      false,
+    ]);
     return [sessionHandle, inputNames, outputNames];
   } catch (e) {
-    inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-    outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+    inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
+    outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
 
     if (ioBindingHandle !== 0) {
       if (wasm._OrtReleaseBinding(ioBindingHandle) !== 0) {
@@ -382,7 +418,7 @@ export const createSession = async(
         checkLastError('Can\'t release session options.');
       }
     }
-    allocs.forEach(alloc => wasm._free(alloc));
+    allocs.forEach((alloc) => wasm._free(alloc));
 
     // unmount external data if necessary
     wasm.unmountExternalData?.();
@@ -412,55 +448,61 @@ export const releaseSession = (sessionId: number): void => {
 
   inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-  if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+  if (wasm._OrtReleaseSession(sessionHandle) !=== 0) {
     checkLastError('Can\'t release session.');
   }
   activeSessions.delete(sessionId);
 };
 
-export const prepareInputOutputTensor =
-    (tensor: TensorMetadata|null, tensorHandles: number[], allocs: number[], sessionId: number, index: number,
-     enableGraphCapture = false): void => {
-      if (!tensor) {
-        tensorHandles.push(0);
-        return;
-      }
+export const prepareInputOutputTensor = (
+  tensor: TensorMetadata | null,
+  tensorHandles: number[],
+  allocs: number[],
+  sessionId: number,
+  index: number,
+  enableGraphCapture = false,
+): void => {
+  if (!tensor) {
+    tensorHandles.push(0);
+    return;
+  }
 
-      const wasm = getInstance();
-      const ptrSize = wasm.PTR_SIZE;
+  const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
 
-      const dataType = tensor[0];
-      const dims = tensor[1];
-      const location = tensor[3];
+  const dataType = tensor[0];
+  const dims = tensor[1];
+  const location = tensor[3];
 
-      let rawData: number;
-      let dataByteLength: number;
+  let rawData: number;
+  let dataByteLength: number;
 
-      if (dataType === 'string' && location === 'gpu-buffer') {
-        throw new Error('String tensor is not supported on GPU.');
-      }
+  if (dataType === 'string' && location === 'gpu-buffer') {
+    throw new Error('String tensor is not supported on GPU.');
+  }
 
-      if (enableGraphCapture && location !== 'gpu-buffer') {
-        throw new Error(
-            `External buffer must be provided for input/output index ${index} when enableGraphCapture is true.`);
-      }
+  if (enableGraphCapture && location !== 'gpu-buffer') {
+    throw new Error(
+      `External buffer must be provided for input/output index ${index} when enableGraphCapture is true.`,
+    );
+  }
 
-      if (location === 'gpu-buffer') {
-        const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
-        const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
-        dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+  if (location === 'gpu-buffer') {
+    const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
+    const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
+    dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
 
-        const registerBuffer = wasm.jsepRegisterBuffer;
-        if (!registerBuffer) {
-          throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
-        }
-        rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
-      } else {
-        const data = tensor[2];
+    const registerBuffer = wasm.jsepRegisterBuffer;
+    if (!registerBuffer) {
+      throw new Error('Tensor location "gpu-buffer" is not supported without using WebGPU.');
+    }
+    rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
+  } else {
+    const data = tensor[2];
 
         if (Array.isArray(data)) {
           // string tensor
-          dataByteLength = 4 * data.length;
+          dataByteLength = ptrSize * data.length;
           rawData = wasm._malloc(dataByteLength);
           allocs.push(rawData);
           for (let i = 0; i < data.length; i++) {
@@ -478,9 +520,10 @@ export const prepareInputOutputTensor =
       }
 
       const stack = wasm.stackSave();
-      const dimsOffset = wasm.stackAlloc(ptrSize * dims.length);
+      const dimsOffset = wasm.stackAlloc(4 * dims.length);
       try {
-        dims.forEach((d, index) => wasm.setValue(dimsOffset + (index * ptrSize), d, ptrSize === 4 ? 'i32' : 'i64'));
+        let dimIndex = dimsOffset / 4;
+        dims.forEach((d) => wasm.HEAP32[dimIndex++] = d);
         const tensor = wasm._OrtCreateTensor(
             tensorDataTypeStringToEnum(dataType), rawData, dataByteLength, dimsOffset, dims.length,
             dataLocationStringToEnum(location));
@@ -496,9 +539,14 @@ export const prepareInputOutputTensor =
 /**
  * perform inference run
  */
-export const run = async(
-    sessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
-    outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+export const run = async (
+  sessionId: number,
+  inputIndices: number[],
+  inputTensors: TensorMetadata[],
+  outputIndices: number[],
+  outputTensors: Array<TensorMetadata | null>,
+  options: InferenceSession.RunOptions,
+): Promise<TensorMetadata[]> => {
   const wasm = getInstance();
   const ptrSize = wasm.PTR_SIZE;
   const session = activeSessions.get(sessionId);
@@ -534,14 +582,25 @@ export const run = async(
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
       prepareInputOutputTensor(
-          inputTensors[i], inputTensorHandles, inputOutputAllocs, sessionId, inputIndices[i], enableGraphCapture);
+        inputTensors[i],
+        inputTensorHandles,
+        inputOutputAllocs,
+        sessionId,
+        inputIndices[i],
+        enableGraphCapture,
+      );
     }
 
     // create output tensors
     for (let i = 0; i < outputCount; i++) {
       prepareInputOutputTensor(
-          outputTensors[i], outputTensorHandles, inputOutputAllocs, sessionId, inputCount + outputIndices[i],
-          enableGraphCapture);
+        outputTensors[i],
+        outputTensorHandles,
+        inputOutputAllocs,
+        sessionId,
+        inputCount + outputIndices[i],
+        enableGraphCapture,
+      );
     }
 
     for (let i = 0; i < inputCount; i++) {
@@ -554,11 +613,14 @@ export const run = async(
     }
 
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState && !inputOutputBound) {
-      const {handle, outputPreferredLocations, outputPreferredLocationsEncoded} = ioBindingState;
+      const { handle, outputPreferredLocations, outputPreferredLocationsEncoded } = ioBindingState;
 
       if (inputNamesUTF8Encoded.length !== inputCount) {
-        throw new Error(`input count from feeds (${
-            inputCount}) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`);
+        throw new Error(
+          `input count from feeds (${
+            inputCount
+          }) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`,
+        );
       }
 
       // process inputs
@@ -573,7 +635,7 @@ export const run = async(
       // process pre-allocated outputs
       for (let i = 0; i < outputCount; i++) {
         const index = outputIndices[i];
-        const location = outputTensors[i]?.[3];  // undefined means output is not pre-allocated.
+        const location = outputTensors[i]?.[3]; // undefined means output is not pre-allocated.
 
         if (location) {
           // output is pre-allocated. bind the tensor.
@@ -583,27 +645,48 @@ export const run = async(
           }
         } else {
           // output is not pre-allocated. reset preferred location.
-          const errorCode =
-              wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], 0, outputPreferredLocationsEncoded[index]);
+          const errorCode = wasm._OrtBindOutput(
+            handle,
+            outputNamesUTF8Encoded[index],
+            0,
+            outputPreferredLocationsEncoded[index],
+          );
           if (errorCode !== 0) {
             checkLastError(`Can't bind output[${i}] to ${outputPreferredLocations[i]} for session=${sessionId}.`);
           }
         }
       }
-      activeSessions.set(
-          sessionId,
-          [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, true]);
+      activeSessions.set(sessionId, [
+        sessionHandle,
+        inputNamesUTF8Encoded,
+        outputNamesUTF8Encoded,
+        ioBindingState,
+        enableGraphCapture,
+        true,
+      ]);
     }
 
     wasm.jsepOnRunStart?.(sessionHandle);
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
-          sessionHandle, ioBindingState.handle, outputCount, outputValuesOffset, runOptionsHandle);
+        sessionHandle,
+        ioBindingState.handle,
+        outputCount,
+        outputValuesOffset,
+        runOptionsHandle,
+      );
     } else {
       errorCode = await wasm._OrtRun(
-          sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
-          outputValuesOffset, runOptionsHandle);
+        sessionHandle,
+        inputNamesOffset,
+        inputValuesOffset,
+        inputCount,
+        outputNamesOffset,
+        outputCount,
+        outputValuesOffset,
+        runOptionsHandle,
+      );
     }
 
     if (errorCode !== 0) {
@@ -625,11 +708,17 @@ export const run = async(
       const tensorDataOffset = wasm.stackAlloc(4 * ptrSize);
 
       let keepOutputTensor = false;
-      let type: Tensor.Type|undefined, dataOffset = 0;
+      let type: Tensor.Type | undefined,
+        dataOffset = 0;
       try {
         const errorCode = wasm._OrtGetTensorData(
-            tensor, tensorDataOffset, tensorDataOffset + ptrSize, tensorDataOffset + 2 * ptrSize,
-            tensorDataOffset + 3 * ptrSize);
+          tensor,
+          tensorDataOffset,
+          tensorDataOffset + ptrSize,
+          tensorDataOffset + 2 * ptrSize,
+
+          tensorDataOffset + 3 * ptrSize,
+        );
         if (errorCode !== 0) {
           checkLastError(`Can't access output tensor data on index ${i}.`);
         }
@@ -680,22 +769,25 @@ export const run = async(
             keepOutputTensor = true;
 
             output.push([
-              type, dims, {
+              type,
+              dims,
+              {
                 gpuBuffer,
                 download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
                 dispose: () => {
                   if (wasm._OrtReleaseTensor(tensor) !== 0) {
                     checkLastError('Can\'t release tensor.');
                   }
-                }
+                },
               },
-              'gpu-buffer'
+              'gpu-buffer',
             ]);
           } else {
             const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
             const data = new typedArrayConstructor(size);
-            new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+            new Uint8Array(data.buffer, data.byteOffset, data.byteLength).set(
+              wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength),
+            );
             output.push([type, dims, data, 'cpu']);
           }
         }
@@ -714,22 +806,27 @@ export const run = async(
       if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
         checkLastError('Can\'t clear bound outputs.');
       }
-      activeSessions.set(
-          sessionId,
-          [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture, false]);
+      activeSessions.set(sessionId, [
+        sessionHandle,
+        inputNamesUTF8Encoded,
+        outputNamesUTF8Encoded,
+        ioBindingState,
+        enableGraphCapture,
+        false,
+      ]);
     }
     return output;
   } finally {
     wasm.stackRestore(beforeRunStack);
 
-    inputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    outputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    inputOutputAllocs.forEach(p => wasm._free(p));
+    inputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    outputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    inputOutputAllocs.forEach((p) => wasm._free(p));
 
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    runOptionsAllocs.forEach(p => wasm._free(p));
+    runOptionsAllocs.forEach((p) => wasm._free(p));
   }
 };
 
@@ -747,7 +844,7 @@ export const endProfiling = (sessionId: number): void => {
   // profile file name is not used yet, but it must be freed.
   const profileFileName = wasm._OrtEndProfiling(sessionHandle);
   if (profileFileName === 0) {
-    checkLastError('Can\'t get an profile file name.');
+    checkLastError("Can't get an profile file name.");
   }
   wasm._OrtFree(profileFileName);
 };

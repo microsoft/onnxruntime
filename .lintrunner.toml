@@ -127,7 +127,6 @@ include_patterns = [
 ]
 exclude_patterns = [
     'java/**', # FIXME: Enable clang-format for java
-    'js/**',
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
     'onnxruntime/core/flatbuffers/schema/*.fbs.h', # Generated code
     'onnxruntime/test/flatbuffers/*.fbs.h', # Generated code

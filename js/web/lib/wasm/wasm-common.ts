@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from 'onnxruntime-common';
+import { Tensor } from 'onnxruntime-common';
 
 // a dummy type declaration for Float16Array in case any polyfill is available.
 declare global {
@@ -31,7 +31,7 @@ export const enum DataType {
   uint64 = 13,
   complex64 = 14,
   complex128 = 15,
-  bfloat16 = 16
+  bfloat16 = 16,
 }
 
 /**
@@ -112,50 +112,61 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
  * get tensor element size in bytes by the given data type
  * @returns size in integer or undefined if the data type is not supported
  */
-export const getTensorElementSize = (dateType: number): number|
-    undefined => [undefined, 4, 1, 1, 2, 2, 4, 8, undefined, 1, 2, 8, 4, 8, undefined, undefined, undefined][dateType];
+export const getTensorElementSize = (dateType: number): number | undefined =>
+  [undefined, 4, 1, 1, 2, 2, 4, 8, undefined, 1, 2, 8, 4, 8, undefined, undefined, undefined][dateType];
 
 /**
  * get typed array constructor by the given tensor type
  */
-export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32ArrayConstructor|Uint8ArrayConstructor|
-    Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
-    Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
-      switch (type) {
-        case 'float16':
-          // allow Float16Array polyfill.
-          return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
-        case 'float32':
-          return Float32Array;
-        case 'uint8':
-          return Uint8Array;
-        case 'int8':
-          return Int8Array;
-        case 'uint16':
-          return Uint16Array;
-        case 'int16':
-          return Int16Array;
-        case 'int32':
-          return Int32Array;
-        case 'bool':
-          return Uint8Array;
-        case 'float64':
-          return Float64Array;
-        case 'uint32':
-          return Uint32Array;
-        case 'int64':
-          return BigInt64Array;
-        case 'uint64':
-          return BigUint64Array;
-        default:
-          throw new Error(`unsupported type: ${type}`);
-      }
-    };
+export const tensorTypeToTypedArrayConstructor = (
+  type: Tensor.Type,
+):
+  | Float32ArrayConstructor
+  | Uint8ArrayConstructor
+  | Int8ArrayConstructor
+  | Uint16ArrayConstructor
+  | Int16ArrayConstructor
+  | Int32ArrayConstructor
+  | BigInt64ArrayConstructor
+  | Uint8ArrayConstructor
+  | Float64ArrayConstructor
+  | Uint32ArrayConstructor
+  | BigUint64ArrayConstructor => {
+  switch (type) {
+    case 'float16':
+      // allow Float16Array polyfill.
+      return typeof Float16Array !== 'undefined' && Float16Array.from ? Float16Array : Uint16Array;
+    case 'float32':
+      return Float32Array;
+    case 'uint8':
+      return Uint8Array;
+    case 'int8':
+      return Int8Array;
+    case 'uint16':
+      return Uint16Array;
+    case 'int16':
+      return Int16Array;
+    case 'int32':
+      return Int32Array;
+    case 'bool':
+      return Uint8Array;
+    case 'float64':
+      return Float64Array;
+    case 'uint32':
+      return Uint32Array;
+    case 'int64':
+      return BigInt64Array;
+    case 'uint64':
+      return BigUint64Array;
+    default:
+      throw new Error(`unsupported type: ${type}`);
+  }
+};
 
 /**
  * Map string log level to integer value
  */
-export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
+export const logLevelStringToEnum = (logLevel?: 'verbose' | 'info' | 'warning' | 'error' | 'fatal'): number => {
   switch (logLevel) {
     case 'verbose':
       return 0;
@@ -175,9 +186,14 @@ export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'erro
 /**
  * Check whether the given tensor type is supported by GPU buffer
  */
-export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes => type === 'float32' ||
-    type === 'float16' || type === 'int32' || type === 'int64' || type === 'uint32' || type === 'uint8' ||
-    type === 'bool';
+export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuBufferDataTypes =>
+  type === 'float32' ||
+  type === 'float16' ||
+  type === 'int32' ||
+  type === 'int64' ||
+  type === 'uint32' ||
+  type === 'uint8' ||
+  type === 'bool';
 
 /**
  * Map string data location to integer value
@@ -202,5 +218,5 @@ export const dataLocationStringToEnum = (location: Tensor.DataLocation): number 
 /**
  * Map integer data location to string value
  */
-export const dataLocationEnumToString = (location: number): Tensor.DataLocation|undefined =>
-    (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];
+export const dataLocationEnumToString = (location: number): Tensor.DataLocation | undefined =>
+  (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];

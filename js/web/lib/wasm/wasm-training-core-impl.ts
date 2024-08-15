@@ -1,20 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, Tensor} from 'onnxruntime-common';
+import { InferenceSession, Tensor } from 'onnxruntime-common';
 
-import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
-import {setRunOptions} from './run-options';
-import {setSessionOptions} from './session-options';
-import {dataLocationStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
-import {prepareInputOutputTensor} from './wasm-core-impl';
-import {getInstance} from './wasm-factory';
-import {checkLastError} from './wasm-utils';
+import { SerializableInternalBuffer, TensorMetadata } from './proxy-messages';
+import { setRunOptions } from './run-options';
+import { setSessionOptions } from './session-options';
+import {
+  dataLocationStringToEnum,
+  tensorDataTypeEnumToString,
+  tensorDataTypeStringToEnum,
+  tensorTypeToTypedArrayConstructor,
+} from './wasm-common';
+import { prepareInputOutputTensor } from './wasm-core-impl';
+import { getInstance } from './wasm-factory';
+import { checkLastError } from './wasm-utils';
 
 const NO_TRAIN_FUNCS_MSG =
-    'Built without training API\'s enabled. Use the onnxruntime-web/training import for training ' +
-    'functionality, and make sure that all the correct artifacts are built & moved to the correct folder if ' +
-    'using a custom build. Check https://onnxruntime.ai/docs/build/web.html for more information.';
+  "Built without training API's enabled. Use the onnxruntime-web/training import for training " +
+  'functionality, and make sure that all the correct artifacts are built & moved to the correct folder if ' +
+  'using a custom build. Check https://onnxruntime.ai/docs/build/web.html for more information.';
 
 /**
  * Runs the checkLastError function which will throw an error, if the provided error code matches the specified
@@ -67,9 +72,13 @@ const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolea
     const ptrSize = wasm.PTR_SIZE;
     const dataOffset = wasm.stackAlloc(2 * ptrSize);
     if (wasm._OrtTrainingGetModelInputOutputCount) {
-      const errorCode =
-          wasm._OrtTrainingGetModelInputOutputCount(trainingSessionId, dataOffset, dataOffset + ptrSize, isEvalModel);
-      ifErrCodeCheckLastError(errorCode, 'Can\'t get session input/output count.');
+      const errorCode = wasm._OrtTrainingGetModelInputOutputCount(
+        trainingSessionId,
+        dataOffset,
+        dataOffset + ptrSize,
+        isEvalModel,
+      );
+      ifErrCodeCheckLastError(errorCode, "Can't get session input/output count.");
       const valueType = ptrSize === 4 ? 'i32' : 'i64';
       return [Number(wasm.getValue(dataOffset, valueType)), Number(wasm.getValue(dataOffset + ptrSize, valueType))];
     } else {
@@ -80,24 +89,28 @@ const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolea
   }
 };
 
-const getModelInputOutputNamesLoop =
-    (trainingSessionId: number, count: number, isInput: boolean, isEvalModel: boolean): string[] => {
-      const names = [];
-      const wasm = getInstance();
+const getModelInputOutputNamesLoop = (
+  trainingSessionId: number,
+  count: number,
+  isInput: boolean,
+  isEvalModel: boolean,
+): string[] => {
+  const names = [];
+  const wasm = getInstance();
 
-      for (let i = 0; i < count; i++) {
-        if (wasm._OrtTrainingGetModelInputOutputName) {
-          const name = wasm._OrtTrainingGetModelInputOutputName(trainingSessionId, i, isInput, isEvalModel);
-          ifErrCodeCheckLastError(name, `Can't get input or output name -- is input: ${isInput}, index ${i}`, false);
+  for (let i = 0; i < count; i++) {
+    if (wasm._OrtTrainingGetModelInputOutputName) {
+      const name = wasm._OrtTrainingGetModelInputOutputName(trainingSessionId, i, isInput, isEvalModel);
+      ifErrCodeCheckLastError(name, `Can't get input or output name -- is input: ${isInput}, index ${i}`, false);
 
-          names.push(wasm.UTF8ToString(name));
-          wasm._free(name);
-        } else {
-          throw new Error(NO_TRAIN_FUNCS_MSG);
-        }
-      }
-      return names;
-    };
+      names.push(wasm.UTF8ToString(name));
+      wasm._free(name);
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
+  }
+  return names;
+};
 
 export const getModelInputOutputNames = (trainingSessionId: number, isEvalModel: boolean): [string[], string[]] => {
   let inputNames: string[] = [];
@@ -111,45 +124,56 @@ export const getModelInputOutputNames = (trainingSessionId: number, isEvalModel:
   return [inputNames, outputNames];
 };
 
-export const createTrainingSessionHandle =
-    (checkpointHandle: number, trainModelData: SerializableInternalBuffer, evalModelData: SerializableInternalBuffer,
-     optimizerModelData: SerializableInternalBuffer, options: InferenceSession.SessionOptions): number => {
-      const wasm = getInstance();
+export const createTrainingSessionHandle = (
+  checkpointHandle: number,
+  trainModelData: SerializableInternalBuffer,
+  evalModelData: SerializableInternalBuffer,
+  optimizerModelData: SerializableInternalBuffer,
+  options: InferenceSession.SessionOptions,
+): number => {
+  const wasm = getInstance();
 
-      let trainingSessionHandle = 0;
-      let sessionOptionsHandle = 0;
-      let allocs: number[] = [];
+  let trainingSessionHandle = 0;
+  let sessionOptionsHandle = 0;
+  let allocs: number[] = [];
 
-      try {
-        [sessionOptionsHandle, allocs] = setSessionOptions(options);
-        if (wasm._OrtTrainingCreateSession) {
-          trainingSessionHandle = wasm._OrtTrainingCreateSession(
-              sessionOptionsHandle, checkpointHandle, trainModelData[0], trainModelData[1], evalModelData[0],
-              evalModelData[1], optimizerModelData[0], optimizerModelData[1]);
-        } else {
-          throw new Error(NO_TRAIN_FUNCS_MSG);
-        }
+  try {
+    [sessionOptionsHandle, allocs] = setSessionOptions(options);
+    if (wasm._OrtTrainingCreateSession) {
+      trainingSessionHandle = wasm._OrtTrainingCreateSession(
+        sessionOptionsHandle,
+        checkpointHandle,
+        trainModelData[0],
+        trainModelData[1],
+        evalModelData[0],
+        evalModelData[1],
+        optimizerModelData[0],
+        optimizerModelData[1],
+      );
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
 
-        ifErrCodeCheckLastError(trainingSessionHandle, 'Error occurred when trying to create a TrainingSession', false);
-        return trainingSessionHandle;
-      } catch (e) {
-        if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
-          wasm._OrtTrainingReleaseSession(trainingSessionHandle);
-        }
-        throw e;
-      } finally {
-        wasm._free(trainModelData[0]);
-        wasm._free(evalModelData[0]);
-        wasm._free(optimizerModelData[0]);
+    ifErrCodeCheckLastError(trainingSessionHandle, 'Error occurred when trying to create a TrainingSession', false);
+    return trainingSessionHandle;
+  } catch (e) {
+    if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
+      wasm._OrtTrainingReleaseSession(trainingSessionHandle);
+    }
+    throw e;
+  } finally {
+    wasm._free(trainModelData[0]);
+    wasm._free(evalModelData[0]);
+    wasm._free(optimizerModelData[0]);
 
-        if (sessionOptionsHandle !== 0) {
-          if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
-            checkLastError('Error occurred when trying to release the session options');
-          }
-        }
-        allocs.forEach(alloc => wasm._free(alloc));
+    if (sessionOptionsHandle !== 0) {
+      if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
+        checkLastError('Error occurred when trying to release the session options');
       }
-    };
+    }
+    allocs.forEach((alloc) => wasm._free(alloc));
+  }
+};
 
 /**
  * Prepares input and output tensors by creating the tensors in the WASM side then creates a list of the handles of the
@@ -163,27 +187,31 @@ export const createTrainingSessionHandle =
  * @param inputOutputAllocs modified in-place by this method
  * @param indexAdd constant to add to the index that is passed to prepareInputOutputTensor
  */
-const createAndAllocateTensors =
-    (trainingSessionId: number, indices: number[], tensors: Array<TensorMetadata|null>, tensorHandles: number[],
-     inputOutputAllocs: number[], indexAdd: number) => {
-      const count = indices.length;
+const createAndAllocateTensors = (
+  trainingSessionId: number,
+  indices: number[],
+  tensors: Array<TensorMetadata | null>,
+  tensorHandles: number[],
+  inputOutputAllocs: number[],
+  indexAdd: number,
+) => {
+  const count = indices.length;
 
-      // creates the tensors
-      for (let i = 0; i < count; i++) {
-        prepareInputOutputTensor(
-            tensors[i], tensorHandles, inputOutputAllocs, trainingSessionId, indexAdd + indices[i]);
-      }
+  // creates the tensors
+  for (let i = 0; i < count; i++) {
+    prepareInputOutputTensor(tensors[i], tensorHandles, inputOutputAllocs, trainingSessionId, indexAdd + indices[i]);
+  }
 
-      // moves to heap
-      const wasm = getInstance();
-      const ptrSize = wasm.PTR_SIZE;
-      const valuesOffset = wasm.stackAlloc(count * ptrSize);
-      for (let i = 0; i < count; i++) {
-        wasm.setValue(valuesOffset + i * ptrSize, tensorHandles[i], '*');
-      }
+  // moves to heap
+  const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
+  const valuesOffset = wasm.stackAlloc(count * ptrSize);
+  for (let i = 0; i < count; i++) {
+    wasm.setValue(valuesOffset + i * ptrSize, tensorHandles[i], '*');
+  }
 
-      return valuesOffset;
-    };
+  return valuesOffset;
+};
 
 /**
  * Retrieves the information from the output tensor handles, copies to an array, and frees the WASM information
@@ -193,89 +221,104 @@ const createAndAllocateTensors =
  * @param outputCount
  * @returns list of TensorMetadata retrieved from the output handles.
  */
-const moveOutputToTensorMetadataArr =
-    (outputValuesOffset: number, outputCount: number, outputTensorHandles: number[],
-     outputTensors: Array<TensorMetadata|null>) => {
-      const wasm = getInstance();
-      const ptrSize = wasm.PTR_SIZE;
-      const output: TensorMetadata[] = [];
+const moveOutputToTensorMetadataArr = (
+  outputValuesOffset: number,
+  outputCount: number,
+  outputTensorHandles: number[],
+  outputTensors: Array<TensorMetadata | null>,
+) => {
+  const wasm = getInstance();
+  const ptrSize = wasm.PTR_SIZE;
+  const output: TensorMetadata[] = [];
 
-      for (let i = 0; i < outputCount; i++) {
-        const tensor = wasm.getValue(outputValuesOffset + i * ptrSize, '*');
-        if (tensor === outputTensorHandles[i]) {
-          // output tensor is pre-allocated. no need to copy data.
-          output.push(outputTensors[i]!);
-          continue;
-        }
+  for (let i = 0; i < outputCount; i++) {
+    const tensor = wasm.getValue(outputValuesOffset + i * ptrSize, '*');
+    if (tensor === outputTensorHandles[i]) {
+      // output tensor is pre-allocated. no need to copy data.
+      output.push(outputTensors[i]!);
+      continue;
+    }
 
-        const beforeGetTensorDataStack = wasm.stackSave();
-        // stack allocate 4 pointer value
-        const tensorDataOffset = wasm.stackAlloc(4 * 4);
+    const beforeGetTensorDataStack = wasm.stackSave();
+    // stack allocate 4 pointer value
+    const tensorDataOffset = wasm.stackAlloc(4 * 4);
 
-        let type: Tensor.Type|undefined, dataOffset = 0;
-        try {
-          const errorCode = wasm._OrtGetTensorData(
-              tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
-          ifErrCodeCheckLastError(errorCode, `Can't access output tensor data on index ${i}.`);
-          const valueType = ptrSize === 4 ? 'i32' : 'i64';
-          const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
-          dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
-          const dimsOffset = wasm.getValue(tensorDataOffset + 2 * ptrSize, '*');
-          const dimsLength = Number(wasm.getValue(tensorDataOffset + 3 * ptrSize, valueType));
-          const dims = [];
-          for (let i = 0; i < dimsLength; i++) {
-            Number(dims.push(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
-          }
-          if (wasm._OrtFree(dimsOffset) !== 0) {
-            checkLastError('Error occurred when trying to free the dims buffer');
-          }
-          const size = dims.reduce((a, b) => a * b, 1);
-          type = tensorDataTypeEnumToString(dataType);
-
-          if (type === 'string') {
-            const stringData: string[] = [];
-            for (let i = 0; i < size; i++) {
-              const offset = wasm.getValue(dataOffset + i * ptrSize, '*');
-              const nextOffset = wasm.getValue(dataOffset + (i + 1) * ptrSize, '*');
-              const maxBytesToRead = i === size - 1 ? undefined : nextOffset - offset;
-              stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
-            }
-            output.push([type, dims, stringData, 'cpu']);
-          } else {
-            const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
-            const data = new typedArrayConstructor(size);
-            new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
-            output.push([type, dims, data, 'cpu']);
-          }
-        } finally {
-          wasm.stackRestore(beforeGetTensorDataStack);
-          if (type === 'string' && dataOffset) {
-            wasm._free(dataOffset);
-          }
-          if (wasm._OrtReleaseTensor(tensor) !== 0) {
-            checkLastError('Error occurred when trying to release the tensor');
-          }
-        }
+    let type: Tensor.Type | undefined,
+      dataOffset = 0;
+    try {
+      const errorCode = wasm._OrtGetTensorData(
+        tensor,
+        tensorDataOffset,
+        tensorDataOffset + 4,
+        tensorDataOffset + 8,
+        tensorDataOffset + 12,
+      );
+      ifErrCodeCheckLastError(errorCode, `Can't access output tensor data on index ${i}.`);
+      const valueType = ptrSize === 4 ? 'i32' : 'i64';
+      const dataType = Number(wasm.getValue(tensorDataOffset, valueType));
+      dataOffset = wasm.getValue(tensorDataOffset + ptrSize, '*');
+      const dimsOffset = wasm.getValue(tensorDataOffset + 2 * ptrSize, '*');
+      const dimsLength = Number(wasm.getValue(tensorDataOffset + 3 * ptrSize, valueType));
+      const dims = [];
+      for (let i = 0; i < dimsLength; i++) {
+        Number(dims.push(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
       }
+      if (wasm._OrtFree(dimsOffset) !== 0) {
+        checkLastError('Error occurred when trying to free the dims buffer');
+      }
+      const size = dims.reduce((a, b) => a * b, 1);
+      type = tensorDataTypeEnumToString(dataType);
 
-      return output;
-    };
+      if (type === 'string') {
+        const stringData: string[] = [];
+        for (let i = 0; i < size; i++) {
+          const offset = wasm.getValue(dataOffset + i * ptrSize, '*');
+          const nextOffset = wasm.getValue(dataOffset + (i + 1) * ptrSize, '*');
+          const maxBytesToRead = i === size - 1 ? undefined : nextOffset - offset;
+          stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+        }
+        output.push([type, dims, stringData, 'cpu']);
+      } else {
+        const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
+        const data = new typedArrayConstructor(size);
+        new Uint8Array(data.buffer, data.byteOffset, data.byteLength).set(
+          wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength),
+        );
+        output.push([type, dims, data, 'cpu']);
+      }
+    } finally {
+      wasm.stackRestore(beforeGetTensorDataStack);
+      if (type === 'string' && dataOffset) {
+        wasm._free(dataOffset);
+      }
+      if (wasm._OrtReleaseTensor(tensor) !== 0) {
+        checkLastError('Error occurred when trying to release the tensor');
+      }
+    }
+  }
 
-export const lazyResetGrad = async(trainingSessionId: number): Promise<void> => {
+  return output;
+};
+
+export const lazyResetGrad = async (trainingSessionId: number): Promise<void> => {
   const wasm = getInstance();
 
   if (wasm._OrtTrainingLazyResetGrad) {
     const errorCode = wasm._OrtTrainingLazyResetGrad(trainingSessionId);
-    ifErrCodeCheckLastError(errorCode, 'Can\'t call lazyResetGrad.');
+    ifErrCodeCheckLastError(errorCode, "Can't call lazyResetGrad.");
   } else {
     throw new Error(NO_TRAIN_FUNCS_MSG);
   }
 };
 
-export const runTrainStep = async(
-    trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
-    outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+export const runTrainStep = async (
+  trainingSessionId: number,
+  inputIndices: number[],
+  inputTensors: TensorMetadata[],
+  outputIndices: number[],
+  outputTensors: Array<TensorMetadata | null>,
+  options: InferenceSession.RunOptions,
+): Promise<TensorMetadata[]> => {
   const wasm = getInstance();
 
   const inputCount = inputIndices.length;
@@ -296,15 +339,33 @@ export const runTrainStep = async(
 
     // handle inputs -- you don't want anything added to the index
     const inputValuesOffset = createAndAllocateTensors(
-        trainingSessionId, inputIndices, inputTensors, inputTensorHandles, inputOutputAllocs, 0);
+      trainingSessionId,
+      inputIndices,
+      inputTensors,
+      inputTensorHandles,
+      inputOutputAllocs,
+      0,
+    );
     // handle outputs
     // you want inputCount to be added to the index of every output tensor passed to prepareInputOutputTensor
     const outputValuesOffset = createAndAllocateTensors(
-        trainingSessionId, outputIndices, outputTensors, outputTensorHandles, inputOutputAllocs, inputCount);
+      trainingSessionId,
+      outputIndices,
+      outputTensors,
+      outputTensorHandles,
+      inputOutputAllocs,
+      inputCount,
+    );
 
     if (wasm._OrtTrainingRunTrainStep) {
       const errorCode = wasm._OrtTrainingRunTrainStep(
-          trainingSessionId, inputValuesOffset, inputCount, outputValuesOffset, outputCount, runOptionsHandle);
+        trainingSessionId,
+        inputValuesOffset,
+        inputCount,
+        outputValuesOffset,
+        outputCount,
+        runOptionsHandle,
+      );
       ifErrCodeCheckLastError(errorCode, 'failed to call OrtTrainingRunTrainStep in the WebAssembly layer');
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
@@ -314,19 +375,21 @@ export const runTrainStep = async(
   } finally {
     wasm.stackRestore(beforeRunStack);
 
-    inputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    outputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    inputOutputAllocs.forEach(p => wasm._free(p));
+    inputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    outputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    inputOutputAllocs.forEach((p) => wasm._free(p));
 
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    runOptionsAllocs.forEach(p => wasm._free(p));
+    runOptionsAllocs.forEach((p) => wasm._free(p));
   }
 };
 
-export const runOptimizerStep =
-    async(trainingSessionId: number, options: InferenceSession.RunOptions): Promise<void> => {
+export const runOptimizerStep = async (
+  trainingSessionId: number,
+  options: InferenceSession.RunOptions,
+): Promise<void> => {
   const wasm = getInstance();
 
   let runOptionsHandle = 0;
@@ -345,13 +408,18 @@ export const runOptimizerStep =
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    runOptionsAllocs.forEach(p => wasm._free(p));
+    runOptionsAllocs.forEach((p) => wasm._free(p));
   }
 };
 
-export const runEvalStep = async(
-    trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
-    outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+export const runEvalStep = async (
+  trainingSessionId: number,
+  inputIndices: number[],
+  inputTensors: TensorMetadata[],
+  outputIndices: number[],
+  outputTensors: Array<TensorMetadata | null>,
+  options: InferenceSession.RunOptions,
+): Promise<TensorMetadata[]> => {
   const wasm = getInstance();
 
   const inputCount = inputIndices.length;
@@ -372,15 +440,33 @@ export const runEvalStep = async(
 
     // handle inputs -- you don't want anything added to the index
     const inputValuesOffset = createAndAllocateTensors(
-        trainingSessionId, inputIndices, inputTensors, inputTensorHandles, inputOutputAllocs, 0);
+      trainingSessionId,
+      inputIndices,
+      inputTensors,
+      inputTensorHandles,
+      inputOutputAllocs,
+      0,
+    );
     // handle outputs
     // you want inputCount to be added to the index of every output tensor passed to prepareInputOutputTensor
     const outputValuesOffset = createAndAllocateTensors(
-        trainingSessionId, outputIndices, outputTensors, outputTensorHandles, inputOutputAllocs, inputCount);
+      trainingSessionId,
+      outputIndices,
+      outputTensors,
+      outputTensorHandles,
+      inputOutputAllocs,
+      inputCount,
+    );
 
     if (wasm._OrtTrainingEvalStep) {
       const errorCode = wasm._OrtTrainingEvalStep(
-          trainingSessionId, inputValuesOffset, inputCount, outputValuesOffset, outputCount, runOptionsHandle);
+        trainingSessionId,
+        inputValuesOffset,
+        inputCount,
+        outputValuesOffset,
+        outputCount,
+        runOptionsHandle,
+      );
 
       ifErrCodeCheckLastError(errorCode, 'failed to call OrtTrainingEvalStep in the WebAssembly layer');
     } else {
@@ -391,14 +477,14 @@ export const runEvalStep = async(
   } finally {
     wasm.stackRestore(beforeRunStack);
 
-    inputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    outputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
-    inputOutputAllocs.forEach(p => wasm._free(p));
+    inputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    outputTensorHandles.forEach((v) => wasm._OrtReleaseTensor(v));
+    inputOutputAllocs.forEach((p) => wasm._free(p));
 
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    runOptionsAllocs.forEach(p => wasm._free(p));
+    runOptionsAllocs.forEach((p) => wasm._free(p));
   }
 };
 
@@ -410,7 +496,7 @@ export const getParametersSize = (trainingSessionId: number, trainableOnly: bool
     const sizeOffset = wasm.stackAlloc(ptrSize);
     if (wasm._OrtTrainingGetParametersSize) {
       const errorCode = wasm._OrtTrainingGetParametersSize(trainingSessionId, sizeOffset, trainableOnly);
-      ifErrCodeCheckLastError(errorCode, 'Can\'t get parameters size');
+      ifErrCodeCheckLastError(errorCode, "Can't get parameters size");
 
       return wasm.getValue(sizeOffset, '*');
     } else {
@@ -421,8 +507,10 @@ export const getParametersSize = (trainingSessionId: number, trainableOnly: bool
   }
 };
 
-export const getContiguousParameters =
-    async(trainingSessionId: number, trainableOnly: boolean): Promise<TensorMetadata> => {
+export const getContiguousParameters = async (
+  trainingSessionId: number,
+  trainableOnly: boolean,
+): Promise<TensorMetadata> => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
 
@@ -446,15 +534,22 @@ export const getContiguousParameters =
   try {
     // wraps allocated array in a tensor
     tensor = wasm._OrtCreateTensor(
-        tensorDataTypeStringToEnum(tensorTypeAsString), paramsOffset, paramsByteLength, dimsOffset, dims.length,
-        dataLocationStringToEnum(locationAsString));
+      tensorDataTypeStringToEnum(tensorTypeAsString),
+      paramsOffset,
+      paramsByteLength,
+      dimsOffset,
+      dims.length,
+      dataLocationStringToEnum(locationAsString),
+    );
     ifErrCodeCheckLastError(
-        tensor, `Can't create tensor for getContiguousParameters. session=${trainingSessionId}.`, false);
+      tensor,
+      `Can't create tensor for getContiguousParameters. session=${trainingSessionId}.`,
+      false,
+    );
 
     if (wasm._OrtTrainingCopyParametersToBuffer) {
       const errCode = wasm._OrtTrainingCopyParametersToBuffer(trainingSessionId, tensor, parametersSize, trainableOnly);
-      ifErrCodeCheckLastError(errCode, 'Can\'t get contiguous parameters.');
-
+      ifErrCodeCheckLastError(errCode, "Can't get contiguous parameters.");
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -463,8 +558,9 @@ export const getContiguousParameters =
     const typedArrayConstructor = tensorTypeToTypedArrayConstructor(tensorTypeAsString);
     const data = new typedArrayConstructor(parametersSize);
     const output: TensorMetadata[] = [];
-    new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-        .set(wasm.HEAPU8.subarray(paramsOffset, paramsOffset + paramsByteLength));
+    new Uint8Array(data.buffer, data.byteOffset, data.byteLength).set(
+      wasm.HEAPU8.subarray(paramsOffset, paramsOffset + paramsByteLength),
+    );
     output.push([tensorTypeAsString, dims, data, locationAsString]);
     if (output.length !== 1) {
       throw new Error(`something unexpected happened in the getContiguousParameters function. Expected output length of
@@ -484,8 +580,11 @@ export const getContiguousParameters =
   }
 };
 
-export const loadParametersBuffer =
-    async(trainingSessionId: number, buffer: Uint8Array, trainableOnly: boolean): Promise<void> => {
+export const loadParametersBuffer = async (
+  trainingSessionId: number,
+  buffer: Uint8Array,
+  trainableOnly: boolean,
+): Promise<void> => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
 
@@ -506,13 +605,18 @@ export const loadParametersBuffer =
 
   try {
     tensor = wasm._OrtCreateTensor(
-        tensorDataTypeStringToEnum(tensorTypeAsString), bufferOffset, bufferByteLength, dimsOffset, dimsLength,
-        dataLocationStringToEnum(locationAsString));
+      tensorDataTypeStringToEnum(tensorTypeAsString),
+      bufferOffset,
+      bufferByteLength,
+      dimsOffset,
+      dimsLength,
+      dataLocationStringToEnum(locationAsString),
+    );
     ifErrCodeCheckLastError(tensor, `Can't create tensor for input/output. session=${trainingSessionId}`, false);
 
     if (wasm._OrtTrainingCopyParametersFromBuffer) {
       const errCode = wasm._OrtTrainingCopyParametersFromBuffer(trainingSessionId, tensor, bufferCount, trainableOnly);
-      ifErrCodeCheckLastError(errCode, 'Can\'t copy buffer to parameters.');
+      ifErrCodeCheckLastError(errCode, "Can't copy buffer to parameters.");
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
