@@ -223,10 +223,12 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
     }
 
     // TODO: support broadcasting the first and second dimensions of attention_bias
-    if (attentionBias.dims[0] !== batchSize ||
-        attentionBias.dims[1] !== attributes.numHeads ||
-        attentionBias.dims[2] !== sequenceLength ||
-        attentionBias.dims[3] !== totalSequenceLength) {
+    if (
+      attentionBias.dims[0] !== batchSize ||
+      attentionBias.dims[1] !== attributes.numHeads ||
+      attentionBias.dims[2] !== sequenceLength ||
+      attentionBias.dims[3] !== totalSequenceLength
+    ) {
       throw new Error('Expect "attention_bias" shape (batch_size, num_heads, sequence_length, total_sequence_length)');
     }
   }

@@ -79,7 +79,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
 
   const batchSize = query.dims[0];
   const sequenceLength = query.dims[1];
-  const hiddenSize = query.dims.length === 3 ? query.dims[2] : (attributes.numHeads * query.dims[4]);
+  const hiddenSize = query.dims.length === 3 ? query.dims[2] : attributes.numHeads * query.dims[4];
   let kvSequenceLength = sequenceLength;
 
   let pastSequenceLength = 0;
@@ -147,7 +147,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
       qkvFormat = AttentionQkvFormat.unknown; // Q_K_V_BSNH_BNSH_BNSH
       kvSequenceLength = key.dims[2];
     }
-  } else {  // packed QKV
+  } else {
+    // packed QKV
     if (query.dims.length !== 5) {
       throw new Error('Input "query" is expected to have 5 dimensions when key is empty');
     }
@@ -207,7 +208,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
         throw new Error('Input "key" and "value" shall have the same dim 1 (kv_sequence_length)');
       }
       vHiddenSize = value.dims[2];
-    } else { // Q_K_V_BSNH_BNSH_BNSH
+    } else {
+      // Q_K_V_BSNH_BNSH_BNSH
       if (kvSequenceLength !== value.dims[2]) {
         throw new Error('Input "key" and "value" shall have the same dim 2 (kv_sequence_length)');
       }
@@ -228,10 +230,12 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
     }
 
     // TODO: support broadcasting the first and second dimensions of attention_bias.
-    if (attentionBias.dims[0] !== batchSize ||
-        attentionBias.dims[1] !== attributes.numHeads ||
-        attentionBias.dims[2] !== sequenceLength ||
-        attentionBias.dims[3] !== totalSequenceLength) {
+    if (
+      attentionBias.dims[0] !== batchSize ||
+      attentionBias.dims[1] !== attributes.numHeads ||
+      attentionBias.dims[2] !== sequenceLength ||
+      attentionBias.dims[3] !== totalSequenceLength
+    ) {
       throw new Error('Expect "attention_bias" shape (batch_size, num_heads, sequence_length, total_sequence_length)');
     }
   }
@@ -432,17 +436,5 @@ export const multiHeadAttention = (context: ComputeContext, attributes: Attentio
     2 * params.hiddenSize,
   );
 
-  applyAttention(
-    context,
-    Q,
-    K,
-    V,
-    keyPaddingMask,
-    undefined,
-    pastKey,
-    pastValue,
-    attentionBias,
-    params,
-    attributes,
-  );
+  applyAttention(context, Q, K, V, keyPaddingMask, undefined, pastKey, pastValue, attentionBias, params, attributes);
 };
