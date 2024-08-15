@@ -29,6 +29,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
   const quantizeAxis = ShapeUtil.normalizeAxis(attributes.quantizeAxis, inputs[0].dims.length);
   const blockSize = attributes.blockSize;
   const data = inputs[0];
+  const indices = inputs[1];
   const scales = inputs[2];
   const zeroPoint = inputs.length === 4 ? inputs[3] : undefined;
   if (
@@ -40,6 +41,11 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
     throw new Error(
       'Scales must have the same rank as the input tensor and the dims should match except on gatherAxis.',
     );
+  }
+  const validIndex = (index: number) => index >= 0 && index < data.dims[attributes.gatherAxis];
+  if (indices.dataType === DataType.int32 && indices.getInt32Array().some((v) => !validIndex(v)) ||
+      indices.dataType === DataType.int64 && indices.getBigInt64Array().some((v) => !validIndex(Number(v)))) {
+    throw new Error('Indices must be within the bounds of the gatherAxis.');
   }
   if (zeroPoint) {
     if (zeroPoint.dataType !== data.dataType) {
