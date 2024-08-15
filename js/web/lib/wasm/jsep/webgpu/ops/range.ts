@@ -1,12 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import { env } from 'onnxruntime-common';
 
-import {DataType} from '../../../wasm-common';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
+import {
+  createTensorShapeVariables,
+  outputVariable,
+  ShaderHelper,
+  UniformDataElementType,
+  UniformsArrayType,
+} from './common';
 
 const validateInputsContent = (start: number, limit: number, delta: number): void => {
   const sameStartLimit = start === limit;
@@ -14,7 +20,7 @@ const validateInputsContent = (start: number, limit: number, delta: number): voi
   const decreasingRangePositiveStep = start > limit && delta > 0;
 
   if (sameStartLimit || increasingRangeNegativeStep || decreasingRangePositiveStep) {
-    throw new Error('Range these inputs\' contents are invalid.');
+    throw new Error("Range these inputs' contents are invalid.");
   }
 };
 
@@ -23,16 +29,19 @@ const createRangeProgramInfo = (start: number, limit: number, delta: number, dat
   const outputShape: number[] = [numElements];
   const outputSize = numElements;
   const programUniforms: ProgramUniform[] = [
-    {type: DataType.uint32, data: outputSize}, {type: dataType, data: start}, {type: dataType, data: delta},
-    ...createTensorShapeVariables(outputShape)
+    { type: DataType.uint32, data: outputSize },
+    { type: dataType, data: start },
+    { type: dataType, data: delta },
+    ...createTensorShapeVariables(outputShape),
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const output = outputVariable('output', dataType, outputShape.length);
     const wgslType = output.type.value;
     const uniforms: UniformsArrayType = [
-      {name: 'outputSize', type: 'u32'}, {name: 'start', type: wgslType as UniformDataElementType},
-      {name: 'delta', type: wgslType as UniformDataElementType}
+      { name: 'outputSize', type: 'u32' },
+      { name: 'start', type: wgslType as UniformDataElementType },
+      { name: 'delta', type: wgslType as UniformDataElementType },
     ];
     return `
         ${shaderHelper.registerUniforms(uniforms).declareVariables(output)}
@@ -44,13 +53,13 @@ const createRangeProgramInfo = (start: number, limit: number, delta: number, dat
 
   return {
     name: 'Range',
-    shaderCache: {hint: `${dataType}`},
+    shaderCache: { hint: `${dataType}` },
     getShaderSource,
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms
-    })
+      outputs: [{ dims: outputShape, dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms,
+    }),
   };
 };
 
@@ -71,5 +80,5 @@ export const range = (context: ComputeContext): void => {
     validateInputsContent(start, limit, delta);
   }
 
-  context.compute(createRangeProgramInfo(start, limit, delta, context.inputs[0].dataType), {inputs: []});
+  context.compute(createRangeProgramInfo(start, limit, delta, context.inputs[0].dataType), { inputs: [] });
 };

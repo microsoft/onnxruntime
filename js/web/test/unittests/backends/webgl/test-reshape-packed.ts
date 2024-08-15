@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {expect} from 'chai';
-import {env} from 'onnxruntime-common';
+import { expect } from 'chai';
+import { env } from 'onnxruntime-common';
 
-import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {Profiler} from '../../../../lib/onnxjs/instrument';
-import {Tensor} from '../../../../lib/onnxjs/tensor';
+import { Backend, InferenceHandler, resolveBackend, SessionHandler } from '../../../../lib/onnxjs/backend';
+import { WebGLInferenceHandler } from '../../../../lib/onnxjs/backends/webgl/inference-handler';
+import { Profiler } from '../../../../lib/onnxjs/instrument';
+import { Tensor } from '../../../../lib/onnxjs/tensor';
 
-import {createAscendingArray} from './test-utils';
+import { createAscendingArray } from './test-utils';
 
 interface TestData {
   elementCount: number;
@@ -102,15 +102,15 @@ function getTestData(): TestData[] {
   ];
 }
 
-let backend: Backend|undefined;
-let sessionhandler: SessionHandler|undefined;
-let inferenceHandler: InferenceHandler|undefined;
+let backend: Backend | undefined;
+let sessionhandler: SessionHandler | undefined;
+let inferenceHandler: InferenceHandler | undefined;
 
 describe('#UnitTest# - reshape - packed', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    sessionhandler = backend.createSessionHandler({profiler});
+    sessionhandler = backend.createSessionHandler({ profiler });
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
 
