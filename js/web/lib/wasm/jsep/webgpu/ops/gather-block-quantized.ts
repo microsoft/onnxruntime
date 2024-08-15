@@ -105,15 +105,17 @@ const createGatherBlockQuantizedProgramInfo = (
         ${shaderHelper.mainStart()}
         var output_indices = ${output.offsetToIndices('global_idx')};
         var indices_indices = ${indices.type.indices}(0);
-        ${
-          indicesShape.length > 1
-            ? `
+        ${(() => {
+          if (indicesShape.length > 1) {
+            return `
           for (var i: u32 = 0; i < ${indicesShape.length}; i++) {
             var index = ${output.indicesGet('output_indices', 'uniforms.gather_axis + i')};
             ${indices.indicesSet('indices_indices', 'i', 'index')};
-          }`
-            : `indices_indices = ${output.indicesGet('output_indices', 'uniforms.gather_axis')};`
-        }
+          }`;
+          } else {
+            return `indices_indices = ${output.indicesGet('output_indices', 'uniforms.gather_axis')};`;
+          }
+        })()};
         var data_indices = ${data.type.indices}(0);
         for (var i: u32 = 0; i < uniforms.gather_axis; i++) {
           data_indices[i] = output_indices[i];
