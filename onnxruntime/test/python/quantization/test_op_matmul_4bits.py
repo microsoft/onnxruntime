@@ -184,7 +184,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         block_size: int,
         is_symmetric: bool,
         quant_format: quant_utils.QuantFormat = quant_utils.QuantFormat.QOperator,
-        ops_to_quantize: Tuple[str, ...] = ("MatMul",),
+        op_types_to_quantize: Tuple[str, ...] = ("MatMul",),
         quant_axes: Tuple[Tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
@@ -203,14 +203,14 @@ class TestOpMatMul4Bits(unittest.TestCase):
             block_size=block_size,
             is_symmetric=is_symmetric,
             quant_format=quant_format,
-            ops_to_quantize=ops_to_quantize,
+            op_types_to_quantize=op_types_to_quantize,
             quant_axes=quant_axes,
         )
         quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, algo_config=quant_config)
         quant.process()
         quant.model.save_model_to_file(model_int4_path, False)
 
-        if "Gather" in ops_to_quantize:
+        if "Gather" in op_types_to_quantize:
             quant_nodes = {"GatherBlockQuantized": 1}
         else:
             quant_nodes = {"DequantizeLinear": 1, "MatMul": 1} if use_qdq else {"MatMulNBits": 1}
@@ -323,7 +323,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_gather(model_fp32_path, True, TensorProto.FLOAT, TensorProto.INT32)
         data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int32)
         # cover rounding error
-        self.quant_test(model_fp32_path, data_reader, 32, True, ops_to_quantize=("Gather",), rtol=0.2, atol=0.5)
+        self.quant_test(model_fp32_path, data_reader, 32, True, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
 
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
@@ -333,7 +333,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_gather(model_fp32_path, False, TensorProto.FLOAT16, TensorProto.INT64)
         data_reader = self.input_feeds(1, {"input": (100, 1000)}, -545, 535, np.int64)
         # cover rounding error
-        self.quant_test(model_fp32_path, data_reader, 32, False, ops_to_quantize=("Gather",), rtol=0.2, atol=0.5)
+        self.quant_test(model_fp32_path, data_reader, 32, False, op_types_to_quantize=("Gather",), rtol=0.2, atol=0.5)
 
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
