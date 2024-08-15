@@ -156,6 +156,9 @@ class TestOpMatMul4Bits(unittest.TestCase):
                 }
             )
             check_qtype_by_node_type(self, model_int4_path, dqnode_io_qtypes)
+            for op in quant.model.opset_import():
+                if op.domain in [None, "", "ai.onnx"] and op.version < 21:
+                    self.fail(f"In QDQ format {op.domain} opset should be >= 21")
 
         data_reader.rewind()
 

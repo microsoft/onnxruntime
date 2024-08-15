@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
-import {OnnxModelOptions} from './onnx-model.js';
-import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
+import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
+import { OnnxModelOptions } from './onnx-model.js';
+import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 export declare namespace InferenceSession {
   // #region input/output types
 
-  type OnnxValueMapType = {readonly [name: string]: OnnxValue};
-  type NullableOnnxValueMapType = {readonly [name: string]: OnnxValue | null};
+  type OnnxValueMapType = { readonly [name: string]: OnnxValue };
+  type NullableOnnxValueMapType = { readonly [name: string]: OnnxValue | null };
 
   /**
    * A feeds (model inputs) is an object that uses input names as keys and OnnxValue as corresponding values.
@@ -30,7 +30,7 @@ export declare namespace InferenceSession {
    * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    * internally.
    */
-  type FetchesType = readonly string[]|NullableOnnxValueMapType;
+  type FetchesType = readonly string[] | NullableOnnxValueMapType;
 
   /**
    * A inferencing return type is an object that uses output names as keys and OnnxValue as corresponding values.
@@ -72,14 +72,14 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
+    freeDimensionOverrides?: { readonly [dimensionName: string]: number };
 
     /**
      * The optimization level.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    graphOptimizationLevel?: 'disabled'|'basic'|'extended'|'all';
+    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'all';
 
     /**
      * Whether enable CPU memory arena.
@@ -100,7 +100,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    executionMode?: 'sequential'|'parallel';
+    executionMode?: 'sequential' | 'parallel';
 
     /**
      * Optimized model file path.
@@ -137,7 +137,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    logSeverityLevel?: 0|1|2|3|4;
+    logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
 
     /**
      * Log verbosity level.
@@ -152,7 +152,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
      */
-    preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
+    preferredOutputLocation?: OnnxValueDataLocation | { readonly [outputName: string]: OnnxValueDataLocation };
 
     /**
      * Whether enable graph capture.
@@ -207,7 +207,10 @@ export declare namespace InferenceSession {
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
   type ExecutionProviderConfig =
-      ExecutionProviderOptionMap[ExecutionProviderName]|ExecutionProviderOption|ExecutionProviderName|string;
+    | ExecutionProviderOptionMap[ExecutionProviderName]
+    | ExecutionProviderOption
+    | ExecutionProviderName
+    | string;
 
   export interface ExecutionProviderOption {
     readonly name: string;
@@ -240,7 +243,7 @@ export declare namespace InferenceSession {
   }
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
-    preferredLayout?: 'NCHW'|'NHWC';
+    preferredLayout?: 'NCHW' | 'NHWC';
   }
 
   // #region WebNN options
@@ -255,9 +258,9 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dictdef-mlcontextoptions
    */
   export interface WebNNContextOptions {
-    deviceType?: 'cpu'|'gpu'|'npu';
+    deviceType?: 'cpu' | 'gpu' | 'npu';
     numThreads?: number;
-    powerPreference?: 'default'|'low-power'|'high-performance';
+    powerPreference?: 'default' | 'low-power' | 'high-performance';
   }
 
   /**
@@ -275,9 +278,10 @@ export declare namespace InferenceSession {
    *
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
    */
-  export interface WebNNOptionsWithMLContext extends WebNNExecutionProviderName,
-                                                     Omit<WebNNContextOptions, 'deviceType'>,
-                                                     Required<Pick<WebNNContextOptions, 'deviceType'>> {
+  export interface WebNNOptionsWithMLContext
+    extends WebNNExecutionProviderName,
+      Omit<WebNNContextOptions, 'deviceType'>,
+      Required<Pick<WebNNContextOptions, 'deviceType'>> {
     context: unknown /* MLContext */;
   }
 
@@ -294,7 +298,10 @@ export declare namespace InferenceSession {
   /**
    * Options for WebNN execution provider.
    */
-  export type WebNNExecutionProviderOption = WebNNOptionsWithoutMLContext|WebNNOptionsWithMLContext|WebNNOptionsWebGpu;
+  export type WebNNExecutionProviderOption =
+    | WebNNOptionsWithoutMLContext
+    | WebNNOptionsWithMLContext
+    | WebNNOptionsWebGpu;
 
   // #endregion
 
@@ -362,7 +369,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    logSeverityLevel?: 0|1|2|3|4;
+    logSeverityLevel?: 0 | 1 | 2 | 3 | 4;
 
     /**
      * Log verbosity level.
@@ -441,8 +448,11 @@ export interface InferenceSession {
    * @param options - Optional. A set of options that controls the behavior of model inference.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
-  run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
-      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+  run(
+    feeds: InferenceSession.FeedsType,
+    fetches: InferenceSession.FetchesType,
+    options?: InferenceSession.RunOptions,
+  ): Promise<InferenceSession.ReturnType>;
 
   // #endregion
 
@@ -524,8 +534,12 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSession>;
+  create(
+    buffer: ArrayBufferLike,
+    byteOffset: number,
+    byteLength?: number,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from a Uint8Array.

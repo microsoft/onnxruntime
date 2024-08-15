@@ -105,8 +105,10 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 if child_file.suffix in [".aar"]:
                     files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
 
-        if child.name == "onnxruntime-ios-xcframework":
-            files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')  # noqa: ISC001
+        if child.name == "onnxruntime-ios":
+            for child_file in child.iterdir():
+                if child_file.suffix in [".zip"]:
+                    files_list.append('<file src="' + str(child_file) + '" target="runtimes/ios/native"/>')
 
 
 def parse_arguments():
@@ -219,7 +221,7 @@ def add_common_dependencies(xml_text, package_name, version):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.0"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
