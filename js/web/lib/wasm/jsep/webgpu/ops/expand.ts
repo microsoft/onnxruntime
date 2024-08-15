@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper } from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -18,8 +18,11 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   let shapeIndex = shape.length < inputShape.length ? 0 : shape.length - inputShape.length;
   let inputShapeIndex = inputShape.length < shape.length ? 0 : inputShape.length - shape.length;
   for (; shapeIndex < shape.length && inputShapeIndex < inputShape.length; ++shapeIndex, ++inputShapeIndex) {
-    if (shape[shapeIndex] !== inputShape[inputShapeIndex] && shape[shapeIndex] !== 1 &&
-        inputShape[inputShapeIndex] !== 1) {
+    if (
+      shape[shapeIndex] !== inputShape[inputShapeIndex] &&
+      shape[shapeIndex] !== 1 &&
+      inputShape[inputShapeIndex] !== 1
+    ) {
       throw new Error('Expand requires shape to be broadcastable to input');
     }
   }
@@ -38,8 +41,7 @@ const getAdjustedShape = (shape1: readonly number[], shape2: readonly number[]):
 };
 
 const calculateOutputShape = (inputShape: readonly number[], shape: readonly number[]): number[] =>
-    (inputShape.length > shape.length) ? getAdjustedShape(inputShape, shape) : getAdjustedShape(shape, inputShape);
-
+  inputShape.length > shape.length ? getAdjustedShape(inputShape, shape) : getAdjustedShape(shape, inputShape);
 
 const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
   const inputShape = inputs[0].dims;
@@ -84,21 +86,23 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
     ${assignment}`;
   };
 
-  const programUniforms: ProgramUniform[] =
-      [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputShape, outputShape)];
+  const programUniforms: ProgramUniform[] = [
+    { type: DataType.uint32, data: outputSize },
+    ...createTensorShapeVariables(inputShape, outputShape),
+  ];
   return {
     name: 'Expand',
-    shaderCache: {hint: `${outputShape.length}`, inputDependencies: ['rank']},
+    shaderCache: { hint: `${outputShape.length}`, inputDependencies: ['rank'] },
     getShaderSource,
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms
-    })
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms,
+    }),
   };
 };
 
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  context.compute(createExpandProgramInfo(context.inputs), {inputs: [0]});
+  context.compute(createExpandProgramInfo(context.inputs), { inputs: [0] });
 };

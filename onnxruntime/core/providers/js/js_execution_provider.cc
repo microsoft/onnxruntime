@@ -127,6 +127,7 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomai
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, 12, Clip);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Clip);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, Elu);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 20, Gelu);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 6, 12, Relu);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, 13, Relu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 14, Relu);
@@ -441,6 +442,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO_VERSIONED(12, 12, Clip),
       KERNEL_CREATE_INFO(13, Clip),
       KERNEL_CREATE_INFO(6, Elu),
+      KERNEL_CREATE_INFO(20, Gelu),
       KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
       KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
       KERNEL_CREATE_INFO(14, Relu),
