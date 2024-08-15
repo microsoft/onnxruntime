@@ -229,7 +229,7 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
-            "set -x; pip list; pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
+            /bin/bash -c "set -x; pip list; pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
