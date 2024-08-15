@@ -21,5 +21,4 @@ onnx
 sphinx_exec_code
 sphinx_tabs
 furo
--f https://download.pytorch.org/whl/torch/
 torch

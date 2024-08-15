@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {GlslContext, GlslLib, GlslLibRoutine} from './glsl-definitions';
+import { GlslContext, GlslLib, GlslLibRoutine } from './glsl-definitions';
 
 /**
  * GLSL Library responsible for vec routines
@@ -12,17 +12,17 @@ export class VecGlslLib extends GlslLib {
   constructor(context: GlslContext) {
     super(context);
   }
-  getCustomTypes(): {[name: string]: string} {
+  getCustomTypes(): { [name: string]: string } {
     return {};
   }
-  getFunctions(): {[name: string]: GlslLibRoutine} {
-    return {...this.binaryVecFunctions(), ...this.copyVec(), ...this.setVecItem(), ...this.getVecItem()};
+  getFunctions(): { [name: string]: GlslLibRoutine } {
+    return { ...this.binaryVecFunctions(), ...this.copyVec(), ...this.setVecItem(), ...this.getVecItem() };
   }
-  protected binaryVecFunctions(): {[name: string]: GlslLibRoutine} {
+  protected binaryVecFunctions(): { [name: string]: GlslLibRoutine } {
     const outputLayout = this.context.outputTextureLayout;
     const rank = outputLayout.shape.length;
-    const nameOp: {[name: string]: string} = {add: '+=', sub: '-=', mul: '*=', div: '/='};
-    const result: {[name: string]: GlslLibRoutine} = {};
+    const nameOp: { [name: string]: string } = { add: '+=', sub: '-=', mul: '*=', div: '/=' };
+    const result: { [name: string]: GlslLibRoutine } = {};
     for (const name in nameOp) {
       const fname = `${name}Vec`;
       let assignmentBlock = '';
@@ -41,7 +41,7 @@ export class VecGlslLib extends GlslLib {
 
     return result;
   }
-  protected copyVec(): {[name: string]: GlslLibRoutine} {
+  protected copyVec(): { [name: string]: GlslLibRoutine } {
     const outputLayout = this.context.outputTextureLayout;
     const rank = outputLayout.shape.length;
     let assignmentBlock = '';
@@ -55,10 +55,10 @@ export class VecGlslLib extends GlslLib {
         ${assignmentBlock}
       }
       `;
-    return {copyVec: new GlslLibRoutine(body)};
+    return { copyVec: new GlslLibRoutine(body) };
   }
 
-  protected setVecItem(): {[name: string]: GlslLibRoutine} {
+  protected setVecItem(): { [name: string]: GlslLibRoutine } {
     const outputLayout = this.context.outputTextureLayout;
     const rank = outputLayout.shape.length;
     let block = `
@@ -82,9 +82,9 @@ export class VecGlslLib extends GlslLib {
         ${block}
       }
         `;
-    return {setVecItem: new GlslLibRoutine(body)};
+    return { setVecItem: new GlslLibRoutine(body) };
   }
-  protected getVecItem(): {[name: string]: GlslLibRoutine} {
+  protected getVecItem(): { [name: string]: GlslLibRoutine } {
     const outputLayout = this.context.outputTextureLayout;
     const rank = outputLayout.shape.length;
     let block = `
@@ -108,6 +108,6 @@ export class VecGlslLib extends GlslLib {
         ${block}
       }
     `;
-    return {getVecItem: new GlslLibRoutine(body)};
+    return { getVecItem: new GlslLibRoutine(body) };
   }
 }

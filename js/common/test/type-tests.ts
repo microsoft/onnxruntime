@@ -3,9 +3,9 @@
 
 import globby from 'globby';
 import assert from 'node:assert';
-import {readFileSync} from 'node:fs';
-import {dirname, join, normalize, relative} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import { readFileSync } from 'node:fs';
+import { dirname, join, normalize, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import npmlog from 'npmlog';
 import typescript from 'typescript';
 
@@ -46,20 +46,19 @@ const TYPE_TESTS_DIR = join(dirname(fileURLToPath(import.meta.url)), './type-tes
  * @returns list of test files
  */
 const prepareTestFileList = () =>
-    //
-    globby.sync('**/*.ts', {
-      cwd: TYPE_TESTS_DIR,
-      absolute: true,
-    });
+  //
+  globby.sync('**/*.ts', {
+    cwd: TYPE_TESTS_DIR,
+    absolute: true,
+  });
 
 /**
  * Run typescript compiler on the given files.
  */
 const compileTypeScriptFiles = (filepaths: string[]): readonly typescript.Diagnostic[] => {
   // TypeScript compiler options, base URL is reset to `TYPE_TESTS_DIR`.
-  const compilerOptions =
-      JSON.parse(readFileSync(new URL('./type-tests/tsconfig.json', import.meta.url), 'utf-8')).compilerOptions as
-      typescript.CompilerOptions;
+  const compilerOptions = JSON.parse(readFileSync(new URL('./type-tests/tsconfig.json', import.meta.url), 'utf-8'))
+    .compilerOptions as typescript.CompilerOptions;
   compilerOptions.baseUrl = TYPE_TESTS_DIR;
 
   // Run TypeScript compiler
@@ -81,39 +80,40 @@ const prepareTestCases = () => {
   npmlog.info('PrepareTestCases', `Preparing test file lists... DONE, ${testFiles.length} file(s) in total.`);
 
   npmlog.info('PrepareTestCases', 'Running TypeScript Compiler...');
-  const compileResult = compileTypeScriptFiles(testFiles).map(
-      diagnostic => ({
-        fileName: normalize(diagnostic.file?.fileName ?? ''),
-        line: diagnostic.file?.getLineAndCharacterOfPosition(diagnostic.start!)?.line ?? -1,
-        code: diagnostic.code,
-      }));
+  const compileResult = compileTypeScriptFiles(testFiles).map((diagnostic) => ({
+    fileName: normalize(diagnostic.file?.fileName ?? ''),
+    line: diagnostic.file?.getLineAndCharacterOfPosition(diagnostic.start!)?.line ?? -1,
+    code: diagnostic.code,
+  }));
   npmlog.info('PrepareTestCases', 'Running TypeScript Compiler... DONE.');
 
   npmlog.info('PrepareTestCases', 'Parsing test source files for expected failures...');
-  const testCases = testFiles.map(filepath => {
+  const testCases = testFiles.map((filepath) => {
     const normalizedFilePath = normalize(filepath);
     const normalizedRelativePath = normalize(relative(TYPE_TESTS_DIR, filepath));
 
-    const fileAllLines = readFileSync(filepath, 'utf-8').split('\n').map(line => line.trim());
-    const expectedFailures: Array<{line: number; code: number}> = [];
+    const fileAllLines = readFileSync(filepath, 'utf-8')
+      .split('\n')
+      .map((line) => line.trim());
+    const expectedFailures: Array<{ line: number; code: number }> = [];
     fileAllLines.forEach((line, i) => {
       if (line.startsWith('// {type-tests}|fail|')) {
         const splitted = line.split('|');
         assert(splitted.length === 4, `invalid expected failure comment: ${line}`);
         const lineOffset = Number.parseInt(splitted[2], 10);
         const code = Number.parseInt(splitted[3], 10);
-        expectedFailures.push({line: i + lineOffset, code});
+        expectedFailures.push({ line: i + lineOffset, code });
       }
     });
 
     const actualFailures: typeof compileResult = [];
 
-    return {filepath: normalizedFilePath, relativePath: normalizedRelativePath, expectedFailures, actualFailures};
+    return { filepath: normalizedFilePath, relativePath: normalizedRelativePath, expectedFailures, actualFailures };
   });
   npmlog.info('PrepareTestCases', 'Parsing test source files for expected failures... DONE.');
 
   // now check if file names is matched
-  const filePathToTestCaseMap = new Map(testCases.map(testCase => [testCase.filepath, testCase]));
+  const filePathToTestCaseMap = new Map(testCases.map((testCase) => [testCase.filepath, testCase]));
   for (const error of compileResult) {
     // check file name exists
     assert(error.fileName, 'Each compile error should have a file name. Please check TypeScript compiler options.');
@@ -125,15 +125,15 @@ const prepareTestCases = () => {
     testCase.actualFailures.push(error);
   }
 
-  return testCases.map(testCase => {
-    const {relativePath, expectedFailures, actualFailures} = testCase;
+  return testCases.map((testCase) => {
+    const { relativePath, expectedFailures, actualFailures } = testCase;
     const testFunction = () => {
       if (expectedFailures.length === 0) {
         assert.equal(actualFailures.length, 0, `expected to pass but failed: ${JSON.stringify(actualFailures)}`);
       } else {
-        actualFailures.forEach(error => {
-          const {line, code} = error;
-          const foundIndex = expectedFailures.findIndex(f => f.line === line && f.code === code);
+        actualFailures.forEach((error) => {
+          const { line, code } = error;
+          const foundIndex = expectedFailures.findIndex((f) => f.line === line && f.code === code);
           assert.notEqual(foundIndex, -1, `unexpected failure: line=${line}, code=${code}`);
           expectedFailures.splice(foundIndex, 1);
         });
@@ -141,12 +141,12 @@ const prepareTestCases = () => {
       }
     };
 
-    return {title: relativePath, testBody: testFunction};
+    return { title: relativePath, testBody: testFunction };
   });
 };
 
 describe('TypeScript type tests', () => {
-  for (const {title, testBody} of prepareTestCases()) {
+  for (const { title, testBody } of prepareTestCases()) {
     it(title, testBody);
   }
 });
