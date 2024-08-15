@@ -310,6 +310,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(TypeConstraints);
+ORT_RUNTIME_CLASS(Device);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -695,6 +696,11 @@ typedef struct OrtApiBase OrtApiBase;
  */
 ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
+typedef struct OrtCreateStream {
+  int device_type;
+  void*(ORT_API_CALL* CreateStreamFunc)(const OrtDevice*);
+} OrtCreateStream;
+
 typedef struct OrtMetaDef {
   const char* name;
   const char* domain;
@@ -737,6 +743,7 @@ typedef struct OrtExecutionProvider {
   void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
   void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
   const char* type;
+  OrtCreateStream* create_stream;
 } OrtExecutionProvider;
 
 typedef struct OrtExecutionProviderFactory {

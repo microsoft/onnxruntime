@@ -85,6 +85,16 @@ public:
     return Status::OK();
   }
 
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override {
+    if (ep_impl_->create_stream) {
+      CreateStreamFn csf = [&](const OrtDevice& device) -> std::unique_ptr<Stream> {
+        void* stream = ep_impl_->create_stream->CreateStreamFunc(&device);
+        return std::make_unique<Stream>(stream, device);
+      };
+      stream_handle_registry.RegisterCreateStreamFn(static_cast<OrtDevice::DeviceType>(ep_impl_->create_stream->device_type), csf);
+    }
+  }
+
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return kernel_registry_; }
 private:
   OrtExecutionProvider* ep_impl_;
