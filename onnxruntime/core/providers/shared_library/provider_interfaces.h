@@ -569,10 +569,10 @@ struct ProviderHost {
 
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
   virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
-  virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
-  virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
-  virtual const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
-  virtual const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
+  virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
   virtual const ONNX_NAMESPACE::TypeConstraintMap& OpSchema__typeConstraintMap(const ONNX_NAMESPACE::OpSchema* p) const = 0;
 
   // ConfigOptions

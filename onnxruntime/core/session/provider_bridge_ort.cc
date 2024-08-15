@@ -816,10 +816,10 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {
     return ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(name, maxInclusiveVersion, domain);
   }
-  const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const int i) override { return p->inputs()[i].GetName(); }
-  const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const int i) override { return p->inputs()[i].GetTypeStr(); }
-  const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const int i) override { return p->outputs()[i].GetName(); }
-  const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const int i) override { return p->outputs()[i].GetTypeStr(); }
+  const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) override { return p->inputs()[i].GetName(); }
+  const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) override { return p->inputs()[i].GetTypeStr(); }
+  const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) override { return p->outputs()[i].GetName(); }
+  const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) override { return p->outputs()[i].GetTypeStr(); }
   const ONNX_NAMESPACE::TypeConstraintMap& OpSchema__typeConstraintMap(const ONNX_NAMESPACE::OpSchema* p) const override { return p->typeConstraintMap(); }
 
   // ConfigOptions (wrapped)
