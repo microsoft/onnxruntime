@@ -3,14 +3,15 @@
 
 'use strict';
 
-it('Browser E2E testing - WebGL backend', async function() {
-  await testFunction(ort, {executionProviders: ['webgl']});
+it('Browser E2E testing - WebGL backend', async function () {
+  await testFunction(ort, { executionProviders: ['webgl'] });
 });
 
 it('Browser E2E testing - invalid buffer', async () => {
   try {
-    await ort.InferenceSession.create(
-        new Uint8Array(Array.from({length: 100}, () => 42)), {executionProviders: ['webgl']});
+    await ort.InferenceSession.create(new Uint8Array(Array.from({ length: 100 }, () => 42)), {
+      executionProviders: ['webgl'],
+    });
 
     // Should not reach here.
     assert(false);

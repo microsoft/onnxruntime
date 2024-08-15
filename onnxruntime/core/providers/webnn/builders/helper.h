@@ -151,7 +151,7 @@ bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, c
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder_,
+                                                      const emscripten::val& wnn_builder,
                                                       const WebnnDeviceType device_type,
                                                       const logging::Logger& logger);
 static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
@@ -171,6 +171,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Cos", {"cos", true}},
     {"Div", {"div", true}},
     {"DequantizeLinear", {"dequantizeLinear", false}},
+    {"Dropout", {"identity", true}},
     {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", false}},
     {"Elu", {"elu", true}},
     {"Equal", {"equal", true}},
@@ -241,14 +242,14 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Where", {"where", true}},
 };
 
-inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_,
+inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder,
                           const WebnnDeviceType device_type) {
   // Returns false if the op_type is not listed in the op_map.
   if (op_map.find(op_type) == op_map.end()) {
     return false;
   }
   // Returns false if the WebNN op has not been implemented in MLGraphBuilder in current browser.
-  if (!wnn_builder_[op_map.find(op_type)->second.opName].as<bool>()) {
+  if (!wnn_builder[op_map.find(op_type)->second.opName].as<bool>()) {
     return false;
   }
   // The current WebNN CPU (TFLite) backend supports a limited op list, and we'd rather

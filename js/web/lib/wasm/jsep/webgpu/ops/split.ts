@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo, ProgramUniform, TensorInfo } from '../types';
 
-import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {
+  createTensorShapeVariables,
+  getElementAt,
+  IndicesHelper,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+} from './common';
 
 export interface SplitAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -21,16 +28,18 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-const createSplitAttributesFromInputs =
-    (inputs: readonly TensorView[], attributes: SplitAttributes): SplitAttributes => {
-      const splitSizes: number[] = [];
-      let numOutputs: number = attributes.numOutputs;
-      if (inputs[1].dims[0] > 0) {
-        inputs[1].getBigInt64Array().forEach(v => splitSizes.push(Number(v)));
-        numOutputs = splitSizes.length;
-      }
-      return createAttributeWithCacheKey({numOutputs, axis: attributes.axis, splitSizes});
-    };
+const createSplitAttributesFromInputs = (
+  inputs: readonly TensorView[],
+  attributes: SplitAttributes,
+): SplitAttributes => {
+  const splitSizes: number[] = [];
+  let numOutputs: number = attributes.numOutputs;
+  if (inputs[1].dims[0] > 0) {
+    inputs[1].getBigInt64Array().forEach((v) => splitSizes.push(Number(v)));
+    numOutputs = splitSizes.length;
+  }
+  return createAttributeWithCacheKey({ numOutputs, axis: attributes.axis, splitSizes });
+};
 
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
 fn calculateOutputIndex(index: u32) -> u32 {
@@ -73,7 +82,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   const outputsTensorInfo: TensorInfo[] = [];
   const outputShapes: number[][] = [];
   let previousSum = 0;
-  const programUniforms: ProgramUniform[] = [{type: DataType.uint32, data: inputSize}];
+  const programUniforms: ProgramUniform[] = [{ type: DataType.uint32, data: inputSize }];
   for (let i = 0; i < attributes.numOutputs; i++) {
     previousSum += attributes.splitSizes[i];
     sizeInSplitAxis[i] = previousSum;
@@ -81,15 +90,17 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
     outputs[i] = outputVariable(`output${i}`, dataType, outputShape.length);
-    outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
+    outputsTensorInfo.push({ dims: outputShapes[i], dataType: inputs[0].dataType });
   }
   programUniforms.push(
-      {type: DataType.uint32, data: sizeInSplitAxis}, ...createTensorShapeVariables(inputShape, ...outputShapes));
+    { type: DataType.uint32, data: sizeInSplitAxis },
+    ...createTensorShapeVariables(inputShape, ...outputShapes),
+  );
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-  ${
-      shaderHelper.registerUniform('input_size', 'u32')
-          .registerUniform('size_in_split_axis', 'u32', sizeInSplitAxis.length)
-          .declareVariables(input, ...outputs)}
+  ${shaderHelper
+    .registerUniform('input_size', 'u32')
+    .registerUniform('size_in_split_axis', 'u32', sizeInSplitAxis.length)
+    .declareVariables(input, ...outputs)}
   ${calculateOutputIndexImpl(sizeInSplitAxis.length)}
   ${writeBufferDataImpl(outputs)}
 
@@ -107,29 +118,29 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   }`;
   return {
     name: 'Split',
-    shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank']},
+    shaderCache: { hint: attributes.cacheKey, inputDependencies: ['rank'] },
     getShaderSource,
     getRunData: () => ({
       outputs: outputsTensorInfo,
-      dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
-      programUniforms
-    })
+      dispatchGroup: { x: Math.ceil(inputSize / 64 /* workgroup size */) },
+      programUniforms,
+    }),
   };
 };
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {
   validateInputs(context.inputs);
   const updatedAttributes =
-      context.inputs.length === 1 ? attributes : createSplitAttributesFromInputs(context.inputs, attributes);
-  context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
+    context.inputs.length === 1 ? attributes : createSplitAttributesFromInputs(context.inputs, attributes);
+  context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), { inputs: [0] });
 };
 
 export const parseSplitAttributes = (attributes: Record<string, unknown>): SplitAttributes => {
   const axis = attributes.axis as number;
   const splitSizes: number[] = attributes.splitSizes as number[];
-  const numOutputs = attributes.numOutputs as number < 0 ? splitSizes.length : attributes.numOutputs as number;
+  const numOutputs = (attributes.numOutputs as number) < 0 ? splitSizes.length : (attributes.numOutputs as number);
   if (numOutputs !== splitSizes.length) {
     throw new Error('numOutputs and splitSizes lengh must be equal');
   }
-  return createAttributeWithCacheKey({axis, numOutputs, splitSizes});
+  return createAttributeWithCacheKey({ axis, numOutputs, splitSizes });
 };

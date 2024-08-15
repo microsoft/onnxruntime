@@ -6,7 +6,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
+          "commitHash": "0fde04880048f743056bed17cb0543a42e040fae",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -350,6 +350,16 @@
           "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
         },
         "comments": "directx_headers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "98ca4e1941fe3263f128f74f10063a3ea35c7019",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
       }
     }
   ]

@@ -172,7 +172,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
               nodes_falsenodeids.size() == nodes_values_as_tensor.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-  ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
+  ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size());
   ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
   ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
   ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
