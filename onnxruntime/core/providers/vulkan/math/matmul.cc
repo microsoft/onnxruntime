@@ -58,12 +58,14 @@ static void TransposeB(const GraphViewer& graph_viewer, const std::string& input
 MatMulKernel::InputInfo::InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                                    const logging::Logger& logger) {
   auto input_defs = node.InputDefs();
+  arg_A = input_defs[0];
+  arg_B = input_defs[1];
 
-  constant_A = graph_viewer.IsConstantInitializer(input_defs[0]->Name(), /* check_outer_scope */ true);
-  constant_B = graph_viewer.IsConstantInitializer(input_defs[1]->Name(), /* check_outer_scope */ true);
+  constant_A = graph_viewer.IsConstantInitializer(arg_A->Name(), /* check_outer_scope */ true);
+  constant_B = graph_viewer.IsConstantInitializer(arg_A->Name(), /* check_outer_scope */ true);
 
-  have_shape_A = GetShape(*input_defs[0], shape_A, logger);
-  have_shape_B = GetShape(*input_defs[1], shape_B, logger);
+  have_shape_A = GetShape(*arg_A, shape_A, logger);
+  have_shape_B = GetShape(*arg_B, shape_B, logger);
 }
 
 /* static */
@@ -236,9 +238,8 @@ Status MatMulKernel::CreateNcnnPipeline() {
   return Status::OK();
 }
 
-void MatMulKernel::KomputeProcessConstantInitializers(
-    const GraphViewer& graph_viewer, kp::Manager& manager,
-    NodeArgToKpTensorMap& initializers_to_upload) const {
+void MatMulKernel::KomputeProcessConstantInitializers(const GraphViewer& graph_viewer, kp::Manager& manager,
+                                                      NodeArgToKpTensorMap& initializers_to_upload) const {
   // we only support usage with a constant B currently
   const NodeArg* const_B = Node().InputDefs()[1];
 
@@ -254,27 +255,29 @@ void MatMulKernel::KomputeProcessConstantInitializers(
   initializers_to_upload[const_B] = manager.tensor(data);
 }
 
-Status MatMulKernel::KomputeCreateKernel(
-    kp::Manager& manager,
-    NodeArgToKpTensorMap& initializers) {
+Status MatMulKernel::KomputeCreateKernel(kp::Manager& manager, NodeArgToKpTensorMap& initializers) {
   // current WIP implementation requires the shape of A to work as it assumes M is known
   ORT_ENFORCE(input_info_.have_shape_A);
-  auto dummy_tensor = manager.tensor(std::vector<float>{0.f, 0.f});
-  auto tensorInB = initializers.at(Node().InputDefs()[1]);  // might as well use the existing tensor for B
+  auto dummy_tensor = manager.tensor(std::vector<float>{0.f, 2.f});
+  auto tensorInB = initializers.at(input_info_.arg_B);  // might as well use the existing tensor for B
 
   const auto N = input_info_.shape_A[0];
   const auto M = input_info_.shape_B[1];
 
   auto num_output_elements = N * M;
   bool use_pack4 = input_info_.have_shape_A && N % 4 == 0 && M % 4 == 0;  // fixed inputs so safe to use pack4
-  auto shader_bytes = use_pack4
-                          ? gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv,
-                                           kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv_len)
-                          : gsl::make_span(kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv,
-                                           kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv_len);
-
-  // TODO: Can we avoid this copy? Seems unnecessary
-  std::vector<uint32_t> spirv(shader_bytes.begin(), shader_bytes.end());
+  const unsigned char* spirv_bytes = use_pack4
+                                         ? kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv
+                                         : kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv;
+  const size_t spirv_num_bytes = use_pack4
+                                     ? kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_wp4_comp_spv_len
+                                     : kp::shader_data::compiled_shaders_ncnn_innerproduct_gemm_comp_spv_len;
+  assert(spirv_num_bytes % sizeof(uint32_t) == 0);
+  const uint32_t* spirv_uint32_data = reinterpret_cast<const uint32_t*>(spirv_bytes);
+  const size_t spirv_uint32_num_elements = spirv_num_bytes / sizeof(uint32_t);
+  // unnecessary copy to vector as it's copied again into the Algorithm instance.
+  // TODO: Update Kompute to take a span
+  std::vector<uint32_t> spirv(spirv_uint32_data, spirv_uint32_data + spirv_uint32_num_elements);
 
   /*
   NCNN source
@@ -332,8 +335,8 @@ Status MatMulKernel::KomputeCreateKernel(
 }
 
 Status MatMulKernel::KomputeExecute(kp::Manager& manager, kp::Sequence& sequence, NodeArgToKpTensorMap& values) const {
-  auto tensorInA = values.at(Node().InputDefs()[0]);
-  auto tensorInB = values.at(Node().InputDefs()[1]);
+  auto tensorInA = values.at(input_info_.arg_A);
+  auto tensorInB = values.at(input_info_.arg_B);
 
   const auto N = input_info_.shape_A[0];
   const auto M = input_info_.shape_B[1];

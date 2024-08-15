@@ -70,6 +70,8 @@ class MatMulKernel : VulkanKernel {
     bool have_shape_B;
     std::vector<int64_t> shape_A;
     std::vector<int64_t> shape_B;
+    const NodeArg* arg_A;
+    const NodeArg* arg_B;
   };
 
   const InputInfo input_info_;

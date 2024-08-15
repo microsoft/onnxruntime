@@ -415,7 +415,7 @@ common::Status VulkanExecutionProvider::UploadKomputeConstantInitializers(const 
     model.layers[i]->KomputeProcessConstantInitializers(graph_viewer, kompute_manager_, model.constant_initializers);
   }
 
-  // create a kp::Tensor for each initializer
+  // create vector with constant initializers to upload
   std::vector<std::shared_ptr<kp::Tensor>> tensors;
   tensors.reserve(model.constant_initializers.size());
   std::for_each(model.constant_initializers.begin(), model.constant_initializers.end(),
@@ -535,12 +535,17 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
 
       for (const auto* def : fused_node.InputDefs()) {
         assert(def->Exists());  // fused node shouldn't have missing optional inputs
-        const Tensor& input_tensor = *ctx.Input<Tensor>(input_idx);
-        // create kp::Tensor from input_tensor
-        input_tensors.push_back(
-            kompute_manager_.tensor(const_cast<void*>(input_tensor.DataRaw()),
-                                    narrow<uint32_t>(input_tensor.Shape().Size()),
-                                    sizeof(float), kp::Tensor::TensorDataTypes::eFloat));
+        if (values.find(def) == values.end()) {
+          // not a constant initializer
+          const Tensor& input_tensor = *ctx.Input<Tensor>(input_idx);
+
+          // create kp::Tensor from input_tensor
+          input_tensors.push_back(
+              kompute_manager_.tensor(const_cast<void*>(input_tensor.DataRaw()),
+                                      narrow<uint32_t>(input_tensor.Shape().Size()),
+                                      sizeof(float), kp::Tensor::TensorDataTypes::eFloat));
+          values[def] = input_tensors.back();
+        }
       }
 
       int output_idx = 0;
@@ -560,10 +565,12 @@ common::Status VulkanExecutionProvider::CompileKompute(const std::vector<FusedNo
         output_tensors.push_back(
             kompute_manager_.tensor(output_tensor.MutableDataRaw(), narrow<uint32_t>(shape.Size()), sizeof(float),
                                     kp::Tensor::TensorDataTypes::eFloat));
+        values[def] = output_tensors.back();
       }
 
       auto seq = kompute_manager_.sequence();
       // copy inputs to device
+      // this may not be necessary. the input tensors have been copied to staging memory
       seq->record<kp::OpTensorSyncDevice>(input_tensors);
 
       // for each kernel, call KomputeExecute

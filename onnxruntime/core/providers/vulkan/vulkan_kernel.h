@@ -85,6 +85,8 @@ class VulkanKernel {
     ORT_NOT_IMPLEMENTED("Kernel must override");
   }
 
+  // WARNING: This is invalid post-setup in a compiled model as the node is in the GraphViewer for the partition
+  // and will be removed after IExecutionProvider::Compile completes.
   const onnxruntime::Node& Node() const { return node_; }
 
   ncnn::Layer& NcnnLayer() { return *ncnn_layer_; }
