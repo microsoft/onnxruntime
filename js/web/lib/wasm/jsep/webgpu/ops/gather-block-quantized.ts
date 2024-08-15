@@ -97,10 +97,6 @@ const createGatherBlockQuantizedProgramInfo = (
       { name: 'block_size', type: 'u32' },
     ];
     return `
-        fn ${isSigned ? 'unpack8xI4(packed: i32) -> array<i32, 8>' : 'unpack8xU4(packed: u32) -> array<u32, 8>'} {
-          return array<${isSigned ? 'i32' : 'u32'}, 8>(
-          ${Array.from({ length: 8 }, (_, i) => `(packed << ${(7 - i) * 4}) >> 28`).join(', ')});
-        }
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart()}
         var output_indices = ${output.offsetToIndices('global_idx')};
@@ -125,12 +121,14 @@ const createGatherBlockQuantizedProgramInfo = (
           data_indices[i] = output_indices[i + ${indicesShape.length} - 1];
         }
         var data_offset = ${data.indicesToOffset('data_indices')};
-        var packed_quantized_data = ${data.getByOffset('data_offset / 8')};
-        var array_index = data_offset % 8;
-        var quantized_data_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_quantized_data);
-        var quantized_data = quantized_data_array[array_index];
+        var data_index = data_offset % 8;
+        // Convert 4-bit packed data to 8-bit packed data.
+        var packed_4bit_quantized_data = ${data.getByOffset('data_offset / 8')};
+        var packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;
+        var quantized_data_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_quantized_data));
+        var quantized_data = quantized_data_vec[data_index / 2];
         var scale_indices = data_indices;
-        var quantize_axis_index = ${scales.indicesGet('scale_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
+        var quantize_axis_index = ${scales.indicesGet('data_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
         ${scales.indicesSet('scale_indices', 'uniforms.quantize_axis', 'quantize_axis_index')};
         var scale = ${scales.getByIndices('scale_indices')};
         ${(() => {
@@ -140,9 +138,11 @@ const createGatherBlockQuantizedProgramInfo = (
             return `
               var zero_point_indices = scale_indices;
               var zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
-              var packed_zero_point = ${zeroPoint.getByOffset('zero_point_offset / 8')};
-              var zero_point_array = ${isSigned ? 'unpack8xI4' : 'unpack8xU4'}(packed_zero_point);
-              var zero_point = zero_point_array[zero_point_offset % 8];`;
+              var zero_point_index = zero_point_offset % 8;
+              var packed_4bit_zero_points = ${zeroPoint.getByOffset('zero_point_offset / 8')};
+              var packed_8bit_zero_point = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;
+              var zero_point_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_zero_point));
+              var zero_point = zero_point_vec[zero_point_index / 2];`;
           }
         })()};
         var dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
