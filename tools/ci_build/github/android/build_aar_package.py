@@ -118,6 +118,7 @@ def _build_aar(args):
             os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
 
         # copy executables for each abi, in case we want to publish those as well
+        # some of them might not exist, e.g., if we skip building the tests
         abi_exe_dir = os.path.join(exe_dir, abi)
         for exe_name in ["libonnxruntime.so", "onnxruntime_perf_test", "onnx_test_runner"]:
             src_exe_path = os.path.join(abi_build_dir, build_config, exe_name)
