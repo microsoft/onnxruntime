@@ -35,6 +35,8 @@ Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/dep
 
 ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice versa. You can choose the package based on CUDA and cuDNN major versions that match your runtime environment (For example, PyTorch 2.3 uses cuDNN 8.x, while PyTorch 2.4 or later used cuDNN 9.x).
 
+Note: starting ORT 1.19, **CUDA 12.x** becomes default version when distributing ONNX Runtime GPU packages.
+
 ### CUDA 12.x
 
 To install CUDA 12 package, please look at [Install ORT](../install).
