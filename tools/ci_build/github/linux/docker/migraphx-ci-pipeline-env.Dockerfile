@@ -84,3 +84,11 @@ RUN pip install numpy packaging ml_dtypes==0.3.0
 
 RUN apt install -y git
 RUN pip install pytest==7.4.4 pytest-xdist pytest-rerunfailures scipy==1.10.0 numpy==1.24.1
+
+RUN git clone https://github.com/ROCm/cupy && cd cupy && \
+    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
+    export CUPY_INSTALL_USE_HIP=1 && \
+    export ROCM_HOME=/opt/rocm && \
+    export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
+    git submodule update --init && \
+    pip install -e . --no-cache-dir -vvvv
