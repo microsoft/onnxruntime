@@ -732,13 +732,85 @@ struct ProviderHostImpl : ProviderHost {
     return elemType;
   }
 
-  void RegisterSchema(const std::string& domain, const OrtCustomOp* op) override {
+  static void xir_shape_infer(ONNX_NAMESPACE::InferenceContext& ctx) {
+    auto num_output = ctx.getNumOutputs();
+    if (num_output == 1) {
+      auto* shape = ctx.getAttribute("shape");
+      auto* data_type = ctx.getAttribute("data_type");
+      if (data_type == nullptr) {
+        std::cerr << "Custom op is missing `data_type` attr." << std::endl;
+        return;
+      }
+      int32_t elemType = convert_elem_type(data_type);
+      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, elemType);
+      if (shape != nullptr) {
+        for (auto i = 0; i < shape->ints_size(); ++i) {
+          ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
+        }
+      } else {
+        // set scalar type.
+        ONNX_NAMESPACE::getOutputShape(ctx, 0, ONNX_NAMESPACE::TypeProto::kTensorType)->clear_dim();
+      }
+    } else {
+      for (auto idx = 0u; idx < num_output; idx++) {
+        auto* shape = ctx.getAttribute("shape_" + std::to_string(idx));
+        auto* data_type = ctx.getAttribute("data_type_" + std::to_string(idx));
+        if (shape == nullptr || data_type == nullptr) {
+          // this output is optional
+        } else {
+          int32_t elemType = convert_elem_type(data_type);
+          ONNX_NAMESPACE::updateOutputElemType(ctx, idx, elemType);
+          for (auto i = 0; i < shape->ints_size(); ++i) {
+            ONNX_NAMESPACE::getOutputShape(ctx, idx, ONNX_NAMESPACE::TypeProto::kTensorType)->add_dim()->set_dim_value(shape->ints(i));
+          }
+        }
+      }
+    }
+  }
+
+  static void xir_fixneuron_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 0, 0);
+  }
+
+  static void xir_subgraph_shape_inference(ONNX_NAMESPACE::InferenceContext& ctx) {
+    auto num_inputs = ctx.getNumInputs();
+
+    // Run inferencing on the subgraph
+    auto* graphInferencer = ctx.getGraphAttributeInferencer("body");
+
+    std::vector<const ONNX_NAMESPACE::TensorProto*> input_data;
+    std::vector<const ONNX_NAMESPACE::TypeProto*> subgraph_input_types;
+    for (size_t i = 0; i < num_inputs; ++i) {
+      input_data.push_back(ctx.getInputData(i));
+      subgraph_input_types.push_back(ctx.getInputType(i));
+    }
+
+    auto output_types = graphInferencer->doInferencing(subgraph_input_types, input_data);
+    for (size_t i = 0, end = output_types.size(); i < end; ++i) {
+      *ctx.getOutputType(i) = *output_types[i];
+    }
+  }
+  void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) override {
     auto& domain_instance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
     const auto& domain_to_version_map = domain_instance.Map();
     if (domain_to_version_map.find(domain) == domain_to_version_map.end()) {
       domain_instance.AddDomainToVersion(domain, 1, 1000);
     }
     auto schema = CreateSchema(domain, {op});
+    switch (type) {
+      case 1:
+        schema.TypeAndShapeInferenceFunction(xir_subgraph_shape_inference);
+        break;
+      case 2:
+        schema.TypeAndShapeInferenceFunction(xir_fixneuron_shape_inference);
+        break;
+      case 3:
+        schema.TypeAndShapeInferenceFunction(xir_shape_infer);
+        break;
+      default:
+        break;
+    }
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }
   const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {

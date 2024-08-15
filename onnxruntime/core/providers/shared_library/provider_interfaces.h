@@ -29,6 +29,7 @@ enum OperatorStatus : int;
 using DataType = const std::string*;
 using DataTypeSet = std::unordered_set<DataType>;
 using TypeConstraintMap = std::unordered_map<std::string, std::pair<DataTypeSet, std::string>>;
+
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -566,7 +567,7 @@ struct ProviderHost {
   virtual int FunctionProto__metadata_props_size(const ONNX_NAMESPACE::FunctionProto* p) = 0;
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
-  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op) = 0;
+  virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
   virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
   virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
   virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const int i) = 0;
