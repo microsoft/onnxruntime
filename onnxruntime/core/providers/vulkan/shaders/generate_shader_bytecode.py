@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 
 from pathlib import Path
 
@@ -105,7 +106,8 @@ def convert_shaders():
         if not xxd_path.exists():
             print("xxd needs to be manually compiled.")
             print(f"From a Visual Studio developer command prompt, in the {xxd_path.parent} directory, run:")
-            print("cl.exe .\\xxd.c")
+            print("cl.exe /DWIN32 .\\xxd.c")
+            print("NOTE: manually defining WIN32 is required.")
             exit(-1)
 
     preprocess_ncnn_shaders(args)
@@ -119,11 +121,11 @@ def convert_shaders():
 
     try:
         print(f"Running conversion script: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True) # , capture_output=True, text=True)
+        subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running shader conversion script: {e}")
         print("To see the actual error, run the shader binary with `-V <shader_file> -o <output_file>` manually.")
-        exit(1)
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
