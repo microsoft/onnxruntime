@@ -16,8 +16,12 @@ Abstract:
 
 #include "test_util.h"
 #include "test_fp16.h"
+#include "core/framework/float16.h"
 #include "mlas_q4.h"
+#include "mlas.h"
 #include "mlas_qnbit.h"
+
+#include <type_traits>
 
 static constexpr const char* ComputeTypeName(MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType) {
   switch (ComputeType) {
@@ -34,10 +38,10 @@ static constexpr const char* ComputeTypeName(MLAS_SQNBIT_GEMM_COMPUTE_TYPE Compu
  * @brief Test class for n-bit int block quantized GEMM
  *        Note: only 2-D matmul supported for now
  */
-template <size_t BlkBitWidth, size_t BlkLen>
+template <typename AType, size_t BlkBitWidth, size_t BlkLen>
 class MlasSQNBitGemmTest : public MlasTestBase {
  private:
-  MatrixGuardBuffer<MLFp16> BufferA;
+  MatrixGuardBuffer<AType> BufferA;
   MatrixGuardBuffer<int8_t> BufferQuantAData;
   MatrixGuardBuffer<float> BufferQuantAScale;
   MatrixGuardBuffer<float> BufferB;
@@ -54,7 +58,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   void CallGemm(size_t M,
                 size_t N,
                 size_t K,
-                const MLFp16* A,
+                const AType* A,
                 size_t lda,
                 const void* /*QuantBData*/,
                 const void* PackedQuantBDataWorkspace,
@@ -67,7 +71,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                 MLAS_THREADPOOL* Threadpool) {
     MLAS_SQNBIT_GEMM_DATA_PARAMS params;
-    params.A = reinterpret_cast<const MLAS_FP16*>(A);
+    params.A = A;
     params.lda = lda;
     params.Bias = Bias;
     params.C = C;
@@ -82,16 +86,20 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
 
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
+    if constexpr (std::is_same<AType, MLFp16>::value) {
+      MlasSQNBitGemmBatch<MLAS_FP16>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
+    } else {
+      MlasSQNBitGemmBatch<AType>(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
+    }
   }
 
-  void QuantizeA(size_t M, size_t K, const MLFp16* A, int8_t* QuantAData, float* QuantAScale) {
+  void QuantizeA(size_t M, size_t K, const AType* A, int8_t* QuantAData, float* QuantAScale) {
     const size_t BlockCountK = (K + BlkLen - 1) / BlkLen;
     const size_t lda = K;
     for (size_t m = 0; m < M; ++m) {
       for (size_t k = 0, k_blk = 0; k < K; k += BlkLen, ++k_blk) {
         const size_t local_blk_len = std::min(K - k, BlkLen);
-        MLFp16 blk_a[BlkLen]{};
+        AType blk_a[BlkLen]{};
         std::copy_n(A + m * lda + k, local_blk_len, blk_a);
 
         float amax = 0.0f;  // max of absolute values of A block
@@ -118,10 +126,11 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
   }
 
+  template <typename AType>
   void CallReferenceGemm_CompInt8(size_t M,
                                   size_t N,
                                   size_t K,
-                                  const MLFp16* A,
+                                  const AType* A,
                                   const uint8_t* QuantBData,
                                   const float* QuantBScale,
                                   const uint8_t* QuantBZeroPoint,
@@ -168,10 +177,11 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
   }
 
+  template <typename AType>
   void CallReferenceGemm_CompFp32(size_t M,
                                   size_t N,
                                   size_t K,
-                                  const MLFp16* A,
+                                  const AType* A,
                                   const uint8_t* QuantBData,
                                   const float* QuantBScale,
                                   const uint8_t* QuantBZeroPoint,
@@ -185,7 +195,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
     for (size_t m = 0; m < M; m++) {
       for (size_t n = 0; n < N; n++) {
-        const MLFp16* a = A + m * K;
+        const AType* a = A + m * K;
         const float* b = DequantizedBData + n * K;
         float* c = C + (m * N) + n;
 
@@ -206,7 +216,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
             bool WithThreadpool, bool Symmetric, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
-    const MLFp16* A = BufferA.GetBuffer(K * M);
+    const AType* A = BufferA.GetBuffer(K * M);
 
     const float* B = BufferB.GetBuffer(N * K);
 
@@ -322,7 +332,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   static const char* GetTestSuiteName() {
     static std::string suite_name = std::string("SQNBitGemm") +
                                     "BlkBitWidth" + std::to_string(BlkBitWidth) +
-                                    "BlkLen" + std::to_string(BlkLen);
+                                    "BlkLen" + std::to_string(BlkLen) +
+                                    "AType" + std::string(std::is_same<AType, float>::value ? "Fp32" : "Fp16");
     return suite_name.c_str();
   }
 };
@@ -330,8 +341,8 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 //
 // Short Execute() test helper to register each test separately by all parameters.
 //
-template <size_t BlkBitWidth, size_t BlkLen>
-class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>> {
+template <typename AType, size_t BlkBitWidth, size_t BlkLen>
+class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<AType, BlkBitWidth, BlkLen>> {
  public:
   explicit SQNBitGemmShortExecuteTest(size_t M, size_t N, size_t K,
                                       MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
@@ -346,7 +357,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   }
 
   void TestBody() override {
-    MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>::mlas_tester->Test(
+    MlasTestFixture<MlasSQNBitGemmTest<AType, BlkBitWidth, BlkLen>>::mlas_tester->Test(
         M_, N_, K_, ComputeType_, WithThreadpool_, Symmetric_, WithBias_);
   }
 
@@ -361,18 +372,19 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
          << "/isSymmetric" << Symmetric
          << "/M" << M << "xN" << N << "xK" << K
          << "/hasBias" << WithBias
+         << "/AType" << (std::is_same<AType, float>::value ? "Fp32" : "Fp16")
          << "/computeType" << ComputeTypeName(ComputeType);
       auto test_name = ss.str();
 
       testing::RegisterTest(
-          MlasSQNBitGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
+          MlasSQNBitGemmTest<AType, BlkBitWidth, BlkLen>::GetTestSuiteName(),
           test_name.c_str(),
           nullptr,
           test_name.c_str(),
           __FILE__,
           __LINE__,
           // Important to use the fixture type as the return type here.
-          [=]() -> MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>* {
+          [=]() -> MlasTestFixture<MlasSQNBitGemmTest<AType, BlkBitWidth, BlkLen>>* {
             return new SQNBitGemmShortExecuteTest(
                 M, N, K, ComputeType, WithThreadpool, Symmetric, WithBias);
           });
@@ -430,14 +442,15 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   bool WithThreadpool_, Symmetric_, WithBias_;
 };
 
+template <typename AType>
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
 
-  count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<AType, 4, 16>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<AType, 4, 32>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<AType, 4, 64>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<AType, 4, 128>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<AType, 4, 256>::RegisterShortExecuteTests();
 
   return count;
 }
@@ -445,7 +458,9 @@ static size_t SQNBitGemmRegisterAllShortExecuteTests() {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
-        return SQNBitGemmRegisterAllShortExecuteTests();
+        // using MLAS_FP16 = onnxruntime::MLFloat16;
+        return SQNBitGemmRegisterAllShortExecuteTests<float>() + SQNBitGemmRegisterAllShortExecuteTests<MLFp16>();
+        //return SQNBitGemmRegisterAllShortExecuteTests<onnxruntime::MLFloat16>();
       }
       return 0;
     });
