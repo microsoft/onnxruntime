@@ -43,11 +43,12 @@ TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
 
 template <typename T>
 MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_prop,
+                                                bool has_attention_bias,
                                                 const PackedAttentionParameters& parameters) const {
   MHARunner* fused_runner = nullptr;
 
   bool use_fused_runner = !disable_fused_runner_ &&
-                          parameters.attention_bias_dims.empty() &&
+                          !has_attention_bias &&
                           parameters.hidden_size == parameters.v_hidden_size;
 
   if (!use_fused_runner) {
@@ -211,7 +212,8 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
     ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
         attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
   }
-  parameters.attention_bias_dims = attention_bias_dims;
+  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
   parameters.batch_size = static_cast<int>(batch_size);
   parameters.sequence_length = static_cast<int>(sequence_length);
@@ -250,7 +252,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   auto& device_prop = this->GetDeviceProp();
-  MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
+  MHARunner* fused_runner = this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
 
   bool use_memory_efficient_attention = false;
 #if USE_MEMORY_EFFICIENT_ATTENTION

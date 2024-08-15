@@ -144,8 +144,6 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the attention bias for self attention
   if (attention_bias != nullptr) {
     parameters.attention_bias = const_cast<T1*>(attention_bias->Data<T1>());
-    parameters.broadcast_attention_bias_dim_0 = parameters.attention_bias_dims[0] == 1;
-    parameters.broadcast_attention_bias_dim_1 = parameters.attention_bias_dims[1] == 1;
   }
 
   // Decoder cross-attention

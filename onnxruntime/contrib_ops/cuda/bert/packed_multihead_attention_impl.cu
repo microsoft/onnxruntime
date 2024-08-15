@@ -701,8 +701,11 @@ Status FusedAttentionCutlass(
   p.query = data.no_qkv_workspace ? data.query : data.workspace;
   p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
   p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
+
   p.attn_bias = data.attention_bias;
-  p.attn_bias_dims = parameters.attention_bias_dims;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
   p.output = data.output;
   p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
@@ -788,14 +791,12 @@ Status UnfusedAttention(
                                                sequence_length);
   T* attention_score = scaled_qk + (bytes / element_size);
 
-  bool broadcast_attn_bias_dim_0 = parameters.attention_bias_dims.size() > 0 && parameters.attention_bias_dims[0] == 1;
-  bool broadcast_attn_bias_dim_1 = parameters.attention_bias_dims.size() > 1 && parameters.attention_bias_dims[1] == 1;
   // Apply softmax and store result R to attention_score: BxNxSxS
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scaled_qk,
       data.attention_bias,
-      broadcast_attn_bias_dim_0,
-      broadcast_attn_bias_dim_1,
+      parameters.broadcast_attn_bias_dim_0,
+      parameters.broadcast_attn_bias_dim_1,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,

@@ -156,7 +156,8 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
     ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
         attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
   }
-  parameters.attention_bias_dims = attention_bias_dims;
+  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
   parameters.batch_size = static_cast<int>(batch_size);
   parameters.sequence_length = static_cast<int>(sequence_length);
@@ -216,7 +217,9 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   }
 #endif
 
-  MHARunner* fused_runner = use_flash_attention ? nullptr : this->GetFusedRunner(device_prop, parameters);
+  MHARunner* fused_runner = use_flash_attention
+                                ? nullptr
+                                : this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
 
   bool use_memory_efficient_attention = false;
 

@@ -270,7 +270,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   if (nullptr != attention_bias) {
     data.attention_bias = reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
-    data.attention_bias_dims = attention_bias->Shape().GetDims();
   }
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());

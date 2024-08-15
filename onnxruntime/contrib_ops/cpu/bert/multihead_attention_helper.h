@@ -427,7 +427,8 @@ Status CheckInputs(const T* query,
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
     output_parameters->scale = scale;
-    output_parameters->attention_bias_dims = attention_bias_dims;
+    output_parameters->broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+    output_parameters->broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
     output_parameters->qkv_format = qkv_format;
   }
 

@@ -70,7 +70,6 @@ struct AttentionData {
   const T* past_key = nullptr;
   const T* past_value = nullptr;
   const T* attention_bias = nullptr;
-  gsl::span<const int64_t> attention_bias_dims;
 
   bool has_qkv_workspace = false;
   T* workspace = nullptr;

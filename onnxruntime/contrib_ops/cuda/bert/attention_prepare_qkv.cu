@@ -78,15 +78,21 @@ void DumpInputs(contrib::AttentionParameters& parameters, AttentionData<T>& data
   }
 
   if (data.attention_bias != nullptr) {
-    DUMP_TENSOR_D("attention_bias", data.attention_bias, parameters.attention_bias_dims);
+    DUMP_TENSOR_D("attention_bias", data.attention_bias,
+                  parameters.broadcast_attn_bias_dim_0 ? 1 : batch_size,
+                  parameters.broadcast_attn_bias_dim_1 ? 1 : num_heads,
+                  sequence_length,
+                  parameters.total_sequence_length);
   }
 
   if (data.mask_index != nullptr) {
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
-      DUMP_TENSOR_D("mask", data.mask_index, batch_size, parameters.total_sequence_length);
+      DUMP_TENSOR_D("mask (2D)", data.mask_index, batch_size, parameters.total_sequence_length);
     }
     if (parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) {
-      DUMP_TENSOR_D("mask", data.mask_index, 3 * batch_size + 2, 1);
+      DUMP_TENSOR_D("mask (seqlen_k)", data.mask_index, 1, batch_size);
+      DUMP_TENSOR_D("mask (cu_seqlen_q)", data.mask_index + batch_size, 1, batch_size + 1);
+      DUMP_TENSOR_D("mask (cu_seqlen_k)", data.mask_index + 2 * batch_size + 1, 1, batch_size + 1);
     }
   }
 }

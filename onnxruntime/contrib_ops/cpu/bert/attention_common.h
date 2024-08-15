@@ -69,7 +69,8 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  gsl::span<const int64_t> attention_bias_dims;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   float mask_filter_value;
   float scale;
   bool use_tf32;
@@ -89,7 +90,8 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  gsl::span<const int64_t> attention_bias_dims;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   bool use_tf32;
 };
 

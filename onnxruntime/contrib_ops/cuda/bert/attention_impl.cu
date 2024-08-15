@@ -361,8 +361,11 @@ Status EfficientAttention(
   p.query = data.q;
   p.key = data.k;
   p.value = data.v;
+
   p.attn_bias = (nullptr == data.attention_bias) ? nullptr : data.attention_bias;
-  p.attn_bias_dims = data.attention_bias_dims;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
   p.output = data.output;
   p.is_kv_bsnh = data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(parameters.v_head_size, sizeof(T) == sizeof(float))
@@ -438,8 +441,8 @@ Status UnfusedAttention(
                                                sequence_length, total_sequence_length);
   T* scratch2 = data.scratch + (bytes / element_size);
 
-  bool broadcast_attn_bias_dim_0 = parameters.attention_bias_dims.size() > 0 && parameters.attention_bias_dims[0] == 1;
-  bool broadcast_attn_bias_dim_1 = parameters.attention_bias_dims.size() > 1 && parameters.attention_bias_dims[1] == 1;
+  const bool broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  const bool broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
 
   // Apply softmax and store result R to scratch2: BxNxSxT
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask

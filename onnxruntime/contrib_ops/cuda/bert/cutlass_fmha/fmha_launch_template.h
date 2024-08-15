@@ -210,15 +210,11 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     }
 
     if (params.attn_bias != nullptr) {
-      auto& bias_dims = params.attn_bias_dims;
-      ORT_ENFORCE(bias_dims.size() == 4 &&
-                  (bias_dims[0] == 1 || bias_dims[0] == params.batch_size) &&
-                  (bias_dims[1] == 1 || bias_dims[1] == params.num_heads) &&
-                  bias_dims[2] == params.sequence_length &&
-                  bias_dims[3] == params.kv_sequence_length);
-      p.bias_strideH = (bias_dims[1] == 1) ? 0 : p.num_queries * p.num_keys;
+      p.bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : p.num_queries * p.num_keys;
       p.bias_strideM = p.num_keys;
-      p.bias_strideB = (bias_dims[0] == 1) ? 0 : (bias_dims[1] * p.num_queries * p.num_keys);
+      p.bias_strideB = params.broadcast_attn_bias_dim_0
+                           ? 0
+                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * p.num_queries * p.num_keys);
     } else {
       p.bias_strideH = 0;
       p.bias_strideM = 0;

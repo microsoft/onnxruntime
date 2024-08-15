@@ -23,7 +23,9 @@ class TrtFusedAttention : public CudaKernel {
   TrtFusedAttention(const OpKernelInfo& info);
 
  protected:
-  MHARunner* GetFusedRunner(const cudaDeviceProp& device_prop, const PackedAttentionParameters& parameters) const;
+  MHARunner* GetFusedRunner(const cudaDeviceProp& device_prop,
+                            bool has_attention_bias,
+                            const PackedAttentionParameters& parameters) const;
 
  protected:
   const AttentionKernelOptions* kernel_options_;

@@ -36,7 +36,8 @@ struct MemoryEfficientAttentionParams {
   const void* key;        // [B, L, N, H], where L is kv_sequence_length
   const void* value;      // [B, L, N, H_v]
   const void* attn_bias;  // [B or 1, N or 1, S, L] or null
-  gsl::span<const int64_t> attn_bias_dims;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
 
   void* output;     // [B, S, N, H_v]
   void* workspace;  // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
