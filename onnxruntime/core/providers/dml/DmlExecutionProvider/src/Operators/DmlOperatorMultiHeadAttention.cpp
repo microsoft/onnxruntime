@@ -248,6 +248,7 @@ public:
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlAttentionBiasIndex].GetDimensionCount() == 4);
 
             auto attentionBiasSizes = m_inputTensorDescs[dmlAttentionBiasIndex].GetSizes();
+            // TODO: support broadcast of attention bias on the first and second dimensions.
             ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[0] == batchSize);
             ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[1] == numHeads);
             ML_CHECK_VALID_ARGUMENT(attentionBiasSizes[2] == sequenceLength);

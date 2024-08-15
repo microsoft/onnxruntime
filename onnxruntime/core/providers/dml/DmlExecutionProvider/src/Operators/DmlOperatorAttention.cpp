@@ -74,11 +74,11 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        const uint32_t dmlInputIndex = inputIndex;
-        const uint32_t dmlWeightsIndex = weightsIndex;
-        const uint32_t dmlBiasIndex = biasIndex;
-        const uint32_t dmlMaskIndex = maskIndex;
-        const uint32_t dmlAttentionBiasIndex = attentionBiasIndex;
+        constexpr uint32_t dmlInputIndex = inputIndex;
+        constexpr uint32_t dmlWeightsIndex = weightsIndex;
+        constexpr uint32_t dmlBiasIndex = biasIndex;
+        constexpr uint32_t dmlMaskIndex = maskIndex;
+        constexpr uint32_t dmlAttentionBiasIndex = attentionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
@@ -192,6 +192,7 @@ public:
         {
             auto attentionBiasTensorShape = m_inputTensorDescs[dmlAttentionBiasIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape.size() == 4);
+            // TODO: support broadcast of attention bias on the first and second dimensions.
             ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[0] == inputTensorShape[0]);
             ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[1] == numHeads);
             ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[2] == inputTensorShape[1]);
