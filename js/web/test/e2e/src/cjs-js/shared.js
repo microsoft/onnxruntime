@@ -5,7 +5,7 @@
 
 // Model data for "test_abs/model.onnx"
 const testModelData =
-    'CAcSDGJhY2tlbmQtdGVzdDpJCgsKAXgSAXkiA0FicxIIdGVzdF9hYnNaFwoBeBISChAIARIMCgIIAwoCCAQKAggFYhcKAXkSEgoQCAESDAoCCAMKAggECgIIBUIECgAQDQ==';
+  'CAcSDGJhY2tlbmQtdGVzdDpJCgsKAXgSAXkiA0FicxIIdGVzdF9hYnNaFwoBeBISChAIARIMCgIIAwoCCAQKAggFYhcKAXkSEgoQCAESDAoCCAMKAggECgIIBUIECgAQDQ==';
 
 const base64StringToUint8Array = (base64String) => {
   const charArray = atob(base64String);
@@ -31,10 +31,10 @@ const testInferenceAndValidate = async (ort, options) => {
   const session = await ort.InferenceSession.create(model, options);
 
   // test data: [0, -1, 2, -3, 4, -5, 6, -7, 8, -9, 10, -11, ... 58, -59]
-  const inputData = [...Array(60).keys()].map(i => i % 2 === 0 ? i : -i);
-  const expectedOutputData = inputData.map(i => Math.abs(i));
+  const inputData = [...Array(60).keys()].map((i) => (i % 2 === 0 ? i : -i));
+  const expectedOutputData = inputData.map((i) => Math.abs(i));
 
-  const fetches = await session.run({x: new ort.Tensor('float32', inputData, [3, 4, 5])});
+  const fetches = await session.run({ x: new ort.Tensor('float32', inputData, [3, 4, 5]) });
 
   const y = fetches.y;
 
@@ -48,5 +48,5 @@ const testInferenceAndValidate = async (ort, options) => {
 
 module.exports = {
   setupMultipleThreads,
-  testInferenceAndValidate
+  testInferenceAndValidate,
 };

@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     name: Generate Python API docs
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-CPU"]
     steps:
       - uses: actions/checkout@v4
       - name: Install tools

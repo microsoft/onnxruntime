@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo } from '../types';
 
-import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper } from './common';
 
 export interface FormatAttributes {
-  readonly format: 'NHWC'|'NCHW';
+  readonly format: 'NHWC' | 'NCHW';
 }
 
 export interface DepthToSpaceAttributes extends FormatAttributes, AttributeWithCacheKey {
@@ -47,13 +47,15 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
   const isDCRmode = attributes.mode === 'DCR';
   if (isChannelLast) {
     [n, h, w, c] = inputTensor.dims;
-    shape = isDCRmode ? [n, h, w, blocksize, blocksize, c / (blocksize ** 2)] :
-                        [n, h, w, c / (blocksize ** 2), blocksize, blocksize];
+    shape = isDCRmode
+      ? [n, h, w, blocksize, blocksize, c / blocksize ** 2]
+      : [n, h, w, c / blocksize ** 2, blocksize, blocksize];
     perm = isDCRmode ? [0, 1, 3, 2, 4, 5] : [0, 1, 4, 2, 5, 3];
   } else {
     [n, h, w, c] = [inputTensor.dims[0], inputTensor.dims[2], inputTensor.dims[3], inputTensor.dims[1]];
-    shape = isDCRmode ? [n, blocksize, blocksize, c / (blocksize ** 2), h, w] :
-                        [n, c / (blocksize ** 2), blocksize, blocksize, h, w];
+    shape = isDCRmode
+      ? [n, blocksize, blocksize, c / blocksize ** 2, h, w]
+      : [n, c / blocksize ** 2, blocksize, blocksize, h, w];
     perm = isDCRmode ? [0, 3, 4, 1, 5, 2] : [0, 1, 4, 2, 5, 3];
   }
   const reshapedInputTensor = inputTensor.reshape(shape);
@@ -79,18 +81,24 @@ const createDepthToSpaceProgramInfo = (inputTensor: TensorView, attributes: Dept
 
   return {
     name: 'DepthToSpace',
-    shaderCache: {hint: `${inputTensor.dims};${attributes.blocksize};${attributes.mode}`, inputDependencies: ['rank']},
+    shaderCache: {
+      hint: `${inputTensor.dims};${attributes.blocksize};${attributes.mode}`,
+      inputDependencies: ['rank'],
+    },
     getRunData: (inputs) => {
-      const outputShape = isChannelLast ? [n, h * blocksize, w * blocksize, c / (blocksize ** 2)] :
-                                          [n, c / (blocksize ** 2), h * blocksize, w * blocksize];
+      const outputShape = isChannelLast
+        ? [n, h * blocksize, w * blocksize, c / blocksize ** 2]
+        : [n, c / blocksize ** 2, h * blocksize, w * blocksize];
       const outputSize = ShapeUtil.size(outputShape);
       const shapeBeforePerm = reshapedInputTensor.dims;
       const shapeAfterPerm = ShapeUtil.sortBasedOnPerm(shapeBeforePerm, perm);
       return {
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-        dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-        programUniforms:
-            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(shapeBeforePerm, shapeAfterPerm)],
+        outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+        dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+        programUniforms: [
+          { type: DataType.uint32, data: outputSize },
+          ...createTensorShapeVariables(shapeBeforePerm, shapeAfterPerm),
+        ],
       };
     },
     getShaderSource,
@@ -103,8 +111,8 @@ export const depthToSpace = (context: ComputeContext, attributes: DepthToSpaceAt
 };
 
 export const parseDepthToSpaceAttributes = (attributes: Record<string, unknown>): DepthToSpaceAttributes =>
-    createAttributeWithCacheKey({
-      blocksize: attributes.blocksize as number,
-      mode: attributes.mode as string,
-      format: attributes.format as 'NHWC' | 'NCHW'
-    });
+  createAttributeWithCacheKey({
+    blocksize: attributes.blocksize as number,
+    mode: attributes.mode as string,
+    format: attributes.format as 'NHWC' | 'NCHW',
+  });
