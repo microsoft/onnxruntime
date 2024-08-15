@@ -106,7 +106,8 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    memset(y->MutableDataRaw(), 0, y->SizeInBytes());
+    auto output_span = y->MutableDataAsSpan<T>();
+    std::fill(output_span.begin(), output_span.end(), T{});
     return Status::OK();
   }
 
