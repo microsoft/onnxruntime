@@ -3,10 +3,10 @@
 
 import minimist from 'minimist';
 import npmlog from 'npmlog';
-import {Env, InferenceSession} from 'onnxruntime-common';
+import { Env, InferenceSession } from 'onnxruntime-common';
 
-import {Logger} from '../lib/onnxjs/instrument';
-import {Test} from '../test/test-types';
+import { Logger } from '../lib/onnxjs/instrument';
+import { Test } from '../test/test-types';
 
 /* eslint-disable max-len */
 const HELP_MESSAGE = `
@@ -129,11 +129,11 @@ Examples:
 /* eslint-enable max-len */
 
 export declare namespace TestRunnerCliArgs {
-  type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'webnn';
-  type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
-  type BundleMode = 'dev'|'perf';
-  type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
+  type Mode = 'suite0' | 'suite1' | 'model' | 'unittest' | 'op';
+  type Backend = 'cpu' | 'webgl' | 'webgpu' | 'wasm' | 'onnxruntime' | 'webnn';
+  type Environment = 'chrome' | 'edge' | 'firefox' | 'electron' | 'safari' | 'node' | 'bs';
+  type BundleMode = 'dev' | 'perf';
+  type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location';
 }
 
 export interface TestRunnerCliArgs {
@@ -187,7 +187,7 @@ export interface TestRunnerCliArgs {
   /**
    * Specify graph optimization level
    */
-  graphOptimizationLevel: 'disabled'|'basic'|'extended'|'all';
+  graphOptimizationLevel: 'disabled' | 'basic' | 'extended' | 'all';
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
@@ -200,10 +200,9 @@ export interface TestRunnerCliArgs {
   chromiumFlags: string[];
 }
 
-
 function parseBooleanArg(arg: unknown, defaultValue: boolean): boolean;
-function parseBooleanArg(arg: unknown): boolean|undefined;
-function parseBooleanArg(arg: unknown, defaultValue?: boolean): boolean|undefined {
+function parseBooleanArg(arg: unknown): boolean | undefined;
+function parseBooleanArg(arg: unknown, defaultValue?: boolean): boolean | undefined {
   if (typeof arg === 'undefined') {
     return defaultValue;
   }
@@ -229,7 +228,7 @@ function parseBooleanArg(arg: unknown, defaultValue?: boolean): boolean|undefine
 }
 
 function parseLogLevel<T>(arg: T) {
-  let v: string[]|boolean;
+  let v: string[] | boolean;
   if (typeof arg === 'string') {
     v = arg.split(',');
   } else if (Array.isArray(arg)) {
@@ -244,61 +243,61 @@ function parseLogLevel<T>(arg: T) {
 }
 
 function parseLogConfig(args: minimist.ParsedArgs) {
-  const config: Array<{category: string; config: Logger.Config}> = [];
+  const config: Array<{ category: string; config: Logger.Config }> = [];
   const verbose = parseLogLevel(args['log-verbose']);
   const info = parseLogLevel(args['log-info']);
   const warning = parseLogLevel(args['log-warning']);
   const error = parseLogLevel(args['log-error']);
 
   if (typeof error === 'boolean' && error) {
-    config.push({category: '*', config: {minimalSeverity: 'error'}});
+    config.push({ category: '*', config: { minimalSeverity: 'error' } });
   } else if (typeof warning === 'boolean' && warning) {
-    config.push({category: '*', config: {minimalSeverity: 'warning'}});
+    config.push({ category: '*', config: { minimalSeverity: 'warning' } });
   } else if (typeof info === 'boolean' && info) {
-    config.push({category: '*', config: {minimalSeverity: 'info'}});
+    config.push({ category: '*', config: { minimalSeverity: 'info' } });
   } else if (typeof verbose === 'boolean' && verbose) {
-    config.push({category: '*', config: {minimalSeverity: 'verbose'}});
+    config.push({ category: '*', config: { minimalSeverity: 'verbose' } });
   }
 
   if (Array.isArray(error)) {
-    config.push(...error.map(i => ({category: i, config: {minimalSeverity: 'error' as Logger.Severity}})));
+    config.push(...error.map((i) => ({ category: i, config: { minimalSeverity: 'error' as Logger.Severity } })));
   }
   if (Array.isArray(warning)) {
-    config.push(...warning.map(i => ({category: i, config: {minimalSeverity: 'warning' as Logger.Severity}})));
+    config.push(...warning.map((i) => ({ category: i, config: { minimalSeverity: 'warning' as Logger.Severity } })));
   }
   if (Array.isArray(info)) {
-    config.push(...info.map(i => ({category: i, config: {minimalSeverity: 'info' as Logger.Severity}})));
+    config.push(...info.map((i) => ({ category: i, config: { minimalSeverity: 'info' as Logger.Severity } })));
   }
   if (Array.isArray(verbose)) {
-    config.push(...verbose.map(i => ({category: i, config: {minimalSeverity: 'verbose' as Logger.Severity}})));
+    config.push(...verbose.map((i) => ({ category: i, config: { minimalSeverity: 'verbose' as Logger.Severity } })));
   }
 
   return config;
 }
 
 function parseCpuOptions(_args: minimist.ParsedArgs): InferenceSession.CpuExecutionProviderOption {
-  return {name: 'cpu'};
+  return { name: 'cpu' };
 }
 
 function parseWasmOptions(_args: minimist.ParsedArgs): InferenceSession.WebAssemblyExecutionProviderOption {
-  return {name: 'wasm'};
+  return { name: 'wasm' };
 }
 
 function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
   const wasm = args.wasm || {};
-  const numThreads = wasm.numThreads = wasm.numThreads ?? (args.x ?? args['wasm-number-threads']);
+  const numThreads = (wasm.numThreads = wasm.numThreads ?? args.x ?? args['wasm-number-threads']);
   if (typeof numThreads !== 'undefined' && typeof numThreads !== 'number') {
     throw new Error('Flag "wasm.numThreads"/"x"/"wasm-number-threads" must be a number value');
   }
-  const initTimeout = wasm.initTimeout = wasm.initTimeout ?? args['wasm-init-timeout'];
+  const initTimeout = (wasm.initTimeout = wasm.initTimeout ?? args['wasm-init-timeout']);
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
     throw new Error('Flag "wasm.initTimeout"/"wasm-init-timeout" must be a number value');
   }
-  const simd = wasm.simd = parseBooleanArg(wasm.simd ?? args['wasm-enable-simd']);
+  const simd = (wasm.simd = parseBooleanArg(wasm.simd ?? args['wasm-enable-simd']));
   if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
     throw new Error('Flag "wasm.simd"/"wasm-enable-simd" must be a boolean value');
   }
-  const proxy = wasm.proxy = parseBooleanArg(wasm.proxy ?? args['wasm-enable-proxy']);
+  const proxy = (wasm.proxy = parseBooleanArg(wasm.proxy ?? args['wasm-enable-proxy']));
   if (typeof proxy !== 'undefined' && typeof proxy !== 'boolean') {
     throw new Error('Flag "wasm.proxy"/"wasm-enable-proxy" must be a boolean value');
   }
@@ -306,28 +305,29 @@ function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
-  return {name: 'webgl'};
+  return { name: 'webgl' };
 }
 
 function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
   const webgl = args.webgl || {};
-  const contextId = webgl.contextId = webgl.contextId ?? args['webgl-context-id'];
+  const contextId = (webgl.contextId = webgl.contextId ?? args['webgl-context-id']);
   if (contextId !== undefined && contextId !== 'webgl' && contextId !== 'webgl2') {
     throw new Error('Flag "webgl.contextId"/"webgl-context-id" is invalid');
   }
-  const matmulMaxBatchSize = webgl.matmulMaxBatchSize = webgl.matmulMaxBatchSize ?? args['webgl-matmul-max-batch-size'];
+  const matmulMaxBatchSize = (webgl.matmulMaxBatchSize =
+    webgl.matmulMaxBatchSize ?? args['webgl-matmul-max-batch-size']);
   if (matmulMaxBatchSize !== undefined && typeof matmulMaxBatchSize !== 'number') {
     throw new Error('Flag "webgl.matmulMaxBatchSize"/"webgl-matmul-max-batch-size" must be a number value');
   }
-  const textureCacheMode = webgl.textureCacheMode = webgl.textureCacheMode ?? args['webgl-texture-cache-mode'];
+  const textureCacheMode = (webgl.textureCacheMode = webgl.textureCacheMode ?? args['webgl-texture-cache-mode']);
   if (textureCacheMode !== undefined && textureCacheMode !== 'initializerOnly' && textureCacheMode !== 'full') {
     throw new Error('Flag "webgl.textureCacheMode"/"webgl-texture-cache-mode" is invalid');
   }
-  const pack = webgl.pack = parseBooleanArg(webgl.pack ?? args['webgl-texture-pack-mode']);
+  const pack = (webgl.pack = parseBooleanArg(webgl.pack ?? args['webgl-texture-pack-mode']));
   if (pack !== undefined && typeof pack !== 'boolean') {
     throw new Error('Flag "webgl.pack"/"webgl-texture-pack-mode" is invalid');
   }
-  const async = webgl.async = parseBooleanArg(webgl.async ?? args['webgl-async']);
+  const async = (webgl.async = parseBooleanArg(webgl.async ?? args['webgl-async']));
   if (async !== undefined && typeof async !== 'boolean') {
     throw new Error('Flag "webgl.async"/"webgl-async" is invalid');
   }
@@ -336,13 +336,14 @@ function parseWebglFlags(args: minimist.ParsedArgs): Partial<Env.WebGLFlags> {
 
 function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   const webgpu = args.webgpu || {};
-  const profilingMode = (webgpu.profiling = webgpu.profiling ?? {}).mode =
-      webgpu?.profiling?.mode ?? webgpu.profilingMode ?? args['webgpu-profiling-mode'];
+  const profilingMode = ((webgpu.profiling = webgpu.profiling ?? {}).mode =
+    webgpu?.profiling?.mode ?? webgpu.profilingMode ?? args['webgpu-profiling-mode']);
   if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
     throw new Error('Flag "webgpu-profiling-mode" is invalid');
   }
-  const validateInputContent = webgpu.validateInputContent =
-      parseBooleanArg(webgpu.validateInputContent ?? args['webgpu-validate-input-content']);
+  const validateInputContent = (webgpu.validateInputContent = parseBooleanArg(
+    webgpu.validateInputContent ?? args['webgpu-validate-input-content'],
+  ));
   if (validateInputContent !== undefined && typeof validateInputContent !== 'boolean') {
     throw new Error('Flag "webgpu-validate-input-content" is invalid');
   }
@@ -354,14 +355,14 @@ function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExe
   if (deviceType !== undefined && !['cpu', 'gpu', 'npu'].includes(deviceType)) {
     throw new Error('Flag "webnn-device-type" is invalid');
   }
-  return {name: 'webnn', deviceType};
+  return { name: 'webnn', deviceType };
 }
 
 function parseGlobalEnvFlags(args: minimist.ParsedArgs) {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
   const webgpu = parseWebgpuFlags(args);
-  return {webgl, wasm, webgpu};
+  return { webgl, wasm, webgpu };
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -383,7 +384,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   // Option: -e=<...>, --env=<...>
   const envArg = args.env || args.e;
-  const env = (typeof envArg !== 'string') ? 'chrome' : envArg;
+  const env = typeof envArg !== 'string' ? 'chrome' : envArg;
   if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs'].indexOf(env) === -1) {
     throw new Error(`not supported env ${env}`);
   }
@@ -398,8 +399,12 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
-  const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
-                                                      backendArgs.split(',');
+  const backend =
+    typeof backendArgs !== 'string'
+      ? env === 'node'
+        ? nodejsBackends
+        : defaultBrowserBackends
+      : backendArgs.split(',');
   for (const b of backend) {
     if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
       throw new Error(`backend ${b} is not supported in env ${env}`);
@@ -415,12 +420,12 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   let logLevel = logConfig[0]?.config.minimalSeverity;
 
   // Option: -p, --profile
-  const profile = (args.profile || args.p) ? true : false;
+  const profile = args.profile || args.p ? true : false;
   if (profile) {
-    logConfig.push({category: 'Profiler.session', config: {minimalSeverity: 'verbose'}});
-    logConfig.push({category: 'Profiler.node', config: {minimalSeverity: 'verbose'}});
-    logConfig.push({category: 'Profiler.op', config: {minimalSeverity: 'verbose'}});
-    logConfig.push({category: 'Profiler.backend', config: {minimalSeverity: 'verbose'}});
+    logConfig.push({ category: 'Profiler.session', config: { minimalSeverity: 'verbose' } });
+    logConfig.push({ category: 'Profiler.node', config: { minimalSeverity: 'verbose' } });
+    logConfig.push({ category: 'Profiler.op', config: { minimalSeverity: 'verbose' } });
+    logConfig.push({ category: 'Profiler.backend', config: { minimalSeverity: 'verbose' } });
     logLevel = 'verbose';
   }
 
@@ -431,25 +436,25 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // --wasm.<...>=<...>
   // --webgl.<...>=<...>
   // --webgpu.<...>=<...>
-  const globalEnvFlags = {...parseGlobalEnvFlags(args), debug, trace, logLevel};
+  const globalEnvFlags = { ...parseGlobalEnvFlags(args), debug, trace, logLevel };
 
   // Option: -P[=<...>], --perf[=<...>]
-  const perfArg = (args.perf || args.P);
+  const perfArg = args.perf || args.P;
   const perf = perfArg ? true : false;
-  const times = (typeof perfArg === 'number') ? perfArg : 10;
+  const times = typeof perfArg === 'number' ? perfArg : 10;
   if (debug && perf) {
     throw new Error('Flag "perf" cannot be used together with flag "debug".');
   }
-  if (perf && (mode !== 'model')) {
+  if (perf && mode !== 'model') {
     throw new Error('Flag "perf" can only be used in mode "model".');
   }
   if (perf) {
-    logConfig.push({category: 'TestRunner.Perf', config: {minimalSeverity: 'verbose'}});
+    logConfig.push({ category: 'TestRunner.Perf', config: { minimalSeverity: 'verbose' } });
   }
 
   // Option: -i=<...>, --io-binding=<...>
   const ioBindingArg = args['io-binding'] || args.i;
-  const ioBindingMode = (typeof ioBindingArg !== 'string') ? 'none' : ioBindingArg;
+  const ioBindingMode = typeof ioBindingArg !== 'string' ? 'none' : ioBindingArg;
   if (['none', 'gpu-tensor', 'gpu-location'].indexOf(ioBindingMode) === -1) {
     throw new Error(`not supported io binding mode ${ioBindingMode}`);
   }
@@ -462,8 +467,10 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   // Option: -o, --graph-optimization-level
   const graphOptimizationLevel = args['graph-optimization-level'] || args.o || 'all';
-  if (typeof graphOptimizationLevel !== 'string' ||
-      ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1) {
+  if (
+    typeof graphOptimizationLevel !== 'string' ||
+    ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1
+  ) {
     throw new Error(`graph optimization level is invalid: ${graphOptimizationLevel}`);
   }
 
@@ -491,7 +498,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   } else if (!Array.isArray(chromiumFlags)) {
     throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
   }
-
 
   npmlog.verbose('TestRunnerCli.Init', ` Mode:              ${mode}`);
   npmlog.verbose('TestRunnerCli.Init', ` Env:               ${env}`);
@@ -521,6 +527,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     globalEnvFlags,
     noSandbox,
     userDataDir,
-    chromiumFlags
+    chromiumFlags,
   };
 }

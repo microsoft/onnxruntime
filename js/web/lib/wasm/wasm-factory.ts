@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from 'onnxruntime-common';
+import { Env } from 'onnxruntime-common';
 
-import type {OrtWasmModule} from './wasm-types';
-import {importWasmModule} from './wasm-utils-import';
+import type { OrtWasmModule } from './wasm-types';
+import { importWasmModule } from './wasm-utils-import';
 
-let wasm: OrtWasmModule|undefined;
+let wasm: OrtWasmModule | undefined;
 let initialized = false;
 let initializing = false;
 let aborted = false;
@@ -26,10 +26,12 @@ const isMultiThreadSupported = (): boolean => {
 
     // Test for WebAssembly threads capability (for both browsers and Node.js)
     // This typed array is a WebAssembly program containing threaded instructions.
-    return WebAssembly.validate(new Uint8Array([
-      0, 97, 115, 109, 1, 0,  0,  0, 1, 4, 1,  96, 0,   0,  3, 2, 1,  0, 5,
-      4, 1,  3,   1,   1, 10, 11, 1, 9, 0, 65, 0,  254, 16, 2, 0, 26, 11
-    ]));
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 5, 4, 1, 3, 1, 1, 10, 11, 1, 9, 0, 65, 0, 254, 16,
+        2, 0, 26, 11,
+      ]),
+    );
   } catch (e) {
     return false;
   }
@@ -51,24 +53,26 @@ const isSimdSupported = (): boolean => {
     //           (i32.const 0))
     //         (v128.const i32x4 0x00000000 0x00000000 0x00000000 0x00000000)))))
 
-    return WebAssembly.validate(new Uint8Array([
-      0,   97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 30, 1,   28,  0, 65, 0,
-      253, 15, 253, 12,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0,  0,  253, 186, 1, 26, 11
-    ]));
+    return WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 30, 1, 28, 0, 65, 0, 253, 15, 253, 12, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 186, 1, 26, 11,
+      ]),
+    );
   } catch (e) {
     return false;
   }
 };
 
-export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
+export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
   }
   if (initializing) {
-    throw new Error('multiple calls to \'initializeWebAssembly()\' detected.');
+    throw new Error("multiple calls to 'initializeWebAssembly()' detected.");
   }
   if (aborted) {
-    throw new Error('previous call to \'initializeWebAssembly()\' failed.');
+    throw new Error("previous call to 'initializeWebAssembly()' failed.");
   }
 
   initializing = true;
@@ -88,15 +92,17 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
     if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
       // eslint-disable-next-line no-console
       console.warn(
-          'env.wasm.numThreads is set to ' + numThreads +
+        'env.wasm.numThreads is set to ' +
+          numThreads +
           ', but this will not work unless you enable crossOriginIsolated mode. ' +
-          'See https://web.dev/cross-origin-isolation-guide/ for more info.');
+          'See https://web.dev/cross-origin-isolation-guide/ for more info.',
+      );
     }
 
     // eslint-disable-next-line no-console
     console.warn(
-        'WebAssembly multi-threading is not supported in the current environment. ' +
-        'Falling back to single-threading.');
+      'WebAssembly multi-threading is not supported in the current environment. ' + 'Falling back to single-threading.',
+    );
 
     // set flags.numThreads to 1 so that OrtInit() will not create a global thread pool.
     flags.numThreads = numThreads = 1;
@@ -110,7 +116,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
   const wasmBinaryOverride = flags.wasmBinary;
 
-  const [objectUrl, ortWasmFactory] = (await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1));
+  const [objectUrl, ortWasmFactory] = await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1);
 
   let isTimeout = false;
 
@@ -118,42 +124,45 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   // promise for timeout
   if (timeout > 0) {
-    tasks.push(new Promise((resolve) => {
-      setTimeout(() => {
-        isTimeout = true;
-        resolve();
-      }, timeout);
-    }));
+    tasks.push(
+      new Promise((resolve) => {
+        setTimeout(() => {
+          isTimeout = true;
+          resolve();
+        }, timeout);
+      }),
+    );
   }
 
   // promise for module initialization
-  tasks.push(new Promise((resolve, reject) => {
-    const config: Partial<OrtWasmModule> = {
-      /**
-       * The number of threads. WebAssembly will create (Module.numThreads - 1) workers. If it is 1, no worker will be
-       * created.
-       */
-      numThreads,
-    };
+  tasks.push(
+    new Promise((resolve, reject) => {
+      const config: Partial<OrtWasmModule> = {
+        /**
+         * The number of threads. WebAssembly will create (Module.numThreads - 1) workers. If it is 1, no worker will be
+         * created.
+         */
+        numThreads,
+      };
 
-    if (wasmBinaryOverride) {
-      /**
-       * Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
-       */
-      config.wasmBinary = wasmBinaryOverride;
-    } else if (wasmPathOverride || wasmPrefixOverride) {
-      /**
-       * A callback function to locate the WebAssembly file. The function should return the full path of the file.
-       *
-       * Since Emscripten 3.1.58, this function is only called for the .wasm file.
-       */
-      config.locateFile = (fileName, scriptDirectory) =>
+      if (wasmBinaryOverride) {
+        /**
+         * Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
+         */
+        config.wasmBinary = wasmBinaryOverride;
+      } else if (wasmPathOverride || wasmPrefixOverride) {
+        /**
+         * A callback function to locate the WebAssembly file. The function should return the full path of the file.
+         *
+         * Since Emscripten 3.1.58, this function is only called for the .wasm file.
+         */
+        config.locateFile = (fileName, scriptDirectory) =>
           wasmPathOverride ?? (wasmPrefixOverride ?? scriptDirectory) + fileName;
-    }
+      }
 
-    ortWasmFactory(config).then(
+      ortWasmFactory(config).then(
         // wasm module initialized successfully
-        module => {
+        (module) => {
           initializing = false;
           initialized = true;
           wasm = module;
@@ -167,8 +176,10 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
           initializing = false;
           aborted = true;
           reject(what);
-        });
-  }));
+        },
+      );
+    }),
+  );
 
   await Promise.race(tasks);
 

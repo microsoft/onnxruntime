@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorFactory} from './tensor-factory.js';
-import {Tensor as TensorImpl} from './tensor-impl.js';
-import {TypedTensorUtils} from './tensor-utils.js';
+import { TensorFactory } from './tensor-factory.js';
+import { Tensor as TensorImpl } from './tensor-impl.js';
+import { TypedTensorUtils } from './tensor-utils.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -74,7 +74,7 @@ export declare namespace Tensor {
     int64: BigInt64Array;
     string: string[];
     bool: Uint8Array;
-    float16: Uint16Array;  // Keep using Uint16Array until we have a concrete solution for float 16.
+    float16: Uint16Array; // Keep using Uint16Array until we have a concrete solution for float 16.
     float64: Float64Array;
     uint32: Uint32Array;
     uint64: BigUint64Array;
@@ -93,7 +93,7 @@ export declare namespace Tensor {
     int64: bigint;
     string: string;
     bool: boolean;
-    float16: number;  // Keep using Uint16Array until we have a concrete solution for float 16.
+    float16: number; // Keep using Uint16Array until we have a concrete solution for float 16.
     float64: number;
     uint32: number;
     uint64: bigint;
@@ -130,17 +130,17 @@ export declare namespace Tensor {
    *
    * for more info see https://github.com/gpuweb/types/issues/127
    */
-  export type GpuBufferType = {size: number; mapState: 'unmapped' | 'pending' | 'mapped'};
+  export type GpuBufferType = { size: number; mapState: 'unmapped' | 'pending' | 'mapped' };
 
   /**
    * supported data types for constructing a tensor from a WebGPU buffer
    */
-  export type GpuBufferDataTypes = 'float32'|'float16'|'int32'|'int64'|'uint32'|'uint8'|'bool';
+  export type GpuBufferDataTypes = 'float32' | 'float16' | 'int32' | 'int64' | 'uint32' | 'uint8' | 'bool';
 
   /**
    * represent where the tensor data is stored
    */
-  export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
+  export type DataLocation = 'none' | 'cpu' | 'cpu-pinned' | 'texture' | 'gpu-buffer';
 
   /**
    * represent the data type of a tensor
@@ -169,8 +169,11 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(type: 'string', data: Tensor.DataTypeMap['string']|readonly string[],
-      dims?: readonly number[]): TypedTensor<'string'>;
+  new (
+    type: 'string',
+    data: Tensor.DataTypeMap['string'] | readonly string[],
+    dims?: readonly number[],
+  ): TypedTensor<'string'>;
 
   /**
    * Construct a new bool tensor object from the given type, data and dims.
@@ -179,7 +182,11 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(type: 'bool', data: Tensor.DataTypeMap['bool']|readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
+  new (
+    type: 'bool',
+    data: Tensor.DataTypeMap['bool'] | readonly boolean[],
+    dims?: readonly number[],
+  ): TypedTensor<'bool'>;
 
   /**
    * Construct a new 64-bit integer typed tensor object from the given type, data and dims.
@@ -188,9 +195,11 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new<T extends 'uint64'|'int64'>(
-      type: T, data: Tensor.DataTypeMap[T]|readonly bigint[]|readonly number[],
-      dims?: readonly number[]): TypedTensor<T>;
+  new <T extends 'uint64' | 'int64'>(
+    type: T,
+    data: Tensor.DataTypeMap[T] | readonly bigint[] | readonly number[],
+    dims?: readonly number[],
+  ): TypedTensor<T>;
 
   /**
    * Construct a new numeric tensor object from the given type, data and dims.
@@ -199,8 +208,11 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new<T extends Exclude<Tensor.Type, 'string'|'bool'|'uint64'|'int64'>>(
-      type: T, data: Tensor.DataTypeMap[T]|readonly number[], dims?: readonly number[]): TypedTensor<T>;
+  new <T extends Exclude<Tensor.Type, 'string' | 'bool' | 'uint64' | 'int64'>>(
+    type: T,
+    data: Tensor.DataTypeMap[T] | readonly number[],
+    dims?: readonly number[],
+  ): TypedTensor<T>;
   // #endregion
 
   // #region CPU tensor - infer element types
@@ -211,7 +223,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Float32Array, dims?: readonly number[]): TypedTensor<'float32'>;
+  new (data: Float32Array, dims?: readonly number[]): TypedTensor<'float32'>;
 
   /**
    * Construct a new int8 tensor object from the given data and dims.
@@ -219,7 +231,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Int8Array, dims?: readonly number[]): TypedTensor<'int8'>;
+  new (data: Int8Array, dims?: readonly number[]): TypedTensor<'int8'>;
 
   /**
    * Construct a new uint8 tensor object from the given data and dims.
@@ -227,7 +239,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
+  new (data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
 
   /**
    * Construct a new uint16 tensor object from the given data and dims.
@@ -235,7 +247,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Uint16Array, dims?: readonly number[]): TypedTensor<'uint16'>;
+  new (data: Uint16Array, dims?: readonly number[]): TypedTensor<'uint16'>;
 
   /**
    * Construct a new int16 tensor object from the given data and dims.
@@ -243,7 +255,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Int16Array, dims?: readonly number[]): TypedTensor<'int16'>;
+  new (data: Int16Array, dims?: readonly number[]): TypedTensor<'int16'>;
 
   /**
    * Construct a new int32 tensor object from the given data and dims.
@@ -251,7 +263,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Int32Array, dims?: readonly number[]): TypedTensor<'int32'>;
+  new (data: Int32Array, dims?: readonly number[]): TypedTensor<'int32'>;
 
   /**
    * Construct a new int64 tensor object from the given data and dims.
@@ -259,7 +271,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: BigInt64Array, dims?: readonly number[]): TypedTensor<'int64'>;
+  new (data: BigInt64Array, dims?: readonly number[]): TypedTensor<'int64'>;
 
   /**
    * Construct a new string tensor object from the given data and dims.
@@ -267,7 +279,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: readonly string[], dims?: readonly number[]): TypedTensor<'string'>;
+  new (data: readonly string[], dims?: readonly number[]): TypedTensor<'string'>;
 
   /**
    * Construct a new bool tensor object from the given data and dims.
@@ -275,7 +287,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
+  new (data: readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
 
   /**
    * Construct a new float64 tensor object from the given data and dims.
@@ -283,7 +295,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Float64Array, dims?: readonly number[]): TypedTensor<'float64'>;
+  new (data: Float64Array, dims?: readonly number[]): TypedTensor<'float64'>;
 
   /**
    * Construct a new uint32 tensor object from the given data and dims.
@@ -291,7 +303,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Uint32Array, dims?: readonly number[]): TypedTensor<'uint32'>;
+  new (data: Uint32Array, dims?: readonly number[]): TypedTensor<'uint32'>;
 
   /**
    * Construct a new uint64 tensor object from the given data and dims.
@@ -299,7 +311,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: BigUint64Array, dims?: readonly number[]): TypedTensor<'uint64'>;
+  new (data: BigUint64Array, dims?: readonly number[]): TypedTensor<'uint64'>;
 
   // #endregion
 
@@ -312,8 +324,11 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(type: Tensor.Type, data: Tensor.DataType|readonly number[]|readonly string[]|readonly bigint[]|readonly boolean[],
-      dims?: readonly number[]): Tensor;
+  new (
+    type: Tensor.Type,
+    data: Tensor.DataType | readonly number[] | readonly string[] | readonly bigint[] | readonly boolean[],
+    dims?: readonly number[],
+  ): Tensor;
 
   /**
    * Construct a new tensor object from the given data and dims.
@@ -321,7 +336,7 @@ export interface TensorConstructor extends TensorFactory {
    * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
-  new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
+  new (data: Tensor.DataType, dims?: readonly number[]): Tensor;
   // #endregion
 }
 
