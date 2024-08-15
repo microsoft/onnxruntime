@@ -33,7 +33,7 @@ export const enum DataType {
   complex128 = 15,
   bfloat16 = 16,
   uint4x2 = 21,
-  int4x2 = 22
+  int4x2 = 22,
 }
 
 /**
