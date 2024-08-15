@@ -92,7 +92,7 @@ export const makeMatMulPackedVec4Source = (
   transposeA = false,
   tileInner = 32,
   splitK = false,
-  splitedDimInner = 32
+  splitedDimInner = 32,
 ): string => {
   const tileAOuter = workgroupSize[1] * workPerThread[1];
   const tileBOuter = workgroupSize[0] * workPerThread[0];
@@ -212,7 +212,7 @@ export const makeMatMulPackedSource = (
   tileInner = 32,
   splitK = false,
   splitedDimInner = 32,
-  sequentialAccessByThreads = false
+  sequentialAccessByThreads = false,
 ): string => {
   const tileAOuter = workPerThread[1] * workgroupSize[1];
   const tileBOuter = workPerThread[0] * workgroupSize[0];
@@ -223,7 +223,7 @@ export const makeMatMulPackedSource = (
     !(tileAHight % workgroupSize[1] === 0 && tileAWidth % workgroupSize[0] === 0 && tileInner % workgroupSize[1] === 0)
   ) {
     throw new Error(
-      `tileAHight ${tileAHight} must be divisible by workgroupSize[1]${workgroupSize[1]}, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`
+      `tileAHight ${tileAHight} must be divisible by workgroupSize[1]${workgroupSize[1]}, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`,
     );
   }
   const rowPerThreadA = tileAHight / workgroupSize[1];
@@ -374,7 +374,7 @@ const matMulReadWriteFnSource = (
   applyActivation: string,
   variables: IndicesHelper[],
   batchShapes: Array<readonly number[]>,
-  isChannelsLast = false
+  isChannelsLast = false,
 ): string => {
   const [batchAShape, batchBShape, batchShape] = batchShapes;
   const [batchVariable, aVariable, bVariable, outputVariable] = variables;
@@ -411,9 +411,9 @@ const matMulReadWriteFnSource = (
   };
   const source = `
     fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
-    component,
-    dataType
-  )} {
+      component,
+      dataType,
+    )} {
       var value = ${typeSnippet(component, dataType)}(0.0);
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
@@ -425,9 +425,9 @@ const matMulReadWriteFnSource = (
     }
 
     fn mm_readB(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
-    component,
-    dataType
-  )} {
+      component,
+      dataType,
+    )} {
       var value = ${typeSnippet(component, dataType)}(0.0);
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
@@ -462,7 +462,7 @@ export const createMatmulProgramInfo = (
   outputShape: readonly number[],
   reshapedOutputShape?: readonly number[],
   isChannelsLast = false /* only used for conv2dByMatMul*/,
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const aShape = inputs[0].dims;
   const bShape = inputs[1].dims;
@@ -533,7 +533,7 @@ export const createMatmulProgramInfo = (
       applyActivation,
       [batchDims, A, B, output],
       [outerDimsA, outerDimsB, outerDims],
-      isChannelsLast
+      isChannelsLast,
     );
     return `
   ${shaderHelper

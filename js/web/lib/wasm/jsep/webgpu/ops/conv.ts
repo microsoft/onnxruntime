@@ -20,7 +20,7 @@ export const calculateOutputShape = (
   dilations: readonly number[],
   adjustPads: readonly number[],
   strides: readonly number[],
-  isChannelLast: boolean
+  isChannelLast: boolean,
 ): number[] => {
   const batchSize = inputShape[0];
   const inputSpatialShape = inputShape.slice(isChannelLast ? 1 : 2, isChannelLast ? 3 : 4);
@@ -30,7 +30,7 @@ export const calculateOutputShape = (
   const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
   const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
   const outputShape = inputSpatialShapeWithPad.map((v, i) =>
-    Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i])
+    Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]),
   );
   outputShape.splice(0, 0, batchSize);
   outputShape.splice(isChannelLast ? 3 : 1, 0, outChannels);
@@ -117,7 +117,7 @@ const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inpu
     kernelShape,
     pads,
     attributes.format === 'NHWC',
-    attributes.autoPad
+    attributes.autoPad,
   );
 
   // always return a new object so does not modify the original attributes
@@ -156,7 +156,7 @@ const conv2d = (
   context: ComputeContext,
   inputs: readonly TensorView[],
   attributes: ConvAttributes,
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): void => {
   // check attributes
 
@@ -181,7 +181,7 @@ const conv2d = (
         attributes.dilations,
         attributes.pads,
         attributes.strides,
-        isChannelsLast
+        isChannelsLast,
       );
       const transposedWeight =
         (context.kernelCustomData.wT as TensorView | undefined) ??
@@ -198,7 +198,7 @@ const conv2d = (
       }
       context.compute(
         createGroupedConvVectorizeProgramInfo(convInputs, attributes, outputShape, squeezeOutputShapeFunction),
-        { inputs: convInputs }
+        { inputs: convInputs },
       );
     } else {
       context.compute(createGroupedConvProgramInfo(inputs, attributes, squeezeOutputShapeFunction));
@@ -219,7 +219,7 @@ const conv2d = (
     attributes.dilations,
     attributes.pads,
     attributes.strides,
-    isChannelsLast
+    isChannelsLast,
   );
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
@@ -289,9 +289,9 @@ const conv2d = (
           outputShape,
           matmulOutputShape,
           isChannelsLast,
-          squeezeOutputShapeFunction
+          squeezeOutputShapeFunction,
         ),
-        { inputs: matmulInputs }
+        { inputs: matmulInputs },
       );
     } else {
       context.compute(
@@ -301,9 +301,9 @@ const conv2d = (
           outputShape,
           matmulOutputShape,
           isChannelsLast,
-          squeezeOutputShapeFunction
+          squeezeOutputShapeFunction,
         ),
-        { inputs: matmulInputs }
+        { inputs: matmulInputs },
       );
     }
     return;
@@ -344,9 +344,9 @@ const conv2d = (
       dimInner,
       hasBias,
       sequentialAccessByThreads,
-      squeezeOutputShapeFunction
+      squeezeOutputShapeFunction,
     ),
-    { inputs: convInputs }
+    { inputs: convInputs },
   );
 };
 
@@ -359,7 +359,7 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
         ? // [N, W, C] -> [N, H=1, W, C]
           [context.inputs[0].dims[0], 1, context.inputs[0].dims[1], context.inputs[0].dims[2]]
         : // [N, C, W] -> [N, C, H=1, W]
-          [context.inputs[0].dims[0], context.inputs[0].dims[1], 1, context.inputs[0].dims[2]]
+          [context.inputs[0].dims[0], context.inputs[0].dims[1], 1, context.inputs[0].dims[2]],
     ),
     //[FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kW] -> [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kH=1, kW]
     context.inputs[1].reshape([context.inputs[1].dims[0], context.inputs[1].dims[1], 1, context.inputs[1].dims[2]]),
@@ -373,10 +373,10 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
   const kernelShape = [1].concat(attributes.kernelShape);
   const adjustedAttributes = getAdjustedConvAttributes(
     { ...attributes, pads, strides, dilations, kernelShape },
-    inputs
+    inputs,
   );
   conv2d(context, inputs, adjustedAttributes, (outputShape) =>
-    isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : [outputShape[0], outputShape[1], outputShape[3]]
+    isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : [outputShape[0], outputShape[1], outputShape[3]],
   );
 };
 
@@ -391,7 +391,7 @@ const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     attributes.dilations as number | [number, number, number],
     pads as string | number[],
     false,
-    format
+    format,
   );
   context.compute(
     createConv3DNaiveProgramInfo(
@@ -400,8 +400,8 @@ const conv3d = (context: ComputeContext, inputs: readonly TensorView[], attribut
       convInfo.outShape,
       [convInfo.filterDepth, convInfo.filterHeight, convInfo.filterWidth],
       [convInfo.padInfo.front, convInfo.padInfo.top, convInfo.padInfo.left],
-      format
-    )
+      format,
+    ),
   );
 };
 

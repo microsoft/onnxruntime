@@ -25,7 +25,7 @@ import { appendActivationUniforms, appendActivationUniformsData, getActivationSn
 export const createGroupedConvProgramInfo = (
   inputs: readonly TensorView[],
   attributes: ConvAttributes,
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const hasBias = inputs.length > 2;
   const processBias = hasBias ? 'value += b[output_channel];' : '';
@@ -40,7 +40,7 @@ export const createGroupedConvProgramInfo = (
     attributes.dilations,
     attributes.pads,
     attributes.strides,
-    isChannelLast
+    isChannelLast,
   );
   const outputSize = ShapeUtil.size(outputShape);
 
@@ -145,7 +145,7 @@ export const createGroupedConvVectorizeProgramInfo = (
   inputs: readonly TensorView[],
   attributes: ConvAttributes,
   outputShape: readonly number[],
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const hasBias = inputs.length > 2;
   const components = getMaxComponents(outputShape[3]);

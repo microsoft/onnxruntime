@@ -48,7 +48,7 @@ const conv2dCommonSnippet = (
   innerElementSizeX = 4,
   innerElementSizeW = 4,
   innerElementSize = 4,
-  dataType = 'f32'
+  dataType = 'f32',
 ): string => {
   const getXSnippet = (innerElementSize: number) => {
     switch (innerElementSize) {
@@ -133,10 +133,10 @@ const conv2dCommonSnippet = (
     }
     return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`
     : fitInner && fitBOuter
-    ? `
+      ? `
     let col = colIn * ${innerElementSizeX};
     ${readXSnippet}`
-    : `
+      : `
     let col = colIn * ${innerElementSizeX};
     if (row < uniforms.dim_inner && col < uniforms.dim_b_outer) {
       ${readXSnippet}
@@ -182,7 +182,7 @@ export const createConv2DMatMulProgramInfo = (
   dimInner: number,
   hasBias: boolean,
   sequentialAccessByThreads: boolean,
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const isChannelsLast = attributes.format === 'NHWC';
   const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
@@ -258,7 +258,7 @@ export const createConv2DMatMulProgramInfo = (
       'x',
       inputs[0].dataType,
       inputs[0].dims.length,
-      innerElementSize === 3 ? 1 : innerElementSize
+      innerElementSize === 3 ? 1 : innerElementSize,
     );
     const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
     const inputVariables = [x, w];
@@ -289,7 +289,7 @@ export const createConv2DMatMulProgramInfo = (
           elementsSize[0],
           elementsSize[1],
           elementsSize[2],
-          t
+          t,
         )}
         ${conv2dCommonSnippet(
           isChannelsLast,
@@ -301,7 +301,7 @@ export const createConv2DMatMulProgramInfo = (
           elementsSize[0],
           elementsSize[1],
           elementsSize[2],
-          t
+          t,
         )}
         ${
           isVec4
@@ -315,7 +315,7 @@ export const createConv2DMatMulProgramInfo = (
                 tileInner,
                 false,
                 undefined,
-                sequentialAccessByThreads
+                sequentialAccessByThreads,
               )
         }`;
   };
