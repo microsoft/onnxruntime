@@ -201,7 +201,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
   } catch (e) {
     if (sessionOptionsHandle !== 0) {
       if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
-        checkLastError('Can\'t release session options.');
+        checkLastError("Can't release session options.");
       }
     }
     allocs.forEach((alloc) => wasm._free(alloc));

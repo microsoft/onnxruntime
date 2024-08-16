@@ -80,7 +80,7 @@ class ComputeContextImpl implements ComputeContext {
 
     // extract context data
     const ptrSize = module.PTR_SIZE;
-    let dataIndex = module.PTR_SIZE === 4 ? contextDataOffset >> 2 : contextDataOffset / 2 ** 3;
+    let dataIndex = contextDataOffset / module.PTR_SIZE;
     const type = ptrSize === 4 ? 'i32' : 'i64';
     this.opKernelContext = Number(module.getValue(ptrSize * dataIndex++, type));
     const inputCount = Number(module.getValue(ptrSize * dataIndex++, type));

@@ -401,13 +401,13 @@ export const createSession = async (
 
     if (ioBindingHandle !== 0) {
       if (wasm._OrtReleaseBinding(ioBindingHandle) !== 0) {
-        checkLastError('Can\'t release IO binding.');
+        checkLastError("Can't release IO binding.");
       }
     }
 
     if (sessionHandle !== 0) {
       if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
-        checkLastError('Can\'t release session.');
+        checkLastError("Can't release session.");
       }
     }
     throw e;
@@ -415,7 +415,7 @@ export const createSession = async (
     wasm._free(modelDataOffset);
     if (sessionOptionsHandle !== 0) {
       if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
-        checkLastError('Can\'t release session options.');
+        checkLastError("Can't release session options.");
       }
     }
     allocs.forEach((alloc) => wasm._free(alloc));
@@ -436,20 +436,20 @@ export const releaseSession = (sessionId: number): void => {
   if (ioBindingState) {
     if (enableGraphCapture) {
       if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
-        checkLastError('Can\'t clear bound outputs.');
+        checkLastError("Can't clear bound outputs.");
       }
     }
     if (wasm._OrtReleaseBinding(ioBindingState.handle) !== 0) {
-      checkLastError('Can\'t release IO binding.');
+      checkLastError("Can't release IO binding.");
     }
   }
 
   wasm.jsepOnReleaseSession?.(sessionId);
 
-  inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-  outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-  if (wasm._OrtReleaseSession(sessionHandle) !=== 0) {
-    checkLastError('Can\'t release session.');
+  inputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
+  outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
+  if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
+    checkLastError("Can't release session.");
   }
   activeSessions.delete(sessionId);
 };
@@ -500,41 +500,45 @@ export const prepareInputOutputTensor = (
   } else {
     const data = tensor[2];
 
-        if (Array.isArray(data)) {
-          // string tensor
-          dataByteLength = ptrSize * data.length;
-          rawData = wasm._malloc(dataByteLength);
-          allocs.push(rawData);
-          for (let i = 0; i < data.length; i++) {
-            if (typeof data[i] !== 'string') {
-              throw new TypeError(`tensor data at index ${i} is not a string`);
-            }
-            wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
-          }
-        } else {
-          dataByteLength = data.byteLength;
-          rawData = wasm._malloc(dataByteLength);
-          allocs.push(rawData);
-          wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
+    if (Array.isArray(data)) {
+      // string tensor
+      dataByteLength = ptrSize * data.length;
+      rawData = wasm._malloc(dataByteLength);
+      allocs.push(rawData);
+      for (let i = 0; i < data.length; i++) {
+        if (typeof data[i] !== 'string') {
+          throw new TypeError(`tensor data at index ${i} is not a string`);
         }
+        wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
+    } else {
+      dataByteLength = data.byteLength;
+      rawData = wasm._malloc(dataByteLength);
+      allocs.push(rawData);
+      wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
+    }
+  }
 
-      const stack = wasm.stackSave();
-      const dimsOffset = wasm.stackAlloc(4 * dims.length);
-      try {
-        let dimIndex = dimsOffset / 4;
-        dims.forEach((d) => wasm.HEAP32[dimIndex++] = d);
-        const tensor = wasm._OrtCreateTensor(
-            tensorDataTypeStringToEnum(dataType), rawData, dataByteLength, dimsOffset, dims.length,
-            dataLocationStringToEnum(location));
-        if (tensor === 0) {
-          checkLastError(`Can't create tensor for input/output. session=${sessionId}, index=${index}.`);
-        }
-        tensorHandles.push(tensor);
-      } finally {
-        wasm.stackRestore(stack);
-      }
-    };
+  const stack = wasm.stackSave();
+  const dimsOffset = wasm.stackAlloc(4 * dims.length);
+  try {
+    dims.forEach((d, index) => wasm.setValue(dimsOffset + index * ptrSize, d, ptrSize === 4 ? 'i32' : 'i64'));
+    const tensor = wasm._OrtCreateTensor(
+      tensorDataTypeStringToEnum(dataType),
+      rawData,
+      dataByteLength,
+      dimsOffset,
+      dims.length,
+      dataLocationStringToEnum(location),
+    );
+    if (tensor === 0) {
+      checkLastError(`Can't create tensor for input/output. session=${sessionId}, index=${index}.`);
+    }
+    tensorHandles.push(tensor);
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
 
 /**
  * perform inference run
@@ -732,7 +736,7 @@ export const run = async (
           dims.push(Number(wasm.getValue(dimsOffset + i * ptrSize, valueType)));
         }
         if (wasm._OrtFree(dimsOffset) !== 0) {
-          checkLastError('Can\'t free memory for tensor dims.');
+          checkLastError("Can't free memory for tensor dims.");
         }
         const size = dims.reduce((a, b) => a * b, 1);
         type = tensorDataTypeEnumToString(dataType);
@@ -776,7 +780,7 @@ export const run = async (
                 download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
                 dispose: () => {
                   if (wasm._OrtReleaseTensor(tensor) !== 0) {
-                    checkLastError('Can\'t release tensor.');
+                    checkLastError("Can't release tensor.");
                   }
                 },
               },
@@ -804,7 +808,7 @@ export const run = async (
 
     if (ioBindingState && !enableGraphCapture) {
       if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
-        checkLastError('Can\'t clear bound outputs.');
+        checkLastError("Can't clear bound outputs.");
       }
       activeSessions.set(sessionId, [
         sessionHandle,
