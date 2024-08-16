@@ -3,22 +3,22 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/nn/pool_base.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {
 
-#define POOL_ATTRIBUTES_JS_OBJ_MAPPING ({                         \
-  "format" : $13 ? "NHWC" : "NCHW",                               \
-  "auto_pad" : $1,                                                \
-  "ceil_mode" : $2,                                               \
-  "count_include_pad" : $3,                                       \
-  "storage_order" : $4,                                           \
-  "dilations" : $5 ? Array.from(HEAP32.subarray($5, $6)) : [],    \
-  "kernel_shape" : $7 ? Array.from(HEAP32.subarray($7, $8)) : [], \
-  "pads" : $9 ? Array.from(HEAP32.subarray($9, $10)) : [],        \
-  "strides" : $11 ? Array.from(HEAP32.subarray($11, $12)) : []    \
+#define POOL_ATTRIBUTES_JS_OBJ_MAPPING ({                                         \
+  "format" : $13 ? "NHWC" : "NCHW",                                               \
+  "auto_pad" : $1,                                                                \
+  "ceil_mode" : $2,                                                               \
+  "count_include_pad" : $3,                                                       \
+  "storage_order" : $4,                                                           \
+  "dilations" : $5 ? Array.from(HEAP32.subarray(Number($5), Number($6))) : [],    \
+  "kernel_shape" : $7 ? Array.from(HEAP32.subarray(Number($7), Number($8))) : [], \
+  "pads" : $9 ? Array.from(HEAP32.subarray(Number($9), Number($10))) : [],        \
+  "strides" : $11 ? Array.from(HEAP32.subarray(Number($11), Number($12))) : []    \
 })
 
 #define POOL_ATTRIBUTES_PARAM_LIST                         \
