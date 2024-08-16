@@ -778,7 +778,6 @@ def run_tflops_test(
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph
     causal: bool = args.causal
-    has_past: bool = args.has_past
     intra_op_num_threads: int = args.intra_op_num_threads
     repeats: int = args.repeats
 
@@ -804,100 +803,105 @@ def run_tflops_test(
         backends = [SdpaKernel.DEFAULT]
 
     configs = get_test_configs(args)
-
-    print("\nformat\tcausal\tprompt\tbatch\tseqlen\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
+    print("\nformat\tcausal\tattBias\tbatch\tseqlen\tpast\theads\th_dim\tthreads\tms\tTFLOPS\tkernel")
 
     for input_format in formats:
         for batch_size, sequence_length, past_sequence_length, num_heads, head_size, enable_unfused in configs:
-            for use_kv_cache in [False]:
-                config = MultiHeadAttentionConfig(
-                    batch_size=batch_size,
-                    sequence_length=sequence_length,
-                    num_heads=num_heads,
-                    head_size=head_size,
-                    causal=causal,
-                    use_kv_cache=use_kv_cache,  # has present output?
-                    past_sequence_length=past_sequence_length,
-                    max_cache_sequence_length=None,
-                    kv_sequence_length=None,
-                    provider=provider,
-                    enable_cuda_graph=enable_cuda_graph,
-                    device=device,
-                    dtype=torch.float16 if use_gpu else torch.float,
-                    share_past_present_buffer=False,
-                    input_format=input_format,
-                )
-                for attention_kernel in backends:
-                    sess_options = SessionOptions()
-                    sess_options.intra_op_num_threads = intra_op_num_threads
-                    session = create_session(config, sess_options, attention_kernel=attention_kernel)
+            config = MultiHeadAttentionConfig(
+                batch_size=batch_size,
+                sequence_length=sequence_length,
+                num_heads=num_heads,
+                head_size=head_size,
+                causal=causal,
+                use_kv_cache=past_sequence_length > 0,
+                past_sequence_length=past_sequence_length,
+                max_cache_sequence_length=None,
+                kv_sequence_length=None,
+                provider=provider,
+                enable_cuda_graph=enable_cuda_graph,
+                device=device,
+                dtype=torch.float16 if use_gpu else torch.float,
+                share_past_present_buffer=False,
+                input_format=input_format,
+                has_attn_bias=args.has_attn_bias,
+                broadcast_attn_bias_dim_0=args.broadcast_attn_bias_dim_0,
+                broadcast_attn_bias_dim_1=args.broadcast_attn_bias_dim_1,
+            )
+            for attention_kernel in backends:
+                sess_options = SessionOptions()
+                sess_options.intra_op_num_threads = intra_op_num_threads
+                session = create_session(config, sess_options, attention_kernel=attention_kernel)
 
-                    if use_gpu:
-                        kernel = get_gpu_kernel_name(attention_kernel)
-                    else:
-                        kernel = get_cpu_kernel_name(config)
+                if use_gpu:
+                    kernel = get_gpu_kernel_name(attention_kernel)
+                else:
+                    kernel = get_cpu_kernel_name(config)
 
-                    if "math" in kernel:
-                        # Skip large sequence length for Unfused kernel to avoid OOM.
-                        if not enable_unfused:
-                            if config.verbose:
-                                print(f"skip unfused kernel for {vars(config)}")
-                            continue
-
-                        # Unfused kernel does not support packed QKV or packed KV formats.
-                        if input_format not in [InputFormats.Q_K_V_BSNH_BSNH_BSNH]:
-                            if config.verbose:
-                                print(f"skip input_format for {vars(config)}")
-                            continue
-
-                    input_dict = config.random_inputs()
-
-                    # warm up session
-                    try:
-                        _ = measure_latency(session, input_dict)
-                    except Exception as e:
-                        print(f"Failed to run {kernel=} for {config=}. Exception: {e}")
+                if "math" in kernel:
+                    # Skip large sequence length for Unfused kernel to avoid OOM.
+                    if not enable_unfused:
+                        if config.verbose:
+                            print(f"skip unfused kernel for {vars(config)}")
                         continue
 
-                    latency_list = []
-                    for _ in range(repeats):
-                        latency = measure_latency(session, input_dict)
-                        latency_list.append(latency)
-                    average_latency = statistics.mean(latency_list)
+                    # Unfused kernel does not support packed QKV or packed KV formats.
+                    if input_format not in [InputFormats.Q_K_V_BSNH_BSNH_BSNH]:
+                        if config.verbose:
+                            print(f"skip input_format for {vars(config)}")
+                        continue
 
-                    del session
+                input_dict = config.random_inputs()
 
-                    format_str = InputFormats.input_format_str(input_format)
+                # warm up session
+                try:
+                    _ = measure_latency(session, input_dict)
+                except Exception as e:
+                    print(f"Failed to run {kernel=} for {config=}. Exception: {e}")
+                    continue
 
-                    # compute TFLOPS per second
-                    speed = None
-                    if past_sequence_length == 0:
-                        speed = tflops_per_second(
-                            flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
-                        )
+                latency_list = []
+                for _ in range(repeats):
+                    latency = measure_latency(session, input_dict)
+                    latency_list.append(latency)
+                average_latency = statistics.mean(latency_list)
 
-                    row = {
-                        "use_gpu": use_gpu,
-                        "enable_cuda_graph": enable_cuda_graph,
-                        "format": format_str,
-                        "causal": causal,
-                        "batch_size": batch_size,
-                        "sequence_length": sequence_length,
-                        "past_sequence_length": past_sequence_length,
-                        "num_heads": num_heads,
-                        "head_size": head_size,
-                        "intra_op_num_threads": intra_op_num_threads,
-                        "average_latency": average_latency,
-                        "tflops": speed,
-                        "kernel": kernel,
-                    }
-                    csv_writer.writerow(row)
+                del session
 
-                    speed = f"{speed:.2f}" if speed is not None else "NA"
-                    print(
-                        f"{format_str}\t{causal}\t{not has_past}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
-                        f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed}\t{kernel}"
+                format_str = InputFormats.input_format_str(input_format)
+
+                # compute TFLOPS per second
+                speed = None
+                if past_sequence_length == 0:
+                    speed = tflops_per_second(
+                        flops(batch_size, sequence_length, head_size, num_heads, causal), average_latency
                     )
+
+                row = {
+                    "use_gpu": use_gpu,
+                    "enable_cuda_graph": enable_cuda_graph,
+                    "format": format_str,
+                    "causal": causal,
+                    "batch_size": batch_size,
+                    "sequence_length": sequence_length,
+                    "past_sequence_length": past_sequence_length,
+                    "num_heads": num_heads,
+                    "head_size": head_size,
+                    "has_attn_bias": args.has_attn_bias,
+                    "broadcast_attn_bias_dim_0": args.broadcast_attn_bias_dim_0,
+                    "broadcast_attn_bias_dim_1": args.broadcast_attn_bias_dim_1,
+                    "intra_op_num_threads": intra_op_num_threads,
+                    "average_latency": average_latency,
+                    "tflops": speed,
+                    "kernel": kernel,
+                }
+                csv_writer.writerow(row)
+
+                speed = f"{speed:.2f}" if speed is not None else "NA"
+                print(
+                    f"{format_str}\t{causal}\t{args.has_attn_bias}\t{batch_size}\t"
+                    f"{sequence_length}\t{past_sequence_length}\t{num_heads}\t{head_size}\t"
+                    f"{intra_op_num_threads}\t{average_latency * 1000:.2f}\t{speed}\t{kernel}"
+                )
 
 
 def run_torch_test(
@@ -967,8 +971,9 @@ def run_torch_test(
             speed = tflops_per_second(flops(batch_size, sequence_length, head_size, num_heads, causal), torch_latency)
             input_format = "Q,K,V"
             print(
-                f"{input_format}\t{causal}\t{batch_size}\t{sequence_length}\t{num_heads}\t{head_size}\t"
-                f"{0}\t{torch_latency * 1000:.2f}\t{speed:.2f}\t{backend_name}"
+                f"{input_format}\t{causal}\t{False}\t{batch_size}\t"
+                f"{sequence_length}\t{past_sequence_length}\t{num_heads}\t{head_size}\t"
+                f"{torch.get_num_threads()}\t{torch_latency * 1000:.2f}\t{speed}\t{backend_name}"
             )
             row = {
                 "use_gpu": use_gpu,
@@ -980,6 +985,9 @@ def run_torch_test(
                 "past_sequence_length": past_sequence_length,
                 "num_heads": num_heads,
                 "head_size": head_size,
+                "has_attn_bias": False,
+                "broadcast_attn_bias_dim_0": False,
+                "broadcast_attn_bias_dim_1": False,
                 "intra_op_num_threads": torch.get_num_threads(),
                 "average_latency": torch_latency,
                 "tflops": speed,
@@ -992,7 +1000,7 @@ def run_tflops_tests(args):
     features = "gpu" if args.use_gpu else "cpu"
     if args.causal:
         features += "_causal"
-    if args.has_past:
+    if args.past_sequence_length > 0:
         features += "_past"
     csv_filename = "benchmark_mha_{}_{}_{}.csv".format(
         features,
@@ -1010,6 +1018,9 @@ def run_tflops_tests(args):
             "past_sequence_length",
             "num_heads",
             "head_size",
+            "has_attn_bias",
+            "broadcast_attn_bias_dim_0",
+            "broadcast_attn_bias_dim_1",
             "intra_op_num_threads",
             "average_latency",
             "tflops",
@@ -1150,14 +1161,6 @@ def _parse_arguments():
     )
 
     parser.add_argument(
-        "--has_past",
-        required=False,
-        action="store_true",
-        help="whether past_sequence_length > 0",
-    )
-    parser.set_defaults(has_past=False)
-
-    parser.add_argument(
         "--causal",
         required=False,
         action="store_true",
@@ -1227,6 +1230,30 @@ def _parse_arguments():
     )
     parser.set_defaults(torch=False)
 
+    parser.add_argument(
+        "--has_attn_bias",
+        required=False,
+        action="store_true",
+        help="has attention bias",
+    )
+    parser.set_defaults(has_attn_bias=False)
+
+    parser.add_argument(
+        "--broadcast_attn_bias_dim_0",
+        required=False,
+        action="store_true",
+        help="broadcast attention bias dimension 0",
+    )
+    parser.set_defaults(broadcast_attn_bias_dim_0=False)
+
+    parser.add_argument(
+        "--broadcast_attn_bias_dim_1",
+        required=False,
+        action="store_true",
+        help="broadcast attention bias dimension 1",
+    )
+    parser.set_defaults(broadcast_attn_bias_dim_1=False)
+
     args = parser.parse_args()
 
     return args
@@ -1236,9 +1263,6 @@ if __name__ == "__main__":
     args = _parse_arguments()
     print(f"arguments:{args}")
 
-    if args.has_past:
-        assert args.causal, "--has_past need --causal specified"
-
     if args.use_gpu:
         assert args.torch or not args.causal, "no causal cuda kernel in MHA op"
         assert torch.cuda.is_available()
@@ -1247,7 +1271,7 @@ if __name__ == "__main__":
 
     if args.torch:
         assert Version(torch.__version__) >= Version("2.3.0")
-        assert args.has_past is False
+        assert args.past_sequence_length == 0
 
     if args.use_gpu and args.batch_size == 0 and not args.torch:
         if platform.system() == "Linux":
