@@ -29,16 +29,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace attention_softmax_cuda {
 
-#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                  \
-  [&] {                                                          \
-    const dim3 grid(num_heads * sequence_length, batch_size, 1); \
-    if (attn_bias != nullptr) {                                  \
-      constexpr static bool HAS_BIAS = true;                     \
-      return __VA_ARGS__();                                      \
-    } else {                                                     \
-      constexpr static bool HAS_BIAS = false;                    \
-      return __VA_ARGS__();                                      \
-    }                                                            \
+#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                 \
+  [&] {                                                         \
+    const dim3 grid(num_heads* sequence_length, batch_size, 1); \
+    if (attn_bias != nullptr) {                                 \
+      constexpr static bool HAS_BIAS = true;                    \
+      return __VA_ARGS__();                                     \
+    } else {                                                    \
+      constexpr static bool HAS_BIAS = false;                   \
+      return __VA_ARGS__();                                     \
+    }                                                           \
   }()
 
 // Macro to declare variables:
@@ -50,10 +50,10 @@ namespace attention_softmax_cuda {
 // input and output shape is (batch_size, num_heads, sequence_length, total_sequence_length)
 // bias shape is (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)
 #define DECLARE_SOFTMAX_VARS()                                                                                      \
-  const int s = blockIdx.x % sequence_length;                                                                       \
+  [[maybe_unused]] const int s = blockIdx.x % sequence_length;                                                      \
   const int b = blockIdx.y;                                                                                         \
   int64_t offset = static_cast<int64_t>(b * gridDim.x + blockIdx.x) * static_cast<int64_t>(total_sequence_length);  \
-  int64_t bias_offset = 0;                                                                                          \
+  [[maybe_unused]] int64_t bias_offset = 0;                                                                         \
   if constexpr (HAS_BIAS) {                                                                                         \
     const int j = (broadcast_attn_bias_dim_0 ? 0 : (b * gridDim.x)) + (broadcast_attn_bias_dim_1 ? s : blockIdx.x); \
     bias_offset = static_cast<int64_t>(j) * static_cast<int64_t>(total_sequence_length);                            \
