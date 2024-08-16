@@ -380,9 +380,6 @@ class HQQWeightOnlyQuantizer:
         Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
         not supported yet because Gather does not support int4 data.
         """
-        if node.op_type not in self.config.op_types_to_quantize:
-            return [node]
-
         # With HQQ, zero points are in float. Current GatherBlockQuantized does not support float zero points.
         if node.op_type == "Gather":
             raise NotImplementedError("Gather quantization is not supported yet in HQQ")
@@ -765,9 +762,6 @@ class DefaultWeightOnlyQuantizer:
         Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
         not supported yet because Gather does not support int4 data.
         """
-        if node.op_type not in self.config.op_types_to_quantize:
-            return [node]
-
         logger.info(f"start to quantize {node.name} ...")
 
         if node.op_type == "MatMul":
@@ -876,11 +870,12 @@ class MatMul4BitsQuantizer:
             if node.name in self.nodes_to_exclude:
                 logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = [node]
-            elif self.nodes_to_include and (node.name not in self.nodes_to_include):
-                logger.info(f"skip to quantize {node.name} as not specified by nodes_to_include...")
-                out_nodes = [node]
-            else:
+            elif ((self.nodes_to_include and node.name in self.nodes_to_include) or
+                (node.op_type in self.algo_config.op_types_to_quantize)):
                 out_nodes = self.node_quantizer.quantize(node, graph_stack)
+            else:
+                logger.info(f"skip to quantize {node.name} ...")
+                out_nodes = [node]
             new_nodes.extend(out_nodes)
 
         graph.ClearField("node")
