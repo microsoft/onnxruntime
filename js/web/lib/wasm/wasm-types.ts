@@ -7,6 +7,7 @@
 /// <reference path="jsep/webnn/webnn.d.ts" />
 
 import type { Tensor } from 'onnxruntime-common';
+import { DataType } from './wasm-common';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
@@ -31,8 +32,9 @@ export declare namespace JSEP {
   type ReleaseBufferIdFunction = (bufferId: number) => void;
   type EnsureBufferFunction = (
     bufferId: number,
-    dataType: number | MLOperandDataType,
-    dimensions: number[],
+    dataType: DataType,
+    dimensions: readonly number[],
+    copyOld: boolean,
   ) => Promise<MLBuffer>;
   type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
   type DownloadBufferFunction = (bufferId: number) => Promise<ArrayBuffer>;
@@ -178,14 +180,18 @@ export declare namespace JSEP {
      */
     jsepReleaseBufferId: (bufferId: number) => void;
     /**
-     * [exported from pre-jsep.js] Get MLBuffer by ID.
-     * @param bufferId - specify the MLBuffer ID.
-     * @returns the MLBuffer.
+     * [exported from pre-jsep.js] Ensure a MLBuffer of a given type and shape has exists for a buffer ID.
+     * @param bufferId - specify the buffer ID.
+     * @param onnxDataType - specify the data type.
+     * @param dimensions - specify the dimensions.
+     * @param copyOld - specify whether to copy the old buffer, it .
+     * @returns the MLBuffer associated with the buffer ID.
      */
     jsepEnsureBuffer: (
       bufferId: number,
-      dataType: number | MLOperandDataType,
+      dataType: DataType,
       dimensions: number[],
+      copyOld: boolean,
     ) => Promise<MLBuffer>;
     /**
      * [exported from pre-jsep.js] Upload data to MLBuffer.
@@ -214,9 +220,11 @@ export declare namespace JSEP {
     /**
      * [exported from pre-jsep.js] Register MLBuffer for a session.
      * @param mlBuffer - specify the MLBuffer.
+     * @param dataType - specify the data type.
+     * @param dimensions - specify the dimensions.
      * @returns the MLBuffer ID.
      */
-    jsepRegisterMLBuffer: (buffer: MLBuffer) => number;
+    jsepRegisterMLBuffer: (buffer: MLBuffer, onnxDataType: DataType, dimensions: readonly number[]) => number;
   }
 }
 

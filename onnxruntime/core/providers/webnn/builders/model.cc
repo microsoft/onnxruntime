@@ -162,7 +162,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
+    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, true);
     promises.call<void>("push", buffer);
   }
   for (const auto& [_, tensor] : outputs) {
@@ -171,7 +171,7 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
       uint32_t dim_val = SafeInt<uint32_t>(dim);
       shape.call<void>("push", dim_val);
     }
-    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape);
+    auto buffer = jsepEnsureBuffer(reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", buffer);
   }
   auto buffers = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();

@@ -228,8 +228,8 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateMLBufferDownloader'] = (bufferId, type) => {
       return backend['createMLBufferDownloader'](bufferId, type);
     }
-    Module['jsepRegisterMLBuffer'] = (buffer) => {
-      return backend['registerMLBuffer'](buffer);
+    Module['jsepRegisterMLBuffer'] = (buffer, dataType, dimensions) => {
+      return backend['registerMLBuffer'](buffer, dataType, dimensions);
     }
   }
 };

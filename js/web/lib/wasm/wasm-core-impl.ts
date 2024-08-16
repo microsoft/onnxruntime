@@ -491,7 +491,7 @@ export const prepareInputOutputTensor = (
     if (!registerMLBuffer) {
       throw new Error('Tensor location "ml-buffer" is not supported without using WebNN.');
     }
-    rawData = registerMLBuffer(mlBuffer);
+    rawData = registerMLBuffer(mlBuffer, tensorDataTypeStringToEnum(dataType), dims);
   } else {
     const data = tensor[2];
 
@@ -793,8 +793,9 @@ export const run = async (
             }
 
             // If the graph has been partitioned, the output tensor may have not been created. For this reason, we use
-            // ensureBuffer to get/create the MLBuffer.
-            const mlBuffer = await ensureBuffer(dataOffset, dataType, dims);
+            // ensureBuffer to get/create the MLBuffer. In which case, we don't need to copy the data if a new buffer is
+            // created.
+            const mlBuffer = await ensureBuffer(dataOffset, dataType, dims, false);
 
             // do not release the tensor right now. it will be released when user calls tensor.dispose().
             keepOutputTensor = true;

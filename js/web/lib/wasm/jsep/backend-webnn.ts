@@ -12,7 +12,8 @@ import { DataType } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { BufferId, BufferManager, createBufferManager } from './webnn/buffer-manager';
+import { BufferId, createBufferManager } from './webnn/buffer-manager';
+import { LOG_DEBUG } from './log';
 
 /*
  * TensorProto::data_type to WebNN OperandType mapping.
@@ -34,7 +35,10 @@ const onnxDataTypeToWebnnDataType = new Map<DataType, MLOperandDataType>([
  * of the current MLContext being used by the sessions.
  */
 export class WebNNBackend {
-  private bufferManager: BufferManager = createBufferManager(this);
+  /**
+   * Buffer managers for each session.
+   */
+  private bufferManager = createBufferManager(this);
   /**
    * Maps from session id to MLContexts.
    */
@@ -46,16 +50,20 @@ export class WebNNBackend {
   /**
    * Current session id.
    */
-  currentSessionId?: number;
+  private activeSessionId?: number;
+
+  public get currentSessionId(): number {
+    if (this.activeSessionId === undefined) {
+      throw new Error('No active session');
+    }
+    return this.activeSessionId;
+  }
 
   public onRunStart(sessionId: number): void {
-    this.currentSessionId = sessionId;
+    this.activeSessionId = sessionId;
   }
 
   public get currentContext(): MLContext {
-    if (this.currentSessionId === undefined) {
-      throw new Error('No active session');
-    }
     return this.getMLContext(this.currentSessionId);
   }
 
@@ -96,25 +104,21 @@ export class WebNNBackend {
   }
 
   public releaseBufferId(bufferId: BufferId): void {
+    LOG_DEBUG('verbose', () => `[WebNN] releaseBufferId {bufferId: ${bufferId}}`);
     this.bufferManager.releaseBufferId(bufferId);
   }
 
   public async ensureBuffer(
     bufferId: BufferId,
-    onnxDataType: number | MLOperandDataType,
+    onnxDataType: DataType,
     dimensions: number[],
+    copyOld: boolean,
   ): Promise<MLBuffer> {
-    let dataType: MLOperandDataType;
-    if (typeof onnxDataType === 'number') {
-      const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
-      if (!webnnDataType) {
-        throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
-      }
-      dataType = webnnDataType;
-    } else {
-      dataType = onnxDataType;
+    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
+    if (!webnnDataType) {
+      throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
-    return this.bufferManager.ensureBuffer(bufferId, dataType, dimensions);
+    return this.bufferManager.ensureBuffer(bufferId, webnnDataType, dimensions, copyOld);
   }
 
   public uploadBuffer(bufferId: BufferId, data: Uint8Array): void {
@@ -136,8 +140,12 @@ export class WebNNBackend {
     };
   }
 
-  public registerMLBuffer(buffer: MLBuffer): BufferId {
-    return this.bufferManager.registerBuffer(this.currentContext, buffer);
+  public registerMLBuffer(buffer: MLBuffer, onnxDataType: DataType, dimensions: number[]): BufferId {
+    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
+    if (!webnnDataType) {
+      throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
+    }
+    return this.bufferManager.registerBuffer(this.currentContext, buffer, webnnDataType, dimensions);
   }
 
   public flush(): void {

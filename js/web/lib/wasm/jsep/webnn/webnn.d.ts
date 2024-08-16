@@ -30,7 +30,7 @@ type MLInputOperandLayout = 'nchw'|'nhwc';
 type MLOperandDataType = 'float32'|'float16'|'int32'|'uint32'|'int64'|'uint64'|'int8'|'uint8';
 interface MLOperandDescriptor {
   dataType: MLOperandDataType;
-  dimensions?: number[];
+  dimensions?: readonly number[];
 }
 interface MLOperand {
   dataType(): MLOperandDataType;

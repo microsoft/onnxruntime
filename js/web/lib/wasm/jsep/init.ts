@@ -266,8 +266,8 @@ export const init = async (
       // jsepReleaseBufferId,
       (bufferId: number) => backend.releaseBufferId(bufferId),
       // jsepEnsureBuffer
-      async (bufferId: number, onnxDataType: number, dimensions: number[]) =>
-        backend.ensureBuffer(bufferId, onnxDataType, dimensions),
+      async (bufferId: number, onnxDataType: number, dimensions: number[], copyOld) =>
+        backend.ensureBuffer(bufferId, onnxDataType, dimensions, copyOld),
       // jsepUploadBuffer
       (bufferId: number, data: Uint8Array) => {
         backend.uploadBuffer(bufferId, data);

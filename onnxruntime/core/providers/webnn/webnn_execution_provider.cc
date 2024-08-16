@@ -5,6 +5,7 @@
 #include "webnn_execution_provider.h"
 
 #include "core/framework/compute_capability.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
@@ -329,6 +330,32 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   return Status::OK();
 }
 
+class WebNNMemcpy : public OpKernel {
+ public:
+  explicit WebNNMemcpy(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    auto jsepEnsureBuffer = emscripten::val::module_property("jsepEnsureBuffer");
+    const auto* X = context->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: input tensor is null");
+    auto* Y = context->Output(0, X->Shape());
+    ORT_ENFORCE(X != nullptr, "Memcpy: output tensor is null");
+    emscripten::val shape = emscripten::val::array();
+    for (auto dim : X->Shape().GetDims()) {
+      shape.call<void>("push", SafeInt<uint32_t>(dim).Ref());
+    }
+
+    jsepEnsureBuffer(reinterpret_cast<intptr_t>(Y->MutableDataRaw()),
+                     Y->GetElementType(),
+                     shape, false)
+        .await();
+
+    const auto* data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+
+    return data_transfer->CopyTensor(*X, *Y);
+  }
+};
+
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyFromHost,
     kOnnxDomain,
@@ -337,7 +364,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder()
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Memcpy);
+    WebNNMemcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
     MemcpyToHost,
