@@ -29,7 +29,6 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
   const quantizeAxis = ShapeUtil.normalizeAxis(attributes.quantizeAxis, inputs[0].dims.length);
   const blockSize = attributes.blockSize;
   const data = inputs[0];
-  const indices = inputs[1];
   const scales = inputs[2];
   const zeroPoint = inputs.length === 4 ? inputs[3] : undefined;
   if (
@@ -43,6 +42,7 @@ export const validateInputs = (inputs: readonly TensorView[], attributes: Gather
     );
   }
   // TODO Uncomment the following check once the test case creation code is fixed to create data correctly aligned.
+  // const indices = inputs[1];
   // const validIndex = (index: number) => index >= 0 && index < data.dims[attributes.gatherAxis];
   // if (indices.dataType === DataType.int32 && indices.getInt32Array().some((v) => !validIndex(v)) ||
   //     indices.dataType === DataType.int64 && indices.getBigInt64Array().some((v) => !validIndex(Number(v)))) {
