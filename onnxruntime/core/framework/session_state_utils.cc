@@ -115,7 +115,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
 
-  auto memory_info = (alloc != nullptr) ? alloc->Info() : m->GetAllocInfo();
+  auto& memory_info = (alloc != nullptr) ? alloc->Info() : m->GetAllocInfo();
   auto device_type = memory_info.device.Type();
 
   if (utils::HasExternalData(tensor_proto)) {
