@@ -11,7 +11,6 @@
 
 #include "core/common/flatbuffers.h"
 
-#include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -235,7 +234,7 @@ class Model {
                              const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
-  static common::Status LoadFromBytes(int count, void* pBytes,
+  static common::Status LoadFromBytes(int count, const void* pBytes,
                                       /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks

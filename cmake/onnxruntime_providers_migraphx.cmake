@@ -19,23 +19,25 @@
   endif()
 
   # Add search paths for default rocm installation
-  list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hcc /opt/rocm/hip /opt/rocm)
+  list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hcc /opt/rocm/hip /opt/rocm $ENV{HIP_PATH})
 
-  find_package(hip)
-  find_package(migraphx PATHS ${AMD_MIGRAPHX_HOME})
+  # Suppress the warning about the small capitals of the package name - Enable when support to CMake 3.27.0 is used
+  # cmake_policy(SET CMP0144 NEW)
 
-  find_package(miopen)
-  find_package(rocblas)
+  if(WIN32 AND NOT HIP_PLATFORM)
+    set(HIP_PLATFORM "amd")
+  endif()
 
-  set(migraphx_libs migraphx::c hip::host MIOpen roc::rocblas)
+  find_package(hip REQUIRED)
+  find_package(migraphx REQUIRED PATHS ${AMD_MIGRAPHX_HOME})
+
+  set(migraphx_libs migraphx::c hip::host)
 
   file(GLOB_RECURSE onnxruntime_providers_migraphx_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/migraphx/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/rocm/rocm_stream_handle.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
@@ -46,18 +48,16 @@
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_migraphx PRIVATE ONNXIFI_BUILD_LIBRARY=1)
-  target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
-  set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
-  set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
-  target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync::nsync_cpp)
-
-  include(CheckLibraryExists)
-  check_library_exists(migraphx::c "migraphx_program_run_async" "/opt/rocm/migraphx/lib" HAS_STREAM_SYNC)
-  if(HAS_STREAM_SYNC)
-      target_compile_definitions(onnxruntime_providers_migraphx PRIVATE -DMIGRAPHX_STREAM_SYNC)
-      message(STATUS "MIGRAPHX GPU STREAM SYNC is ENABLED")
+  if(MSVC)
+    set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS /DEF:${ONNXRUNTIME_ROOT}/core/providers/migraphx/symbols.def)
+    target_link_libraries(onnxruntime_providers_migraphx PRIVATE ws2_32)
   else()
-      message(STATUS "MIGRAPHX GPU STREAM SYNC is DISABLED")
+    target_compile_options(onnxruntime_providers_migraphx PRIVATE -Wno-error=sign-compare)
+    set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+  endif()
+  if(UNIX)
+    set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
+    target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync::nsync_cpp stdc++fs)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -68,8 +68,16 @@
     endif()
   endif()
 
-  install(TARGETS onnxruntime_providers_migraphx
-          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
-  )
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    install(TARGETS onnxruntime_providers_migraphx
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_INSTALL_BINDIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+  else()
+    install(TARGETS onnxruntime_providers_migraphx
+            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+  endif()

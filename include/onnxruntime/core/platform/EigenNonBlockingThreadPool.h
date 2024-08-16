@@ -219,18 +219,18 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler(int, const CHAR_TYPE*){};
+  ThreadPoolProfiler(int, const CHAR_TYPE*) {};
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
-  void Start(){};
+  void Start() {};
   std::string Stop() { return "not available for minimal build"; }
-  void LogStart(){};
+  void LogStart() {};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
   void LogStartAndCoreAndBlock(std::ptrdiff_t){};
   void LogCoreAndBlock(std::ptrdiff_t){};
-  void LogThreadId(int){};
-  void LogRun(int){};
+  void LogThreadId(int) {};
+  void LogRun(int) {};
   std::string DumpChildThreadStat() { return {}; }
 };
 #else
@@ -1129,7 +1129,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //
   // Ensure that the ThreadPoolParallelSection has sufficient workers to
   // execute a loop with degree of parallelism n.  We track the number
-  // of workers already avaiable to the parallel section, prior to
+  // of workers already available to the parallel section, prior to
   // submitting tasks to the work queues to make up the total.
   //
   // Each worker will call in to worker_fn(idx) with a per-worker thread

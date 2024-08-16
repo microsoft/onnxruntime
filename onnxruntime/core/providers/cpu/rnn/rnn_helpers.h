@@ -18,7 +18,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace rnn {

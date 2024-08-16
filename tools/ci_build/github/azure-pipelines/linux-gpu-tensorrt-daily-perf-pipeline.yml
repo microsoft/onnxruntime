@@ -8,14 +8,12 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 10.0.cuda_11_8_cudnn_8
+  default: 10.2.cuda_12_5_cudnn_9
   values:
-  - 8.4.cuda_11_6_cudnn_8
-  - 8.5.cuda_11_8_cudnn_8
   - 8.6.cuda_11_8_cudnn_8
   - 8.6.cuda_12_3_cudnn_9
-  - 10.0.cuda_11_8_cudnn_8
-  - 10.0.cuda_12_4_cudnn_9
+  - 10.2.cuda_11_8_cudnn_8
+  - 10.2.cuda_12_5_cudnn_9
   - BIN
 
 - name: UseTensorrtOssParser

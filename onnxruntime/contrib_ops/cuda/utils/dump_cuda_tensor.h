@@ -13,7 +13,7 @@ namespace cuda {
 
 class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
  public:
-  CudaTensorConsoleDumper() = default;
+  CudaTensorConsoleDumper();
   virtual ~CudaTensorConsoleDumper() {}
 
   void Print(const char* name, const size_t* tensor, int dim0, int dim1) const override;
@@ -46,6 +46,8 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   void Print(const char* name, const OrtValue& value) const override;
   void Print(const char* name, int index, bool end_line) const override;
   void Print(const char* name, const std::string& value, bool end_line) const override;
+
+  void Print(const std::string& value) const override;
 };
 
 }  // namespace cuda

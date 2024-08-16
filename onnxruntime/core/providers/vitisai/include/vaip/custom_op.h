@@ -26,6 +26,17 @@ class ExecutionProvider {
   virtual DllSafe<std::vector<std::string>>
   get_meta_def_constant_initializer() const = 0;
   virtual std::unique_ptr<CustomOp> compile() const = 0;
+
+ public:
+  inline void set_fused_node(const onnxruntime::Node* fused_node) {
+    fused_node_ = fused_node;
+  }
+  inline const onnxruntime::Node* get_fused_node() const {
+    return fused_node_;
+  }
+
+ private:
+  const onnxruntime::Node* fused_node_ = nullptr;
 };
 
 class CustomOp {
