@@ -126,14 +126,21 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<const char*> providers = {kCpuExecutionProvider};
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>(providers);
+  std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
                                                           {"GlobalAveragePool", {}},
                                                           {"Sigmoid", {}},
                                                           {"Softmax", {}}},
-                                                         std::move(selector),
+                                                         std::move(cpu_selector),
+                                                         std::move(action));
+
+  std::vector<const char*> dml_ep = {kDmlExecutionProvider};
+  std::unique_ptr<NodeSelector> dml_selector = std::make_unique<QDQ::UnarySelector>(dml_ep);
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"AveragePool", {}}},
+                                                         std::move(dml_selector),
                                                          std::move(action));
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
