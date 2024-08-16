@@ -69,8 +69,8 @@ class ModelBuilder {
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  std::vector<std::vector<uint8_t>> unpacked_tensors_;
 
-  InlinedHashSet<std::string> scalar_outputs_;
   InlinedHashMap<std::string, OnnxTensorInfo> input_output_info_;
 
   InlinedHashSet<std::string> skipped_initializers_;
@@ -91,9 +91,6 @@ class ModelBuilder {
   Status RegisterModelInputs() ORT_MUST_USE_RESULT;
   Status RegisterModelOutputs() ORT_MUST_USE_RESULT;
   Status RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) ORT_MUST_USE_RESULT;
-
-  // Record the onnx scalar output names.
-  void AddScalarOutput(const std::string& output_name);
 
   static const IOpBuilder* GetOpBuilder(const Node& node);
 };
