@@ -970,6 +970,7 @@ def main():
                         logger.info(f"The ONNX model at {fp_path} has been quantized to int4 and saved at {int4_path}!")
                         remove_existing_model(fp_path)
         barrier()
+
     if args.use_dynamo_export:
         return
 
