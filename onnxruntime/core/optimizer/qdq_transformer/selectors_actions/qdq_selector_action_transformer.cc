@@ -63,7 +63,12 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
   //
   // And cannot eliminate the QDQ for MaxPool if the scale is not positive, as a negative
   // scale will change the ordering of the elements between quantized & de-quantized values.
-  std::unique_ptr<NodeSelector> selector_no_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false);
+
+  // We don't drop the resample QDQ ops here for DML because we don't know yet whether it is allowed to be executed in DML.
+  // This will be done within DML during a graph pass if allowed, but otherwise we need to keep the dequantize op alive.
+  const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
+
+  std::unique_ptr<NodeSelector> selector_no_16bit = std::make_unique<QDQ::DropQDQNodesSelector>(false, false, true, dml_ep);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
                                                          {{"Resize", {}}},
                                                          std::move(selector_no_16bit),
