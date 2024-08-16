@@ -9,11 +9,11 @@ const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
 import * as platform from 'platform';
 
-import {Logger} from '../lib/onnxjs/instrument';
+import { Logger } from '../lib/onnxjs/instrument';
 
-import {Test} from './test-types';
+import { Test } from './test-types';
 
-if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+if (ORT_WEB_TEST_CONFIG.model.some((testGroup) => testGroup.tests.some((test) => test.backend === 'cpu'))) {
   // require onnxruntime-node
   require('../../node');
 }
@@ -26,8 +26,8 @@ for (const logConfig of ORT_WEB_TEST_CONFIG.log) {
   Logger.set(logConfig.category, logConfig.config);
 }
 
-import {ModelTestContext, OpTestContext, ProtoOpTestContext, runModelTestSet, runOpTest} from './test-runner';
-import {readJsonFile} from './test-shared';
+import { ModelTestContext, OpTestContext, ProtoOpTestContext, runModelTestSet, runOpTest } from './test-runner';
+import { readJsonFile } from './test-shared';
 
 // Unit test
 if (ORT_WEB_TEST_CONFIG.unittest) {
@@ -37,14 +37,14 @@ if (ORT_WEB_TEST_CONFIG.unittest) {
 // Set file cache
 if (ORT_WEB_TEST_CONFIG.fileCacheUrls) {
   before('prepare file cache', async () => {
-    const allJsonCache = await Promise.all(ORT_WEB_TEST_CONFIG.fileCacheUrls!.map(readJsonFile)) as Test.FileCache[];
+    const allJsonCache = (await Promise.all(ORT_WEB_TEST_CONFIG.fileCacheUrls!.map(readJsonFile))) as Test.FileCache[];
     for (const cache of allJsonCache) {
       ModelTestContext.setCache(cache);
     }
   });
 }
 
-function shouldSkipTest(test: Test.ModelTest|Test.OperatorTest) {
+function shouldSkipTest(test: Test.ModelTest | Test.OperatorTest) {
   if (!test.cases || test.cases.length === 0) {
     return true;
   }
@@ -95,11 +95,12 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
       const backend = test.backend!;
       const useProtoOpTest = backend !== 'webgl';
       describeTest(`[${backend}]${test.operator} - ${test.name}`, () => {
-        let context: ProtoOpTestContext|OpTestContext;
+        let context: ProtoOpTestContext | OpTestContext;
 
         before('Initialize Context', async () => {
-          context = useProtoOpTest ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions) :
-                                     new OpTestContext(test);
+          context = useProtoOpTest
+            ? new ProtoOpTestContext(test, ORT_WEB_TEST_CONFIG.options.sessionOptions)
+            : new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {
             if (context instanceof ProtoOpTestContext) {
