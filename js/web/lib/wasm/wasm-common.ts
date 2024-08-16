@@ -32,8 +32,10 @@ export const enum DataType {
   complex64 = 14,
   complex128 = 15,
   bfloat16 = 16,
-  uint4x2 = 21,
-  int4x2 = 22,
+
+  // 4-bit data-types
+  uint4 = 21,
+  int4 = 22,
 }
 
 /**
@@ -67,10 +69,11 @@ export const tensorDataTypeStringToEnum = (type: string): DataType => {
       return DataType.int64;
     case 'uint64':
       return DataType.uint64;
-    case 'uint4x2':
-      return DataType.uint4x2;
-    case 'int4x2':
-      return DataType.int4x2;
+    case 'int4':
+      return DataType.int4;
+    case 'uint4':
+      return DataType.uint4;
+
     default:
       throw new Error(`unsupported data type: ${type}`);
   }
@@ -107,10 +110,10 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
       return 'int64';
     case DataType.uint64:
       return 'uint64';
-    case DataType.uint4x2:
-      return 'uint4x2';
-    case DataType.int4x2:
-      return 'int4x2';
+    case DataType.int4:
+      return 'int4';
+    case DataType.uint4:
+      return 'uint4';
 
     default:
       throw new Error(`unsupported data type: ${typeProto}`);
@@ -118,11 +121,42 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
 };
 
 /**
- * get tensor element size in bytes by the given data type
+ * get tensor size in bytes by the given data type and dimensions
  * @returns size in integer or undefined if the data type is not supported
  */
-export const getTensorElementSize = (dateType: number): number | undefined =>
-  [undefined, 4, 1, 1, 2, 2, 4, 8, undefined, 1, 2, 8, 4, 8, undefined, undefined, undefined][dateType];
+export const calculateTensorSizeInBytes = (
+  dateType: number,
+  dimsOrSize: readonly number[] | number,
+): number | undefined => {
+  const elementSize = [
+    -1, // undefined = 0
+    4, // float = 1
+    1, // uint8 = 2
+    1, // int8 = 3
+    2, // uint16 = 4
+    2, // int16 = 5
+    4, // int32 = 6
+    8, // int64 = 7
+    -1, // string = 8
+    1, // bool = 9
+    2, // float16 = 10
+    8, // double = 11
+    4, // uint32 = 12
+    8, // uint64 = 13
+    -1, // complex64 = 14
+    -1, // complex128 = 15
+    -1, // bfloat16 = 16
+    -1, // FLOAT8E4M3FN = 17
+    -1, // FLOAT8E4M3FNUZ = 18
+    -1, // FLOAT8E5M2 = 19
+    -1, // FLOAT8E5M2FNUZ = 20
+    0.5, // uint4 = 21
+    0.5, // int4 = 22
+  ][dateType];
+
+  const size = typeof dimsOrSize === 'number' ? dimsOrSize : dimsOrSize.reduce((a, b) => a * b, 1);
+  return elementSize > 0 ? Math.ceil(size * elementSize) : undefined;
+};
 
 /**
  * get typed array constructor by the given tensor type

@@ -190,8 +190,8 @@
                           "uint64",
                           "bool",
                           "string",
-                          "uint4x2",
-                          "int4x2"
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -228,7 +228,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -263,7 +265,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -300,7 +304,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {

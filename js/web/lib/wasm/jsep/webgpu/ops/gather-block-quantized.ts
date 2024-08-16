@@ -70,7 +70,7 @@ const createGatherBlockQuantizedProgramInfo = (
   const outputSize = ShapeUtil.size(outputShape);
   const outputType = inputs[2].dataType;
   const inputType = inputs[0].dataType;
-  const isSigned = inputType === DataType.int4x2; // input data type is either int4x2 or uint4x2.
+  const isSigned = inputType === DataType.int4; // input data type is either int4 or uint4.
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
     { type: DataType.uint32, data: quantizeAxis },
