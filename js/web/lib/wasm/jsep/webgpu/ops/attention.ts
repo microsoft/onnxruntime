@@ -101,7 +101,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   relative_position_bias            : (B, N, S, T) or NULL
+  //   attention_bias          : (B, N, S, T) or NULL
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -118,10 +118,10 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   const bias = inputs[2];
   const maskIndex = inputs[3];
   const past = inputs[4];
-  const relativePositionBias = inputs[5];
+  const attentionBias = inputs[5];
 
-  if (past && relativePositionBias) {
-    throw new Error('Attention cannot have both past and relative_position_bias');
+  if (past && attentionBias) {
+    throw new Error('Attention cannot have both past and attention_bias');
   }
 
   if (input.dims.length !== 3) {
@@ -215,6 +215,22 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
 
   if (past) {
     throw new Error('past is not supported');
+  }
+
+  if (attentionBias) {
+    if (attentionBias.dims.length !== 4) {
+      throw new Error('Input "attention_bias" must have 4 dimensions');
+    }
+
+    // TODO: support broadcasting the first and second dimensions of attention_bias
+    if (
+      attentionBias.dims[0] !== batchSize ||
+      attentionBias.dims[1] !== attributes.numHeads ||
+      attentionBias.dims[2] !== sequenceLength ||
+      attentionBias.dims[3] !== totalSequenceLength
+    ) {
+      throw new Error('Expect "attention_bias" shape (batch_size, num_heads, sequence_length, total_sequence_length)');
+    }
   }
 
   return {
@@ -348,7 +364,7 @@ const createAttentionProbsProgramInfo = (
   q: TensorView,
   key: TensorView,
   pastKey: TensorView | undefined,
-  relativePositionBias: TensorView | undefined,
+  attentionBias: TensorView | undefined,
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
   pastSequenceLength: number,
@@ -385,7 +401,7 @@ const createAttentionProbsProgramInfo = (
   if (pastKey) {
     inputDependencies.push('type');
   }
-  if (relativePositionBias) {
+  if (attentionBias) {
     inputDependencies.push('type');
   }
   const outputs = [{ dims: probsShape, dataType: q.dataType, gpuDataType: GpuDataType.default }];
@@ -400,8 +416,8 @@ const createAttentionProbsProgramInfo = (
       const pastKeyInput = inputVariable('past_key', pastKey.dataType, pastKey.dims, components);
       inputVars.push(pastKeyInput);
     }
-    if (relativePositionBias) {
-      inputVars.push(inputVariable('relative_position_bias', relativePositionBias.dataType, relativePositionBias.dims));
+    if (attentionBias) {
+      inputVars.push(inputVariable('attention_bias', attentionBias.dataType, attentionBias.dims));
     }
     const output = outputVariable('output', q.dataType, probsShape);
     const outputVars = [output];
@@ -491,7 +507,7 @@ const createAttentionProbsProgramInfo = (
         }
       })()};
         output[outputIdx] = ${output.type.value} (sum * uniforms.alpha) + ${
-          relativePositionBias ? 'relative_position_bias[outputIdx]' : '0.0'
+          attentionBias ? 'attention_bias[outputIdx]' : '0.0'
         };
     }
   }`;
@@ -499,7 +515,7 @@ const createAttentionProbsProgramInfo = (
   return {
     name: 'AttentionProbs',
     shaderCache: {
-      hint: `${components};${relativePositionBias !== undefined};${pastKey !== undefined};${context.outputCount}`,
+      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${context.outputCount}`,
       inputDependencies,
     },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
@@ -648,7 +664,7 @@ export const applyAttention = (
   _past: TensorView | undefined,
   pastKey: TensorView | undefined,
   pastValue: TensorView | undefined,
-  relativePositionBias: TensorView | undefined,
+  attentionBias: TensorView | undefined,
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
 ) => {
@@ -657,8 +673,8 @@ export const applyAttention = (
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
 
   const inputsK = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey ? [q, k, pastKey] : [q, k];
-  if (relativePositionBias) {
-    inputsK.push(relativePositionBias);
+  if (attentionBias) {
+    inputsK.push(attentionBias);
   }
 
   // Run AttentionProbs
@@ -668,7 +684,7 @@ export const applyAttention = (
       q,
       k,
       outputCount > 1 ? pastKey : undefined,
-      relativePositionBias,
+      attentionBias,
       parameters,
       attributes,
       pastSequenceLength,
