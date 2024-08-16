@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -215,6 +215,30 @@ public class OnnxTensorTest {
     long[] shape = new long[] {2};
     try (OnnxTensor t = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8)) {
       Assertions.assertArrayEquals(buf, (byte[]) t.getValue());
+    }
+  }
+
+  @Test
+  public void testByteBufferCreation() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    ByteBuffer byteBuf = ByteBuffer.allocateDirect(Float.BYTES * 5).order(ByteOrder.nativeOrder());
+    FloatBuffer floatBuf = byteBuf.asFloatBuffer();
+    floatBuf.put(1.0f);
+    floatBuf.put(2.0f);
+    floatBuf.put(3.0f);
+    floatBuf.put(4.0f);
+    floatBuf.put(5.0f);
+    floatBuf.position(1);
+    float[] expected = new float[floatBuf.remaining()];
+    floatBuf.get(expected);
+    floatBuf.position(1);
+    byteBuf.position(4);
+    try (OnnxTensor t =
+        OnnxTensor.createTensor(
+            env, byteBuf, new long[] {floatBuf.remaining()}, OnnxJavaType.FLOAT)) {
+      Assertions.assertNotNull(t);
+      float[] actual = (float[]) t.getValue();
+      Assertions.assertArrayEquals(expected, actual);
     }
   }
 
