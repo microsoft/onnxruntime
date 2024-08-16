@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/int4.h"
 #include "quantize_linear.h"
 #include "quantize_linear.cuh"
 
@@ -35,6 +36,13 @@ typename std::enable_if<boost::mp11::mp_set_contains<TypeList<int8_t, uint8_t>, 
 CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
                        size_t batch_size, size_t n_scales, bool /*saturate*/) {
   return CudaQuantizeLinearAxisStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
+}
+
+template <class T, class U>
+typename std::enable_if<boost::mp11::mp_set_contains<TypeList<UInt4x2, Int4x2>, T>::value, Status>::type
+CudaQuantizeLinearBlock(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
+                        size_t num_of_element, size_t batch_size, size_t n_scales, bool /*saturate*/) {
+  return CudaQuantizeLinearBlockStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
 }
 
 template <class T, class U>
@@ -80,7 +88,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
                                                x_shape.SizeToDimension(axis), y_scale.Shape().Size(), saturate_));
     return Status::OK();
   } else { // blocked quantization
-    // TODO(fajin)
+    // validate shape
     int64_t axis_no_neg = HandleNegativeAxis(axis_, x_shape.NumDimensions());
     auto& y_scale_shape = y_scale.Shape();
 
@@ -103,6 +111,11 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
                     "x_zero_point and x_scale must have the same shape for blocked quantization");
       }
     }
+
+    // compute
+    const T* zero_point = y_zero_point ? y_zero_point->Data<T>() : nullptr;
+    const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
+    const auto num_of_elements = x_shape.Size();
   }
 }
 
@@ -236,6 +249,23 @@ REGISTER_Q_KERNEL_TYPED_19(uint8_t)
 REGISTER_Q_KERNEL_TYPED_19(Float8E4M3FN)
 REGISTER_Q_KERNEL_TYPED_19(Float8E5M2)
 #endif
+
+#define REGISTER_Q_KERNEL_TYPED_21(T, U)                           \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                               \
+      QuantizeLinear,                                              \
+      kOnnxDomain,                                                 \
+      21,                                                          \
+      T, U,                                                        \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+      QuantizeLinear<T, U>);
+
+REGISTER_Q_KERNEL_TYPED_21(UInt4x2, float)
+REGISTER_Q_KERNEL_TYPED_21(Int4x2, float)
+REGISTER_Q_KERNEL_TYPED_21(UInt4x2, MLFloat16)
+REGISTER_Q_KERNEL_TYPED_21(Int4x2, MLFloat16)
 
 // register DequantizeLinear kernels
 #define REGISTER_DQ_KERNEL_TYPED_10_12(T)                         \

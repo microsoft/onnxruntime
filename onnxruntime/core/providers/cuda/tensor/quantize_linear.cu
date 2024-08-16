@@ -5,6 +5,7 @@
 
 #include <limits>
 
+#include "core/framework/int4.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
@@ -104,7 +105,7 @@ struct RoundSat<half, Float8E5M2> {
 
 #endif
 
-#endif  // DISABLE_FLOAT8_TYPES 
+#endif  // DISABLE_FLOAT8_TYPES
 
 template <>
 struct RoundStd<half, int8_t> {
@@ -152,6 +153,33 @@ __global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, cons
       id += NumThreadsPerBlock;
     }
   }
+}
+
+// cuda kernel for int4 block-wise quantization with standard rounding
+// OutT is int8_t for Int4x2 and uint8_t for UInt4x2
+// NumElementsPerThread must be multiple of 2.
+template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
+__global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
+                                             const OutT* zero_point_ptr, CUDA_LONG num_element, size_t KN,
+                                             size_t N, size_t scale_KN, size_t block_size, size_t num_block,
+                                             RoundStd<InT, OutT> round) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+#pragma unroll
+  // Process two elements which belong to one byte at a time.
+  // NumElementsPerThread are continuous.
+  for (int i = 0; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+    int x1 = id / KN;
+    int y1 = id % KN / N;
+    int z1 = id % N;
+    int scale_id = x1 * scale_KN + y1 / block_size * N + z1;
+    output[id] = round(input[id],
+                       scale_ptr[scale_id],
+                       zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id]);
+    id += NumThreadsPerBlock;
+  }
+
+  if (i < )
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -223,6 +251,50 @@ Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* ou
       batch_size,
       n_scales,
       RoundStd<InT, OutT>());
+  return Status::OK();
+}
+
+/**
+ * @brief block-wise quantization with standard rounding. Input is reshaped to [M, K, N]. K the quantization axis.
+ *        Scale is reshaped to [M, ceil(K/block_size), N]. For an index i in input, the coordiate is (xi, yi, zi) =
+ *        (i / (K * N), i % (K * N) / N, i % N). The scale coordiate is (xi, yi / block_size, zi). The scale index
+ *        is xi * ceil(K / block_size) * N + yi / block_size * N + zi. The zero point is reshaped to [M, K, N].
+ * @tparam OutT           quantized type
+ * @tparam InT            full precision type
+ * @param stream          cuda stream
+ * @param input           input tensor
+ * @param output          output tensor
+ * @param scale           scale tensor
+ * @param zero_point      zero point tensor
+ * @param num_of_element  number of elements in input tensor
+ * @param K               K
+ * @param N               N
+ * @param block_size      block size
+ */
+template <class OutT, class InT>
+Status CudaQuantizeLinearBlockStd(cudaStream_t stream, const InT* input, OutT* output, const InT* scale,
+                                  const OutT* zero_point, size_t num_of_element, size_t K, size_t N,
+                                  size_t block_size) {
+  if (num_of_element <= 0)
+    return Status::OK();
+  size_t KN = K * N;
+  size_t num_block = (K + block_size - 1) / block_size;
+  size_t scale_KN = num_block * N;
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
+                                               GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  QuantizeLinearKernelBlockStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input,
+          output,
+          scale,
+          zero_point,
+          static_cast<int>(num_of_element),
+          KN,
+          N,
+          scale_KN,
+          block_size,
+          num_block,
+          RoundStd<InT, OutT>());
   return Status::OK();
 }
 
