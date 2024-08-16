@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "include/ncnn/layer.h"
-#include "include/ncnn/command.h"
-
 #include "gsl/gsl"
 
 #include "core/framework/op_kernel_info.h"
@@ -39,44 +36,5 @@ KernelCreateInfo BuildKernelCreateInfo();
 
 const VulkanExecutionProvider& GetVulkanExecutionProvider(const onnxruntime::OpKernelInfo& info);
 
-ncnn::Mat TensorToMat(const Tensor& tensor);
-ncnn::VkMat TensorToVkMat(const Tensor& tensor, ncnn::VkAllocator& allocator);
-
-// apply packing logic that VkCompute::record_upload uses
-// ncnn::VkMat TensorToVkMatWithPacking(const Tensor& tensor, ncnn::VkAllocator& allocator,
-//                                     const ncnn::VulkanDevice& device, const ncnn::Option& options);
-
-// get input/output shape hints
-std::tuple<std::vector<ncnn::Mat>, std::vector<ncnn::Mat>> GetLayerShapeHints(const Node& node);
-
-struct LayerPipeline {
-  LayerPipeline(ncnn::Layer& layer, const ncnn::Option& options,
-                const std::vector<ncnn::Mat>& input_shape_hints = {},
-                const std::vector<ncnn::Mat>& output_shape_hints = {})
-      : layer_(&layer),
-        options_{&options} {
-    layer_->bottom_shapes = input_shape_hints;
-    layer_->top_shapes = output_shape_hints;
-
-    ORT_ENFORCE(layer_->create_pipeline(*options_) == 0, "Failed to create pipeline");
-    // TODO: There's no check on the actual call to `create_pipeline` being successful in the NCNN code.
-    // e.g. sigmoid_vulkan.cpp has
-    //         pipeline_sigmoid->create(LayerShaderType::sigmoid, opt, specializations);
-    // We could override the create_pipeline in each layer (it's a virtual method) to plug in checks but it would need
-    // to be on a per-layer basis as the variable name/s for the pipeline/s is specific to the layer.
-    // A simple check would be that pipeline->shader_info is populated.
-  }
-
-  ~LayerPipeline() {
-    auto result = layer_->destroy_pipeline(*options_);
-    if (result != 0) {
-      LOGS_DEFAULT(ERROR) << "Failed to destroy pipeline. Error code: " << result;
-    }
-  }
-
- private:
-  ncnn::Layer* layer_{nullptr};
-  const ncnn::Option* options_{nullptr};
-};
 }  // namespace vulkan
 }  // namespace onnxruntime

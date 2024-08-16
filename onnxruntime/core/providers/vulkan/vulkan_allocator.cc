@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+//
+// TODO: Not currently used as the implementation is creating a compiled model. Required to use static kernels.
+//
+
 #include "core/providers/vulkan/vulkan_allocator.h"
 
 #include <iostream>

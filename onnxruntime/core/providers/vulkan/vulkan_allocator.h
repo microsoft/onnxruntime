@@ -3,6 +3,10 @@
 
 #pragma once
 
+//
+// TODO: Not currently used as the implementation is creating a compiled model. Required to use static kernels.
+//
+
 #include "core/framework/allocator.h"
 
 #define VULKAN_EP_USE_VMA

@@ -3,6 +3,10 @@
 
 #include "core/providers/vulkan/vulkan_stream_handle.h"
 
+//
+// TODO: Not currently used as the implementation is creating a compiled model. Required to use static kernels.
+//
+
 namespace onnxruntime {
 namespace vulkan {
 }

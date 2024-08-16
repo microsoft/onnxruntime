@@ -5,14 +5,12 @@
 
 #include "core/framework/stream_handles.h"
 
+//
+// TODO: Not currently used as the implementation is creating a compiled model. Required to use static kernels.
+// 
+
 namespace onnxruntime {
 namespace vulkan {
-
-// allocator for CPU scratch buffer memory. TBD what is required
-// struct DeferredCpuAllocator : public OrtAllocator {
-//  DeferredCpuAllocator(Stream&);
-//  Stream& stream_;
-//};
 
 struct Stream : onnxruntime::Stream {
   Stream(void* stream,  // ??? TBD what we need to pass through here. VkCompute? and/or VulkanDevice? other?

@@ -3,6 +3,10 @@
 
 #pragma once
 
+//
+// TODO: Not currently used as the implementation is creating a compiled model. Required to use static kernels.
+//
+
 #include <optional>
 
 #include "kompute/Kompute.hpp"

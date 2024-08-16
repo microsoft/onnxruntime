@@ -21,15 +21,14 @@ class VulkanExecutionProvider;
 namespace vulkan {
 class MatMulKernel : VulkanKernel {
  public:
-  static bool IsSupported(bool use_kompute, const GraphViewer& graph_viewer, const onnxruntime::Node& node,
+  static bool IsSupported(const GraphViewer& graph_viewer, const onnxruntime::Node& node,
                           const logging::Logger& logger);
 
   static std::unique_ptr<VulkanKernel> Create(const VulkanExecutionProvider& vulkan_ep,
-                                              bool use_kompute,
                                               const GraphViewer* graph_viewer,
                                               const onnxruntime::Node& node) {
     assert(graph_viewer);  // expecting compile only usage
-    return std::unique_ptr<VulkanKernel>(new MatMulKernel(vulkan_ep, use_kompute, *graph_viewer, node));
+    return std::unique_ptr<VulkanKernel>(new MatMulKernel(vulkan_ep, *graph_viewer, node));
   }
 
   // static kernel usage.
@@ -41,25 +40,14 @@ class MatMulKernel : VulkanKernel {
 
  private:
   MatMulKernel(const VulkanExecutionProvider& vulkan_ep,
-               bool use_kompute,
                const GraphViewer& graph_viewer,
                const onnxruntime::Node& node);
 
-  std::string_view GetNcnnLayerName() const { return use_inner_product_ ? "InnerProduct" : "Gemm"; }
+  void ProcessConstantInitializers(const GraphViewer& graph_viewer, kp::Manager& manager,
+                                   NodeArgToKpTensorMap& initializers_to_upload) const override;
 
-  Status SetupNcnnParamDict(const GraphViewer& graph_viewer, ncnn::ParamDict& params) override;
-
-  Status SetupNcnnConstantInitializers(const GraphViewer& graph_viewer, ValueIndexes& value_indexes) override;
-
-  Status UploadNcnnConstantInitializers(ncnn::VkTransfer& cmd, ncnn::Option& upload_options) override;
-
-  Status CreateNcnnPipeline() override;
-
-  void KomputeProcessConstantInitializers(const GraphViewer& graph_viewer, kp::Manager& manager,
-                                          NodeArgToKpTensorMap& initializers_to_upload) const override;
-
-  Status KomputeCreateKernel(kp::Manager& manager, NodeArgToKpTensorMap& initializers) override;
-  Status KomputeExecute(kp::Manager& manager, kp::Sequence& sequence, NodeArgToKpTensorMap& values) const override;
+  Status CreateKernel(kp::Manager& manager, NodeArgToKpTensorMap& initializers) override;
+  Status Execute(kp::Manager& manager, kp::Sequence& sequence, NodeArgToKpTensorMap& values) const override;
 
   struct InputInfo {
     InputInfo(const GraphViewer& graph_viewer, const onnxruntime::Node& node, const logging::Logger& logger);
@@ -75,9 +63,7 @@ class MatMulKernel : VulkanKernel {
   };
 
   const InputInfo input_info_;
-  const bool use_inner_product_;
 
-  std::optional<ncnn::Mat> transposed_b_;
   std::unique_ptr<Tensor> transposed_b_tensor_;
 
   mutable std::shared_ptr<kp::Algorithm> kompute_kernel_;
