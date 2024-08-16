@@ -425,12 +425,12 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     };
 
     const prepareScaleAndBData = (): string => {
-      let calcStr = `var colIndex = col * ${components * outputNumber};`;
+      let calcStr = `var col_index = col * ${components * outputNumber};`;
       for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
-            let scale${c} = ${scales.getByOffset(`colIndex * ${nBlocksPerCol} + block`)};
-            let b${c}_data = ${b.getByIndices(`${b.type.indices}(colIndex, block, word)`)};
-            colIndex += 1;`;
+            let scale${c} = ${scales.getByOffset(`col_index * ${nBlocksPerCol} + block`)};
+            let b${c}_data = ${b.getByIndices(`${b.type.indices}(col_index, block, word)`)};
+            col_index += 1;`;
       }
       calcStr += `
             var b_value: u32;
@@ -483,7 +483,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   return {
     name: 'BlockwiseMatMulNBitsV1',
     shaderCache: {
-      hint: `${attributes.blockSize};${dataType};${outputNumber};${nBlocksPerCol}`,
+      hint: `${attributes.blockSize};${attributes.bits};${aComponents};${bComponents};${components};${outputNumber};${nBlocksPerCol}`,
       inputDependencies: Array(inputs.length).fill('rank'),
     },
     getRunData: () => ({
