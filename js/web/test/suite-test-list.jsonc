@@ -1353,7 +1353,7 @@
       "div_int32.jsonc",
       "depth-to-space.jsonc",
       "dequantizelinear.jsonc",
-      "dequantize-linear-int4.jsonc"
+      "dequantize-linear-int4.jsonc",
       "equal.jsonc",
       "exp.jsonc",
       "expand.jsonc",
