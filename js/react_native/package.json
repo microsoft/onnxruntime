@@ -18,13 +18,13 @@
   ],
   "devDependencies": {
     "@types/jest": "^27.4.0",
-    "@types/react": "^18.0.9",
+    "@types/react": "^18.2.6",
     "@types/react-native": "^0.67.7",
     "jest": "^27.4.7",
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
-    "react": "^18.1.0",
-    "react-native": "^0.69.7",
+    "react": "^18.2.0",
+    "react-native": "^0.73.0",
     "react-native-builder-bob": "^0.18.2"
   },
   "peerDependencies": {
