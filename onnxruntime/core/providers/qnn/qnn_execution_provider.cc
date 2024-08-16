@@ -423,9 +423,16 @@ static void LogNodeSupport(const logging::Logger& logger,
     return;
   }
 
+  size_t num_nodes = 0;
+  for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+    assert(node_unit != nullptr);
+    num_nodes += node_unit->GetAllNodesInGroup().size();
+  }
+
   std::ostringstream oss;
-  oss << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for nodes ("
-      << qnn_node_group.Type() << "):" << std::endl;
+  oss << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for " << num_nodes
+      << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
+      << std::endl;
   for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
     for (const Node* node : node_unit->GetAllNodesInGroup()) {
       oss << "\tOperator type: " << node->OpType()
@@ -493,7 +500,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
-    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
