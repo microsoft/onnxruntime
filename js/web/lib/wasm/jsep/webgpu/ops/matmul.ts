@@ -32,7 +32,7 @@ export const createNaiveMatmulProgramInfo = (
   outputShape: readonly number[],
   reshapedOutputShape?: readonly number[],
   isChannelsLast = false /* only used for conv2dByMatMul*/,
-  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const aShape = inputs[0].dims;
   const bShape = inputs[1].dims;
@@ -122,8 +122,8 @@ export const createNaiveMatmulProgramInfo = (
         for (let j = 0; j < aComponents; j++) {
           calcStr += `
             values[${i}] = fma(${b.type.value}(a_data${
-            aComponents === 1 ? '' : `[${j}]`
-          }), b_data${j}, values[${i}]);\n`;
+              aComponents === 1 ? '' : `[${j}]`
+            }), b_data${j}, values[${i}]);\n`;
         }
       }
       return calcStr;
