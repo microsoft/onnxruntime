@@ -121,11 +121,14 @@ const createGatherBlockQuantizedProgramInfo = (
         })()};
         var data_indices = ${data.type.indices}(0);
         for (var i: u32 = 0; i < uniforms.gather_axis; i++) {
-          data_indices[i] = output_indices[i];
+          var index = ${output.indicesGet('output_indices', 'i')};
+          ${data.indicesSet('data_indices', 'i', 'index')};
         }
-        data_indices[uniforms.gather_axis] = u32(${indices.getByIndices('indices_indices')});
+        var index_from_indices = u32(${indices.getByIndices('indices_indices')});
+        ${data.indicesSet('data_indices', 'uniforms.gather_axis', 'index_from_indices')};
         for (var i = uniforms.gather_axis + 1; i < ${outputShape.length}; i++) {
-          data_indices[i] = output_indices[i + ${indicesShape.length} - 1];
+          var index = ${output.indicesGet('output_indices', `i + ${indicesShape.length} - 1`)};
+          ${data.indicesSet('data_indices', 'i', 'index')};
         }
         var data_offset = ${data.indicesToOffset('data_indices')};
         var data_index = data_offset % 8;
