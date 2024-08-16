@@ -226,9 +226,8 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!use_flash_attention && nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_attn_bias_aligned = nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention =
-        is_attn_bias_aligned &&
+        (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
         has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }

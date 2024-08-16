@@ -155,16 +155,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   int qk_offset = qkv_base_offset + tidx * QK_VEC_SIZE;
 
   // The offset of attention bias for current head.
-  int64_t attn_bias_offset = 0;
-  if (params.attention_bias != nullptr) {
-    // Support broadcasting the first and second dimensions of attention bias.
-    if (!params.broadcast_attn_bias_dim_0) {
-      attn_bias_offset = static_cast<int64_t>(bbi) * params.num_heads * params.sequence_length * params.total_sequence_length;
-    }
-    if (!params.broadcast_attn_bias_dim_1) {
-      attn_bias_offset += static_cast<int64_t>(hi) * params.sequence_length * params.total_sequence_length;
-    }
-  }
+  // Support broadcasting the first and second dimensions of attention bias with shape
+  // [batch_size or 1, num_heads or 1, seq_len, total_seq_len], and asssume seq_len == 1 for this operator.
+  int attn_bias_offset = (params.attention_bias == nullptr)
+                             ? 0
+                             : (((params.broadcast_attn_bias_dim_0 ? 0 : (bbi * params.num_heads)) +
+                                 (params.broadcast_attn_bias_dim_1 ? 0 : hi)) *
+                                params.total_sequence_length);
 
   // Trigger the loads from the Q and K buffers.
   Qk_vec_k q;
