@@ -38,7 +38,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   attention_bias          : (B, N, S, T) or NULL
+  //   attention_bias          : (B or 1, N or 1, S, T) or NULL
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
