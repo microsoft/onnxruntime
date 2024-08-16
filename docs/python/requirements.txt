@@ -13,7 +13,7 @@ pandas
 pydot
 coloredlogs
 flatbuffers
-numpy<=2.0.0
+numpy<2.0.0
 packaging
 protobuf
 sympy
