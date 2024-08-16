@@ -186,10 +186,6 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
   return Status::OK();
 }
 
-bool Model::IsScalarOutput(const std::string& output_name) const {
-  return Contains(scalar_outputs_, output_name);
-}
-
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
   return input_output_info_.at(name);
 }
