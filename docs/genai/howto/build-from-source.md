@@ -16,7 +16,7 @@ nav_order: 2
 ## Pre-requisites
 
 - `cmake`
-- `.Net v6` (if building C#)
+- `.NET6` (if building C#)
 
 ## Clone the onnxruntime-genai repo
 
@@ -116,7 +116,7 @@ python build.py --build_java --config Release
 
 ### Build for Android
 
-If building on Windows, install the `ninja` packages.
+If building on Windows, install `ninja`.
 
 ```bash
 pip install ninja
@@ -128,7 +128,6 @@ Run the build script.
 python build.py --build_java --android --android_home <path to your Android SDK> --android_ndk_path <path to your NDK installation>` --android_abi --config Release
 ```
 
-
 ## Install the library into your application
 
 ### Install Python wheel
@@ -138,6 +137,9 @@ cd build/wheel
 pip install *.whl
 ```
 
+### Install NuGet
+
+_Coming soon_
 
 ### Install JAR
 
@@ -147,13 +149,16 @@ Copy `build/Windows/Release/src/java/build/libs/*.jar` into your application.
 
 Copy `build/Android/Release/src/java/build/android/outputs/aar/onnxruntime-genai-release.aar` into your application.
 
-### Install NuGet
-
-_Coming soon_ 
 
 ### Install C/C++ header file and library
 
-_COming soon_
+#### Windows
+
+Use the header in `src\ort_genai.h` and the libraries in `build\Windows\Release`
+
+#### Linux
+
+Use the header in `src/ort_genai.h` and the libraries in `build/Linux/Release`
 
 
 
