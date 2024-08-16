@@ -664,7 +664,7 @@ export const applyAttention = (
   if (parameters.kvNumHeads === undefined) {
     const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
     const output1 = context.output(1, presentKeyShape);
-    if (output1 == 0) {
+    if (output1 === 0) {
       context.outputCount = 1;
     }
   }
