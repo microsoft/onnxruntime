@@ -59,7 +59,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
@@ -74,7 +74,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias != nullptr ? bias->Shape() : bias_shape,
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -104,7 +104,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             (nullptr == relative_position_bias) &&
+                             (nullptr == attention_bias) &&
                              nullptr == past &&
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
@@ -146,7 +146,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // where past state is empty.
         bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
         bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                       nullptr == relative_position_bias &&
+                                       nullptr == attention_bias &&
                                        parameters.past_sequence_length == 0 &&
                                        parameters.hidden_size == parameters.v_hidden_size &&
                                        FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
@@ -169,7 +169,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               (nullptr == mask_index || is_mask_1d_seq_len) &&
                               nullptr == past &&
                               nullptr == present &&
-                              nullptr == relative_position_bias &&
+                              nullptr == attention_bias &&
                               parameters.hidden_size == parameters.v_hidden_size &&
                               FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
                                                                 enable_trt_flash_attention_, false);
@@ -201,12 +201,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == present &&
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
+      (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 
-  if (use_memory_efficient_attention) {
-    bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = (nullptr == relative_position_bias || is_good_for_rpb);
-  }
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
@@ -277,8 +274,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != past) {
     data.past = reinterpret_cast<const CudaT*>(past->Data<T>());
   }
-  if (nullptr != relative_position_bias) {
-    data.relative_position_bias = reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  if (nullptr != attention_bias) {
+    data.attention_bias = reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
