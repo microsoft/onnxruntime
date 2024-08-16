@@ -45,11 +45,11 @@
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Accelerating LLaMA-2 Inference with ONNX Runtime</h1>
 	<p class="text-neutral">
-		By: <a href="https://www.linkedin.com/in/kunal-v-16315b94" class="text-blue-700"
+		By: <a href="https://www.linkedin.com/in/kunal-v-16315b94" class="text-blue-700 underline"
 			>Kunal Vaishnavi</a
 		>
 		and
-		<a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-700">Parinita Rahi</a>
+		<a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-700 underline">Parinita Rahi</a>
 	</p>
 	<p class="text-neutral">
 		14TH NOVEMBER, 2023 <span class="italic text-stone-500">(Updated 22nd November)</span>
@@ -76,7 +76,7 @@
 			Llama2 is a state-of-the-art open source LLM from Meta ranging in scale from 7B to 70B
 			parameters (7B, 13B, 70B). Microsoft and Meta <a
 				href="https://blogs.microsoft.com/blog/2023/07/18/microsoft-and-meta-expand-their-ai-partnership-with-llama-2-on-azure-and-windows/"
-				class="text-blue-700">announced</a
+				class="text-blue-700 underline">announced</a
 			> their AI on Azure and Windows collaboration in July 2023. As part of the announcement, Llama2
 			was added to the Azure AI model catalog, which serves as a hub of foundation models that empower
 			developers and machine learning (ML) professionals to easily discover, evaluate, customize, and
@@ -152,7 +152,7 @@
 		<p class="mb-4">
 			More details on these metrics can be found <a
 				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama/README.md"
-				class="text-blue-700">here</a
+				class="text-blue-700 underline">here</a
 			>.
 		</p>
 
@@ -165,7 +165,7 @@
 		</p>
 
 		<p class="mb-4">
-			ONNX Runtime applied <a href="https://arxiv.org/pdf/1909.08053.pdf" class="text-blue-700"
+			ONNX Runtime applied <a href="https://arxiv.org/pdf/1909.08053.pdf" class="text-blue-700 underline"
 				>Megatron-LM</a
 			>
 			Tensor Parallelism on the 70B model to split the original model weight onto different GPUs. Megatron
@@ -176,7 +176,7 @@
 			You can find additional example scripts
 			<a
 				href="https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/llama/"
-				class="text-blue-700">here</a
+				class="text-blue-700 underline">here</a
 			>.
 		</p>
 
@@ -252,7 +252,7 @@
 			calculate the rotary embeddings more efficiently with less memory usage. The rotary embedding
 			compute kernels also support interleaved and non-interleaved formats to support both the <a
 				href="https://github.com/microsoft/Llama-2-Onnx"
-				class="text-blue-700">Microsoft version of LLaMA-2</a
+				class="text-blue-700 underline">Microsoft version of LLaMA-2</a
 			>
 			and the Hugging Face version of LLaMA-2 respectively while sharing the same calculations.
 		</p>
@@ -260,11 +260,11 @@
 		<p class="mb-4">
 			The optimizations work for the <a
 				href="https://huggingface.co/meta-llama"
-				class="text-blue-700">Hugging Face versions</a
+				class="text-blue-700 underline">Hugging Face versions</a
 			>
 			(models ending with <i>-hf</i>) and the Microsoft versions. You can download the optimized HF
 			versions from
-			<a href="https://github.com/microsoft/Llama-2-Onnx/tree/main-CUDA_CPU" class="text-blue-700"
+			<a href="https://github.com/microsoft/Llama-2-Onnx/tree/main-CUDA_CPU" class="text-blue-700 underline"
 				>Microsoft's LLaMA-2 ONNX repository</a
 			>. Stay tuned for newer Microsoft versions coming soon!
 		</p>
@@ -281,7 +281,7 @@
 		<p class="mb-4">
 			Here is an example of <a
 				href="https://github.com/microsoft/Olive/tree/main/examples/llama2"
-				class="text-blue-700">Llama2 optimization with Olive</a
+				class="text-blue-700 underline">Llama2 optimization with Olive</a
 			>, which harnesses ONNX Runtime optimizations highlighted in this blog. Distinct optimization
 			flows cater to various requirements. For instance, you have the flexibility to choose
 			different data types for quantization in CPU and GPU inference, based on your accuracy
@@ -294,7 +294,7 @@
 		<p class="mb-4">
 			Here is a <a
 				href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama/LLaMA-2%20E2E%20Notebook.ipynb"
-				class="text-blue-700">sample notebook</a
+				class="text-blue-700 underline">sample notebook</a
 			> that shows you an end-to-end example of how you can use the above ONNX Runtime optimizations
 			in your application.
 		</p>
