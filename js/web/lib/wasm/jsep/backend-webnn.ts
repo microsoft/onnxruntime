@@ -6,14 +6,14 @@
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="webnn/webnn.d.ts" />
 
-import { Tensor } from 'onnxruntime-common';
+import { Env, Tensor } from 'onnxruntime-common';
 
 import { DataType } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
 import { BufferId, createBufferManager } from './webnn/buffer-manager';
-import { LOG_DEBUG } from './log';
+import { configureLogger, LOG_DEBUG } from './log';
 
 /*
  * TensorProto::data_type to WebNN OperandType mapping.
@@ -52,6 +52,10 @@ export class WebNNBackend {
    */
   private activeSessionId?: number;
 
+  constructor(env: Env) {
+    configureLogger(env.logLevel!, !!env.debug);
+  }
+
   public get currentSessionId(): number {
     if (this.activeSessionId === undefined) {
       throw new Error('No active session');
@@ -64,7 +68,11 @@ export class WebNNBackend {
   }
 
   public get currentContext(): MLContext {
-    return this.getMLContext(this.currentSessionId);
+    const mlContext = this.getMLContext(this.currentSessionId);
+    if (!mlContext) {
+      throw new Error(`No MLContext found for session ${this.currentSessionId}`);
+    }
+    return mlContext;
   }
 
   public registerMLContext(sessionId: number, mlContext: MLContext): void {
@@ -77,26 +85,23 @@ export class WebNNBackend {
     sessionIds.add(sessionId);
   }
 
-  public unregisterMLContext(sessionId: number): void {
+  public onReleaseSession(sessionId: number): void {
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
-      throw new Error(`No MLContext found for session ${sessionId}`);
+      // Current session is not a WebNN session.
+      return;
     }
     this.mlContextBySessionId.delete(sessionId);
     const sessionIds = this.sessionIdsByMLContext.get(mlContext)!;
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
       this.sessionIdsByMLContext.delete(mlContext);
+      this.bufferManager.releaseBuffersForContext(mlContext);
     }
   }
 
-  public onReleaseSession(sessionId: number): void {
-    this.unregisterMLContext(sessionId);
-    this.bufferManager.releaseBuffersForContext(this.getMLContext(sessionId));
-  }
-
-  public getMLContext(sessionId: number): MLContext {
-    return this.mlContextBySessionId.get(sessionId)!;
+  public getMLContext(sessionId: number): MLContext | undefined {
+    return this.mlContextBySessionId.get(sessionId);
   }
 
   public reserveBufferId(): BufferId {
@@ -114,7 +119,7 @@ export class WebNNBackend {
     dimensions: number[],
     copyOld: boolean,
   ): Promise<MLBuffer> {
-    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
+    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
@@ -141,7 +146,7 @@ export class WebNNBackend {
   }
 
   public registerMLBuffer(buffer: MLBuffer, onnxDataType: DataType, dimensions: number[]): BufferId {
-    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType)!;
+    const webnnDataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
     if (!webnnDataType) {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }

@@ -258,7 +258,7 @@ export const init = async (
       () => backend.replay(),
     ]);
   } else {
-    const backend = new WebNNBackend();
+    const backend = new WebNNBackend(env);
     jsepInit('webnn', [
       backend,
       // jsepReserveBufferId

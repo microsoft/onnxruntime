@@ -184,7 +184,7 @@ export declare namespace JSEP {
      * @param bufferId - specify the buffer ID.
      * @param onnxDataType - specify the data type.
      * @param dimensions - specify the dimensions.
-     * @param copyOld - specify whether to copy the old buffer, it .
+     * @param copyOld - specify whether to copy the old buffer if a new buffer was created.
      * @returns the MLBuffer associated with the buffer ID.
      */
     jsepEnsureBuffer: (

@@ -144,7 +144,7 @@ class BufferTracker {
         return mlBuffer;
       }
     }
-    LOG_DEBUG('verbose', () => `[WebNN] createBuffer {dataType: ${dataType}, dimensions: ${dimensions}}`);
+    LOG_DEBUG('verbose', () => `[WebNN] MLContext.createBuffer {dataType: ${dataType}, dimensions: ${dimensions}}`);
     const buffer = await this.context.createBuffer({ dataType, dimensions });
     this.bufferEntry = [buffer, dataType, dimensions];
     this.bufferCache.push(this.bufferEntry);
@@ -218,7 +218,7 @@ class BufferManagerImpl implements BufferManager {
       () =>
         `[WebNN] BufferManager.ensureBuffer {bufferId: ${bufferId}, dataType: ${
           dataType
-        }, dimensions: ${dimensions}}, copyOld: ${copyOld}`,
+        }, dimensions: ${dimensions}, copyOld: ${copyOld}}`,
     );
     const buffer = this.buffersById.get(bufferId);
     if (!buffer) {
