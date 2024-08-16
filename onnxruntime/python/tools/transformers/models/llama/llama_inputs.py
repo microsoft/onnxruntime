@@ -28,7 +28,6 @@ def get_position_ids(attention_mask: torch.Tensor, use_past_kv: bool):
 #   input_ids: (batch_size, sequence_length)
 #   attention_mask: (batch_size, sequence_length)
 #   position_ids: (batch_size, sequence_length)
-
 def get_sample_inputs(
     config: AutoConfig,
     device: torch.device,
