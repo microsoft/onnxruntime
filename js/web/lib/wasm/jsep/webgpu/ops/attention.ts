@@ -652,9 +652,23 @@ export const applyAttention = (
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
 ) => {
-  const outputCount = context.outputCount;
-  const pastSequenceLength = parameters.kvNumHeads !== undefined || outputCount > 1 ? parameters.pastSequenceLength : 0;
+  const pastSequenceLength = parameters.kvNumHeads !== undefined || context.outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
+
+  //
+  // context.outputCount comes from KernelOp and is the number of outputs the op has.
+  // If they are not consumed we need to make sure the shaders don't generate the output
+  // since there is no buffer for it.
+  // We check by requesting the output and if not there we'll adjust context.outputCount
+  //
+  if (parameters.kvNumHeads === undefined) {
+    const presentKeyShape = [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize];
+    const output1 = context.output(1, presentKeyShape);
+    if (output1 == 0) {
+      context.outputCount = 1;
+    }
+  }
+  const outputCount = context.outputCount;
 
   const inputsK = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey ? [q, k, pastKey] : [q, k];
   if (relativePositionBias) {

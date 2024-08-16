@@ -183,7 +183,7 @@ export interface ComputeContext {
   /**
    * a number of outputs for the node
    */
-  readonly outputCount: number;
+  outputCount: number;
 
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
