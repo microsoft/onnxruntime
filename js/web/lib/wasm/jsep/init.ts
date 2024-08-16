@@ -11,6 +11,7 @@ import { LOG_DEBUG } from './log';
 import { TensorView } from './tensor-view';
 import { ShapeUtil } from './util';
 import { AdapterInfo, ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo } from './webgpu/types';
+import { WebNNBackend } from './backend-webnn';
 
 /* eslint-disable no-bitwise */
 
@@ -257,6 +258,22 @@ export const init = async (
       () => backend.replay(),
     ]);
   } else {
-    jsepInit('webnn');
+    const backend = new WebNNBackend();
+    jsepInit('webnn', [
+      backend,
+      // jsepReserveBufferId
+      () => backend.reserveBufferId(),
+      // jsepReleaseBufferId,
+      (bufferId: number) => backend.releaseBufferId(bufferId),
+      // jsepEnsureBuffer
+      async (bufferId: number, onnxDataType: number, dimensions: number[]) =>
+        backend.ensureBuffer(bufferId, onnxDataType, dimensions),
+      // jsepUploadBuffer
+      (bufferId: number, data: Uint8Array) => {
+        backend.uploadBuffer(bufferId, data);
+      },
+      // jsepDownloadBuffer
+      async (bufferId: number) => backend.downloadBuffer(bufferId),
+    ]);
   }
 };

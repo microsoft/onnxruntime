@@ -381,21 +381,16 @@ interface MLGraphBuilder {
 
 // Experimental MLBuffer interface
 
-type MLSize64Out = number;
 interface MLBuffer {
-  readonly size: MLSize64Out;
   destroy(): void;
 }
-type MLSize64 = number;
-interface MLBufferDescriptor {
-  size: MLSize64;
-}
+
 type MLNamedBuffers = Record<string, MLBuffer>;
 interface MLContext {
-  createBuffer(descriptor: MLBufferDescriptor): MLBuffer;
+  createBuffer(descriptor: MLOperandDescriptor): Promise<MLBuffer>;
   writeBuffer(
-      dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: MLSize64,
-      srcElementSize?: MLSize64): void;
+      dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: number,
+      srcElementSize?: number): void;
   readBuffer(srcBuffer: MLBuffer): Promise<ArrayBuffer>;
   dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
 }

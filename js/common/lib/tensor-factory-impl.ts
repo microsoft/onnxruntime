@@ -11,6 +11,7 @@ import {
   TensorFromImageBitmapOptions,
   TensorFromImageDataOptions,
   TensorFromImageElementOptions,
+  TensorFromMLBufferOptions,
   TensorFromTextureOptions,
   TensorFromUrlOptions,
 } from './tensor-factory.js';
@@ -308,6 +309,17 @@ export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes
 ): Tensor => {
   const { dataType, dims, download, dispose } = options;
   return new Tensor({ location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims, download, dispose });
+};
+
+/**
+ * implementation of Tensor.fromMLBuffer().
+ */
+export const tensorFromMLBuffer = <T extends TensorInterface.MLBufferDataTypes>(
+  mlBuffer: TensorInterface.MLBufferType,
+  options: TensorFromMLBufferOptions<T>,
+): Tensor => {
+  const { dataType, dims, download, dispose } = options;
+  return new Tensor({ location: 'ml-buffer', type: dataType ?? 'float32', mlBuffer, dims, download, dispose });
 };
 
 /**

@@ -27,6 +27,15 @@ export declare namespace JSEP {
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
+  type ReserveBufferIdFunction = () => number;
+  type ReleaseBufferIdFunction = (bufferId: number) => void;
+  type EnsureBufferFunction = (
+    bufferId: number,
+    dataType: number | MLOperandDataType,
+    dimensions: number[],
+  ) => Promise<MLBuffer>;
+  type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
+  type DownloadBufferFunction = (bufferId: number) => Promise<ArrayBuffer>;
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
@@ -62,7 +71,17 @@ export declare namespace JSEP {
         replay: ReplayFunction,
       ],
     ): void;
-    jsepInit(name: 'webnn', initParams?: never): void;
+    jsepInit(
+      name: 'webnn',
+      initParams: [
+        backend: BackendType,
+        reserveBufferId: ReserveBufferIdFunction,
+        releaseBufferId: ReleaseBufferIdFunction,
+        ensureBuffer: EnsureBufferFunction,
+        uploadBuffer: UploadBufferFunction,
+        downloadBuffer: DownloadBufferFunction,
+      ],
+    ): void;
   }
 
   export interface WebGpuModule {
@@ -134,6 +153,70 @@ export declare namespace JSEP {
      * Active MLContext used to create WebNN EP.
      */
     currentContext: MLContext;
+
+    /**
+     * Disables creating MLBuffers. This is used to avoid creating MLBuffers for graph initializers.
+     */
+    shouldTransferToMLBuffer: boolean;
+
+    /**
+     * [exported from pre-jsep.js] Register MLContext for a session.
+     * @param sessionId - specify the session ID.
+     * @param context - specify the MLContext.
+     * @returns
+     */
+    jsepRegisterMLContext: (sessionId: number, context: MLContext) => void;
+    /**
+     * [exported from pre-jsep.js] Reserve a MLBuffer ID attached to the current session.
+     * @returns the MLBuffer ID.
+     */
+    jsepReserveBufferId: () => number;
+    /**
+     * [exported from pre-jsep.js] Release a MLBuffer ID from use and destroy buffer if no longer in use.
+     * @param bufferId - specify the MLBuffer ID.
+     * @returns
+     */
+    jsepReleaseBufferId: (bufferId: number) => void;
+    /**
+     * [exported from pre-jsep.js] Get MLBuffer by ID.
+     * @param bufferId - specify the MLBuffer ID.
+     * @returns the MLBuffer.
+     */
+    jsepEnsureBuffer: (
+      bufferId: number,
+      dataType: number | MLOperandDataType,
+      dimensions: number[],
+    ) => Promise<MLBuffer>;
+    /**
+     * [exported from pre-jsep.js] Upload data to MLBuffer.
+     * @param bufferId - specify the MLBuffer ID.
+     * @param data - specify the data to upload. It can be a TensorProto::data_type or a WebNN MLOperandDataType.
+     * @param dimensions - specify the dimensions.
+     * @returns
+     */
+    jsepUploadBuffer: (bufferId: number, data: Uint8Array) => void;
+    /**
+     * [exported from pre-jsep.js] Download data from MLBuffer.
+     * @param bufferId - specify the MLBuffer ID.
+     * @returns the downloaded data.
+     */
+    jsepDownloadBuffer: (bufferId: number) => Promise<ArrayBuffer>;
+    /**
+     * [exported from pre-jsep.js] Create a downloader function to download data from MLBuffer.
+     * @param bufferId - specify the MLBuffer ID.
+     * @param type - specify the data type.
+     * @returns the downloader function.
+     */
+    jsepCreateMLBufferDownloader: (
+      bufferId: number,
+      type: Tensor.MLBufferDataTypes,
+    ) => () => Promise<Tensor.DataTypeMap[Tensor.MLBufferDataTypes]>;
+    /**
+     * [exported from pre-jsep.js] Register MLBuffer for a session.
+     * @param mlBuffer - specify the MLBuffer.
+     * @returns the MLBuffer ID.
+     */
+    jsepRegisterMLBuffer: (buffer: MLBuffer) => number;
   }
 }
 

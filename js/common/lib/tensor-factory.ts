@@ -86,6 +86,20 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
   readonly gpuBuffer: Tensor.GpuBufferType;
 }
 
+export interface MLBufferConstructorParameters<T extends Tensor.MLBufferDataTypes = Tensor.MLBufferDataTypes>
+  extends CommonConstructorParameters<T>,
+    GpuResourceConstructorParameters<T> {
+  /**
+   * Specify the location of the data to be 'ml-buffer'.
+   */
+  readonly location: 'ml-buffer';
+
+  /**
+   * Specify the WebNN buffer that holds the tensor data.
+   */
+  readonly mlBuffer: Tensor.MLBufferType;
+}
+
 // #endregion
 
 // the following region contains type definitions of each individual options.
@@ -219,6 +233,15 @@ export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
   dataType?: T;
 }
 
+export interface TensorFromMLBufferOptions<T extends Tensor.MLBufferDataTypes>
+  extends Pick<Tensor, 'dims'>,
+    GpuResourceConstructorParameters<T> {
+  /**
+   * Describes the data type of the tensor.
+   */
+  dataType?: T;
+}
+
 // #endregion
 
 /**
@@ -334,6 +357,29 @@ export interface TensorFactory {
   fromGpuBuffer<T extends Tensor.GpuBufferDataTypes>(
     buffer: Tensor.GpuBufferType,
     options: TensorFromGpuBufferOptions<T>,
+  ): TypedTensor<T>;
+
+  /**
+   * create a tensor from a WebNN MLBuffer
+   *
+   * @param buffer - the MLBuffer object to create tensor from
+   * @param options - An optional object representing options for creating tensor from a WebNN MLBuffer.
+   *
+   * The options include following properties:
+   * - `dataType`: the data type of the tensor. If omitted, assume 'float32'.
+   * - `dims`: the dimension of the tensor. Required.
+   * - `download`: an optional function to download the tensor data from the MLBuffer to CPU. If omitted, the MLBuffer
+   * data will not be able to download. Usually, this is provided by the WebNN backend for the inference outputs.
+   * Users don't need to provide this function.
+   * - `dispose`: an optional function to dispose the tensor data on the WebNN MLBuffer. If omitted, the MLBuffer will
+   * not be disposed. Usually, this is provided by the WebNN backend for the inference outputs. Users don't need to
+   * provide this function.
+   *
+   * @returns a tensor object
+   */
+  fromMLBuffer<T extends Tensor.MLBufferDataTypes>(
+    buffer: Tensor.MLBufferType,
+    options: TensorFromMLBufferOptions<T>,
   ): TypedTensor<T>;
 
   /**

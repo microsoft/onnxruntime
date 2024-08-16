@@ -239,6 +239,20 @@ export const isGpuBufferSupportedType = (type: Tensor.Type): type is Tensor.GpuB
   type === 'bool';
 
 /**
+ * Check whether the given tensor type is supported by WebNN MLBuffer
+ */
+export const isMLBufferSupportedType = (type: Tensor.Type): type is Tensor.MLBufferDataTypes =>
+  type === 'float32' ||
+  type === 'float16' ||
+  type === 'int32' ||
+  type === 'int64' ||
+  type === 'uint32' ||
+  type === 'uint64' ||
+  type === 'int8' ||
+  type === 'uint8' ||
+  type === 'bool';
+
+/**
  * Map string data location to integer value
  */
 export const dataLocationStringToEnum = (location: Tensor.DataLocation): number => {
@@ -253,6 +267,8 @@ export const dataLocationStringToEnum = (location: Tensor.DataLocation): number 
       return 3;
     case 'gpu-buffer':
       return 4;
+    case 'ml-buffer':
+      return 5;
     default:
       throw new Error(`unsupported data location: ${location}`);
   }
@@ -262,4 +278,4 @@ export const dataLocationStringToEnum = (location: Tensor.DataLocation): number 
  * Map integer data location to string value
  */
 export const dataLocationEnumToString = (location: number): Tensor.DataLocation | undefined =>
-  (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer'] as const)[location];
+  (['none', 'cpu', 'cpu-pinned', 'texture', 'gpu-buffer', 'ml-buffer'] as const)[location];
