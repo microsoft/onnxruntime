@@ -344,9 +344,9 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   const dataType = inputs[0].dataType;
   const aComponents = getMaxComponents(attributes.k);
   const bComponents = getMaxComponents(blobSizeInWords);
-  const useBlockwiseMatMulNBits = true;
   const components = getMaxComponents(dimBOuter);
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
+  const outputNumber = (dimBOuter / components) % 2 === 0 ? 2 : 1;
 
   const programUniforms: ProgramUniform[] = [];
   const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
@@ -396,7 +396,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
               input_offset++;
             }
           `;
-      for (let c = 0; c < components; c++) {
+      for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
             b_value = ${bComponents === 1 ? `b${c}_data` : `b${c}_data[i]`};
             b_value_lower = unpack4xU8(b_value & b_mask);
@@ -415,7 +415,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
                 return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale${c};`;
               }
             })()};
-            workgroup_shared[block]${components > 1 ? `[${c}]` : ''} += ${Array.from(
+            workgroup_shared[block * ${outputNumber} + ${Math.floor(c / components)}]${components > 1 ? `[${c % components}]` : ''} += ${Array.from(
               { length: 8 / aComponents },
               (_, i) =>
                 `${
@@ -430,8 +430,8 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     };
 
     const prepareScaleAndBData = (): string => {
-      let calcStr = `var colIndex = col * ${components};`;
-      for (let c = 0; c < components; c++) {
+      let calcStr = `var colIndex = col * ${components * outputNumber};`;
+      for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
             let scale${c} = ${scales.getByOffset(`colIndex * ${nBlocksPerCol} + block`)};
             let b${c}_data = ${b.getByIndices(`${b.type.indices}(colIndex, block, word)`)};
@@ -448,7 +448,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     };
 
     return `
-        var<workgroup> workgroup_shared: array<${output.type.value}, ${nBlocksPerCol}>;
+        var<workgroup> workgroup_shared: array<${output.type.value}, ${outputNumber * nBlocksPerCol}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([nBlocksPerCol, 1, 1])}
           var block = local_id.x;
@@ -470,26 +470,30 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
           }
           workgroupBarrier();
 
-            if (local_id.x < 1) {
+          var elements_per_thread: u32 = ${Math.ceil(outputNumber / nBlocksPerCol)};
+          for (var e: u32 = 0u; e < elements_per_thread; e++) {
+            var c_offset = e + local_id.x * elements_per_thread;
+            if (c_offset < ${outputNumber}) {
               var output_value: ${output.type.value} = ${output.type.value}(0);
-              var workgroup_shared_offset: u32 = local_id.x;
+              var workgroup_shared_offset: u32 = c_offset;
               for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
                 output_value += workgroup_shared[workgroup_shared_offset];
-                workgroup_shared_offset += 1;
+                workgroup_shared_offset += ${outputNumber};
               }
-              ${output.setByIndices(`${output.type.indices}(batch, row, col)`, 'output_value')};
+              ${output.setByIndices(`${output.type.indices}(batch, row, col * ${outputNumber} + c_offset)`, 'output_value')};
             }
+          }
         }`;
   };
   return {
-    name: useBlockwiseMatMulNBits ? 'BlockwiseMatMulNBits' : 'MatMulNBits',
+    name: 'BlockwiseMatMulNBitsV1',
     shaderCache: {
-      hint: `${attributes.cacheKey};${dimAOuter};${dataType};${inputs.length}`,
+      hint: `${attributes.cacheKey};${dataType};${outputNumber}`,
       inputDependencies: Array(inputs.length).fill('rank'),
     },
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType }],
-      dispatchGroup: { x: Math.ceil(dimBOuter / components), y: dimAOuter, z: batchSize },
+      dispatchGroup: { x: Math.ceil(dimBOuter / components / outputNumber), y: dimAOuter, z: batchSize },
       programUniforms,
     }),
     getShaderSource,
