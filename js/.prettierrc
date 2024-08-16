@@ -1,1 +1,13 @@
-{ "printWidth": 120, "endOfLine": "auto", "singleQuote": false }
+{
+  "printWidth": 120,
+  "endOfLine": "auto",
+  "singleQuote": true,
+  "overrides": [
+    {
+      "files": "*.jsonc",
+      "options": {
+        "trailingComma": "none"
+      }
+    }
+  ]
+}

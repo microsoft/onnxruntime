@@ -45,11 +45,10 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   return exports;
 }
 
-InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo &info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr),
-      defaultRunOptions_(nullptr) {}
+InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
+    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr), defaultRunOptions_(nullptr) {}
 
-Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::HandleScope scope(env);
 
@@ -69,7 +68,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
       this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
 #ifdef _WIN32
-                                            reinterpret_cast<const wchar_t *>(value.Utf16Value().c_str()),
+                                            reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
                                             value.Utf8Value().c_str(),
 #endif
@@ -77,13 +76,13 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
 
     } else if (argsLength == 4 && info[0].IsArrayBuffer() && info[1].IsNumber() && info[2].IsNumber() &&
                info[3].IsObject()) {
-      void *buffer = info[0].As<Napi::ArrayBuffer>().Data();
+      void* buffer = info[0].As<Napi::ArrayBuffer>().Data();
       int64_t bytesOffset = info[1].As<Napi::Number>().Int64Value();
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
       this->session_.reset(new Ort::Session(*env.GetInstanceData<Ort::Env>(),
-                                            reinterpret_cast<char *>(buffer) + bytesOffset, bytesLength,
+                                            reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
     } else {
       ORT_NAPI_THROW_TYPEERROR(
@@ -119,16 +118,16 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
                                                      ? typeInfo.GetTensorTypeAndShapeInfo().GetElementType()
                                                      : ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED);
     }
-  } catch (Napi::Error const &e) {
+  } catch (Napi::Error const& e) {
     throw e;
-  } catch (std::exception const &e) {
+  } catch (std::exception const& e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
   this->initialized_ = true;
   return env.Undefined();
 }
 
-Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
@@ -137,7 +136,7 @@ Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo &info) 
   return scope.Escape(CreateNapiArrayFrom(env, inputNames_));
 }
 
-Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
@@ -146,7 +145,7 @@ Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo &info)
   return scope.Escape(CreateNapiArrayFrom(env, outputNames_));
 }
 
-Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
@@ -161,17 +160,17 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   auto feed = info[0].As<Napi::Object>();
   auto fetch = info[1].As<Napi::Object>();
 
-  std::vector<const char *> inputNames_cstr;
+  std::vector<const char*> inputNames_cstr;
   std::vector<Ort::Value> inputValues;
-  std::vector<const char *> outputNames_cstr;
+  std::vector<const char*> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
-  OrtMemoryInfo *memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
+  OrtMemoryInfo* memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault).release();
 
   try {
-    for (auto &name : inputNames_) {
+    for (auto& name : inputNames_) {
       if (feed.Has(name)) {
         inputIndex++;
         inputNames_cstr.push_back(name.c_str());
@@ -179,7 +178,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
         inputValues.push_back(NapiValueToOrtValue(env, value, memory_info));
       }
     }
-    for (auto &name : outputNames_) {
+    for (auto& name : outputNames_) {
       if (fetch.Has(name)) {
         outputIndex++;
         outputNames_cstr.push_back(name.c_str());
@@ -207,14 +206,14 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
     }
 
     return scope.Escape(result);
-  } catch (Napi::Error const &e) {
+  } catch (Napi::Error const& e) {
     throw e;
-  } catch (std::exception const &e) {
+  } catch (std::exception const& e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
 }
 
-Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
@@ -226,12 +225,12 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo &info) {
   return env.Undefined();
 }
 
-Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo &info) {
+Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Napi::EscapableHandleScope scope(env);
   Napi::Array result = Napi::Array::New(env);
 
-  auto createObject = [&env](const std::string &name, const bool bundled) -> Napi::Object {
+  auto createObject = [&env](const std::string& name, const bool bundled) -> Napi::Object {
     Napi::Object result = Napi::Object::New(env);
     result.Set("name", name);
     result.Set("bundled", bundled);

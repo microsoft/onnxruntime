@@ -1,26 +1,30 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Graph} from '../../../graph';
-import {OperatorImplementation, OperatorInitialization} from '../../../operators';
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import { Graph } from '../../../graph';
+import { OperatorImplementation, OperatorInitialization } from '../../../operators';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType } from '../types';
 
-export const instanceNormalization: OperatorImplementation<number> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], epsilon: number): Tensor[] => {
-      validateInputs(inputs);
+export const instanceNormalization: OperatorImplementation<number> = (
+  inferenceHandler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  epsilon: number,
+): Tensor[] => {
+  validateInputs(inputs);
 
-      const meanAndVariance = inferenceHandler.run(createMeanAndVarianceProgramInfoLoader(inputs[0]), inputs);
-      const output = inferenceHandler.run(
-          createComputeOutputProgramInfoLoader(inferenceHandler, inputs[0], epsilon, meanAndVariance.dims),
-          [inputs[0], meanAndVariance, inputs[1], inputs[2]]);
-      return [output];
-    };
+  const meanAndVariance = inferenceHandler.run(createMeanAndVarianceProgramInfoLoader(inputs[0]), inputs);
+  const output = inferenceHandler.run(
+    createComputeOutputProgramInfoLoader(inferenceHandler, inputs[0], epsilon, meanAndVariance.dims),
+    [inputs[0], meanAndVariance, inputs[1], inputs[2]],
+  );
+  return [output];
+};
 
 export const parseInstanceNormalizationAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
-    node.attributes.getFloat('epsilon', 1e-5);
+  node.attributes.getFloat('epsilon', 1e-5);
 
 const meanAndVarianceProgramMetadata = {
   name: 'InstanceNormalization_MeanAndVariance',
@@ -66,14 +70,14 @@ const createMeanAndVarianceProgramInfo = (metadata: ProgramMetadata, input: Tens
       }`;
   return {
     ...metadata,
-    output: {dims: outputShape, type: input.type, textureType: TextureType.packedLastDimension},
-    shaderSource
+    output: { dims: outputShape, type: input.type, textureType: TextureType.packedLastDimension },
+    shaderSource,
   };
 };
 
 const createMeanAndVarianceProgramInfoLoader = (input: Tensor): ProgramInfoLoader => ({
   ...meanAndVarianceProgramMetadata,
-  get: () => createMeanAndVarianceProgramInfo(meanAndVarianceProgramMetadata, input)
+  get: () => createMeanAndVarianceProgramInfo(meanAndVarianceProgramMetadata, input),
 });
 
 const computeOutputProgramMetadata = {
@@ -82,14 +86,20 @@ const computeOutputProgramMetadata = {
   inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
 };
 
-const createComputeOutputProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, input: Tensor, epsilon: number,
-     meanAndVarianceShape: readonly number[]): ProgramInfo => {
-      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const [textureWidth, textureHeight] =
-          inferenceHandler.calculateTextureWidthAndHeight(meanAndVarianceShape, TextureType.packedLastDimension);
-      const [meanAndVarianceWidth, meanAndVarianceHeight] = [textureWidth / 4, textureHeight];
-      const shaderSource = `
+const createComputeOutputProgramInfo = (
+  inferenceHandler: WebGLInferenceHandler,
+  metadata: ProgramMetadata,
+  input: Tensor,
+  epsilon: number,
+  meanAndVarianceShape: readonly number[],
+): ProgramInfo => {
+  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+  const [textureWidth, textureHeight] = inferenceHandler.calculateTextureWidthAndHeight(
+    meanAndVarianceShape,
+    TextureType.packedLastDimension,
+  );
+  const [meanAndVarianceWidth, meanAndVarianceHeight] = [textureWidth / 4, textureHeight];
+  const shaderSource = `
       vec4 get_MeanAndVariance(int[2] mv) {
         int offset = indicesToOffset_MeanAndVariance(mv);
         vec2 coords = offsetToCoords(offset, ${meanAndVarianceWidth}, ${meanAndVarianceHeight});
@@ -111,23 +121,26 @@ const createComputeOutputProgramInfo =
 
         return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
       }`;
-      return {
-        ...metadata,
-        output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
-        variables: [{name: 'epsilon', type: 'float', data: epsilon}],
-        shaderSource
-      };
-    };
+  return {
+    ...metadata,
+    output: { dims: input.dims, type: input.type, textureType: TextureType.unpacked },
+    variables: [{ name: 'epsilon', type: 'float', data: epsilon }],
+    shaderSource,
+  };
+};
 
-const createComputeOutputProgramInfoLoader =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number, meanAndVarianceShape: readonly number[]):
-        ProgramInfoLoader => {
-          const metadata = {...computeOutputProgramMetadata, cacheHint: `${epsilon}`};
-          return {
-            ...metadata,
-            get: () => createComputeOutputProgramInfo(inferenceHandler, metadata, input, epsilon, meanAndVarianceShape)
-          };
-        };
+const createComputeOutputProgramInfoLoader = (
+  inferenceHandler: WebGLInferenceHandler,
+  input: Tensor,
+  epsilon: number,
+  meanAndVarianceShape: readonly number[],
+): ProgramInfoLoader => {
+  const metadata = { ...computeOutputProgramMetadata, cacheHint: `${epsilon}` };
+  return {
+    ...metadata,
+    get: () => createComputeOutputProgramInfo(inferenceHandler, metadata, input, epsilon, meanAndVarianceShape),
+  };
+};
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 3) {
@@ -146,8 +159,11 @@ const validateInputs = (inputs: Tensor[]): void => {
   if (scale.dims[0] !== X.dims[1] || B.dims[0] !== X.dims[1]) {
     throw new Error('Input shapes are mismatched.');
   }
-  if ((X.type !== 'float32' && X.type !== 'float64') || (scale.type !== 'float32' && scale.type !== 'float64') ||
-      (B.type !== 'float32' && B.type !== 'float64')) {
+  if (
+    (X.type !== 'float32' && X.type !== 'float64') ||
+    (scale.type !== 'float32' && scale.type !== 'float64') ||
+    (B.type !== 'float32' && B.type !== 'float64')
+  ) {
     throw new Error('Invalid input type.');
   }
   if (inputs[0].dims.length !== 4) {

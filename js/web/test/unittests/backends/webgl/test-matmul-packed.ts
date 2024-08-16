@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {expect} from 'chai';
-import {env} from 'onnxruntime-common';
+import { expect } from 'chai';
+import { env } from 'onnxruntime-common';
 
-import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {createPackedMatmulProgramInfoLoader} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
-import {Profiler} from '../../../../lib/onnxjs/instrument';
-import {Tensor} from '../../../../lib/onnxjs/tensor';
+import { Backend, InferenceHandler, resolveBackend, SessionHandler } from '../../../../lib/onnxjs/backend';
+import { WebGLInferenceHandler } from '../../../../lib/onnxjs/backends/webgl/inference-handler';
+import { createPackedMatmulProgramInfoLoader } from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
+import { Profiler } from '../../../../lib/onnxjs/instrument';
+import { Tensor } from '../../../../lib/onnxjs/tensor';
 
-import {createAscendingArray} from './test-utils';
+import { createAscendingArray } from './test-utils';
 
 interface TestData {
   elementCountA: number;
@@ -136,15 +136,15 @@ function getTestData(): TestData[] {
   ];
 }
 
-let backend: Backend|undefined;
-let sessionhandler: SessionHandler|undefined;
-let inferenceHandler: InferenceHandler|undefined;
+let backend: Backend | undefined;
+let sessionhandler: SessionHandler | undefined;
+let inferenceHandler: InferenceHandler | undefined;
 
 describe('#UnitTest# - packed matmul - Tensor matmul', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    sessionhandler = backend.createSessionHandler({profiler});
+    sessionhandler = backend.createSessionHandler({ profiler });
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
 
@@ -171,14 +171,15 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const inputDataB = testData.rawInputB ?? createAscendingArray(elementCountB);
       const inputTensorA = new Tensor(inputTensorShapeA, 'float32', undefined, undefined, inputDataA);
       const inputTensorB = new Tensor(inputTensorShapeB, 'float32', undefined, undefined, inputDataB);
-      const biasTensor = testData.biasValue ?
-          new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue])) :
-          undefined;
+      const biasTensor = testData.biasValue
+        ? new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue]))
+        : undefined;
       const inputs = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
       const output = webglInferenceHandler.run(
-          createPackedMatmulProgramInfoLoader(webglInferenceHandler, inputs, {activation: '', activationCacheKey: ''}),
-          inputs);
+        createPackedMatmulProgramInfoLoader(webglInferenceHandler, inputs, { activation: '', activationCacheKey: '' }),
+        inputs,
+      );
       const result = output.data;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();
@@ -200,8 +201,10 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       }
       const batchMultiplier = Math.max(batchMultiplierA, batchMultiplierB);
       expect(result).to.have.lengthOf(
-          batchMultiplier * testData.inputShapeA[testData.inputShapeA.length - 2] *
-          testData.inputShapeB[testData.inputShapeB.length - 1]);
+        batchMultiplier *
+          testData.inputShapeA[testData.inputShapeA.length - 2] *
+          testData.inputShapeB[testData.inputShapeB.length - 1],
+      );
       expect(result).to.deep.equal(expectedOutput);
     });
   }
