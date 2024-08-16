@@ -870,8 +870,9 @@ class MatMul4BitsQuantizer:
             if node.name in self.nodes_to_exclude:
                 logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = [node]
-            elif ((self.nodes_to_include and node.name in self.nodes_to_include) or
-                (node.op_type in self.algo_config.op_types_to_quantize)):
+            elif (self.nodes_to_include and node.name in self.nodes_to_include) or (
+                node.op_type in self.algo_config.op_types_to_quantize
+            ):
                 out_nodes = self.node_quantizer.quantize(node, graph_stack)
             else:
                 logger.info(f"skip to quantize {node.name} ...")
