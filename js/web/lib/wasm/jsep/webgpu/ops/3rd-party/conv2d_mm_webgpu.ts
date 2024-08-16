@@ -291,18 +291,6 @@ export const createConv2DMatMulProgramInfo = (
           elementsSize[2],
           t,
         )}
-        ${conv2dCommonSnippet(
-          isChannelsLast,
-          fitAOuter,
-          fitBOuter,
-          fitInner,
-          hasBias,
-          attributes,
-          elementsSize[0],
-          elementsSize[1],
-          elementsSize[2],
-          t,
-        )}
         ${
           isVec4
             ? makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner)

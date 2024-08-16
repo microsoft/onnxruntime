@@ -121,9 +121,7 @@ export const createNaiveMatmulProgramInfo = (
 
         for (let j = 0; j < aComponents; j++) {
           calcStr += `
-            values[${i}] = fma(${b.type.value}(a_data${
-              aComponents === 1 ? '' : `[${j}]`
-            }), b_data${j}, values[${i}]);\n`;
+            values[${i}] = fma(${b.type.value}(a_data${aComponents === 1 ? '' : `[${j}]`}), b_data${j}, values[${i}]);\n`;
         }
       }
       return calcStr;
