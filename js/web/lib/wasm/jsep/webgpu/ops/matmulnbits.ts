@@ -326,7 +326,7 @@ export const createMatMulNBitsProgramInfo = (
   };
 };
 
-// zeroPoints = null
+// TODO: support zeroPoints as input
 export const createMatMulNBitsBlockwiseProgramInfo = (
   inputs: readonly TensorView[],
   attributes: MatMulNBitsAttributes,
@@ -364,11 +364,6 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
     const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
     const inputVariables = [a, b, scales];
-    const zeroPoints =
-      inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
-    if (zeroPoints) {
-      inputVariables.push(zeroPoints);
-    }
     const outputRank = outputShapeTemp.length;
     const output = outputVariable('output', inputs[0].dataType, outputRank, components);
     const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
@@ -456,8 +451,8 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
           var row = workgroup_id.y;
           var batch = workgroup_id.z;
 
-          // Two zero points are packed into one byte when uniforms.bits is 4.
-          let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
+          // The default zero point is 8 for unsigned 4-bit quantization.
+          let zero_point = ${dataType}(${8.0});
           var word_offset: u32 = block * ${attributes.blockSize / aComponents};
 
           //process one block
@@ -488,7 +483,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   return {
     name: 'BlockwiseMatMulNBitsV1',
     shaderCache: {
-      hint: `${attributes.cacheKey};${dataType};${outputNumber}`,
+      hint: `${attributes.blockSize};${dataType};${outputNumber};${nBlocksPerCol}`,
       inputDependencies: Array(inputs.length).fill('rank'),
     },
     getRunData: () => ({
