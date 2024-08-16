@@ -106,7 +106,6 @@ jobs:
                 onnxruntime_BUILD_KERNEL_EXPLORER=ON \
                 CMAKE_HIP_ARCHITECTURES=gfx90a \
               --mpi_home /opt/ompi \
-              --use_migraphx \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
@@ -195,7 +194,6 @@ jobs:
                 onnxruntime_BUILD_KERNEL_EXPLORER=ON \
                 CMAKE_HIP_ARCHITECTURES=gfx90a \
               --mpi_home /opt/ompi \
-              --use_migraphx \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
