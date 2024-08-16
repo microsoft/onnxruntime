@@ -6,9 +6,34 @@
 #include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
+
+class DataTransferAdapter : public IDataTransfer {
+public:
+  DataTransferAdapter(OrtExecutionProvider* ep) : ep_impl_(ep) {}
+  virtual bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override {
+    return ep_impl_->CanCopy(&src_device, &dst_device);
+  }
+
+  virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const override {
+    OrtMemoryInfoDeviceType source_device_type = static_cast<OrtMemoryInfoDeviceType>(src.Location().device.Type());
+    OrtMemoryInfoDeviceType target_device_type = static_cast<OrtMemoryInfoDeviceType>(dst.Location().device.Type());
+    OrtMemoryType source_mem_type = static_cast<OrtMemoryType>(src.Location().device.MemType());
+    return ToStatus(ep_impl_->CopyTensor(src.DataRaw(), source_device_type, source_mem_type, dst.MutableDataRaw(), target_device_type, src.SizeInBytes(), nullptr));
+  }
+
+  virtual common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const override {
+    OrtMemoryInfoDeviceType source_device_type = static_cast<OrtMemoryInfoDeviceType>(src.Location().device.Type());
+    OrtMemoryInfoDeviceType target_device_type = static_cast<OrtMemoryInfoDeviceType>(dst.Location().device.Type());
+    OrtMemoryType source_mem_type = static_cast<OrtMemoryType>(src.Location().device.MemType());
+    return ToStatus(ep_impl_->CopyTensor(src.DataRaw(), source_device_type, source_mem_type, dst.MutableDataRaw(), target_device_type, src.SizeInBytes(), stream.GetHandle()));
+  }
+private:
+  OrtExecutionProvider* ep_impl_;
+};
+
 class ExecutionProviderAdapter : public IExecutionProvider {
 public:
-  ExecutionProviderAdapter(OrtExecutionProvider* ep) : IExecutionProvider(ep->type), ep_impl_(ep) {
+  ExecutionProviderAdapter(OrtExecutionProvider* ep) : IExecutionProvider(ep->type, ep->default_device ? *(ep->default_device) : OrtDevice()), ep_impl_(ep) {
     if (ep_impl_->RegisterKernels) {
       kernel_registry_ = std::make_shared<KernelRegistry>();
       ep_impl_->RegisterKernels(reinterpret_cast<OrtKernelRegistry*>(kernel_registry_.get()));
@@ -93,6 +118,10 @@ public:
       };
       stream_handle_registry.RegisterCreateStreamFn(static_cast<OrtDevice::DeviceType>(ep_impl_->create_stream->device_type), csf);
     }
+  }
+
+  virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override {
+    return std::make_unique<DataTransferAdapter>(ep_impl_);
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return kernel_registry_; }

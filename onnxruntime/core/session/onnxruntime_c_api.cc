@@ -2360,6 +2360,33 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateDevice, _In_ enum OrtMemoryInfoDeviceType device_type, _In_ enum OrtMemoryType memory_type, _In_ int16_t device_id, _Outptr_ const OrtDevice** out) {
+  OrtDevice::DeviceType dt = static_cast<int8_t>(device_type);
+  OrtDevice::MemoryType mt = static_cast<int8_t>(memory_type);
+  std::unique_ptr<OrtDevice> device = std::make_unique<OrtDevice>(dt, mt, device_id);
+  *out = device.release();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceGetDeviceType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out) {
+  *out = static_cast<OrtMemoryInfoDeviceType>(device->Type());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceGetMemoryType, _In_ const OrtDevice* device, _Out_ OrtMemoryType* out) {
+  *out = static_cast<OrtMemoryType>(device->MemType());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceGetDeviceId, _In_ const OrtDevice* device, _Out_ int16_t* out) {
+  *out = device->Id();
+  return nullptr;
+}
+
+ORT_API(void, OrtApis::ReleaseDevice, OrtDevice* device) {
+  delete device;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::RegisterOrtExecutionProviderLibrary, _In_ const char* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name) {
   API_IMPL_BEGIN
   void* handle = nullptr;
@@ -2578,9 +2605,8 @@ ORT_API_STATUS_IMPL(OrtApis::AddTypeConstraint, _In_ OrtTypeConstraints* type_co
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints) {
+ORT_API(void, OrtApis::ReleaseTypeConstraints, OrtTypeConstraints* type_constraints) {
   delete type_constraints;
-  return nullptr;
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -2961,6 +2987,11 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    &OrtApis::CreateDevice,
+    &OrtApis::DeviceGetDeviceType,
+    &OrtApis::DeviceGetMemoryType,
+    &OrtApis::DeviceGetDeviceId,
+    &OrtApis::ReleaseDevice,
     &OrtApis::RegisterOrtExecutionProviderLibrary,
     &OrtApis::SessionOptionsAppendOrtExecutionProvider,
 
@@ -2994,7 +3025,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,
     &OrtApis::AddTypeConstraint,
-    &OrtApis::ReleaseOrtTypeConstraints,
+    &OrtApis::ReleaseTypeConstraints,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

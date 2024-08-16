@@ -402,6 +402,13 @@ typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_FPGA = 2
 } OrtMemoryInfoDeviceType;
 
+typedef enum OrtMemoryType {
+  OrtMemoryType_Default = 0,
+  OrtMemoryType_CUDA_PINNED = 1,
+  OrtMemoryType_HIP_PINNED = 2,
+  OrtMemoryType_CANN_PINNED = 3,
+} OrtMemoryType;
+
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -737,13 +744,16 @@ typedef struct OrtNodeComputeInfo {
 
 typedef struct OrtExecutionProvider {
 #ifdef __cplusplus
-  OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr} {}
+  OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr}, CanCopy{nullptr}, CopyTensor{nullptr}, type{nullptr}, create_stream{nullptr}, default_device{nullptr} {}
 #endif
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
   void(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
   void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
+  bool(ORT_API_CALL* CanCopy)(const OrtDevice* source, const OrtDevice* target);
+  OrtStatusPtr(ORT_API_CALL* CopyTensor)(const void* src, OrtMemoryInfoDeviceType source_device_type, OrtMemoryType source_mem_type, void* dst, OrtMemoryInfoDeviceType target_device_type, size_t count, void* stream);
   const char* type;
   OrtCreateStream* create_stream;
+  const OrtDevice* default_device;
 } OrtExecutionProvider;
 
 typedef struct OrtExecutionProviderFactory {
@@ -4727,6 +4737,16 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
 
+  ORT_API2_STATUS(CreateDevice, _In_ enum OrtMemoryInfoDeviceType device_type, _In_ enum OrtMemoryType memory_type, _In_ int16_t device_id, _Outptr_ const OrtDevice** out);
+
+  ORT_API2_STATUS(DeviceGetDeviceType, _In_ const OrtDevice* device, _Out_ OrtMemoryInfoDeviceType* out);
+
+  ORT_API2_STATUS(DeviceGetMemoryType, _In_ const OrtDevice* device, _Out_ OrtMemoryType* out);
+
+  ORT_API2_STATUS(DeviceGetDeviceId, _In_ const OrtDevice* device, _Out_ int16_t* out);
+
+  ORT_CLASS_RELEASE(Device);
+
   ORT_API2_STATUS(RegisterOrtExecutionProviderLibrary, _In_ const ORTCHAR_T* lib_path, _In_ OrtEnv* env, _In_ const char* ep_name);
 
   ORT_API2_STATUS(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
@@ -4792,7 +4812,7 @@ struct OrtApi {
 
   ORT_API2_STATUS(AddTypeConstraint, _In_ OrtTypeConstraints* type_constraints, _In_ const char* type_symbol, ONNXTensorElementDataType type);
 
-  ORT_API2_STATUS(ReleaseOrtTypeConstraints, _In_ OrtTypeConstraints* type_constraints);
+  ORT_CLASS_RELEASE(TypeConstraints);
 };  // struct OrtApi
 
 /*
