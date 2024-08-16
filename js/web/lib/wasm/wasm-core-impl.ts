@@ -17,8 +17,8 @@ import {
 import { setRunOptions } from './run-options';
 import { setSessionOptions } from './session-options';
 import {
+  calculateTensorSizeInBytes,
   dataLocationStringToEnum,
-  getTensorElementSize,
   isGpuBufferSupportedType,
   logLevelStringToEnum,
   tensorDataTypeEnumToString,
@@ -362,9 +362,7 @@ export const createSession = async (
         }
         if (enableGraphCapture && location !== 'gpu-buffer') {
           throw new Error(
-            `Not supported preferred output location: ${
-              location
-            }. Only 'gpu-buffer' location is supported when enableGraphCapture is true.`,
+            `Not supported preferred output location: ${location}. Only 'gpu-buffer' location is supported when enableGraphCapture is true.`,
           );
         }
         outputPreferredLocations.push(location);
@@ -489,8 +487,7 @@ export const prepareInputOutputTensor = (
 
   if (location === 'gpu-buffer') {
     const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
-    const elementSizeInBytes = getTensorElementSize(tensorDataTypeStringToEnum(dataType))!;
-    dataByteLength = dims.reduce((a, b) => a * b, 1) * elementSizeInBytes;
+    dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerBuffer = wasm.jsepRegisterBuffer;
     if (!registerBuffer) {
@@ -621,9 +618,7 @@ export const run = async (
 
       if (inputNamesUTF8Encoded.length !== inputCount) {
         throw new Error(
-          `input count from feeds (${
-            inputCount
-          }) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`,
+          `input count from feeds (${inputCount}) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`,
         );
       }
 
@@ -764,8 +759,8 @@ export const run = async (
               throw new Error('preferredLocation "gpu-buffer" is not supported without using WebGPU.');
             }
             const gpuBuffer = getBuffer(dataOffset);
-            const elementSize = getTensorElementSize(dataType);
-            if (elementSize === undefined || !isGpuBufferSupportedType(type)) {
+            const bufferSize = calculateTensorSizeInBytes(dataType, size);
+            if (bufferSize === undefined || !isGpuBufferSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
 
@@ -777,7 +772,7 @@ export const run = async (
               dims,
               {
                 gpuBuffer,
-                download: wasm.jsepCreateDownloader!(gpuBuffer, size * elementSize, type),
+                download: wasm.jsepCreateDownloader!(gpuBuffer, bufferSize, type),
                 dispose: () => {
                   if (wasm._OrtReleaseTensor(tensor) !== 0) {
                     checkLastError("Can't release tensor.");

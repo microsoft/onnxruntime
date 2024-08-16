@@ -180,14 +180,19 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Unsupported tensor type: ${arg0}.`);
           }
           if (Array.isArray(arg1)) {
-            if (arg0 === 'float16' && typedArrayConstructor === Uint16Array) {
-              // When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
+            if ((arg0 === 'float16' && typedArrayConstructor === Uint16Array) || arg0 === 'uint4' || arg0 === 'int4') {
+              // - 'float16':
+              //   When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
               //
-              // Throw error here because when user try to use number array as data,
-              // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
-              // Uint16Array.from(arg1) which generates wrong data.
+              //   Throw error here because when user try to use number array as data,
+              //   e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
+              //   Uint16Array.from(arg1) which generates wrong data.
+              //
+              // - 'uint4' and 'int4':
+              //   Uint8Array.from(arg1) will generate wrong data for 'uint4' and 'int4' tensor.
+              //
               throw new TypeError(
-                'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.',
+                `Creating a ${arg0} tensor from number array is not supported. Please use ${typedArrayConstructor.name} as data.`,
               );
             } else if (arg0 === 'uint64' || arg0 === 'int64') {
               // use 'as any' here because:
@@ -266,7 +271,11 @@ export class Tensor implements TensorInterface {
     const size = calculateSize(dims);
     // if data is on CPU, check whether data length matches tensor size
     if (this.cpuData && size !== this.cpuData.length) {
-      throw new Error(`Tensor's size(${size}) does not match data length(${this.cpuData.length}).`);
+      if ((type === 'uint4' || type === 'int4') && Math.ceil(size / 2) === this.cpuData.length) {
+        // for (u)int4, the data length is half of the tensor size. So we check this special case when size is odd.
+      } else {
+        throw new Error(`Tensor's size(${size}) does not match data length(${this.cpuData.length}).`);
+      }
     }
 
     this.type = type;
