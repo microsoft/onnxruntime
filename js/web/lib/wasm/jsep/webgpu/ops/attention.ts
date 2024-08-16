@@ -652,7 +652,8 @@ export const applyAttention = (
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
 ) => {
-  const pastSequenceLength = parameters.kvNumHeads !== undefined || context.outputCount > 1 ? parameters.pastSequenceLength : 0;
+  const pastSequenceLength =
+    parameters.kvNumHeads !== undefined || context.outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
 
   //
