@@ -3,6 +3,7 @@
 
 import { DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
 import { ComputeContext, GpuDataType, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
 
 import {
@@ -257,7 +258,7 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
   };
 };
 
-const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: TensorView, n: number, d: number) => {
+const createInPlaceSoftmaxProgramInfo = (input: TensorView, n: number, d: number) => {
   const components = getMaxComponents(d);
   let WG = 64;
   const dComp = d / components;
@@ -360,7 +361,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
 };
 
 const createAttentionProbsProgramInfo = (
-  context: ComputeContext,
+  outputCount: number,
   q: TensorView,
   key: TensorView,
   pastKey: TensorView | undefined,
@@ -371,7 +372,7 @@ const createAttentionProbsProgramInfo = (
 ) => {
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const probsShape = [parameters.batchSize, parameters.numHeads, parameters.sequenceLength, totalSequenceLength];
-  const presentKey = parameters.kvNumHeads === undefined && context.outputCount > 1 && pastKey;
+  const presentKey = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey;
   const presentKeyShape = presentKey
     ? [parameters.batchSize, parameters.numHeads, totalSequenceLength, parameters.headSize]
     : undefined;
@@ -398,7 +399,7 @@ const createAttentionProbsProgramInfo = (
   ];
 
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
-  if (pastKey) {
+  if (pastKey && ShapeUtil.size(pastKey.dims) > 0) {
     inputDependencies.push('type');
   }
   if (attentionBias) {
@@ -515,7 +516,7 @@ const createAttentionProbsProgramInfo = (
   return {
     name: 'AttentionProbs',
     shaderCache: {
-      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${context.outputCount}`,
+      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${outputCount}`,
       inputDependencies,
     },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
@@ -524,7 +525,7 @@ const createAttentionProbsProgramInfo = (
 };
 
 const createVxAttentionScoreProgramInfo = (
-  context: ComputeContext,
+  outputCount: number,
   probs: TensorView,
   v: TensorView,
   pastValue: TensorView | undefined,
@@ -534,7 +535,7 @@ const createVxAttentionScoreProgramInfo = (
   const totalSequenceLength = pastSequenceLength + params.kvSequenceLength;
   const nReps = params.nReps ? params.nReps : 1;
   const repeatedVHiddenSize = params.vHiddenSize * nReps;
-  const presentValue = params.kvNumHeads == null && context.outputCount > 1 && pastValue;
+  const presentValue = params.kvNumHeads == null && outputCount > 1 && pastValue;
   const presentValueShape = presentValue
     ? [params.batchSize, params.numHeads, totalSequenceLength, params.headSize]
     : undefined;
@@ -555,7 +556,10 @@ const createVxAttentionScoreProgramInfo = (
     { type: DataType.uint32, data: pastSequenceLength },
     { type: DataType.uint32, data: params.kvSequenceLength },
   ];
-  const inputDependencies: ProgramInputTensorInfoDependency[] = pastValue ? ['type', 'type', 'type'] : ['type', 'type'];
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
+  if (pastValue && ShapeUtil.size(pastValue.dims) > 0) {
+    inputDependencies.push('type');
+  }
   const outputs = [{ dims: outputShape, dataType: probs.dataType, gpuDataType: GpuDataType.default }];
   if (presentValue) {
     outputs.push({ dims: presentValueShape!, dataType: probs.dataType, gpuDataType: GpuDataType.default });
@@ -649,7 +653,7 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: { hint: `${pastValue !== undefined};${context.outputCount}`, inputDependencies },
+    shaderCache: { hint: `${pastValue !== undefined};${outputCount}`, inputDependencies },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
@@ -664,7 +668,7 @@ export const applyAttention = (
   _past: TensorView | undefined,
   pastKey: TensorView | undefined,
   pastValue: TensorView | undefined,
-  attentionBias: TensorView | undefined,
+  attentionBiasInput: TensorView | undefined,
   parameters: AttentionParameters,
   attributes: AttentionAttrs,
 ) => {
@@ -672,8 +676,13 @@ export const applyAttention = (
   const outputCount = Math.min(context.outputCount, 1 + (pastKey ? 1 : 0) + (pastValue ? 1 : 0));
   const pastSequenceLength = parameters.kvNumHeads !== undefined || outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
+  const attentionBias =
+    attentionBiasInput && ShapeUtil.size(attentionBiasInput.dims) > 0 ? attentionBiasInput : undefined;
 
-  const inputsK = parameters.kvNumHeads === undefined && outputCount > 1 && pastKey ? [q, k, pastKey] : [q, k];
+  const inputsK = [q, k];
+  if (parameters.kvNumHeads === undefined && outputCount > 1 && pastKey && ShapeUtil.size(pastKey.dims) > 0) {
+    inputsK.push(pastKey);
+  }
   if (attentionBias) {
     inputsK.push(attentionBias);
   }
@@ -681,7 +690,7 @@ export const applyAttention = (
   // Run AttentionProbs
   const probs = context.compute(
     createAttentionProbsProgramInfo(
-      context,
+      outputCount,
       q,
       k,
       outputCount > 1 ? pastKey : undefined,
@@ -696,7 +705,6 @@ export const applyAttention = (
   // Run Softmax
   context.compute(
     createInPlaceSoftmaxProgramInfo(
-      context,
       probs,
       parameters.batchSize * parameters.numHeads * parameters.sequenceLength,
       totalSequenceLength,
@@ -705,11 +713,13 @@ export const applyAttention = (
   );
 
   // Run AttrionScore
-  const inputsV =
-    parameters.kvNumHeads === undefined && outputCount > 1 && pastValue ? [probs, v, pastValue] : [probs, v];
+  const inputsV = [probs, v];
+  if (parameters.kvNumHeads === undefined && outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
+    inputsV.push(pastValue);
+  }
   context.compute(
     createVxAttentionScoreProgramInfo(
-      context,
+      outputCount,
       probs,
       v,
       outputCount > 1 && pastValue ? pastValue : undefined,
