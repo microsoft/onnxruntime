@@ -125,7 +125,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
-                                                                  *external_data_loader, *p_tensor));
+                                                                    *external_data_loader, *p_tensor));
 
       auto ml_tensor = DataTypeImpl::GetType<Tensor>();
       ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
