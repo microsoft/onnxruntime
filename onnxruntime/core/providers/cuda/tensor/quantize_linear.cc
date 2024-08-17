@@ -41,8 +41,16 @@ CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* 
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<UInt4x2, Int4x2>, T>::value, Status>::type
 CudaQuantizeLinearBlock(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
-                        size_t num_of_element, size_t batch_size, size_t n_scales, bool /*saturate*/) {
-  return CudaQuantizeLinearBlockStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
+                        size_t num_of_element, size_t K, size_t N, size_t block_size, bool /*saturate*/) {
+  if constexpr (std::is_same<T, UInt4x2>::value) {
+    return CudaQuantizeLinearBlockStdInt4(stream, input, reinterpret_cast<uint8_t*>(output), scale,
+                                          zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                          num_of_element, K, N, block_size);
+  } else {
+    return CudaQuantizeLinearBlockStdInt4(stream, input, reinterpret_cast<int8_t*>(output), scale,
+                                          zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                          num_of_element, K, N, block_size);
+  }
 }
 
 template <class T, class U>
@@ -56,6 +64,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   auto& y = *ctx->Output(0, x.Shape());
 
   const auto& x_shape = x.Shape();
+  const auto num_of_elements = x_shape.Size();
 
   const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
   T* output = y.MutableData<T>();
@@ -67,7 +76,6 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
-    const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaQuantizeLinear(Stream(ctx), input, output, scale, zero_point, num_of_elements, saturate_));
     return Status::OK();
@@ -82,14 +90,13 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
-    const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaQuantizeLinearAxis(Stream(ctx), input, output, scale, zero_point, num_of_elements,
                                                x_shape.SizeToDimension(axis), y_scale.Shape().Size(), saturate_));
     return Status::OK();
   } else { // blocked quantization
     // validate shape
-    int64_t axis_no_neg = HandleNegativeAxis(axis_, x_shape.NumDimensions());
+    size_t axis_no_neg = SafeInt<size_t>(HandleNegativeAxis(axis_, x_shape.NumDimensions()));
     auto& y_scale_shape = y_scale.Shape();
 
     ORT_ENFORCE(y_scale_shape.NumDimensions() == x_shape.NumDimensions(),
@@ -98,7 +105,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
                 "zero_point must be null or have the same rank as x for blocked quantization");
 
     for (size_t i = 0, ndim = x_shape.NumDimensions(); i < ndim; ++i) {
-      if (i == SafeInt<size_t>(axis_no_neg)) {
+      if (i == axis_no_neg) {
         ORT_ENFORCE(y_scale_shape[i] == (x_shape[i] + block_size_ - 1) / block_size_,
                     "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
       } else {
@@ -115,7 +122,12 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
     // compute
     const T* zero_point = y_zero_point ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
-    const auto num_of_elements = x_shape.Size();
+
+    ORT_RETURN_IF_ERROR(CudaQuantizeLinearBlock(Stream(ctx), input, output, scale, zero_point,
+                                                num_of_elements, x_shape[axis_no_neg],
+                                                x_shape.SizeFromDimension(axis_no_neg + 1),
+                                                block_size_, saturate_));
+    return Status::OK();
   }
 }
 

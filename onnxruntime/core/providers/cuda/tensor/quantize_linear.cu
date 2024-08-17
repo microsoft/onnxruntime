@@ -5,7 +5,6 @@
 
 #include <limits>
 
-#include "core/framework/int4.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
@@ -19,6 +18,9 @@ template <typename InT, typename OutT>
 struct RoundStd;
 
 template <typename InT, typename OutT>
+struct RoundStdInt4;
+
+template <typename InT, typename OutT>
 struct RoundSat;
 
 template <>
@@ -30,10 +32,44 @@ struct RoundStd<float, int8_t> {
 };
 
 template <>
+struct RoundStdInt4<float, int8_t> {
+  __device__ __forceinline__ int8_t operator()(float v0,
+                                               float scale0,
+                                               float v1,
+                                               float scale1,
+                                               int8_t zero_point) const {
+    constexpr auto shift0 = (sizeof(int) * 8) - 4;
+    constexpr auto shift1 = (sizeof(int) * 8) - 8;
+    int value0 = __float2int_rn(v0 / scale0) + ((static_cast<int>(zero_point & 0x0f) << shift0) >> shift0);
+    int value1 = __float2int_rn(v1 / scale1) + ((static_cast<int>(zero_point & 0xf0) << shift1) >> shift0);
+    int value0_clip = max(-8, min(7, value0));
+    int value1_clip = max(-8, min(7, value1));
+    return static_cast<int8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
+  }
+};
+
+template <>
 struct RoundStd<float, uint8_t> {
   __device__ __forceinline__ uint8_t operator()(float v, float scale, uint8_t zero_point) const {
     int value = __float2int_rn(v / scale) + zero_point;
     return static_cast<uint8_t>(max(std::numeric_limits<uint8_t>::min(), min(std::numeric_limits<uint8_t>::max(), value)));
+  }
+};
+
+template <>
+struct RoundStdInt4<float, uint8_t> {
+  __device__ __forceinline__ uint8_t operator()(float v0,
+                                                float scale0,
+                                                float v1,
+                                                float scale1,
+                                                uint8_t zero_point) const {
+    constexpr auto shift0 = (sizeof(int) * 8) - 4;
+    constexpr auto shift1 = (sizeof(int) * 8) - 8;
+    int value0 = __float2int_rn(v0 / scale0) + static_cast<int>(zero_point & 0x0f);
+    int value1 = __float2int_rn(v1 / scale1) + static_cast<int>((zero_point & 0xf0) >> 4);
+    int value0_clip = max(0, min(15, value0));
+    int value1_clip = max(0, min(15, value1));
+    return static_cast<uint8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
   }
 };
 
@@ -116,10 +152,44 @@ struct RoundStd<half, int8_t> {
 };
 
 template <>
+struct RoundStdInt4<half, int8_t> {
+  __device__ __forceinline__ int8_t operator()(half v0,
+                                               half scale0,
+                                               half v1,
+                                               half scale1,
+                                               int8_t zero_point) const {
+    constexpr auto shift0 = (sizeof(int) * 8) - 4;
+    constexpr auto shift1 = (sizeof(int) * 8) - 8;
+    int value0 = __half2int_rn(v0 / scale0) + ((static_cast<int>(zero_point & 0x0f) << shift0) >> shift0);
+    int value1 = __half2int_rn(v1 / scale1) + ((static_cast<int>(zero_point & 0xf0) << shift1) >> shift0);
+    int value0_clip = max(-8, min(7, value0));
+    int value1_clip = max(-8, min(7, value1));
+    return static_cast<int8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
+  }
+};
+
+template <>
 struct RoundStd<half, uint8_t> {
   __device__ __forceinline__ int8_t operator()(half v, half scale, uint8_t zero_point) const {
     int value = __half2int_rn(v / scale) + zero_point;
     return static_cast<uint8_t>(max(std::numeric_limits<uint8_t>::min(), min(std::numeric_limits<uint8_t>::max(), value)));
+  }
+};
+
+template <>
+struct RoundStdInt4<half, uint8_t> {
+  __device__ __forceinline__ uint8_t operator()(half v0,
+                                                half scale0,
+                                                half v1,
+                                                half scale1,
+                                                uint8_t zero_point) const {
+    constexpr auto shift0 = (sizeof(int) * 8) - 4;
+    constexpr auto shift1 = (sizeof(int) * 8) - 8;
+    int value0 = __half2int_rn(v0 / scale0) + static_cast<int>(zero_point & 0x0f);
+    int value1 = __half2int_rn(v1 / scale1) + static_cast<int>((zero_point & 0xf0) >> 4);
+    int value0_clip = max(0, min(15, value0));
+    int value1_clip = max(0, min(15, value1));
+    return static_cast<uint8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
   }
 };
 
@@ -160,26 +230,40 @@ __global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, cons
 // NumElementsPerThread must be multiple of 2.
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
-                                             const OutT* zero_point_ptr, CUDA_LONG num_element, size_t KN,
-                                             size_t N, size_t scale_KN, size_t block_size, size_t num_block,
-                                             RoundStd<InT, OutT> round) {
+                                                 const OutT* zero_point_ptr, CUDA_LONG num_element, size_t KN,
+                                                 size_t N, size_t scale_KN, size_t block_size, size_t num_block,
+                                                 RoundStdInt4<InT, OutT> round) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  int i = 0;
 
 #pragma unroll
   // Process two elements which belong to one byte at a time.
   // NumElementsPerThread are continuous.
-  for (int i = 0; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
-    int x1 = id / KN;
-    int y1 = id % KN / N;
-    int z1 = id % N;
-    int scale_id = x1 * scale_KN + y1 / block_size * N + z1;
-    output[id] = round(input[id],
-                       scale_ptr[scale_id],
-                       zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id]);
-    id += NumThreadsPerBlock;
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+    int x0 = id / KN, x1 = (id + 1) / KN;
+    int y0 = id % KN / N, y1 = (id + 1) % KN / N;
+    int z0 = id % N, z1 = (id + 1) % N;
+    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
+    int scale_id1 = x1 * scale_KN + y1 / block_size * N + z1;
+    output[id >> 1] = round(input[id],
+                            scale_ptr[scale_id0],
+                            input[id + 1],
+                            scale_ptr[scale_id1],
+                            zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id0 >> 1]);
   }
 
-  if (i < )
+  // last odd element
+  if (i < NumElementsPerThread && id < num_element) {
+    int x0 = id / KN;
+    int y0 = id % KN / N;
+    int z0 = id % N;
+    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
+    output[id >> 1] = round(input[id],
+                            scale_ptr[scale_id0],
+                            0.0,
+                            1.0,
+                            zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id0 >> 1]);
+  }
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -254,35 +338,21 @@ Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* ou
   return Status::OK();
 }
 
-/**
- * @brief block-wise quantization with standard rounding. Input is reshaped to [M, K, N]. K the quantization axis.
- *        Scale is reshaped to [M, ceil(K/block_size), N]. For an index i in input, the coordiate is (xi, yi, zi) =
- *        (i / (K * N), i % (K * N) / N, i % N). The scale coordiate is (xi, yi / block_size, zi). The scale index
- *        is xi * ceil(K / block_size) * N + yi / block_size * N + zi. The zero point is reshaped to [M, K, N].
- * @tparam OutT           quantized type
- * @tparam InT            full precision type
- * @param stream          cuda stream
- * @param input           input tensor
- * @param output          output tensor
- * @param scale           scale tensor
- * @param zero_point      zero point tensor
- * @param num_of_element  number of elements in input tensor
- * @param K               K
- * @param N               N
- * @param block_size      block size
- */
 template <class OutT, class InT>
-Status CudaQuantizeLinearBlockStd(cudaStream_t stream, const InT* input, OutT* output, const InT* scale,
-                                  const OutT* zero_point, size_t num_of_element, size_t K, size_t N,
-                                  size_t block_size) {
+Status CudaQuantizeLinearBlockStdInt4(cudaStream_t stream, const InT* input, OutT* output, const InT* scale,
+                                      const OutT* zero_point, size_t num_of_element, size_t K, size_t N,
+                                      size_t block_size) {
   if (num_of_element <= 0)
     return Status::OK();
+
+  CUDA_KERNEL_ASSERT((GridDim::maxElementsPerThread & 1) == 0);
+
   size_t KN = K * N;
   size_t num_block = (K + block_size - 1) / block_size;
   size_t scale_KN = num_block * N;
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
                                                GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  QuantizeLinearKernelBlockStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+  QuantizeLinearKernelBlockStdInt4<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input,
           output,
@@ -294,7 +364,7 @@ Status CudaQuantizeLinearBlockStd(cudaStream_t stream, const InT* input, OutT* o
           scale_KN,
           block_size,
           num_block,
-          RoundStd<InT, OutT>());
+          RoundStdInt4<InT, OutT>());
   return Status::OK();
 }
 
