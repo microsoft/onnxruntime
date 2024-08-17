@@ -106,13 +106,13 @@ const createGatherBlockQuantizedProgramInfo = (
     return `
         ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart()}
-        var output_indices = ${output.offsetToIndices('global_idx')};
+        let output_indices = ${output.offsetToIndices('global_idx')};
         var indices_indices = ${indices.type.indices}(0);
         ${(() => {
           if (indicesShape.length > 1) {
             return `
           for (var i: u32 = 0; i < ${indicesShape.length}; i++) {
-            var index = ${output.indicesGet('output_indices', 'uniforms.gather_axis + i')};
+            let index = ${output.indicesGet('output_indices', 'uniforms.gather_axis + i')};
             ${indices.indicesSet('indices_indices', 'i', 'index')};
           }`;
           } else {
@@ -121,24 +121,27 @@ const createGatherBlockQuantizedProgramInfo = (
         })()};
         var data_indices = ${data.type.indices}(0);
         for (var i: u32 = 0; i < uniforms.gather_axis; i++) {
-          var index = ${output.indicesGet('output_indices', 'i')};
+          let index = ${output.indicesGet('output_indices', 'i')};
           ${data.indicesSet('data_indices', 'i', 'index')};
         }
-        var index_from_indices = u32(${indices.getByIndices('indices_indices')});
-        ${data.indicesSet('data_indices', 'uniforms.gather_axis', 'index_from_indices')};
+        var index_from_indices = ${indices.getByIndices('indices_indices')};
+        if (index_from_indices < 0) {
+          index_from_indices += ${inputShape[gatherAxis]};
+        }
+        ${data.indicesSet('data_indices', 'uniforms.gather_axis', 'u32(index_from_indices)')};
         for (var i = uniforms.gather_axis + 1; i < ${outputShape.length}; i++) {
-          var index = ${output.indicesGet('output_indices', `i + ${indicesShape.length} - 1`)};
+          let index = ${output.indicesGet('output_indices', `i + ${indicesShape.length} - 1`)};
           ${data.indicesSet('data_indices', 'i', 'index')};
         }
-        var data_offset = ${data.indicesToOffset('data_indices')};
-        var data_index = data_offset % 8;
+        let data_offset = ${data.indicesToOffset('data_indices')};
+        let data_index = data_offset % 8;
         // Convert 4-bit packed data to 8-bit packed data.
-        var packed_4bit_quantized_data = ${data.getByOffset('data_offset / 8')};
-        var packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;
-        var quantized_data_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_quantized_data));
-        var quantized_data = quantized_data_vec[data_index / 2];
+        let packed_4bit_quantized_data = ${data.getByOffset('data_offset / 8')};
+        let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;
+        let quantized_data_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_quantized_data));
+        let quantized_data = quantized_data_vec[data_index / 2];
         var scale_indices = data_indices;
-        var quantize_axis_index = ${scales.indicesGet('data_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
+        let quantize_axis_index = ${scales.indicesGet('data_indices', 'uniforms.quantize_axis')} / uniforms.block_size;
         ${scales.indicesSet('scale_indices', 'uniforms.quantize_axis', 'quantize_axis_index')};
         var scale = ${scales.getByIndices('scale_indices')};
         ${(() => {
@@ -146,16 +149,16 @@ const createGatherBlockQuantizedProgramInfo = (
             return 'var zero_point = 0';
           } else {
             return `
-              var zero_point_indices = scale_indices;
-              var zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
-              var zero_point_index = zero_point_offset % 8;
-              var packed_4bit_zero_points = ${zeroPoint.getByOffset('zero_point_offset / 8')};
-              var packed_8bit_zero_point = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;
-              var zero_point_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_zero_point));
-              var zero_point = zero_point_vec[zero_point_index / 2];`;
+              let zero_point_indices = scale_indices;
+              let zero_point_offset = ${zeroPoint.indicesToOffset('zero_point_indices')};
+              let zero_point_index = zero_point_offset % 8;
+              let packed_4bit_zero_points = ${zeroPoint.getByOffset('zero_point_offset / 8')};
+              let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;
+              let zero_point_vec = ${isSigned ? 'unpack4xI8' : 'unpack4xU8'}(u32(packed_8bit_zero_points));
+              let zero_point = zero_point_vec[zero_point_index / 2];`;
           }
         })()};
-        var dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
+        let dequantized_data = ${tensorTypeToWsglValueType(outputType)}(quantized_data - zero_point) * scale;
         ${output.setByOffset('global_idx', 'dequantized_data')};
     }`;
   };
