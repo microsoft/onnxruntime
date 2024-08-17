@@ -31,7 +31,7 @@ static void RunMultiHeadAttentionTest(
     const std::vector<float>& kv_data,                  // packed_kv:  [batch_size, kv_sequence_length, num_heads, 2, head_size]
     const std::vector<float>& qkv_data,                 // packed_qkv:  [batch_size, sequence_length, num_heads, 3, head_size]
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size] or empty
-    const std::vector<float>& rel_pos_bias_data,        // relative_position_bias: [1, num_heads, sequence_length, total_sequence_length]
+    const std::vector<float>& attention_bias_data,      // attention_bias: [1, num_heads, sequence_length, total_sequence_length]
     const std::vector<float>& past_key_data,            // past_key: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& past_value_data,          // past_value: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& present_key_data,         // present_key: [batch_size, num_heads, total_sequence_length, head_size]
@@ -80,7 +80,7 @@ static void RunMultiHeadAttentionTest(
     std::vector<int64_t> value_dims = {batch_size, is_static_kv ? kv_sequence_length : sequence_length, v_hidden_size};
     std::vector<int64_t> bias_dims = {hidden_size + hidden_size + v_hidden_size};
     // TODO(wy): Introduce past sequence length to avoid using kv_sequence_length.
-    std::vector<int64_t> rel_pos_bias_dims =
+    std::vector<int64_t> attention_bias_dims =
         {1, num_heads, sequence_length, past_key_data.size() ? sequence_length + kv_sequence_length : sequence_length};
     std::vector<int64_t> past_key_dims = {batch_size, num_heads, kv_sequence_length, hidden_size / num_heads};
     std::vector<int64_t> past_value_dims = past_key_dims;
@@ -144,8 +144,8 @@ static void RunMultiHeadAttentionTest(
         tester.AddOptionalInputEdge<int32_t>();
       }
 
-      if (rel_pos_bias_data.size()) {
-        tester.AddInput<MLFloat16>("relative_position_bias", rel_pos_bias_dims, ToFloat16(rel_pos_bias_data));
+      if (attention_bias_data.size()) {
+        tester.AddInput<MLFloat16>("attention_bias", attention_bias_dims, ToFloat16(attention_bias_data));
       } else {
         tester.AddOptionalInputEdge<MLFloat16>();
       }
@@ -208,8 +208,8 @@ static void RunMultiHeadAttentionTest(
         tester.AddOptionalInputEdge<int32_t>();
       }
 
-      if (rel_pos_bias_data.size()) {
-        tester.AddInput<float>("relative_position_bias", rel_pos_bias_dims, rel_pos_bias_data);
+      if (attention_bias_data.size()) {
+        tester.AddInput<float>("attention_bias", attention_bias_dims, attention_bias_data);
       } else {
         tester.AddOptionalInputEdge<float>();
       }
@@ -276,7 +276,7 @@ static void RunMultiHeadAttentionKernel(
     const std::vector<float>& kv_data,                  // packed_kv:  [batch_size, kv_sequence_length, num_heads, 2, head_size]
     const std::vector<float>& qkv_data,                 // packed_qkv:  [batch_size, sequence_length, num_heads, 3, head_size]
     const std::vector<float>& bias_data,                // bias:   [hidden_size + hidden_size + v_hidden_size]
-    const std::vector<float>& rel_pos_bias_data,        // relative_position_bias: [1, num_heads, sequence_length, total_sequence_length]
+    const std::vector<float>& attention_bias_data,      // attention_bias: [1, num_heads, sequence_length, total_sequence_length]
     const std::vector<float>& past_key_data,            // past_key: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& past_value_data,          // past_value: [batch_size, num_heads, kv_sequence_length, head_size]
     const std::vector<float>& present_key_data,         // present_key: [batch_size, num_heads, total_sequence_length, head_size]
@@ -306,7 +306,7 @@ static void RunMultiHeadAttentionKernel(
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
-        query_data, key_data, value_data, kv_data, qkv_data, bias_data, rel_pos_bias_data,
+        query_data, key_data, value_data, kv_data, qkv_data, bias_data, attention_bias_data,
         past_key_data, past_value_data, present_key_data, present_value_data, key_padding_mask_data,
         mask_type, output_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, is_static_kv, use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
@@ -322,7 +322,7 @@ static void RunMultiHeadAttentionKernel(
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
-        query_data, key_data, value_data, kv_data, qkv_data, bias_data, rel_pos_bias_data,
+        query_data, key_data, value_data, kv_data, qkv_data, bias_data, attention_bias_data,
         past_key_data, past_value_data, present_key_data, present_value_data, key_padding_mask_data,
         mask_type, output_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, is_static_kv, use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
@@ -338,7 +338,7 @@ static void RunMultiHeadAttentionKernel(
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
-        query_data, key_data, value_data, kv_data, qkv_data, bias_data, rel_pos_bias_data,
+        query_data, key_data, value_data, kv_data, qkv_data, bias_data, attention_bias_data,
         past_key_data, past_value_data, present_key_data, present_value_data, key_padding_mask_data,
         mask_type, output_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, is_static_kv, use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
@@ -355,7 +355,7 @@ static void RunMultiHeadAttentionKernel(
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
-        query_data, key_data, value_data, kv_data, qkv_data, bias_data, rel_pos_bias_data,
+        query_data, key_data, value_data, kv_data, qkv_data, bias_data, attention_bias_data,
         past_key_data, past_value_data, present_key_data, present_value_data, key_padding_mask_data,
         mask_type, output_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, is_static_kv, use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
@@ -372,7 +372,7 @@ static void RunMultiHeadAttentionKernel(
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
-        query_data, key_data, value_data, kv_data, qkv_data, bias_data, rel_pos_bias_data,
+        query_data, key_data, value_data, kv_data, qkv_data, bias_data, attention_bias_data,
         past_key_data, past_value_data, present_key_data, present_value_data, key_padding_mask_data,
         mask_type, output_data, num_heads, batch_size, sequence_length, kv_sequence_length,
         hidden_size, v_hidden_size, is_static_kv, use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
@@ -387,7 +387,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
           data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-          data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+          data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -400,7 +400,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
       if (!SkipAttentionKernel(data, kernel_type)) {
         RunMultiHeadAttentionKernel(
             data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-            data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+            data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
             data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
             data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
             data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -411,7 +411,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
         data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-        data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+        data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
         data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
         data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -423,7 +423,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
           data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-          data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+          data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -433,7 +433,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
           data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-          data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+          data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -444,7 +444,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     if (!SkipAttentionKernel(data, kernel_type)) {
       RunMultiHeadAttentionKernel(
           data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-          data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+          data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
           data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -454,7 +454,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
     kernel_type = AttentionKernelType::AttentionKernel_Default;
     RunMultiHeadAttentionKernel(
         data.query_data, data.key_data, data.value_data, data.kv_data, data.qkv_data, data.bias_data,
-        data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
+        data.attention_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
         data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
         data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
         data.v_hidden_size, kernel_type, use_float16, data.is_static_kv, disable_cpu, disable_cuda);
@@ -548,17 +548,17 @@ TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
 }
 #endif
 
-TEST(MultiHeadAttentionTest, SelfAttention_WithPast_WithRelPosBias_ForT5) {
+TEST(MultiHeadAttentionTest, SelfAttention_WithPast_WithAttnBias_ForT5) {
   ROCM_GTEST_SKIP("ROCm MHA only support head_size >= 8");
   AttentionTestData data;
-  GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(data);
+  GetSelfAttentionData_WithPast_WithAttnBias_ForT5(data);
   RunMultiHeadAttentionTests(data, true);
 }
 
-TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
+TEST(MultiHeadAttentionTest, AttentionCutlassAttnBias) {
   // ROCM_GTEST_SKIP("ROCm does not support cutlass");
   AttentionTestData data;
-  GetAttentionDataCutlassRelPosBias(data);
+  GetAttentionDataCutlassAttnBias(data);
   RunMultiHeadAttentionTests(data);
 }
 
@@ -575,16 +575,16 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
   RunMultiHeadAttentionTests(data, /*disable_cpu=*/false, /*disable_cuda=*/true);
 }
 
-TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBias) {
+TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoAttnBias) {
   // Whisper decoder self attention with past_kv and present_kv
   AttentionTestData data;
-  GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(data);
+  GetSelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias(data);
   RunMultiHeadAttentionTests(data);
 
-  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(data);
+  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias(data);
   RunMultiHeadAttentionTests(data, /*disable_cpu=*/false, /*disable_cuda=*/true);
 
-  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(data);
+  GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias(data);
   RunMultiHeadAttentionTests(data, /*disable_cpu=*/false, /*disable_cuda=*/true);
 }
 
