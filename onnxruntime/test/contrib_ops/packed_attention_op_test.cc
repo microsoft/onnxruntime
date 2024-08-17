@@ -30,7 +30,7 @@ static void RunPackedAttentionTest(
     bool use_float16,
     bool use_scale,
     std::vector<int32_t> qkv_sizes,
-    const std::vector<float>& relative_position_bias_data) {
+    const std::vector<float>& attention_bias_data) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
@@ -62,7 +62,7 @@ static void RunPackedAttentionTest(
     std::vector<int64_t> bias_dims = {qkv_hidden_size_sum};
     std::vector<int64_t> token_offset_dims = {batch_size, sequence_length};
     std::vector<int64_t> cum_seq_len_dims = {batch_size + 1};
-    std::vector<int64_t> relative_position_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
+    std::vector<int64_t> attention_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
     std::vector<int64_t> output_dims = {token_count, v_hidden_size};
     if (use_float16) {
       tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
@@ -70,8 +70,8 @@ static void RunPackedAttentionTest(
       tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
       tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
       tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cumulative_sequence_length);
-      if (relative_position_bias_data.size() > 0) {
-        tester.AddInput<MLFloat16>("relative_position_bias", relative_position_bias_data_dims, ToFloat16(relative_position_bias_data));
+      if (attention_bias_data.size() > 0) {
+        tester.AddInput<MLFloat16>("attention_bias", attention_bias_data_dims, ToFloat16(attention_bias_data));
       }
 
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
@@ -81,8 +81,8 @@ static void RunPackedAttentionTest(
       tester.AddInput<float>("bias", bias_dims, bias_data);
       tester.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
       tester.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cumulative_sequence_length);
-      if (relative_position_bias_data.size() > 0) {
-        tester.AddInput<float>("relative_position_bias", relative_position_bias_data_dims, relative_position_bias_data);
+      if (attention_bias_data.size() > 0) {
+        tester.AddInput<float>("attention_bias", attention_bias_data_dims, attention_bias_data);
       }
 
       tester.AddOutput<float>("output", output_dims, output_data);
@@ -107,7 +107,7 @@ static void RunPackedAttentionTest(
     int number_of_heads,
     int token_count,
     std::vector<int32_t> qkv_sizes = {},
-    const std::vector<float>& relative_position_bias_data = {}) {
+    const std::vector<float>& attention_bias_data = {}) {
 #define InvokePackedAttentionTest(use_float16, use_scale) \
   RunPackedAttentionTest(                                 \
       input_data,                                         \
@@ -124,7 +124,7 @@ static void RunPackedAttentionTest(
       use_float16,                                        \
       use_scale,                                          \
       qkv_sizes,                                          \
-      relative_position_bias_data);
+      attention_bias_data);
 
   InvokePackedAttentionTest(true, true);
   InvokePackedAttentionTest(true, false);
@@ -172,7 +172,7 @@ TEST(PackedAttentionTest, NoPack) {
       batch_size * sequence_length);
 }
 
-TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
+TEST(PackedAttentionTest, NoPackWithAttentionBias) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -197,7 +197,7 @@ TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
   std::vector<int32_t> token_offset{0, 1, 2, 3};
   std::vector<int32_t> cum_seq_len{0, 2, 4};
 
-  std::vector<float> relative_position_bias = {
+  std::vector<float> attention_bias = {
       0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f,
       0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f};
 
@@ -220,10 +220,10 @@ TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
       number_of_heads,
       batch_size * sequence_length,
       {},
-      relative_position_bias);
+      attention_bias);
 }
 
-TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
+TEST(PackedAttentionTest, PackedWithAttentionBias) {
   int batch_size = 2;
   int sequence_length = 4;
   int hidden_size = 4;
@@ -249,7 +249,7 @@ TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
   std::vector<int32_t> token_offset{0, 1, 4, 5, 2, 3, 6, 7};
   std::vector<int32_t> cum_seq_len{0, 2, 4};
 
-  std::vector<float> relative_position_bias = {
+  std::vector<float> attention_bias = {
       0.2f, -0.1f, 0.f, 0.f, 0.4f, 2.5f, 0.f, 0.f,
       1.6f, -1.1f, 0.f, 0.f, 0.4f, -2.5f, 0.f, 0.f,
       0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
@@ -279,7 +279,7 @@ TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
       number_of_heads,
       4,
       {},
-      relative_position_bias);
+      attention_bias);
 }
 
 TEST(PackedAttentionTest, PackedBatch) {
