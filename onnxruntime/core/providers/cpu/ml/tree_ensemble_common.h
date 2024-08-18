@@ -8,8 +8,6 @@
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 
-#include <algorithm>
-
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -379,13 +377,13 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
 }
 
 inline void UpdateThreshold(double val, double& mask) {
-  uint64_t new_mask = *reinterpret_cast<uint64_t*>(&mask) | (1ll << (static_cast<uint32_t>(val) - 1));
-  mask = *reinterpret_cast<double*>(&new_mask);
+  uint64_t new_mask = std::bit_cast<uint64_t>(mask) | (1ll << (static_cast<uint32_t>(val) - 1));
+  mask = std::bit_cast<double>(new_mask);
 }
 
 inline void UpdateThreshold(float val, float& mask) {
-  uint32_t new_mask = *reinterpret_cast<uint32_t*>(&mask) | (1 << (static_cast<uint32_t>(val) - 1));
-  mask = *reinterpret_cast<float*>(&new_mask);
+  uint32_t new_mask = std::bit_cast<uint32_t>(mask) | (1 << (static_cast<uint32_t>(val) - 1));
+  mask = std::bit_cast<float>(new_mask);
 }
 
 #define BITCOUNT(T) int64_t(sizeof(T) * 8)
@@ -436,6 +434,13 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   nodes_.push_back(std::move(node));
   if (nodes_[node_pos].is_not_leaf()) {
     auto falsenode_id = falsenode_ids[i];
+
+    // Categoricals are represented as a chain of `EQ` nodes where the subtree for the true child is identical for all nodes in the chain
+    // Below we are folding together these nodes into one of mode `BRANCH_SM`
+    // The threshold of this node should be looked as a bitmask showing which categoricals values were found in the chain
+    // Afterwards, when looking whether a feature is included we can do an `and` with the mask of the node
+    // and the one of the feature (the mask has only one bit set on the place for its value)
+    // Beware that if a category is bigger than the threshold type, the node stays as `EQ` and no combination is done
     if (nodes_[node_pos].flags == NODE_MODE::BRANCH_SM) {
       auto falsenode_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[falsenode_id]) : nodes_values_as_tensor[falsenode_id];
 
@@ -759,14 +764,15 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     }                                                                                                  \
   }
 
+// Check whether the feature value is set true in the mask
 inline bool SetMembershipCheck(double val, double mask) {
   auto val_as_int = static_cast<int64_t>(val);
-  return CANMASK(val_as_int, double) && (((1ll << (val_as_int - 1)) & *reinterpret_cast<uint64_t*>(&mask)) != 0);
+  return CANMASK(val_as_int, double) && (((1ll << (val_as_int - 1)) & std::bit_cast<uint64_t>(mask)) != 0);
 }
 
 inline bool SetMembershipCheck(float val, float mask) {
   auto val_as_int = static_cast<int64_t>(val);
-  return CANMASK(val_as_int, float) && (((1ll << (val_as_int - 1)) & *reinterpret_cast<uint32_t*>(&mask)) != 0);
+  return CANMASK(val_as_int, float) && (((1ll << (val_as_int - 1)) & std::bit_cast<uint32_t>(mask)) != 0);
 }
 
 inline bool _isnan_(float x) { return std::isnan(x); }
