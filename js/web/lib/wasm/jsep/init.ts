@@ -3,7 +3,7 @@
 
 import { Env } from 'onnxruntime-common';
 
-import { DataType } from '../wasm-common';
+import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
 
 import type { OrtWasmModule } from '../wasm-types';
 
