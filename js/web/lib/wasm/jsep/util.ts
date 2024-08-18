@@ -102,7 +102,7 @@ export class ShapeUtil {
    * calculate the size (number of elements)
    */
   static size(dims: readonly number[]): number {
-    return ShapeUtil.getSizeFromDimensionRange(dims, 0, dims.length);
+    return dims.length > 0 ? ShapeUtil.getSizeFromDimensionRange(dims, 0, dims.length) : 0;
   }
 
   /**
