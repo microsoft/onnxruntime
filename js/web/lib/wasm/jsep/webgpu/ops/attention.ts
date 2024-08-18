@@ -262,9 +262,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
   let WG = 64;
   const dComp = d / components;
   if (dComp < WG) {
-    WG = 1;
-  } else if (dComp / 8 < 64) {
-    WG = Math.ceil(dComp / 8);
+    WG = 32;
   }
   const elementsPerThread = Math.ceil(d / components / WG);
   const programUniforms: ProgramUniform[] = [
@@ -274,7 +272,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
   ];
   const dataType = tensorTypeToWsglStorageType(input.dataType, components);
   const f32Type = tensorTypeToWsglValueType(DataType.float, components);
-
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const inputHelper = outputVariable('x', input.dataType, input.dims, components);
     const elemValueType = tensorTypeToWsglValueType(input.dataType);
@@ -353,7 +351,7 @@ const createInPlaceSoftmaxProgramInfo = (_context: ComputeContext, input: Tensor
 
   return {
     name: 'AttentionProbsSoftmax',
-    shaderCache: { hint: `${WG};${dataType};${components}` },
+    shaderCache: { hint: `${WG};${dataType};${components}`, inputDependencies },
     getShaderSource,
     getRunData: () => ({ outputs: [], dispatchGroup: { x: n }, programUniforms }),
   };
