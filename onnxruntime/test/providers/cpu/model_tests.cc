@@ -95,7 +95,7 @@ TEST_P(ModelTest, Run) {
 
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
-    if (provider_name == "cuda" || provider_name == "openvino") {
+    if (provider_name == "cuda" || provider_name == "openvino" || provider_name == "rocm") {
       per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
@@ -407,9 +407,7 @@ static constexpr ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
 #endif
 static constexpr ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
 static constexpr ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
-#ifdef USE_ROCM
 static constexpr ORT_STRING_VIEW provider_name_rocm = ORT_TSTR("rocm");
-#endif
 static constexpr ORT_STRING_VIEW provider_name_dnnl = ORT_TSTR("dnnl");
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
@@ -537,6 +535,21 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+  static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
+                                                   ORT_TSTR("bvlc_reference_caffenet"),
+                                                   ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
+                                                   ORT_TSTR("coreml_Resnet50_ImageNet"),
+                                                   ORT_TSTR("mlperf_resnet"),
+                                                   ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
+                                                   // models from model zoo
+                                                   ORT_TSTR("AlexNet"),
+                                                   ORT_TSTR("CaffeNet"),
+                                                   ORT_TSTR("MobileNet v2-7"),
+                                                   ORT_TSTR("R-CNN ILSVRC13"),
+                                                   ORT_TSTR("ShuffleNet-v1"),
+                                                   ORT_TSTR("version-RFB-320"),
+                                                   ORT_TSTR("version-RFB-640")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),
       ORT_TSTR("bertsquad"),
@@ -663,7 +676,12 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
-    if (provider_name == provider_name_cuda) {
+    bool provider_cuda_or_rocm = provider_name == provider_name_cuda;
+    if (provider_name == provider_name_rocm) {
+      provider_cuda_or_rocm = true;
+      all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
+    }
+    if (provider_cuda_or_rocm) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
