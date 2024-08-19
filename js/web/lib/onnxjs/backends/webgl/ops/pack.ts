@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
-import {getCoordsDataType} from '../utils';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, TextureType } from '../types';
+import { getCoordsDataType } from '../utils';
 
-import {getChannels} from './packing-utils';
+import { getChannels } from './packing-utils';
 
 const packProgramMetadata = {
   name: 'pack',
   inputNames: ['A'],
-  inputTypes: [TextureType.unpackedReversed]
+  inputTypes: [TextureType.unpackedReversed],
 };
 
 const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
@@ -54,13 +54,15 @@ const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): P
   return {
     ...packProgramMetadata,
     hasMain: true,
-    output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
-    shaderSource
+    output: { dims: input.dims, type: input.type, textureType: TextureType.packed },
+    shaderSource,
   };
 };
 
-export const createPackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
-    ({...packProgramMetadata, get: () => createPackProgramInfo(handler, input)});
+export const createPackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader => ({
+  ...packProgramMetadata,
+  get: () => createPackProgramInfo(handler, input),
+});
 
 /**
  * check output coordinate location and return false if it is outside input's width/height boundary

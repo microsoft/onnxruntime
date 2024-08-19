@@ -17,7 +17,8 @@ are used for code-formatting and linting features for developers:
 - package.json
 - packages-lock.json
 - .eslintrc.js
-- .clang-format
+- .prettierignore
+- .prettierrc
 
 Please follow the steps described below to setup development environment.
 
@@ -32,8 +33,8 @@ Please follow the steps described below to setup development environment.
 - Visual Studio Code: https://code.visualstudio.com/
 
   - **required** extension: [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
-  - **required** extension: [Clang-Format](https://marketplace.visualstudio.com/items?itemName=xaver.clang-format)
-  - **required** extension: [Debugger for Chrome](https://marketplace.visualstudio.com/items?itemName=msjsdiag.debugger-for-chrome)
+  - **required** extension: [Prettier](https://marketplace.visualstudio.com/items?itemName=SimonSiefke.prettier-vscode)
+  - **required** extension: [JavaScript Debugger](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly)
 
 - Chrome or Edge Browser
 
@@ -45,7 +46,7 @@ In `<ORT_ROOT>/js`, run:
 npm ci
 ```
 
-This will install Clang-format and ESLint for code-formatting and linting features. This is a one-time setup unless a `git clean` is performed or folder `<ORT_ROOT>/js/node_modules` is removed manually.
+This will install Prettier and ESLint for code-formatting and linting features. This is a one-time setup unless a `git clean` is performed or folder `<ORT_ROOT>/js/node_modules` is removed manually.
 
 ### Using VSCode:
 
@@ -57,7 +58,7 @@ To populate typescript type declarations, in each project folder, run `npm ci`.
 
 ### Run code formatter and linter manually
 
-In `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run clang-format.
+In `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run code formatter.
 
 ## onnxruntime-common
 

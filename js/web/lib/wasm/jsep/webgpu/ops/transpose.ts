@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo } from '../types';
 
-import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper } from './common';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -20,10 +20,10 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const getAdjustedPerm = (inputRank: number, perm: number[]): number[] =>
-    (perm && perm.length !== inputRank) ? [...(new Array(inputRank).keys())].reverse() : perm;
+  perm && perm.length !== inputRank ? [...new Array(inputRank).keys()].reverse() : perm;
 
 const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly number[] =>
-    ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
+  ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
 
 const permFunctionBody = (perm: number[], rank: number, input: IndicesHelper, output: IndicesHelper): string => {
   const reverseFunc = [];
@@ -82,14 +82,16 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   }
   return {
     name: 'Transpose',
-    shaderCache: {hint: `${permAttr}`, inputDependencies: ['rank']},
+    shaderCache: { hint: `${permAttr}`, inputDependencies: ['rank'] },
     getRunData: (inputs) => {
       const outputSize = ShapeUtil.size(outputShape);
       return {
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-        dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-        programUniforms:
-            [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
+        outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+        dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+        programUniforms: [
+          { type: DataType.uint32, data: outputSize },
+          ...createTensorShapeVariables(inputs[0].dims, outputShape),
+        ],
       };
     },
     getShaderSource,
@@ -102,4 +104,4 @@ export const transpose = (context: ComputeContext, attributes: TransposeAttribut
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>
-    createAttributeWithCacheKey({perm: attributes.perm as number[]});
+  createAttributeWithCacheKey({ perm: attributes.perm as number[] });

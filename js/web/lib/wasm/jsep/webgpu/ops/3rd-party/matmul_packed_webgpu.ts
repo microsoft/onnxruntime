@@ -19,14 +19,29 @@
 //
 // modified to fit the needs of the project
 
-import {DataType} from '../../../../wasm-common';
-import {TensorView} from '../../../tensor-view';
-import {ShapeUtil} from '../../../util';
-import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {appendActivationUniforms, appendActivationUniformsData, getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import { DataType } from '../../../../wasm-common';
+import { TensorView } from '../../../tensor-view';
+import { ShapeUtil } from '../../../util';
+import { ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../../types';
+import {
+  createTensorShapeVariables,
+  getBroadcastDims,
+  IndicesHelper,
+  inputVariable,
+  internalVariable,
+  outputVariable,
+  ShaderHelper,
+  tensorTypeToWsglStorageType,
+  UniformsArrayType,
+} from '../common';
+import {
+  appendActivationUniforms,
+  appendActivationUniformsData,
+  getActivationSnippet,
+  InternalActivationAttributes,
+} from '../fuse-utils';
 
-import {typeSnippet} from './activation_util';
+import { typeSnippet } from './activation_util';
 
 const writeDataToSubAVec4Snippet = (transpose: boolean, batchDims?: IndicesHelper) => {
   if (transpose) {
@@ -35,7 +50,6 @@ const writeDataToSubAVec4Snippet = (transpose: boolean, batchDims?: IndicesHelpe
           kStart + inputRow,
           globalRowStart / innerElementSize + inputCol${batchDims ? ', batchIndices' : ''});
         `;
-
   } else {
     return `
         mm_Asub[inputRow][inputCol] = mm_readA(batch,
@@ -70,27 +84,41 @@ const calculateResultSnippet = (transposeA: boolean, innerElementSize: number) =
   }
 };
 
-export const makeMatMulPackedVec4Source =
-    (workPerThread: number[], workgroupSize: [number, number, number], type = 'f32', batchDims?: IndicesHelper,
-     transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32): string => {
-      const tileAOuter = workgroupSize[1] * workPerThread[1];
-      const tileBOuter = workgroupSize[0] * workPerThread[0];
-      const tileAWidth = transposeA ? tileAOuter : tileInner;
-      const tileAHight = transposeA ? tileInner : tileAOuter;
-      const innerElementSize = tileAWidth / workgroupSize[0];
-      const rowPerThreadB = tileInner / workgroupSize[1];
+export const makeMatMulPackedVec4Source = (
+  workPerThread: number[],
+  workgroupSize: [number, number, number],
+  type = 'f32',
+  batchDims?: IndicesHelper,
+  transposeA = false,
+  tileInner = 32,
+  splitK = false,
+  splitedDimInner = 32,
+): string => {
+  const tileAOuter = workgroupSize[1] * workPerThread[1];
+  const tileBOuter = workgroupSize[0] * workPerThread[0];
+  const tileAWidth = transposeA ? tileAOuter : tileInner;
+  const tileAHight = transposeA ? tileInner : tileAOuter;
+  const innerElementSize = tileAWidth / workgroupSize[0];
+  const rowPerThreadB = tileInner / workgroupSize[1];
 
-      if (!(((transposeA && innerElementSize === 4 && workPerThread[1] === 4) ||
-             (!transposeA && (innerElementSize === 3 || innerElementSize === 4))) &&
-            tileAWidth % workgroupSize[0] === 0 && tileInner % workgroupSize[1] === 0 && workPerThread[0] === 4)) {
-        throw new Error(`If transposeA ${transposeA} is true, innerElementSize ${
-            innerElementSize} and workPerThread[1] ${workPerThread[1]} must be 4.
+  if (
+    !(
+      ((transposeA && innerElementSize === 4 && workPerThread[1] === 4) ||
+        (!transposeA && (innerElementSize === 3 || innerElementSize === 4))) &&
+      tileAWidth % workgroupSize[0] === 0 &&
+      tileInner % workgroupSize[1] === 0 &&
+      workPerThread[0] === 4
+    )
+  ) {
+    throw new Error(`If transposeA ${transposeA} is true, innerElementSize ${
+      innerElementSize
+    } and workPerThread[1] ${workPerThread[1]} must be 4.
       Otherwise, innerElementSize ${innerElementSize} must be 3 or 4.
   tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}. tileInner ${
-            tileInner} must be divisible by workgroupSize[1] ${workgroupSize[1]}. colPerThread ${
-            workPerThread[0]} must be 4.`);
-      }
-      return `
+    tileInner
+  } must be divisible by workgroupSize[1] ${workgroupSize[1]}. colPerThread ${workPerThread[0]} must be 4.`);
+  }
+  return `
 var<workgroup> mm_Asub: array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
 var<workgroup> mm_Bsub: array<array<vec4<${type}>, ${tileBOuter / workPerThread[0]}>, ${tileInner}>;
 
@@ -133,7 +161,8 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
           let inputRow = tileRowB + innerRow;
           let inputCol = tileCol;
           mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol${
-          batchDims ? ', batchIndices' : ''});
+            batchDims ? ', batchIndices' : ''
+          });
       }
       kStart = kStart + tileInner;
       workgroupBarrier();
@@ -155,7 +184,7 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
       mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);
   }
 }`;
-    };
+};
 
 const writeDataToSubASnippet = (transpose: boolean, batchDims?: IndicesHelper) => {
   if (transpose) {
@@ -164,7 +193,6 @@ const writeDataToSubASnippet = (transpose: boolean, batchDims?: IndicesHelper) =
               kStart + inputRow,
               globalRowStart + inputCol${batchDims ? ', batchIndices' : ''});
             `;
-
   } else {
     return `
             mm_Asub[inputRow][inputCol] = mm_readA(batch,
@@ -175,30 +203,42 @@ const writeDataToSubASnippet = (transpose: boolean, batchDims?: IndicesHelper) =
 };
 
 const readDataFromSubASnippet = (transposeA: boolean) =>
-    transposeA ? 'let ACached = mm_Asub[k][tileRow + innerRow];' : 'let ACached = mm_Asub[tileRow + innerRow][k];';
+  transposeA ? 'let ACached = mm_Asub[k][tileRow + innerRow];' : 'let ACached = mm_Asub[tileRow + innerRow][k];';
 
 // sequentialAccessByThreads means sequential data in memory is accessed by
 // threads, instead of a single thread (default behavior).
-export const makeMatMulPackedSource =
-    (workPerThread: number[], workgroupSize: [number, number, number], type = 'f32', batchDims?: IndicesHelper,
-     transposeA = false, tileInner = 32, splitK = false, splitedDimInner = 32,
-     sequentialAccessByThreads = false): string => {
-      const tileAOuter = workPerThread[1] * workgroupSize[1];
-      const tileBOuter = workPerThread[0] * workgroupSize[0];
-      const tileAWidth = transposeA ? tileAOuter : tileInner;
-      const tileAHight = transposeA ? tileInner : tileAOuter;
+export const makeMatMulPackedSource = (
+  workPerThread: number[],
+  workgroupSize: [number, number, number],
+  type = 'f32',
+  batchDims?: IndicesHelper,
+  transposeA = false,
+  tileInner = 32,
+  splitK = false,
+  splitedDimInner = 32,
+  sequentialAccessByThreads = false,
+): string => {
+  const tileAOuter = workPerThread[1] * workgroupSize[1];
+  const tileBOuter = workPerThread[0] * workgroupSize[0];
+  const tileAWidth = transposeA ? tileAOuter : tileInner;
+  const tileAHight = transposeA ? tileInner : tileAOuter;
 
-      if (!(tileAHight % workgroupSize[1] === 0 && tileAWidth % workgroupSize[0] === 0 &&
-            tileInner % workgroupSize[1] === 0)) {
-        throw new Error(`tileAHight ${tileAHight} must be divisible by workgroupSize[1]${
-            workgroupSize[1]}, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${
-            workgroupSize[0]}, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`);
-      }
-      const rowPerThreadA = tileAHight / workgroupSize[1];
-      const colPerThreadA = tileAWidth / workgroupSize[0];
-      const rowPerThreadB = tileInner / workgroupSize[1];
-      const matmulSnippet = sequentialAccessByThreads ?
-          `
+  if (
+    !(tileAHight % workgroupSize[1] === 0 && tileAWidth % workgroupSize[0] === 0 && tileInner % workgroupSize[1] === 0)
+  ) {
+    throw new Error(
+      `tileAHight ${tileAHight} must be divisible by workgroupSize[1]${
+        workgroupSize[1]
+      }, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${
+        workgroupSize[0]
+      }, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`,
+    );
+  }
+  const rowPerThreadA = tileAHight / workgroupSize[1];
+  const colPerThreadA = tileAWidth / workgroupSize[0];
+  const rowPerThreadB = tileInner / workgroupSize[1];
+  const matmulSnippet = sequentialAccessByThreads
+    ? `
     let localRow = i32(localId.y);
     let localCol = i32(localId.x);
     let globalRowStart = i32(workgroupId.y) * ${tileAOuter};
@@ -231,8 +271,10 @@ export const makeMatMulPackedSource =
         }
         for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
           let ACached = ${
-              transposeA ? `mm_Asub[k][localRow + innerRow * ${workgroupSize[1]}];` :
-                           `mm_Asub[localRow + innerRow * ${workgroupSize[1]}][k];`}
+            transposeA
+              ? `mm_Asub[k][localRow + innerRow * ${workgroupSize[1]}];`
+              : `mm_Asub[localRow + innerRow * ${workgroupSize[1]}][k];`
+          }
           for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
             acc[innerRow][innerCol] = acc[innerRow][innerCol] +
                 ACached * BCached[innerCol];
@@ -248,8 +290,8 @@ export const makeMatMulPackedSource =
         mm_write(batch, gRow, gCol, acc[innerRow][innerCol]);
       }
     }
-    ` :
-          `
+    `
+    : `
 let tileRow = i32(localId.y) * rowPerThread;
 let tileCol = i32(localId.x) * colPerThread;
 
@@ -310,7 +352,7 @@ for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
 }
 `;
 
-      return `
+  return `
   var<workgroup> mm_Asub : array<array<${type}, ${tileAWidth}>, ${tileAHight}>;
   var<workgroup> mm_Bsub : array<array<${type}, ${tileBOuter}>, ${tileInner}>;
   const rowPerThread = ${workPerThread[1]};
@@ -324,54 +366,62 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     let batch = ${splitK ? '0' : 'i32(globalId.z)'};
     ${batchDims ? `let batchIndices = ${batchDims.offsetToIndices('u32(batch)')};` : ''}
     let num_tiles = ${
-          splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'};
+      splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'
+    };
     var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
     var acc : array<array<${type}, colPerThread>, rowPerThread>;
     ${matmulSnippet}
   }
 `;
-    };
+};
 
-const matMulReadWriteFnSource =
-    (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[],
-     batchShapes: Array<readonly number[]>, isChannelsLast = false): string => {
-      const [batchAShape, batchBShape, batchShape] = batchShapes;
-      const [batchVariable, aVariable, bVariable, outputVariable] = variables;
-      const broadCastADims = getBroadcastDims(batchAShape, batchShape);
-      const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
-      const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
-      const getAIndices = () => {
-        const aRank = aVariable.rank;
-        const batchRank = batchVariable.rank;
-        let resStr = `var aIndices: ${aVariable.type.indices};`;
-        for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-          resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-        }
-        broadCastADims.forEach(i => {
-          resStr += `\naIndices[${i}] = 0;`;
-        });
-        resStr += `\naIndices[${aRank - 2}] = u32(row);
+const matMulReadWriteFnSource = (
+  component: number,
+  hasBias: boolean,
+  applyActivation: string,
+  variables: IndicesHelper[],
+  batchShapes: Array<readonly number[]>,
+  isChannelsLast = false,
+): string => {
+  const [batchAShape, batchBShape, batchShape] = batchShapes;
+  const [batchVariable, aVariable, bVariable, outputVariable] = variables;
+  const broadCastADims = getBroadcastDims(batchAShape, batchShape);
+  const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
+  const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
+  const getAIndices = () => {
+    const aRank = aVariable.rank;
+    const batchRank = batchVariable.rank;
+    let resStr = `var aIndices: ${aVariable.type.indices};`;
+    for (let i = aRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+      resStr += `\naIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+    }
+    broadCastADims.forEach((i) => {
+      resStr += `\naIndices[${i}] = 0;`;
+    });
+    resStr += `\naIndices[${aRank - 2}] = u32(row);
                    aIndices[${aRank - 1}] = u32(colIn);`;
-        return resStr;
-      };
-      const getBIndices = () => {
-        const bRank = bVariable.rank;
-        const batchRank = batchVariable.rank;
-        let resStr = `var bIndices: ${bVariable.type.indices};`;
-        for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-          resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
-        }
-        broadCastBDims.forEach(i => {
-          resStr += `\nbIndices[${i}] = 0;`;
-        });
-        resStr += `\nbIndices[${bRank - 2}] = u32(row);
+    return resStr;
+  };
+  const getBIndices = () => {
+    const bRank = bVariable.rank;
+    const batchRank = batchVariable.rank;
+    let resStr = `var bIndices: ${bVariable.type.indices};`;
+    for (let i = bRank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
+      resStr += `\nbIndices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+    }
+    broadCastBDims.forEach((i) => {
+      resStr += `\nbIndices[${i}] = 0;`;
+    });
+    resStr += `\nbIndices[${bRank - 2}] = u32(row);
                    bIndices[${bRank - 1}] = u32(colIn);`;
-        return resStr;
-      };
-      const source = `
-    fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
-          typeSnippet(component, dataType)} {
+    return resStr;
+  };
+  const source = `
+    fn mm_readA(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
+      component,
+      dataType,
+    )} {
       var value = ${typeSnippet(component, dataType)}(0.0);
       let col = colIn * ${component};
       if(row < uniforms.dim_a_outer && col < uniforms.dim_inner)
@@ -382,8 +432,10 @@ const matMulReadWriteFnSource =
       return value;
     }
 
-    fn mm_readB(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${
-          typeSnippet(component, dataType)} {
+    fn mm_readB(batch: i32, row: i32, colIn: i32, batchIndices: ${batchVariable.type.indices}) -> ${typeSnippet(
+      component,
+      dataType,
+    )} {
       var value = ${typeSnippet(component, dataType)}(0.0);
       let col = colIn * ${component};
       if(row < uniforms.dim_inner && col < uniforms.dim_b_outer)
@@ -400,104 +452,120 @@ const matMulReadWriteFnSource =
         var value = valueIn;
         let coords = vec3<i32>(batch, row, colIn);
         ${
-          hasBias ?
-              `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component, dataType)}(bias[row])`};` :
-                                                  ''                                    }
+          hasBias
+            ? `value = value + ${isChannelsLast ? 'bias[colIn]' : `${typeSnippet(component, dataType)}(bias[row])`};`
+            : ''
+        }
         ${applyActivation}
         ${outputVariable.setByIndices('vec3<u32>(coords)', 'value')}
       }
     }
     `;
-      return source;
-    };
+  return source;
+};
 
-export const createMatmulProgramInfo =
-    (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
-     reshapedOutputShape?: readonly number[],
-     isChannelsLast = false /* only used for conv2dByMatMul*/): ProgramInfo => {
-      const aShape = inputs[0].dims;
-      const bShape = inputs[1].dims;
-      const outerDimsA = aShape.slice(0, -2);
-      const outerDimsB = bShape.slice(0, -2);
-      const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
-      const batchSize = ShapeUtil.size(outerDims);
-      const dimAOuter = aShape[aShape.length - 2];
-      const dimInner = aShape[aShape.length - 1];
-      const dimBOuter = bShape[bShape.length - 1];
-      const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
+export const createMatmulProgramInfo = (
+  inputs: readonly TensorView[],
+  activationAttributes: InternalActivationAttributes,
+  outputShape: readonly number[],
+  reshapedOutputShape?: readonly number[],
+  isChannelsLast = false /* only used for conv2dByMatMul*/,
+): ProgramInfo => {
+  const aShape = inputs[0].dims;
+  const bShape = inputs[1].dims;
+  const outerDimsA = aShape.slice(0, -2);
+  const outerDimsB = bShape.slice(0, -2);
+  const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
+  const batchSize = ShapeUtil.size(outerDims);
+  const dimAOuter = aShape[aShape.length - 2];
+  const dimInner = aShape[aShape.length - 1];
+  const dimBOuter = bShape[bShape.length - 1];
+  const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
 
-      // TODO: fine tune size
-      const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
-      const workgroupSize: [number, number, number] = [8, 8, 1];
-      const dispatch = [
-        Math.ceil(dimBOuter / workgroupSize[0] / elementsPerThread[0]),
-        Math.ceil(dimAOuter / workgroupSize[1] / elementsPerThread[1]),
-        Math.ceil(batchSize / workgroupSize[2] / elementsPerThread[2])
-      ];
+  // TODO: fine tune size
+  const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
+  const workgroupSize: [number, number, number] = [8, 8, 1];
+  const dispatch = [
+    Math.ceil(dimBOuter / workgroupSize[0] / elementsPerThread[0]),
+    Math.ceil(dimAOuter / workgroupSize[1] / elementsPerThread[1]),
+    Math.ceil(batchSize / workgroupSize[2] / elementsPerThread[2]),
+  ];
 
-      const components = isVec4 ? 4 : 1;
-      const aShapeTemp = [...outerDimsA, dimAOuter, dimInner / components];
-      const aRank = aShapeTemp.length;
-      const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
-      const bRank = bShapeTemp.length;
-      const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      const programUniforms: ProgramUniform[] = [
-        {type: DataType.int32, data: dimAOuter}, {type: DataType.int32, data: dimBOuter},
-        {type: DataType.int32, data: dimInner}
-      ];
-      appendActivationUniformsData(activationAttributes, programUniforms);
-      programUniforms.push(...createTensorShapeVariables(outerDims, aShapeTemp, bShapeTemp));
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+  const components = isVec4 ? 4 : 1;
+  const aShapeTemp = [...outerDimsA, dimAOuter, dimInner / components];
+  const aRank = aShapeTemp.length;
+  const bShapeTemp = [...outerDimsB, dimInner, dimBOuter / components];
+  const bRank = bShapeTemp.length;
+  const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
+  const programUniforms: ProgramUniform[] = [
+    { type: DataType.int32, data: dimAOuter },
+    { type: DataType.int32, data: dimBOuter },
+    { type: DataType.int32, data: dimInner },
+  ];
+  appendActivationUniformsData(activationAttributes, programUniforms);
+  programUniforms.push(...createTensorShapeVariables(outerDims, aShapeTemp, bShapeTemp));
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
-      const hasBias = inputs.length > 2;
-      if (hasBias) {
-        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-        inputDependencies.push('rank');
-      }
-      programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
+  const hasBias = inputs.length > 2;
+  if (hasBias) {
+    programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+    inputDependencies.push('rank');
+  }
+  programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const batchRank = outerDims.length;
-        const batchDims = internalVariable('batchDims', inputs[0].dataType, batchRank, 1);
-        const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const batchRank = outerDims.length;
+    const batchDims = internalVariable('batchDims', inputs[0].dataType, batchRank, 1);
+    const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
 
-        const A = inputVariable('a', inputs[0].dataType, aRank, components);
-        const B = inputVariable('b', inputs[1].dataType, bRank, components);
-        const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
-        const inputVariables = [A, B];
-        if (hasBias) {
-          const biasComponents = isChannelsLast ? components : 1;
-          inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
-        }
-        const uniforms: UniformsArrayType =
-            [{name: 'dim_a_outer', type: 'i32'}, {name: 'dim_b_outer', type: 'i32'}, {name: 'dim_inner', type: 'i32'}];
-        appendActivationUniforms(activationAttributes, uniforms);
-        const baseType = tensorTypeToWsglStorageType(output.type.tensor);
-        const applyActivation = getActivationSnippet(activationAttributes, output.type.value, baseType);
-        const declareFunctions = matMulReadWriteFnSource(
-            components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],
-            isChannelsLast);
-        return `
-  ${
-            shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
-                ...inputVariables, output)}
+    const A = inputVariable('a', inputs[0].dataType, aRank, components);
+    const B = inputVariable('b', inputs[1].dataType, bRank, components);
+    const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
+    const inputVariables = [A, B];
+    if (hasBias) {
+      const biasComponents = isChannelsLast ? components : 1;
+      inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
+    }
+    const uniforms: UniformsArrayType = [
+      { name: 'dim_a_outer', type: 'i32' },
+      { name: 'dim_b_outer', type: 'i32' },
+      { name: 'dim_inner', type: 'i32' },
+    ];
+    appendActivationUniforms(activationAttributes, uniforms);
+    const baseType = tensorTypeToWsglStorageType(output.type.tensor);
+    const applyActivation = getActivationSnippet(activationAttributes, output.type.value, baseType);
+    const declareFunctions = matMulReadWriteFnSource(
+      components,
+      hasBias,
+      applyActivation,
+      [batchDims, A, B, output],
+      [outerDimsA, outerDimsB, outerDims],
+      isChannelsLast,
+    );
+    return `
+  ${shaderHelper
+    .registerUniforms(uniforms)
+    .registerInternalVariables(batchDims)
+    .declareVariables(...inputVariables, output)}
   ${declareFunctions}
   ${
-            isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, dataType, batchDims) :
-                     makeMatMulPackedSource(elementsPerThread, workgroupSize, dataType, batchDims)}
+    isVec4
+      ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, dataType, batchDims)
+      : makeMatMulPackedSource(elementsPerThread, workgroupSize, dataType, batchDims)
+  }
                    `;
-      };
-      return {
-        name: 'MatMul',
-        shaderCache: {
-          hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${isChannelsLast}`,
-          inputDependencies
-        },
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
-          programUniforms
-        }),
-        getShaderSource,
-      };
-    };
+  };
+  return {
+    name: 'MatMul',
+    shaderCache: {
+      hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${isChannelsLast}`,
+      inputDependencies,
+    },
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: dispatch[0], y: dispatch[1], z: dispatch[2] },
+      programUniforms,
+    }),
+    getShaderSource,
+  };
+};

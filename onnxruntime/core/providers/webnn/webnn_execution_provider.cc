@@ -272,10 +272,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         auto input_tensor = ctx.GetInput(input_idx);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
-        // If we have an empty shape, this is a scalar input,
-        // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
-        if (shape.empty())
-          shape.push_back(1);
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -297,12 +293,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           const auto& output_info = model->GetInputOutputInfo(output_name);
           auto output_shape = output_info.shape;
           auto output_type = output_info.data_type;
-
-          // Since WebNN EP use {1} tensor as scalar, if the model output should have empty shape.
-          // We are going to replace the {1} shape of the output back to {}.
-          if (model->IsScalarOutput(output_name))
-            output_shape.clear();
-
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
