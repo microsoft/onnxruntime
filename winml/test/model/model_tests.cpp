@@ -150,7 +150,8 @@ std::string GetTestDataPath() {
   std::string testDataPath(MAX_PATH, '\0');
   auto environmentVariableFetchSuceeded =
     GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
-  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND || environmentVariableFetchSuceeded > MAX_PATH) {
+  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND ||
+      environmentVariableFetchSuceeded > MAX_PATH) {
     // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::filesystem::path currPath = modulePath.substr(0, modulePath.find_last_of(L"\\"));
@@ -170,7 +171,7 @@ std::string GetTestDataPath() {
     testDataPath.replace(environmentVariableFetchSuceeded, testDataPathFolderName.length(), testDataPathFolderName);
   } else {
     throw std::exception(
-      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n",
+      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accommodate the maximum path size of %d\n",
       MAX_PATH
     );
   }
@@ -357,7 +358,8 @@ bool ModifyNameIfDisabledTest(/*inout*/ std::string& testName, winml::LearningMo
     if (SkipGpuTests()) {
       reason = "GPU tests are not enabled for this build.";
       shouldSkip = true;
-    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() && ShouldSkipTestOnGpuAdapter(testName)) {
+    } else if (disabledGpuAdapterTests.find(testName) != disabledGpuAdapterTests.end() &&
+               ShouldSkipTestOnGpuAdapter(testName)) {
       reason = disabledGpuAdapterTests[testName].second;
       shouldSkip = true;
     }
@@ -386,9 +388,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   name += tokenizedModelPath[tokenizedModelPath.size() - 2] += "_";  // model name
   name += tokenizedModelPath[tokenizedModelPath.size() - 3];         // opset version
 
-  std::replace_if(
-    name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_'
-  );
+  std::replace_if(name.begin(), name.end(), [](char c) { return !absl::ascii_isalnum(c); }, '_');
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
   bool isDisabled = ModifyNameIfDisabledTest(/*inout*/ name, deviceKind);

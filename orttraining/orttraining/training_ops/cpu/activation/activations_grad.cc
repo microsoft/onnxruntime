@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/activation/activations_grad.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -82,7 +82,7 @@ Status ComputeGeluGradDX(gsl::span<const T> dY, gsl::span<const T> X, gsl::span<
   static constexpr T kBeta = static_cast<T>(kGamma * kAlpha * 3.0f);
 
   //
-  // Commented out EIGEN implentation due to EIGEN bug.
+  // Commented out EIGEN implementation due to EIGEN bug.
   // On Windows Release build with GPU enabled, kAlpha * EIGEN_X below would produce pure 0
   // result, even though neither kAlpha nor EIGEN_X is zero.
   // Given that CPU kernel is mostly for conformance check, where performance is not of high

@@ -4,7 +4,7 @@
 #include "core/providers/cpu/tensor/unique.h"
 #include <map>
 #include <core/common/safeint.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -51,7 +51,7 @@ ONNX_OPERATOR_SET_SCHEMA(
             1,
             "indices",
             "A 1-D INT64 tensor "
-            "containing indices of 'Y' elements' first occurance in 'X'. "
+            "containing indices of 'Y' elements' first occurrence in 'X'. "
             "When 'axis' is provided, it contains indices to subtensors in input 'X' on the 'axis'. "
             "When 'axis' is not provided, it contains indices to values in the flattened input tensor. ",
             "tensor(int64)",

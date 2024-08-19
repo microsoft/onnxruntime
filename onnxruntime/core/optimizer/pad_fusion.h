@@ -8,7 +8,7 @@
 namespace onnxruntime {
 /*
  *   This fusion submerges a Pad operator to it's child
- *   Conv or MaxPool operator, if and only if PadFusion::SatisfyCondition()
+ *   Conv or MaxPool or AveragePool operator, if and only if PadFusion::SatisfyCondition()
  *   is true.
  */
 class PadFusion : public RewriteRule {

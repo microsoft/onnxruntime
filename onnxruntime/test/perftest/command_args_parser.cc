@@ -143,6 +143,7 @@ namespace perftest {
       "\t-D [Disable thread spinning]: disable spinning entirely for thread owned by onnxruntime intra-op thread pool.\n"
       "\t-Z [Force thread to stop spinning between runs]: disallow thread from spinning during runs to reduce cpu usage.\n"
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
+      "\t-l Provide file as binary in memory by using fopen before session creation.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -205,7 +206,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzn"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznl"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -252,7 +253,6 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           test_config.machine_config.provider_type_name = onnxruntime::kDnnlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
-          test_config.run_config.optimization_level = ORT_DISABLE_ALL;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
@@ -389,6 +389,9 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         break;
       case 'n':
         test_config.run_config.exit_after_session_creation = true;
+        break;
+      case 'l':
+        test_config.model_info.load_via_path = true;
         break;
       case '?':
       case 'h':

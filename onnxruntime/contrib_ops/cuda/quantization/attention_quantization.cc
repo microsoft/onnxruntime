@@ -52,7 +52,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
-                                                 nullptr,  // relative_position_bias
+                                                 nullptr,  // attention_bias
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
@@ -190,7 +190,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    fused_runner,
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   true);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
@@ -208,6 +209,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.workspace_bytes = workSpaceSize;
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   if (nullptr != present) {
     data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
