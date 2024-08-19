@@ -1079,7 +1079,13 @@ def attention_ref(
             q.device,
         )
         scores.masked_fill_(local_mask, float("-inf"))
-    attention = torch.softmax(scores, dim=-1)
+
+    #attention = torch.softmax(scores, dim=-1)
+    QK_max = scores.amax(axis=-1, keepdim=True)
+    QK_max = torch.maximum(QK_max, torch.zeros_like(QK_max))
+    attention = torch.exp(scores - QK_max)
+    attention *= torch.reciprocal(attention.sum(axis=-1, keepdim=True) + torch.exp(-QK_max))
+
     # Some rows might be completely masked out so we fill them with zero instead of NaN
     if window_size[0] >= 0 or window_size[1] >= 0:
         attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)

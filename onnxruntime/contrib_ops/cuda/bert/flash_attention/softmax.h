@@ -167,7 +167,7 @@ struct Softmax {
     static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);
 #pragma unroll
     for (int mi = 0; mi < size<0>(acc_o_rowcol); ++mi) {
-      float sum = row_sum(mi);
+      float sum = row_sum(mi) + expf(-row_max(mi));
       float inv_sum = (sum == 0.f || sum != sum) ? 1.f : 1.f / sum;
       lse(mi) = (sum == 0.f || sum != sum) ? (Split ? -INFINITY : INFINITY) : row_max(mi) * softmax_scale + __logf(sum);
       float scale = inv_sum;
