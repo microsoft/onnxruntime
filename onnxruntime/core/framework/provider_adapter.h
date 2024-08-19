@@ -72,6 +72,12 @@ public:
 
         ret.push_back(std::make_unique<ComputeCapability>(std::move(sb)));
     }
+    for (size_t i = 0; i < cnt; i++) {
+        if (indexed_subgraph[i]->meta_def) {
+            delete indexed_subgraph[i]->meta_def;
+        }
+        delete indexed_subgraph[i];
+    }
     return ret;
   }
 
