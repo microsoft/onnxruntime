@@ -165,7 +165,10 @@ const createGatherBlockQuantizedProgramInfo = (
   return {
     name: 'GatherBlockQuantized',
     shaderCache: {
-      hint: `${attributes.cacheKey};${inputs.filter((_, i) => i !== 1).map((input) => input.dims.join('_')).join(';')}`,
+      hint: `${attributes.cacheKey};${inputs
+        .filter((_, i) => i !== 1)
+        .map((input) => input.dims.join('_'))
+        .join(';')}`,
       inputDependencies: Array.from({ length: inputs.length }, (_v, _i) => 'rank'),
     },
     getRunData: () => ({
