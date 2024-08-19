@@ -346,7 +346,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   const bComponents = getMaxComponents(blobSizeInWords);
   const components = getMaxComponents(dimBOuter);
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
-  const outputNumber = (dimBOuter / components) % 2 === 0 ? 2 : 1;
+  const outputNumber = dimAOuter > 1 && (dimBOuter / components) % 2 === 0 ? 2 : 1;
   const dispatchSize = ShapeUtil.size(outputShape) / components / outputNumber;
 
   const programUniforms: ProgramUniform[] = [];
