@@ -384,7 +384,8 @@ Status CudnnFlashAttention(
   ORT_UNUSED_PARAMETER(parameters);
   ORT_UNUSED_PARAMETER(data);
   ORT_UNUSED_PARAMETER(scale);
-  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED, "cudnn flash attention does not support float tensor");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::NOT_IMPLEMENTED,
+                         "cudnn flash attention does not support float tensor");
 }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
@@ -580,11 +581,11 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
-  assert((int(data.use_flash_attention) +
-          int(data.use_memory_efficient_attention) +
-          int(fused_runner != nullptr) +
-          int(data.fused_cross_attention_kernel != nullptr) +
-          int(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
+  assert((static_cast<int>(data.use_flash_attention) +
+          static_cast<int>(data.use_memory_efficient_attention) +
+          static_cast<int>(fused_runner != nullptr) +
+          static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
+          static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 

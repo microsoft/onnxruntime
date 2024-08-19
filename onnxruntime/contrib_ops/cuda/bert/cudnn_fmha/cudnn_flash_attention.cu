@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
+#include <memory>
+#include <vector>
+#include <unordered_map>
 #include <cudnn.h>
 
 #if CUDNN_MAJOR < 9
@@ -306,13 +309,14 @@ struct BytesHash {
       value ^= ptr[i];
       value *= 0x01000193;
     }
-    return (size_t)value;
+    return static_cast<size_t>(value);
   }
 };
 
 // Use thread local caches because cuDNN execution plans are not guaranteed to be thread safe.
-// TODO: since we the key includes sequence lengths, we may want to limit the cache size.
-thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
+// TODO(tianleiwu): since we the key includes sequence lengths, we may want to limit the cache size.
+thread_local
+std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
 
 void run(
     void* output,

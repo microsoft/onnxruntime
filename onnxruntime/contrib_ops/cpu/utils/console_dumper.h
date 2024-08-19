@@ -53,11 +53,7 @@ void PrintTensorByDims(const TConsoleDumper* dumper,
                        const char* name,
                        const T* tensor,
                        gsl::span<const int64_t>& dims) {
-  if (!dumper->IsEnabled()) {
-    return;
-  }
-
-  if ((tensor == nullptr || dims.size() == 0)) {
+  if (dumper->IsEnabled() && (tensor == nullptr || dims.size() == 0)) {
     std::cout << std::string(name) << " is None" << std::endl;
     return;
   }
