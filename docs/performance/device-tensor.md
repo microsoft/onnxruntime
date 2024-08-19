@@ -109,7 +109,7 @@ Ort::Value ort_value(Ort::Value::CreateTensor(memory_info_dml, dml_resource,
                      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
 ```
 
-A [single file sample](https://github.com/ankan-ban/HelloOrtDml/blob/main/Main.cpp) can be found on github which shows how to manage and create copy and execution command queues.
+A [single file sample](https://github.com/ankan-ban/HelloOrtDml/blob/main/Main.cpp) can be found on GitHub which shows how to manage and create copy and execution command queues.
 
 ### Python API
 

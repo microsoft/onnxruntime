@@ -18,7 +18,7 @@ nav_order: 2
 Newer versions of ONNX Runtime support all models that worked with prior versions, so updates should not break integrations.
 
 ## Environment compatibility
-ONNX Runtime is not explicitly tested with every variation/combination of environments and dependencies, so this list is not comprehensive. Please use this as starting reference. For specific questions or requests, please [file an issue](https://github.com/microsoft/onnxruntime/issues) on Github.
+ONNX Runtime is not explicitly tested with every variation/combination of environments and dependencies, so this list is not comprehensive. Please use this as starting reference. For specific questions or requests, please [file an issue](https://github.com/microsoft/onnxruntime/issues) on GitHub.
 
 
 ### Platforms
