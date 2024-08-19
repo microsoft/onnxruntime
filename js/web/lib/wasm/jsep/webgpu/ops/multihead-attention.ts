@@ -85,7 +85,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   let pastSequenceLength = 0;
   let maxSequenceLength = 0;
   const headSize = Math.floor(hiddenSize / attributes.numHeads);
-  if (pastKey && pastValue && ShapeUtil.size(pastKey.dims) && ShapeUtil.size(pastValue.dims)) {
+  if (pastKey && pastValue) {
     if (pastKey.dims.length !== 4) {
       throw new Error('Input "past_key" is expected to have 4 dimensions');
     }
@@ -107,12 +107,12 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
     }
     pastSequenceLength = pastKey.dims[2];
     maxSequenceLength = pastKey.dims[2];
-  } else if ((pastKey && ShapeUtil.size(pastKey.dims)) || (pastValue && ShapeUtil.size(pastValue.dims))) {
+  } else if (pastKey || pastValue) {
     throw new Error('Input "past_key" and "past_value" shall be both present or both absent');
   }
 
   let qkvFormat: AttentionQkvFormat;
-  if (key && ShapeUtil.size(key.dims) > 0) {
+  if (key) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
     }
@@ -159,7 +159,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
     qkvFormat = AttentionQkvFormat.qkvBSN3H;
   }
 
-  if (bias && ShapeUtil.size(bias.dims) > 0) {
+  if (bias) {
     if (bias.dims.length !== 1) {
       throw new Error('Input "bias" is expected to have 1 dimension');
     }
@@ -174,7 +174,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   const totalSequenceLength = pastSequenceLength + kvSequenceLength;
 
   let maskType: AttentionMaskType = AttentionMaskType.none;
-  if (keyPaddingMask && ShapeUtil.size(keyPaddingMask.dims) > 0) {
+  if (keyPaddingMask) {
     maskType = AttentionMaskType.maskUnknown;
     const maskDims = keyPaddingMask.dims;
     if (maskDims.length === 1) {
@@ -194,7 +194,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
 
   let passPastInKv = false;
   let vHiddenSize = hiddenSize;
-  if (value && ShapeUtil.size(value.dims) > 0) {
+  if (value) {
     if (value.dims.length !== 3 && value.dims.length !== 4) {
       throw new Error('Input "value" is expected to have 3 or 4 dimensions');
     }
@@ -220,11 +220,11 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
 
   const broadcastResPosBias = false;
 
-  if (keyPaddingMask && ShapeUtil.size(keyPaddingMask.dims) > 0) {
+  if (keyPaddingMask) {
     throw new Error('Key padding mask is not supported');
   }
 
-  if (attentionBias && ShapeUtil.size(attentionBias.dims) > 0) {
+  if (attentionBias) {
     if (attentionBias.dims.length !== 4) {
       throw new Error('Input "attention_bias" is expected to have 4 dimensions');
     }
@@ -334,7 +334,7 @@ export const maybeTransposeToBNSHAndAddBias = (
   // const newDims = [];
 
   let reshapedInput = input;
-  if (!(bias && ShapeUtil.size(bias.dims) > 0)) {
+  if (!bias) {
     if (input.dims.length === 3) {
       reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
     }
