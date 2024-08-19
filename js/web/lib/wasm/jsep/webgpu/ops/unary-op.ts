@@ -11,7 +11,7 @@ import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglValueType, 
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
-type ElementwiseFunctionCall = BuiltinFunctionName|ElementwiseCustomExpression;
+type ElementwiseFunctionCall = BuiltinFunctionName | ElementwiseCustomExpression;
 
 const createElementwiseProgramShader =
     (shaderHelper: ShaderHelper, datasize: number, inputDataType: number, outputDataType: number,
@@ -19,12 +19,12 @@ const createElementwiseProgramShader =
      additionalUniformsType?: UniformsArrayType): string => {
       const vecSize = Math.ceil(datasize / 4);
 
-      let expression = '';
-      if (typeof funcCall === 'string') {
-        expression = `${funcCall}(a)`;
-      } else {
-        expression = funcCall('a');
-      }
+  let expression = '';
+  if (typeof funcCall === 'string') {
+    expression = `${funcCall}(a)`;
+  } else {
+    expression = funcCall('a');
+  }
 
       const input = inputVariable('inputData', inputDataType, [vecSize], 4);
       const output = outputVariable('outputData', outputDataType, [vecSize], 4);
@@ -44,7 +44,7 @@ const createElementwiseProgramShader =
     let a = ${input.getByOffset('global_idx')};
     ${output.setByOffset('global_idx', expression)}
   }`;
-    };
+};
 
 const createElementwiseProgramInfo =
     (input: TensorView, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
@@ -66,7 +66,7 @@ const createElementwiseProgramInfo =
                   outputs: [{dims: input.dims, dataType: outputDataType}],
                   dispatchGroup:
                       {x: Math.ceil(ShapeUtil.size(inputTensors[0].dims) / 64 /* workgroup size */ / 4 /* vec size */)},
-                  programUniforms
+                  programUniforms: [{ type: DataType.uint32, data: Math.ceil(ShapeUtil.size(input.dims) / 4) }],
                 })
       }
     };
@@ -104,8 +104,7 @@ export interface CastAttributes extends AttributeWithCacheKey {
 }
 
 export const parseCastAttributes = (attributes: Record<string, unknown>): CastAttributes =>
-    createAttributeWithCacheKey(attributes as {to: number});
-
+  createAttributeWithCacheKey(attributes as { to: number });
 
 export const cast = (context: ComputeContext, attributes: CastAttributes): void => {
   let func: ElementwiseFunctionCall;
@@ -129,7 +128,8 @@ export const cast = (context: ComputeContext, attributes: CastAttributes): void 
       throw new RangeError(`not supported type (specified in attribute 'to' from 'Cast' operator): ${attributes.to}`);
   }
   context.compute(
-      createElementwiseProgramInfo(context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to));
+    createElementwiseProgramInfo(context.inputs[0], 'Cast', func, undefined, attributes.cacheKey, attributes.to),
+  );
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {
@@ -156,7 +156,7 @@ const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAt
       throw new Error('Unsupport data type');
   }
 
-  return createAttributeWithCacheKey({min, max});
+  return createAttributeWithCacheKey({ min, max });
 };
 
 export const clip = (context: ComputeContext, clipAttributes: ClipAttributes): void => {
@@ -195,12 +195,16 @@ export interface AlphaAttributes extends AttributeWithCacheKey {
 }
 
 export const parseAlphaAttributes = (attributes: Record<string, unknown>): AlphaAttributes =>
-    createAttributeWithCacheKey(attributes as {alpha: number});
+  createAttributeWithCacheKey(attributes as { alpha: number });
 
 export const elu = (context: ComputeContext, attributes: AlphaAttributes): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Elu', a => `elu_vf32(${a})`, `
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'Elu',
+      (a) => `elu_vf32(${a})`,
+      `
   const elu_alpha_ = ${dataType}(${attributes.alpha});
 
   fn elu_f32(a: ${dataType}) -> ${dataType} {
@@ -210,7 +214,9 @@ export const elu = (context: ComputeContext, attributes: AlphaAttributes): void 
   fn elu_vf32(v: vec4<${dataType}>) -> vec4<${dataType}> {
   return vec4(elu_f32(v.x), elu_f32(v.y), elu_f32(v.z), elu_f32(v.w));
   }`,
-      attributes.cacheKey));
+      attributes.cacheKey,
+    ),
+  );
 };
 
 export const erfImpl = (varType = 'f32') => `
@@ -229,7 +235,7 @@ fn erf_vf32(v: vec4<${varType}>) -> vec4<${varType}> {
 
 export const erf = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Erf', a => `erf_vf32(${a})`, erfImpl(dataType)));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Erf', (a) => `erf_vf32(${a})`, erfImpl(dataType)));
 };
 
 export const exp = (context: ComputeContext): void => {
@@ -242,37 +248,54 @@ export const floor = (context: ComputeContext): void => {
 
 export const gelu = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Gelu', a => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`, erfImpl(dataType)));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'Gelu',
+      (a) => `0.5 * ${a} * (1.0 + erf_vf32(${a} * 0.7071067811865475))`,
+      erfImpl(dataType),
+    ),
+  );
 };
 
 export const leakyRelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'LeakyRelu', a => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<${dataType}>(0.0))`,
-      `const leaky_relu_alpha_ = ${dataType}(${attributes.alpha});`, attributes.cacheKey));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'LeakyRelu',
+      (a) => `select(leaky_relu_alpha_ * ${a}, ${a}, ${a} >= vec4<${dataType}>(0.0))`,
+      `const leaky_relu_alpha_ = ${dataType}(${attributes.alpha});`,
+      attributes.cacheKey,
+    ),
+  );
 };
 
 export const not = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Not', a => `!${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Not', (a) => `!${a}`));
 };
 
 export const neg = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Neg', a => `-${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Neg', (a) => `-${a}`));
 };
 
 export const reciprocal = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Reciprocal', a => `1.0/${a}`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Reciprocal', (a) => `1.0/${a}`));
 };
 
 export const relu = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'Relu', a => `select(vec4<${dataType}>(0.0), ${a}, ${a} > vec4<${dataType}>(0.0))`));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'Relu',
+      (a) => `select(vec4<${dataType}>(0.0), ${a}, ${a} > vec4<${dataType}>(0.0))`,
+    ),
+  );
 };
 
 export const sigmoid = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
+  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Sigmoid', (a) => `(1.0 / (1.0 + exp(-${a})))`));
 };
 
 export interface HardSigmoidAttributes extends AttributeWithCacheKey {
@@ -281,18 +304,27 @@ export interface HardSigmoidAttributes extends AttributeWithCacheKey {
 }
 
 export const parseHardSigmoidAttributes = (attributes: Record<string, unknown>): HardSigmoidAttributes =>
-    createAttributeWithCacheKey(attributes as {
+  createAttributeWithCacheKey(
+    attributes as {
       alpha: number;
       beta: number;
-    });
+    },
+  );
 
 export const hardSigmoid = (context: ComputeContext, attributes: HardSigmoidAttributes): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'HardSigmoid',
-      a => `max(vec4<${dataType}>(0.0), min(vec4<${dataType}>(1.0), ${attributes.alpha} * ${a} + vec4<${dataType}>(${
-          attributes.beta})))`,
-      undefined, attributes.cacheKey));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'HardSigmoid',
+      (a) =>
+        `max(vec4<${dataType}>(0.0), min(vec4<${dataType}>(1.0), ${attributes.alpha} * ${a} + vec4<${dataType}>(${
+          attributes.beta
+        })))`,
+      undefined,
+      attributes.cacheKey,
+    ),
+  );
 };
 
 export const sin = (context: ComputeContext): void => {
@@ -329,20 +361,33 @@ fn tanh_v(v: vec4<${varType}>) -> vec4<${varType}> {
 `;
 
 export const fastGeluExpression = (x: string) =>
-    `(fast_gelu_a + fast_gelu_a * tanh_v(${x} * (fast_gelu_c * ${x} * ${x} + fast_gelu_b))) * ${x}`;
+  `(fast_gelu_a + fast_gelu_a * tanh_v(${x} * (fast_gelu_c * ${x} * ${x} + fast_gelu_b))) * ${x}`;
 
 export const fastGelu = (context: ComputeContext): void => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'FastGelu', fastGeluExpression, fastGeluImpl(dataType), undefined,
-      context.inputs[0].dataType));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'FastGelu',
+      fastGeluExpression,
+      fastGeluImpl(dataType),
+      undefined,
+      context.inputs[0].dataType,
+    ),
+  );
 };
 
 export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {
   const dataType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'ThresholdedRelu', a => `select(vec4<${dataType}>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
-      `const thresholded_relu_alpha_ = vec4<${dataType}>(${attributes.alpha});`, attributes.cacheKey));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'ThresholdedRelu',
+      (a) => `select(vec4<${dataType}>(0.0), ${a}, ${a} > thresholded_relu_alpha_)`,
+      `const thresholded_relu_alpha_ = vec4<${dataType}>(${attributes.alpha});`,
+      attributes.cacheKey,
+    ),
+  );
   return 0;
 };
 
@@ -373,7 +418,14 @@ export const quickGeluExpression = (x: string) => `quick_gelu_impl(${x})`;
 
 export const quickgelu = (context: ComputeContext, attributes: AlphaAttributes): void => {
   const dType = tensorTypeToWsglValueType(context.inputs[0].dataType);
-  context.compute(createElementwiseProgramInfo(
-      context.inputs[0], 'QuickGelu', quickGeluExpression, quickGeluImpl(dType, attributes.alpha), attributes.cacheKey,
-      context.inputs[0].dataType));
+  context.compute(
+    createElementwiseProgramInfo(
+      context.inputs[0],
+      'QuickGelu',
+      quickGeluExpression,
+      quickGeluImpl(dType, attributes.alpha),
+      attributes.cacheKey,
+      context.inputs[0].dataType,
+    ),
+  );
 };
