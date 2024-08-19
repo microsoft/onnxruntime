@@ -28,31 +28,112 @@ static GetTestModelFn BuildMatMulOpTestCase(const TestInputDef<float>& input1_de
 
 // Returns a function that creates a graph with a QDQ MatMul operator.
 template <typename Input0QType, typename Input1QType, typename OutputQType>
-static GetTestQDQModelFn<OutputQType> BuildMatMulOpQDQTestCase(const TestInputDef<float>& input1_def,
-                                                               const TestInputDef<float>& input2_def,
+static GetTestQDQModelFn<OutputQType> BuildMatMulOpQDQTestCase(const TestInputDef<float>& input0_def,
+                                                               const TestInputDef<float>& input1_def,
                                                                bool use_contrib_qdq) {
-  return [input1_def, input2_def, use_contrib_qdq](ModelTestBuilder& builder,
+  return [input0_def, input1_def, use_contrib_qdq](ModelTestBuilder& builder,
                                                    std::vector<QuantParams<OutputQType>>& output_qparams) {
     // input1 -> Q -> DQ ->
-    NodeArg* input1 = MakeTestInput(builder, input1_def);
-    QuantParams<Input0QType> input1_qparams = GetTestInputQuantParams<Input0QType>(input1_def);
-    auto* input1_qdq = AddQDQNodePair<Input0QType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point,
+    NodeArg* input0 = MakeTestInput(builder, input0_def);
+    QuantParams<Input0QType> input0_qparams = GetTestInputQuantParams<Input0QType>(input0_def);
+    auto* input0_qdq = AddQDQNodePair<Input0QType>(builder, input0, input0_qparams.scale, input0_qparams.zero_point,
                                                    use_contrib_qdq);
-
-    // input2 -> Q -> DQ ->
-    NodeArg* input2 = MakeTestInput(builder, input2_def);
-    QuantParams<Input1QType> input2_qparams = GetTestInputQuantParams<Input1QType>(input2_def);
-    auto* input2_qdq = AddQDQNodePair<Input1QType>(builder, input2, input2_qparams.scale, input2_qparams.zero_point,
+    // input1 -> Q -> DQ ->
+    NodeArg* input1 = MakeTestInput(builder, input1_def);
+    QuantParams<Input1QType> input1_qparams = GetTestInputQuantParams<Input1QType>(input1_def);
+    auto* input1_qdq = AddQDQNodePair<Input1QType>(builder, input1, input1_qparams.scale, input1_qparams.zero_point,
                                                    use_contrib_qdq);
 
     // MatMul
     auto* op_output = builder.MakeIntermediate();
-    builder.AddNode("MatMul", {input1_qdq, input2_qdq}, {op_output});
+    builder.AddNode("MatMul", {input0_qdq, input1_qdq}, {op_output});
 
     // op_output -> Q -> DQ -> output
     AddQDQNodePairWithOutputAsGraphOutput<OutputQType>(builder, op_output, output_qparams[0].scale,
                                                        output_qparams[0].zero_point, use_contrib_qdq);
   };
+}
+
+template <typename Input0QType, typename WeightQType, typename OutputQType>
+static GetTestQDQModelFn<OutputQType> BuildQDQPerChannelMatMulTestCase(const TestInputDef<float>& input_def,
+                                                                       const TestInputDef<float>& weights_def,
+                                                                       int64_t weight_quant_axis,
+                                                                       bool use_contrib_qdq = false) {
+  return [input_def, weights_def, weight_quant_axis,
+          use_contrib_qdq](ModelTestBuilder& builder,
+                           std::vector<QuantParams<OutputQType>>& output_qparams) {
+    std::vector<NodeArg*> matmul_inputs;
+
+    // input -> Q/DQ ->
+    auto* input = MakeTestInput(builder, input_def);
+    QuantParams<Input0QType> input_qparams = GetTestInputQuantParams<Input0QType>(input_def);
+    auto* input_qdq = AddQDQNodePair<Input0QType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                  use_contrib_qdq);
+    matmul_inputs.push_back(input_qdq);
+
+    // Quantized(weights) -> DQ ->
+    ORT_ENFORCE(weights_def.IsInitializer() && weights_def.IsRawData());
+    std::vector<float> weight_scales;
+    std::vector<WeightQType> weight_zero_points;
+    TensorShape weights_shape = weights_def.GetTensorShape();
+    int64_t pos_weight_quant_axis = weight_quant_axis;
+    if (pos_weight_quant_axis < 0) {
+      pos_weight_quant_axis += static_cast<int64_t>(weights_shape.NumDimensions());
+    }
+    GetTestInputQuantParamsPerChannel<WeightQType>(weights_def, weight_scales, weight_zero_points,
+                                                   static_cast<size_t>(pos_weight_quant_axis), true);
+
+    std::vector<WeightQType> quantized_weights;
+    size_t num_weight_storage_elems = weights_shape.Size();
+    if constexpr (std::is_same_v<WeightQType, Int4x2> || std::is_same_v<WeightQType, UInt4x2>) {
+      num_weight_storage_elems = Int4x2::CalcNumInt4Pairs(weights_shape.Size());
+    }
+    quantized_weights.resize(num_weight_storage_elems);
+    QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
+                                       weight_scales, weight_zero_points, pos_weight_quant_axis);
+
+    NodeArg* weights_initializer = builder.MakeInitializer<WeightQType>(weights_def.GetShape(), quantized_weights);
+    NodeArg* weights_dq = builder.MakeIntermediate();
+    Node& weights_dq_node = builder.AddDequantizeLinearNode<WeightQType>(weights_initializer, weight_scales,
+                                                                         weight_zero_points, weights_dq,
+                                                                         nullptr, use_contrib_qdq);
+    weights_dq_node.AddAttribute("axis", weight_quant_axis);
+    matmul_inputs.push_back(weights_dq);
+
+    auto* matmul_output = builder.MakeIntermediate();
+    builder.AddNode("MatMul", matmul_inputs, {matmul_output});
+
+    AddQDQNodePairWithOutputAsGraphOutput<OutputQType>(builder, matmul_output, output_qparams[0].scale,
+                                                       output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+// Runs a QDQ per-channel MatMul model on the QNN HTP backend. Checks the graph node assignment, and that the
+// QDQ model is accurate on QNN EP (compared to CPU EP).
+template <typename Input0QType, typename WeightQType, typename OutputQType>
+static void RunQDQPerChannelMatMulOpOpTest(const TestInputDef<float>& input_def,
+                                           const TestInputDef<float>& weights_def,
+                                           int64_t weight_quant_axis,
+                                           ExpectedEPNodeAssignment expected_ep_assignment,
+                                           int opset = 21,
+                                           bool use_contrib_qdq = false,
+                                           QDQTolerance tolerance = QDQTolerance()) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  TestQDQModelAccuracy(BuildMatMulOpTestCase(input_def, weights_def),
+                       BuildQDQPerChannelMatMulTestCase<Input0QType, WeightQType, OutputQType>(input_def,
+                                                                                               weights_def,
+                                                                                               weight_quant_axis,
+                                                                                               use_contrib_qdq),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment,
+                       tolerance);
 }
 
 // Runs an MatMul model on the QNN CPU backend. Checks the graph node assignment, and that inference
@@ -158,6 +239,55 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
                                                     ExpectedEPNodeAssignment::All,
                                                     18,
                                                     true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test QDQ per-channel MatMul with 16-bit act, signed 4-bit weights (static)
+TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_A16_WeightInt4) {
+  std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
+  std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
+  RunQDQPerChannelMatMulOpOpTest<uint16_t, Int4x2, uint16_t>(TestInputDef<float>({1, 1, 2, 3}, false, input0_data),
+                                                             TestInputDef<float>({1, 1, 3, 2}, true, input1_data),
+                                                             1,  // quantization axis
+                                                             ExpectedEPNodeAssignment::All,
+                                                             21,
+                                                             false);
+}
+
+// Test QDQ per-channel MatMul with 16-bit act, unsigned 4-bit weights (static)
+TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_A16_WeightUInt4) {
+  std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
+  std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
+  RunQDQPerChannelMatMulOpOpTest<uint16_t, UInt4x2, uint16_t>(TestInputDef<float>({1, 1, 2, 3}, false, input0_data),
+                                                              TestInputDef<float>({1, 1, 3, 2}, true, input1_data),
+                                                              1,  // quantization axis
+                                                              ExpectedEPNodeAssignment::All,
+                                                              21,
+                                                              false);
+}
+
+// Test QDQ per-channel MatMul with int8 act, int4 weights (static)
+TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_AS8_WeightInt4) {
+  std::vector<float> input0_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
+  std::vector<float> input1_data = {-2.0f, -1.0f, -0.5f, 0.0f, 1.0f, 2.0f};
+  RunQDQPerChannelMatMulOpOpTest<int8_t, Int4x2, int8_t>(TestInputDef<float>({1, 1, 2, 3}, false, input0_data),
+                                                         TestInputDef<float>({1, 1, 3, 2}, true, input1_data),
+                                                         1,  // quantization axis
+                                                         ExpectedEPNodeAssignment::All,
+                                                         21,
+                                                         false,
+                                                         QDQTolerance(0.007f));
+}
+
+// Test QDQ per-channel MatMul with 16-bit act, int8 weights (static)
+TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_A16_WeightInt8) {
+  std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
+  std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
+  RunQDQPerChannelMatMulOpOpTest<uint16_t, int8_t, uint16_t>(TestInputDef<float>({1, 1, 2, 3}, false, input0_data),
+                                                             TestInputDef<float>({1, 1, 3, 2}, true, input1_data),
+                                                             1,  // quantization axis
+                                                             ExpectedEPNodeAssignment::All,
+                                                             21,
+                                                             false);
 }
 
 // Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
