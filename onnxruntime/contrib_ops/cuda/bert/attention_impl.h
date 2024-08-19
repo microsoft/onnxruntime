@@ -9,6 +9,7 @@
 #include <iostream>
 #include <mutex>
 #include "core/framework/allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
@@ -54,6 +55,7 @@ size_t GetAttentionWorkspaceSize(
     bool use_flash_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
+    bool use_cudnn_flash_attention,
     bool no_qkv_workspace);
 
 template <typename T>
@@ -104,9 +106,11 @@ struct AttentionData {
   size_t workspace_bytes = 0;
   bool allow_debug_info = false;
 
+  // For MultiHeadAttention only.
+  AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+  AllocatorPtr allocator = nullptr;
   bool IsUnfused() const {
-    return !use_flash_attention && !use_memory_efficient_attention &&
-           (fused_runner == nullptr) && (fused_cross_attention_kernel == nullptr);
+    return kernel_type == AttentionKernelType::AttentionKernel_Unfused;
   }
 
   void PrintDebugInfo() const {
@@ -139,6 +143,7 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);

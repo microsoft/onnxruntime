@@ -179,6 +179,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_fused_cross_attention = false;
   constexpr bool use_memory_efficient_attention = false;
   constexpr bool use_flash_attention = false;
+  constexpr bool use_cudnn_flash_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    parameters.num_heads,
@@ -191,6 +192,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    use_flash_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
+                                                   use_cudnn_flash_attention,
                                                    true);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
@@ -215,7 +217,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
     data.present = reinterpret_cast<CudaT*>(present->MutableData<T>());
   }
 
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, context->GetComputeStream(), parameters, data);
+  cudnnHandle_t cudnn = GetCudnnHandle(context);
+  return QkvToContext<CudaT>(GetDeviceProp(), cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

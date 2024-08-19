@@ -6,6 +6,7 @@
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
@@ -58,6 +59,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
   disable_fused_cross_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtCrossAttention();
+
+  enable_cudnn_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseCudnnFlashAttention();
 
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
@@ -148,6 +151,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
 
+  AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
                              nullptr == attention_bias &&
@@ -173,6 +178,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
+    kernel_type = AttentionKernelType::AttentionKernel_FlashAttention;
   }
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
@@ -184,8 +190,23 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
                                   parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool use_cudnn_sdpa = kernel_type == AttentionKernelType::AttentionKernel_Default &&
+                        enable_cudnn_flash_attention_ &&
+                        is_mask_none_or_1d_k_len &&
+                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                              parameters.num_heads,              // num_heads_q
+                                                              parameters.num_heads,              // num_heads_kv
+                                                              parameters.head_size,              // head_size_qk
+                                                              parameters.v_head_size,            // head_size_v
+                                                              parameters.sequence_length,        // seq_len_q
+                                                              parameters.total_sequence_length,  // seq_len_kv
+                                                              is_unidirectional_);
+  if (use_cudnn_sdpa) {
+    kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
+  }
+
   bool use_fused_cross_attention =
-      !use_flash_attention &&
+      kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_cross_attention_ &&
       nullptr == key_padding_mask &&
       nullptr == attention_bias &&
@@ -205,11 +226,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // The kernel has no limit on sequence length, and this checks whether the kernel has been loaded.
     if (fused_fp16_cross_attention_kernel_->isValid(sequence_length)) {
       fused_cross_attention_kernel = fused_fp16_cross_attention_kernel_;
+      kernel_type = AttentionKernelType::AttentionKernel_TrtFusedCrossAttention;
     }
   }
 
   bool use_fused_runner =
-      !use_flash_attention &&
+      kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_self_attention_ &&
       fused_cross_attention_kernel == nullptr &&
       nullptr == attention_bias &&
@@ -234,6 +256,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
     if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
       fused_runner = fused_fp16_runner_.get();
+      // could also be AttentionKernel_TrtFlashAttention, but we don't classify it here.
+      kernel_type = AttentionKernelType::AttentionKernel_TrtFusedAttention;
     }
   }
 
@@ -244,9 +268,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.kv_sequence_length >= length_threshold;
 
   bool use_memory_efficient_attention =
-      !use_flash_attention &&
-      fused_runner == nullptr &&
-      fused_cross_attention_kernel == nullptr &&
+      kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_memory_efficient_attention_ &&
       is_long_sequence &&
       // Check whether the attention bias alignment is good for memory efficient attention.
@@ -254,9 +276,16 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
                                      parameters.head_size, parameters.v_head_size);
+  if (use_memory_efficient_attention) {
+    kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
+  }
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
+
+  if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
+    kernel_type = AttentionKernelType::AttentionKernel_Unfused;
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -278,6 +307,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.kernel_type = kernel_type;
+  data.allocator = Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
 
   // Cache of cumulated sequence length that could help when sequence length does not change (for example, image model).
   // The cache will be initialized only once, and become readonly after that.
@@ -305,6 +336,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                      use_flash_attention,
                                                      use_fused_cross_attention,
                                                      use_memory_efficient_attention,
+                                                     use_cudnn_sdpa,
                                                      no_qkv_workspace);
   auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
@@ -323,6 +355,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (data.allow_debug_info) {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_cudnn_flash_attention = use_cudnn_sdpa;
     debug_info.use_trt_cross_attention = fused_cross_attention_kernel != nullptr;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_fp16_runner_ != nullptr) {
@@ -337,8 +370,9 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
+  cudnnHandle_t cudnn = GetCudnnHandle(context);
   return QkvToContext<CudaT>(
-      device_prop, cublas, context->GetComputeStream(), parameters, data);
+      device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda
