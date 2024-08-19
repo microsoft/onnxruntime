@@ -347,6 +347,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   const components = getMaxComponents(dimBOuter);
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
   const outputNumber = (dimBOuter / components) % 2 === 0 ? 2 : 1;
+  const dispatchSize = ShapeUtil.size(outputShape) / components / outputNumber;
 
   const programUniforms: ProgramUniform[] = [];
   const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
@@ -425,7 +426,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     };
 
     const prepareScaleAndBData = (): string => {
-      let calcStr = `var col_index = col * ${components * outputNumber};`;
+      let calcStr = `var col_index = col * ${components};`;
       for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
             let scale${c} = ${scales.getByOffset(`col_index * ${nBlocksPerCol} + block`)};
@@ -441,15 +442,15 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
             var b_dequantized_values: ${qDqDataType};`;
       return calcStr;
     };
-
     return `
         var<workgroup> workgroup_shared: array<${output.type.value}, ${outputNumber * nBlocksPerCol}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
         ${shaderHelper.mainStart([nBlocksPerCol, 1, 1])}
-          var block = local_id.x;
-          var col = workgroup_id.x;
-          var row = workgroup_id.y;
-          var batch = workgroup_id.z;
+          let block = local_id.x;
+          let output_indices = ${output.offsetToIndices(`(global_idx / ${nBlocksPerCol}) * ${outputNumber}`)};
+          let col = output_indices[2];
+          let row = output_indices[1];
+          let batch = output_indices[0];
 
           // The default zero point is 8 for unsigned 4-bit quantization.
           let zero_point = ${dataType}(${8.0});
@@ -467,7 +468,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
 
           var elements_per_thread: u32 = ${Math.ceil(outputNumber / nBlocksPerCol)};
           for (var e: u32 = 0u; e < elements_per_thread; e++) {
-            var c_offset = e + local_id.x * elements_per_thread;
+            let c_offset = e + local_id.x * elements_per_thread;
             if (c_offset < ${outputNumber}) {
               var output_value: ${output.type.value} = ${output.type.value}(0);
               var workgroup_shared_offset: u32 = c_offset;
@@ -475,7 +476,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
                 output_value += workgroup_shared[workgroup_shared_offset];
                 workgroup_shared_offset += ${outputNumber};
               }
-              ${output.setByIndices(`${output.type.indices}(batch, row, col * ${outputNumber} + c_offset)`, 'output_value')};
+              ${output.setByIndices(`${output.type.indices}(batch, row, col + c_offset)`, 'output_value')};
             }
           }
         }`;
@@ -488,7 +489,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     },
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType }],
-      dispatchGroup: { x: Math.ceil(dimBOuter / components / outputNumber), y: dimAOuter, z: batchSize },
+      dispatchGroup: { x: dispatchSize },
       programUniforms,
     }),
     getShaderSource,
