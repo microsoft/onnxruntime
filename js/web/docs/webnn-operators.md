@@ -28,7 +28,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | ✓ | ✓ | Only supports test mode |
 | Elu | ai.onnx(7+) | elu | ✓ | ✓ | WebNN CPU backend only supports 'alpha' value is 1.0 |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✓ | ✓ | |
-| Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✗ | ✓ | |
+| Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✓ | ✓ | |
 | Exp | ai.onnx(7-12, 13+) | exp | ✓ | ✓ | |
 | Expand | ai.onnx(8-12, 13+) | expand | ✓ | ✓ | 'shape' input should be a constant |
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
@@ -89,6 +89,6 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Tan | ai.onnx(7+) | tan | ✓ | ✓ | |
 | Tanh | ai.onnx(7-12, 13+) | tanh | ✓ | ✓ | |
 | Transpose | ai.onnx(7-12, 13-20, 21+) | transpose | ✓ | ✓ | |
-| Trilu | ai.onnx(14+) | triangular | ✗ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
+| Trilu | ai.onnx(14+) | triangular | ✓ | ✓ | Input 'k' (option 'diagonal' for WebNN) if present should be a constant |
 | Unsqueeze | ai.onnx(7-10, 11-12, 13-20, 21+) | reshape | ✓ | ✓ | |
 | Where | ai.onnx(7-8, 9-15, 16+) | where | ✓ | ✓ | |
