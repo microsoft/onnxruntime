@@ -72,7 +72,7 @@ See [ONNX Runtime JavaScript API](../../api/js/index.html){:target="_blank"} for
 - [SessionOptions](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/api-usage_session-options) - a demonstration of how to configure creation of an InferenceSession instance.
 - [ort.env flags](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/api-usage_ort-env-flags) - a demonstration of how to configure a set of global flags.
 
-- See also: Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/env.ts) for reference.
+- See also: TypeScript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/env.ts) for reference.
 
 See [Tutorial: Web](../../tutorials/web/index.md) for tutorials.
 
@@ -98,7 +98,7 @@ The following are video tutorials that use ONNX Runtime Web in web applications:
 
 ## Supported Versions
 
-| EPs/Browsers | Chrome/Edge (Windows) | Chrome/Edge (Android) | Chrome/Edge (MacOS) | Chrome/Edge (iOS) | Safari (MacOS) | Safari (iOS) | Firefox (Windows) | Node.js |
+| EPs/Browsers | Chrome/Edge (Windows) | Chrome/Edge (Android) | Chrome/Edge (macOS) | Chrome/Edge (iOS) | Safari (macOS) | Safari (iOS) | Firefox (Windows) | Node.js |
 |--------------|--------|---------|--------|------|---|----|------|-----|
 | WebAssembly (CPU)  |   ✔️    |    ✔️    |   ✔️   |  ✔️  |  ✔️  |  ✔️  |  ✔️  |  ✔️<sup>\[1]</sup>  |
 | WebGPU         |   ✔️<sup>\[2]</sup>    |    ✔️<sup>\[3]</sup>    |   ✔️   |  ❌  |  ❌  |  ❌  |  ❌  |  ❌  |
