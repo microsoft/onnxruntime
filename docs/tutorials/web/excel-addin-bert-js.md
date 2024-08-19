@@ -77,14 +77,14 @@ Now we are ready to jump into the code!
 
 ## The `manifest.xml` file
 
- The `manifest.xml` file specifies that all custom functions belong to the `ORT` namespace. You'll use the namespace to access the custom functions in Excel. Update the values in the `mainfest.xml` to `ORT`.
+ The `manifest.xml` file specifies that all custom functions belong to the `ORT` namespace. You'll use the namespace to access the custom functions in Excel. Update the values in the `manifest.xml` to `ORT`.
 
 ```xml
 <bt:String id="Functions.Namespace" DefaultValue="ORT"/>
 <ProviderName>ORT</ProviderName>
 ```
 
-Learn more about the configuration of the [mainfest file here](https://learn.microsoft.com/office/dev/add-ins/develop/configure-your-add-in-to-use-a-shared-runtime#configure-the-manifest).
+Learn more about the configuration of the [manifest file here](https://learn.microsoft.com/office/dev/add-ins/develop/configure-your-add-in-to-use-a-shared-runtime#configure-the-manifest).
 
 ## The `functions.ts` file
 

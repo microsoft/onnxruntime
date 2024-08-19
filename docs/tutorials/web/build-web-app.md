@@ -111,7 +111,7 @@ Raw input is usually a string (for NLP model) or an image (for image model). The
 
 ### Outputs
 
-The output of a model vary, and most need their own post-processing code. Refer to the above tutorial as an example of Javascript post processing.
+The output of a model vary, and most need their own post-processing code. Refer to the above tutorial as an example of JavaScript post processing.
 
 ## Bundlers
 

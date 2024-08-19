@@ -37,7 +37,7 @@ To run locally:
 
 - [Visual Studio](https://visualstudio.microsoft.com/downloads/)
 - [VS Code](https://code.visualstudio.com/Download) with the [Jupyter notebook extension](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter).
-- [Anacaonda](https://www.anaconda.com/)
+- [Anaconda](https://www.anaconda.com/)
 
 To run in the cloud with Azure Machine Learning:
 
@@ -78,7 +78,7 @@ Now that we have downloaded the model we need to export it to an `ONNX` format. 
 - Set the `dynamic_axes` for the dynamic length input because the `sentence` and `context` variables will be of different lengths for each question inferenced.
 
 ```python
-# Generate dummy inputs to the model. Adjust if neccessary.
+# Generate dummy inputs to the model. Adjust if necessary.
 inputs = {
         # list of numerical ids for the tokenized text
         'input_ids':   torch.randint(32, [1, 32], dtype=torch.long), 

@@ -58,7 +58,7 @@ After the script runs, you should see two ONNX files in the folder in the locati
 
 ```bash
 pytorch_superresolution.onnx
-pytorch_superresolution_with_pre_and_post_proceessing.onnx
+pytorch_superresolution_with_pre_and_post_processing.onnx
 ```
 
 If you load the two models into [netron](https://netron.app/) you can see the difference in inputs and outputs between the two. The first two images below show the original model with its inputs being batches of channel data, and the second two show the inputs and outputs being the image bytes.

@@ -72,7 +72,7 @@ To use WebNN EP, you just need to make 3 small changes:
      ```
   3. If it is dynamic shape model, ONNX Runtime Web offers `freeDimensionOverrides` session option to override the free dimensions of the model. See [freeDimensionOverrides introduction](https://onnxruntime.ai/docs/tutorials/web/env-flags-and-session-options.html#freedimensionoverrides) for more details.
 
-WebNN API and WebNN EP are in actively development, you might consider installing the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to benefit from the latest features and improvments.
+WebNN API and WebNN EP are in actively development, you might consider installing the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to benefit from the latest features and improvements.
 
 ## Keep tensor data on WebNN MLBuffer (IO binding)
 

@@ -28,4 +28,4 @@ These examples use the [TensorFlow-ONNX converter](https://github.com/onnx/tenso
 
 ### TFLite
 {: .no_toc }
-* [TFLite: Image classifciation (mobiledet)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/mobiledet-tflite.ipynb)
+* [TFLite: Image classification (mobiledet)](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/mobiledet-tflite.ipynb)
