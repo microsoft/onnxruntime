@@ -163,12 +163,13 @@ const conv2d = (
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    // Temporarily disable createGroupedConvVectorizeProgramInfo path due to bots failures with below two cases:
+    // NVIDIA GPU with ampere architecture fails with below 2 cases, but we couldn't repro them with any other
+    // GPUs. So just disable vectorize on NVIDIA ampere to ensure always correct outputs.
     // [webgpu]Conv - conv - vectorize group - B
     // [webgpu]Conv - conv - vectorize group - D
-    const disableGroupedConvVectorize = false;
+    const enableGroupedConvVectorize = !context.adapterInfo.isArchitecture('ampere');
     if (
-      !disableGroupedConvVectorize &&
+      enableGroupedConvVectorize &&
       isChannelsLast &&
       inputs[1].dims[0] === attributes.group &&
       inputs[1].dims[1] === 1 &&
