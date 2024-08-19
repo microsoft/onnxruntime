@@ -88,7 +88,7 @@ Status LayerNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR == 17 || QNN_API_VERSION_MINOR == 18)
-  if (!has_bias_input && IsNpuBackend(qnn_model_wrapper.GetQnnBackendType()) && do_op_validation) {
+  if (!has_bias_input && IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
     // Bias is implicit. QNN SDK 2.24/2.25 (QNN API version 2.17/2.18) has a validation bug for implicit bias inputs,
     // so provide an explicit bias of all 0 (quantized int32).
     TensorInfo x_input_info = {};
