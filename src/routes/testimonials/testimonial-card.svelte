@@ -24,7 +24,7 @@
 <article
 	on:mouseenter={handleEnter}
 	on:mouseleave={handleLeave}
-	class="max-w-md mx-auto bg-blue-100 rounded-sm overflow-hidden md:max-w-2xl"
+	class="max-w-md mx-auto bg-blue-300 text-slate-50 rounded-sm overflow-hidden md:max-w-2xl"
 	id={title}
 >
 	<div class="md:flex">
@@ -32,8 +32,8 @@
 			<img class="md:h-48 w-full hidden md:flex" src={imgsrc} alt={imgalt} />
 		</div>
 		<div class="p-8">
-			<p class="block mt-1 leading-tight font-bold text-neutral text-lg">{title}</p>
-			<p class="mt-2 text-neutral">{description}</p>
+			<p class="block mt-1 leading-tight font-bold text-lg">{title}</p>
+			<p class="mt-2">{description}</p>
 			<br />
 			<p class="text-blue-700 text-right">-{author}</p>
 		</div>
