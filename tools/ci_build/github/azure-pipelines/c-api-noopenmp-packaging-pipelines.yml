@@ -80,12 +80,11 @@ variables:
 - name: ReleaseVersionSuffix
   value: ''
 - name: win_trt_version
-  value: 11.8
-
+  value: 12.2
 - name: win_trt_home
-  value: $(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8
+  value: $(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-12.5
 - name: win_cuda_home
-  value: $(Agent.TempDirectory)\v11.8
+  value: $(Agent.TempDirectory)\v12.2
 
 stages:
 - template: stages/set_packaging_variables_stage.yml
@@ -114,15 +113,15 @@ stages:
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:
-    CudaVersion: 11.8
+    CudaVersion: 12.2
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
 - template: stages/nuget-combine-cuda-stage.yml
   parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
-      CudaVersion: 11.8
-      docker_base_image: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
+      CudaVersion: 12.2
+      docker_base_image: 'nvidia/cuda:12.2.2-cudnn8-devel-ubi8'
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}
