@@ -20,7 +20,7 @@ The ONNX runtime provides a Java binding for running inference on ONNX models on
 Java 8 or newer
 
 ## Builds
-Release artifacts are published to **Maven Central** for use as a dependency in most Java build tools. The artifacts are built with support for some popular plaforms.
+Release artifacts are published to **Maven Central** for use as a dependency in most Java build tools. The artifacts are built with support for some popular platforms.
 
 ![Version Shield](https://img.shields.io/maven-central/v/com.microsoft.onnxruntime/onnxruntime)
 

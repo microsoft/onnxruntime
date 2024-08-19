@@ -53,7 +53,7 @@ To use WebGPU EP, you just need to make 2 small changes:
      const session = await ort.InferenceSession.create(modelPath, { ..., executionProviders: ['webgpu'] });
      ```
 
-You might also consider installing the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to benefit from the latest features and improvments.
+You might also consider installing the latest nightly build version of ONNX Runtime Web (onnxruntime-web@dev) to benefit from the latest features and improvements.
 
 ## WebGPU EP features
 

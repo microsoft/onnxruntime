@@ -62,7 +62,7 @@ check this link https://docs.opensource.microsoft.com/releasing/general-guidance
 		(v6.9.2)
 
 ## Commands
-Launch **Developer PowerShell for VS 2022** in Windows Tereminal
+Launch **Developer PowerShell for VS 2022** in Windows Terminal
 ```
 	. $home\miniconda3\shell\condabin\conda-hook.ps1
 	conda activate base

@@ -153,7 +153,7 @@ The first command will generate ONNX models (both before and after optimizations
 
 If you remove -o parameter, optimizer script is not used in benchmark.
 
-If your GPU (like V100 or T4) has TensorCore, you can append `-p fp16` to the above commands to enable mixed precision. In some decoder-only(e.g GPT2) based generative models, you can enable [strict mode](../execution-providers/CUDA-ExecutionProvider.md#enable_skip_layer_norm_strict_mode) for SkipLayerNormalization Op on CUDA EP to achieve better accuray. However, the performance will drop a bit.
+If your GPU (like V100 or T4) has TensorCore, you can append `-p fp16` to the above commands to enable mixed precision. In some decoder-only(e.g GPT2) based generative models, you can enable [strict mode](../execution-providers/CUDA-ExecutionProvider.md#enable_skip_layer_norm_strict_mode) for SkipLayerNormalization Op on CUDA EP to achieve better accuracy. However, the performance will drop a bit.
 
 If you want to benchmark on CPU, you can remove -g option in the commands.
 

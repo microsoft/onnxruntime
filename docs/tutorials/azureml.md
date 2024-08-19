@@ -96,7 +96,7 @@ model = BertForQuestionAnswering.from_pretrained(model_name)
 # behave differently in inference and training mode.
 model.eval()
 
-# Generate dummy inputs to the model. Adjust if neccessary
+# Generate dummy inputs to the model. Adjust if necessary
 inputs = {
         'input_ids':   torch.randint(32, [1, 32], dtype=torch.long), # list of numerical ids for the tokenized text
         'attention_mask': torch.ones([1, 32], dtype=torch.long),     # dummy list of ones
@@ -263,7 +263,7 @@ print("ONNX Runtime version: ", onnxruntime.__version__)
 
 We begin by instantiating a workspace object from the existing workspace created earlier in the configuration notebook.
 
-Note that, the following code assumes you have a config.json file containing the subscription information in the same directory as the notebook, or in a sub-directory called .azureml. You can also supply the workspace name, subscription name, and resource group explicity using the Workspace.get() method.
+Note that, the following code assumes you have a config.json file containing the subscription information in the same directory as the notebook, or in a sub-directory called .azureml. You can also supply the workspace name, subscription name, and resource group explicitly using the Workspace.get() method.
 
 ```python
 import os

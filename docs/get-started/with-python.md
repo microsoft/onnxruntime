@@ -7,7 +7,7 @@ nav_order: 1
 # Get started with ONNX Runtime in Python
 {: .no_toc }
 
-Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
+Below is a quick guide to get the packages installed to use ONNX for model serialization and inference with ORT.
 
 ## Contents
 {: .no_toc }
@@ -128,7 +128,7 @@ onnx_model = onnx.load("ag_news_model.onnx")
 onnx.checker.check_model(onnx_model)
 ```
 
-- Create inference session with `ort.infernnce`
+- Create inference session with `ort.InferenceSession`
 ```python
 import onnxruntime as ort
 import numpy as np
@@ -170,7 +170,7 @@ output_path = model.name + ".onnx"
 model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=output_path)
 output_names = [n.name for n in model_proto.graph.output]
 ```
-- Create inference session with `rt.infernnce`
+- Create inference session with `rt.InferenceSession`
 
 ```python
 providers = ['CPUExecutionProvider']

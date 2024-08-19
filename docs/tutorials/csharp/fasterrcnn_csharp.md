@@ -93,7 +93,7 @@ image.ProcessPixelRows(accessor =>
 });
 ```
 
-Here, we're creating a Tensor of the required size `(channels, paddedHeight, paddedWidth)`, accessing the pixel values, preprocessing them and finally assigning them to the tensor at the appropriate indicies.
+Here, we're creating a Tensor of the required size `(channels, paddedHeight, paddedWidth)`, accessing the pixel values, preprocessing them and finally assigning them to the tensor at the appropriate indices.
 
 
 ### Setup inputs
@@ -117,7 +117,7 @@ var inputs = new Dictionary<string, OrtValue>
 
 ```
 
-To check the input node names for an ONNX model, you can use [Netron](https://github.com/lutzroeder/netron) to visualise the model and see input/output names. In this case, this model has `image` as the input node name.
+To check the input node names for an ONNX model, you can use [Netron](https://github.com/lutzroeder/netron) to visualize the model and see input/output names. In this case, this model has `image` as the input node name.
 
 ### Run inference
 
