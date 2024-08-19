@@ -8,6 +8,32 @@
 namespace onnxruntime {
 namespace cuda {
 
+void ValidateBlockQuantizationShapes(const TensorShape& input_shape,
+                                     const TensorShape& scale_shape,
+                                     const TensorShape* zero_point_shape,
+                                     size_t axis_no_neg,
+                                     int64_t block_size_) {
+  ORT_ENFORCE(scale_shape.NumDimensions() == input_shape.NumDimensions(),
+              "scale and input must have the same rank for blocked quantization");
+  ORT_ENFORCE(zero_point_shape == nullptr || zero_point_shape->NumDimensions() == input_shape.NumDimensions(),
+              "zero_point must be null or have the same rank as input for blocked quantization");
+
+  for (size_t i = 0, ndim = input_shape.NumDimensions(); i < ndim; ++i) {
+    if (i == static_cast<size_t>(axis_no_neg)) {
+      ORT_ENFORCE(scale_shape[i] == (input_shape[i] + block_size_ - 1) / block_size_,
+                  "scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
+    } else {
+      ORT_ENFORCE(scale_shape[i] == input_shape[i],
+                  "scale and input must have the same shape despite the quantize axis for blocked quantization");
+    }
+
+    if (zero_point_shape) {
+      ORT_ENFORCE(zero_point_shape->Shape()[i] == scale.Shape()[i],
+                  "zero_point and scale must have the same shape for blocked quantization");
+    }
+  }
+}
+
 template <class T, class U>
 typename std::enable_if<boost::mp11::mp_set_contains<TypeList<int8_t, uint8_t>, T>::value, Status>::type
 CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element, bool /*saturate*/) {
@@ -97,27 +123,13 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   } else { // blocked quantization
     // validate shape
     size_t axis_no_neg = SafeInt<size_t>(HandleNegativeAxis(axis_, x_shape.NumDimensions()));
-    auto& y_scale_shape = y_scale.Shape();
+    const auto& y_scale_shape = y_scale.Shape();
 
-    ORT_ENFORCE(y_scale_shape.NumDimensions() == x_shape.NumDimensions(),
-                "scale and x must have the same rank for blocked quantization");
-    ORT_ENFORCE(y_zero_point == nullptr || y_zero_point->Shape().NumDimensions() == x_shape.NumDimensions(),
-                "zero_point must be null or have the same rank as x for blocked quantization");
-
-    for (size_t i = 0, ndim = x_shape.NumDimensions(); i < ndim; ++i) {
-      if (i == axis_no_neg) {
-        ORT_ENFORCE(y_scale_shape[i] == (x_shape[i] + block_size_ - 1) / block_size_,
-                    "x_scale must be ceil(Di/block_size) on the quantize axis i for blocked quantization");
-      } else {
-        ORT_ENFORCE(y_scale_shape[i] == x_shape[i],
-                    "x_scale and x must have the same shape despite the quantize axis for blocked quantization");
-      }
-
-      if (y_zero_point) {
-        ORT_ENFORCE(y_zero_point->Shape()[i] == scale.Shape()[i],
-                    "x_zero_point and x_scale must have the same shape for blocked quantization");
-      }
-    }
+    ValidateBlockQuantizationShapes(x_shape,
+                                    y_scale_shape,
+                                    y_zero_point ? y_zero_point->Shape() : nullptr,
+                                    axis_no_neg,
+                                    block_size_);
 
     // compute
     const T* zero_point = y_zero_point ? y_zero_point->Data<T>() : nullptr;
@@ -162,6 +174,21 @@ CudaDequantizeLinearAxis(cudaStream_t stream, const T* input, U* output, const U
 #endif
 
 template <class T, class U>
+typename std::enable_if<boost::mp11::mp_set_contains<TypeList<Int4x2, UInt4x2>, T>::value, Status>::type
+CudaDequantizeLinearBlockInt4(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point,
+                              size_t num_of_element, size_t K, size_t N, size_t block_size) {
+  if constexpr (std::is_same<T, UInt4x2>::value) {
+    return CudaDequantizeLinearBlockStdInt4(stream, reinterpret_cast<const uint8_t*>(input), output, scale,
+                                            zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                            num_of_element, K, N, block_size);
+  } else {
+    return CudaDequantizeLinearBlockStdInt4(stream, reinterpret_cast<const int8_t*>(input), output, scale,
+                                            zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                            num_of_element, K, N, block_size);
+  }
+}
+
+template <class T, class U>
 Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<U>::MappedType CudaU;
 
@@ -170,6 +197,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   auto* y_zero_point = ctx->Input<Tensor>(2);
 
   const auto& x_shape = x.Shape();
+  const auto num_of_elements = x_shape.Size();
 
   auto& y = *ctx->Output(0, x_shape);
 
@@ -181,12 +209,11 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
-    const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaDequantizeLinear(Stream(ctx), input, output, scale, zero_point, num_of_elements));
 
     return Status::OK();
-  } else {
+  } else if (block_size_ == 0) { // per axis quantization
     ORT_ENFORCE(y_scale.Shape().NumDimensions() == 1);
     ORT_ENFORCE(y_zero_point == nullptr || (y_scale.Shape().Size() == y_zero_point->Shape().Size() && y_zero_point->Shape().NumDimensions() == 1), "scale and zero_point must have the same shape.");
     ORT_ENFORCE(x_shape.NumDimensions() > 1);
@@ -195,10 +222,30 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
     const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
     const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
-    const auto num_of_elements = x_shape.Size();
 
     ORT_RETURN_IF_ERROR(CudaDequantizeLinearAxis(Stream(ctx), input, output, scale, zero_point, num_of_elements,
                                                  x_shape.SizeToDimension(axis), y_scale.Shape().Size()));
+    return Status::OK();
+  } else { // blocked quantization
+    // validate shape
+    auto axis_no_neg = SafeInt<size_t>(HandleNegativeAxis(axis_, x_shape.NumDimensions()));
+    const auto& y_scale_shape = y_scale.Shape();
+
+    ValidateBlockQuantizationShapes(x_shape,
+                                    y_scale_shape,
+                                    y_zero_point ? y_zero_point->Shape() : nullptr,
+                                    axis_no_neg,
+                                    block_size_);
+
+    // compute
+    const T* zero_point = y_zero_point ? y_zero_point->Data<T>() : nullptr;
+    const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
+
+    ORT_RETURN_IF_ERROR(CudaDequantizeLinearBlockInt4(Stream(ctx), input, output, scale, zero_point,
+                                                      num_of_elements, x_shape[axis_no_neg],
+                                                      x_shape.SizeFromDimension(axis_no_neg + 1),
+                                                      block_size_));
+
     return Status::OK();
   }
 }
@@ -335,6 +382,23 @@ REGISTER_DQ_KERNEL_TYPED_19(uint8_t)
 REGISTER_DQ_KERNEL_TYPED_19(Float8E4M3FN)
 REGISTER_DQ_KERNEL_TYPED_19(Float8E5M2)
 #endif
+
+#define REGISTER_DQ_KERNEL_TYPED_21(T, U)                          \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                               \
+      DequantizeLinear,                                            \
+      kOnnxDomain,                                                 \
+      21,                                                          \
+      T, U,                                                        \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<U>()), \
+      DequantizeLinear<T, U>);
+
+REGISTER_DQ_KERNEL_TYPED_21(UInt4x2, float)
+REGISTER_DQ_KERNEL_TYPED_21(Int4x2, float)
+REGISTER_DQ_KERNEL_TYPED_21(UInt4x2, MLFloat16)
+REGISTER_DQ_KERNEL_TYPED_21(Int4x2, MLFloat16)
 
 // specialize QuantizeLinear::ComputeInternal and DequantizeLinear::ComputeInternal
 #define SPECIALIZED_QDQ_COMPUTE(T, U)                                                \

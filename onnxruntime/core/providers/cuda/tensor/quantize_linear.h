@@ -41,12 +41,18 @@ class DequantizeLinear final : public CudaKernel {
     if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       axis_ = 1;
     }
+    if (!info.GetAttr<int64_t>("block_size", &block_size_).IsOK()) {
+      block_size_ = 0;
+    }
+
+    ORT_ENFORCE(block_size_ >= 0, "'block_size' must be non-negative.");
   }
 
   Status ComputeInternal(OpKernelContext* p_op_kernel_context) const override;
 
  private:
   int64_t axis_;
+  int64_t block_size_;
 };
 
 }  // namespace cuda
