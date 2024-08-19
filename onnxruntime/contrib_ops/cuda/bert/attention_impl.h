@@ -69,7 +69,7 @@ struct AttentionData {
   const T* past = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
-  const T* relative_position_bias = nullptr;
+  const T* attention_bias = nullptr;
 
   bool has_qkv_workspace = false;
   T* workspace = nullptr;
@@ -115,7 +115,7 @@ struct AttentionData {
               << ", fused_runner=" << (fused_runner != nullptr)
               << ", fused_cross=" << (fused_cross_attention_kernel != nullptr)
               << ", bias=" << (bias != nullptr)
-              << ", attn_bias=" << (relative_position_bias != nullptr)
+              << ", attn_bias=" << (attention_bias != nullptr)
               << ", mask_dims=" << mask_index_dims.size()
               << ", has_qkv_workspace=" << has_qkv_workspace
               << ", workspace=" << workspace_bytes

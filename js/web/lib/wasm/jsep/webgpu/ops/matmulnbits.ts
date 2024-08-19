@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { DataType, getTensorElementSize } from '../../../wasm-common';
+import { calculateTensorSizeInBytes, DataType } from '../../../wasm-common';
 import { TensorView } from '../../tensor-view';
 import { ShapeUtil } from '../../util';
 import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
@@ -77,8 +77,7 @@ export const createMatMulNBitsProgramInfo = (
   const outputNumber = getMaxComponents(dimAOuter);
   const aComponents = getMaxComponents(attributes.k);
   const bComponents = getMaxComponents(blobSizeInWords);
-  const elementSize = getTensorElementSize(dataType)!;
-  const workgroupOutputSize = dimAOuter * nBlocksPerCol * elementSize;
+  const workgroupOutputSize = calculateTensorSizeInBytes(dataType, dimAOuter * nBlocksPerCol)!;
   const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputSize);
   const useBlockwiseMatMulNBits = nBlocksPerCol <= maxComputeWorkgroupSizes[0] && maxNumberOfComponents > 0;
   const components =

@@ -52,7 +52,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
-                                                 nullptr,  // relative_position_bias
+                                                 nullptr,  // attention_bias
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
