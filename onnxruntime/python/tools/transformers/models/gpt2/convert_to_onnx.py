@@ -375,7 +375,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         provider = "MIGraphXExecutionProvider"
 
     session = create_onnxruntime_session(
-        output_path, args.use_gpu, provider , enable_all_optimization=True, verbose=args.verbose
+        output_path, args.use_gpu, provider, enable_all_optimization=True, verbose=args.verbose
     )
     if args.model_class == "GPT2LMHeadModel" and session is not None:
         parity_result = gpt2helper.test_parity(
