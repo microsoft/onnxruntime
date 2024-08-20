@@ -441,11 +441,7 @@ jsepDownload:_pp_")
     list(APPEND target_name_list  "training")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    list(APPEND target_name_list  "wasm64")
-  else()
-    list(APPEND target_name_list  "wasm")
-  endif()
+  list(APPEND target_name_list  "wasm")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     list(APPEND target_name_list  "simd")
