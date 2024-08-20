@@ -807,6 +807,7 @@ def sdpa_kernel_from_debug_info(
     config: MultiHeadAttentionConfig, attention_kernel: SdpaKernel, sess_options: SessionOptions
 ):
     os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    captured_text = None
     try:
         with CaptureStdout() as captured:
             session = create_session(config, sess_options, attention_kernel=attention_kernel)
