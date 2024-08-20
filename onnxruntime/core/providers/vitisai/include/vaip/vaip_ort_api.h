@@ -235,7 +235,7 @@ struct OrtApiForVaip {
   DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
   void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
   DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);                                                                            // [98]
-  bool (*is_profiling_enabled)(void* session_options);                                                                                                // [99]                                                                                        // [98]
+  bool (*is_profiling_enabled)(void* session_options);                                                                                                // [99]
   TensorProto* (*tensor_proto_new_i4)(const std::string& name,
                                       const std::vector<int64_t>& shape,
                                       const std::vector<int8_t>& data);  // [100]
@@ -243,6 +243,11 @@ struct OrtApiForVaip {
                                       const std::vector<int64_t>& shape,
                                       const std::vector<uint8_t>& data);                  // [101]
   void (*graph_remove_initialized_tensor)(Graph& graph, const std::string& tensor_name);  // [102]
+  int (*vaip_xcompiler_compile)(const char* input_xmodel,
+                                size_t input_xmodel_size,
+                                const char* config_xmodel,
+                                size_t config_xmodel_size, void* state,
+                                char* (*allocator)(void*, size_t));  // [103]
 };
 
 #ifndef USE_VITISAI
