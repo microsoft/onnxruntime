@@ -1,3 +1,5 @@
+#This is the packing pipeline to package the alternative cuda NuGet and java packages
+#The current alternative cuda version is 11.8
 parameters:
   - name: RunOnnxRuntimeTests
     displayName: Run Tests?
