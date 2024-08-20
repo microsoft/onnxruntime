@@ -1,13 +1,38 @@
-#include "tensorrt_execution_provider.h"
 #include <memory>
 #include <cuda_runtime.h>
+#include "tensorrt_execution_provider.h"
+#include "onnx_ctx_model_helper.h"
 namespace onnxruntime {
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& ep_info) : OrtExecutionProvider() {
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
     };
 
-    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) {
+    OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
+        const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+        for (size_t j = 0; j < cnt; j++) {
+            std::unordered_map<std::string, size_t> input_map, output_map;
+            size_t input_size = 0;
+            api->OrtNode_GetInputSize(node[j], &input_size);
+            for (size_t i = 0; i < input_size; i++) {
+                const char* ith_input_name = nullptr;
+                api->OrtNode_GetIthInputName(node[j], i, &ith_input_name);
+                input_map[ith_input_name] = i;
+            }
+
+            size_t output_size = 0;
+            api->OrtNode_GetOutputSize(node[j], &output_size);
+            for (size_t i = 0; i < output_size; i++) {
+                const char* ith_output_name = nullptr;
+                api->OrtNode_GetIthOutputName(node[j], i, &ith_output_name);
+                output_map[ith_output_name] = i;
+            }
+
+            if (GraphHasCtxNode(graph[j])) {
+                static_cast<TensorrtExecutionProvider*>(this_)->CreateNodeComputeInfoFromPrecompiledEngine(graph[j], node[j], input_map, output_map, &node_compute_info[j]);
+            }
+        }
+        return nullptr;
     };
 
     OrtExecutionProvider::CanCopy = [](const OrtDevice* source, const OrtDevice* target) {
@@ -75,6 +100,13 @@ TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {
         std::unique_ptr<TensorrtExecutionProvider> ret = std::make_unique<TensorrtExecutionProvider>("TensorrtExecutionProvider", std::move(options));
         return ret.release();
     };
+}
+
+void TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
+                                                                           std::unordered_map<std::string, size_t>& input_map,
+                                                                           std::unordered_map<std::string, size_t>& output_map,
+                                                                           OrtNodeComputeInfo** node_compute_funcs) {
+
 }
 
 }   // namespace onnxruntime

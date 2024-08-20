@@ -2447,6 +2447,12 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodeProducingOutput, const OrtGraphView
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *out = graph_viewer->MaxNodeIndex();
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *name = n->Name().c_str();
@@ -3000,6 +3006,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetOrtNode,
     &OrtApis::OrtGraph_GetNodesConsumingInput,
     &OrtApis::OrtGraph_GetNodeProducingOutput,
+    &OrtApis::OrtGraph_MaxNodeIndex,
     &OrtApis::OrtNode_GetName,
     &OrtApis::OrtNode_GetDescription,
     &OrtApis::OrtNode_GetDomain,
