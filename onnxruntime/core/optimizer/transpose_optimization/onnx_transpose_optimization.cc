@@ -24,9 +24,8 @@ static constexpr bool IsOnnxDomain(std::string_view domain) {
   return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
 }
 
-// Returns true if the given tensor shape represents a Scalar value.
-// A scalar has a rank of 0 or has shape of (1,).
-static bool IsTensorAScalar(gsl::span<const int64_t> tensor_shape) {
+// Returns true if the given tensor shape represents a Scalar value (rank == 0) or a tensor with shape (1,).
+constexpr bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape) {
   const size_t rank = tensor_shape.size();
   return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
 }
@@ -340,10 +339,10 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     zp_value_info = graph.GetValueInfo(zp_input.value());
   }
 
-  // DQ uses per-axis quantization if its scale input is not a scalar.
+  // DQ uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
   // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
   // so we have to check the scale input's shape.
-  const bool update_dq_axis = !IsTensorAScalar(*scale_shape);
+  const bool update_dq_axis = !IsScalarOr1Element1DTensor(*scale_shape);
   int64_t axis = dq_node.GetAttributeIntDefault("axis", 1);
 
   if (update_dq_axis) {
@@ -503,12 +502,13 @@ static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank) {
   for (size_t i = 0; i < axes.size(); ++i) {
     if (axes[i] < 0) {
       axes[i] += rank_int;
-      size_t x_size_t = gsl::narrow_cast<size_t>(axes[i]);
-      if (axes[i] < 0 || axes[i] >= rank_int || used_dims[x_size_t]) {
-        return false;
-      }
-      used_dims[x_size_t] = true;
     }
+
+    size_t x_size_t = gsl::narrow_cast<size_t>(axes[i]);
+    if (axes[i] < 0 || axes[i] >= rank_int || used_dims[x_size_t]) {
+      return false;
+    }
+    used_dims[x_size_t] = true;
   }
   return true;
 }
@@ -2748,10 +2748,10 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
     zp_value_info = ctx.graph.GetValueInfo(zp_input.value());
   }
 
-  // Q uses per-axis quantization if its scale input is not a scalar.
+  // Q uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
   // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
   // so we have to check the scale input's shape.
-  const bool update_axis = !IsTensorAScalar(*scale_shape);
+  const bool update_axis = !IsScalarOr1Element1DTensor(*scale_shape);
   int64_t axis = q_node.GetAttributeIntDefault("axis", 1);
 
   if (update_axis) {
