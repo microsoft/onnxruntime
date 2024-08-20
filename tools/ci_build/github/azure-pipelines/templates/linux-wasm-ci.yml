@@ -138,7 +138,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --enable_wasm_memory64 --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + JSEP)'
         WithCache: ${{ parameters.WithCache }}
 
