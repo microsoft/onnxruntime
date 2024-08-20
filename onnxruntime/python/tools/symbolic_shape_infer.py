@@ -420,7 +420,12 @@ class SymbolicShapeInference:
 
     def _get_value(self, node, idx):
         name = node.input[idx]
-        assert name in self.sympy_data_ or name in self.initializers_
+        try:
+            assert name in self.sympy_data_ or name in self.initializers_
+        except:
+            print("#*#*# Error name", name)
+            # breakpoint()
+        # print("#*#*#", name)
         return self.sympy_data_[name] if name in self.sympy_data_ else numpy_helper.to_array(self.initializers_[name])
 
     def _try_get_value(self, node, idx):
