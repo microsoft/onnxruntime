@@ -6,14 +6,14 @@ F
 keepdims 
 /
 argmax_output_int64Ycast"Cast*	
-to CoreML_ArgMax_Cast_TestZ
+to CoreML_ArgMax_Cast_TestZ
 X
 
 
 
 b
 Y
-
+
 
 
 B

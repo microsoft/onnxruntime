@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/logging.h"
+#include "core/graph/graph.h"
 #include "core/providers/coreml/coreml_execution_provider.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
@@ -92,7 +93,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
                             MakeCoreMLExecutionProvider(),
                             feeds);
 #else
@@ -118,9 +119,47 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+  EPVerificationParams verification_params{};
+  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
                             MakeCoreMLExecutionProvider(),
-                            feeds);
+                            feeds,
+                            verification_params);
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_unsupported_cast_test.onnx");
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  const std::function<void(const Graph&)> graph_verifier = [](const Graph& graph) {
+    ASSERT_EQ(graph.NumberOfNodes(), 2);
+    // second node should be an unsupported Cast
+    const auto cast_node_it = ++(graph.Nodes().begin());
+    ASSERT_EQ(cast_node_it->OpType(), "Cast");
+    ASSERT_EQ(cast_node_it->GetExecutionProviderType(), kCpuExecutionProvider);
+  };
+
+  EPVerificationParams verification_params{};
+  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  verification_params.graph_verifier = &graph_verifier;
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            verification_params);
 #else
   TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
@@ -184,7 +223,7 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
                             MakeCoreMLExecutionProvider(),
                             feeds);
 #else

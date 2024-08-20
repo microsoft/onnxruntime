@@ -36,11 +36,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     return false;
   }
 
-  if (node.GetInputEdgesCount() > 1) {
-    LOGS(logger, VERBOSE) << "Multiple nodes producing Cast's input.";
-    return false;
-  }
-
   const auto& prec_node = node.InputEdgesBegin()->GetNode();
 
   /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax
