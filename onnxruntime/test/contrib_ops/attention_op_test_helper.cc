@@ -104,7 +104,8 @@ void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData&
 
   data.skip_kernel_types = {AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
                             AttentionKernelType::AttentionKernel_TrtFusedAttention,
-                            AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+                            AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention,
+                            AttentionKernelType::AttentionKernel_CudnnFlashAttention};
 
   LoadTensor("CrossAttentionData_Batch2_HeadSize32_RightSidePadding.query_data", data.query_data);
   LoadTensor("CrossAttentionData_Batch2_HeadSize32_RightSidePadding.key_data", data.key_data);

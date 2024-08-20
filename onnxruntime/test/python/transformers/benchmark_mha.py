@@ -791,7 +791,13 @@ def run_tflops_test(
         # flash attention is available for sm >= 80
         sm = get_compute_capability()
         if sm >= 80:
-            backends = [SdpaKernel.DEFAULT, SdpaKernel.FLASH_ATTENTION, SdpaKernel.EFFICIENT_ATTENTION, SdpaKernel.MATH]
+            backends = [
+                SdpaKernel.DEFAULT,
+                SdpaKernel.FLASH_ATTENTION,
+                SdpaKernel.EFFICIENT_ATTENTION,
+                SdpaKernel.CUDNN_FLASH_ATTENTION,
+                SdpaKernel.MATH,
+            ]
         else:
             backends = [SdpaKernel.DEFAULT, SdpaKernel.EFFICIENT_ATTENTION, SdpaKernel.MATH]
     else:
