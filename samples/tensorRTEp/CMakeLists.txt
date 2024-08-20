@@ -9,19 +9,24 @@ enable_language(CUDA)
 file(TO_CMAKE_PATH CUDAToolkit_ROOT "/usr/local/cuda")
 find_package(CUDAToolkit REQUIRED)
 
-#add_definitions(-DONNX_NAMESPACE=onnx)
-#add_definitions(-DONNX_ML)
-add_library(TensorRTEp SHARED tensorrt_execution_provider.cc)
+add_definitions(-DONNX_NAMESPACE=onnx)
+add_definitions(-DONNX_ML)
+add_definitions(-DNV_TENSORRT_MAJOR=10)
+file(GLOB tensorrt_src "./*.cc")
+add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
-                                             "/usr/local/cuda/include")
-#                                        "/home/leca/qnn-v2.25.0.240728/include/QNN"
+                                             "/usr/local/cuda/include"
+                                             "/home/leca/TensorRT-10.0.1.6/include")
 #                                        "../../build/Linux/Debug/_deps/gsl-src/include"
 #                                        "../../build/Linux/Debug/_deps/onnx-src"
 #                                        "../../build/Linux/Debug/_deps/onnx-build"
 #                                        "../../build/Linux/Debug/_deps/protobuf-src/src")
 #
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
-#target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so"
+target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so"
+                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer.so"
+                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer_plugin.so"
+                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvonnxparser.so")
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"

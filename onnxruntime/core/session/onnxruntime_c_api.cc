@@ -2447,10 +2447,30 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodeProducingOutput, const OrtGraphView
   return nullptr;
 }
 
+ORT_API(int, OrtApis::OrtGraph_NumberOfNodes, const OrtGraphViewer* graph) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  return graph_viewer->NumberOfNodes();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   *out = graph_viewer->MaxNodeIndex();
   return nullptr;
+}
+
+ORT_API(size_t, OrtApis::OrtGraph_GetOutputSize, const OrtGraphViewer* graph) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  return graph_viewer->GetOutputs().size();
+}
+
+ORT_API(const char*, OrtApis::OrtGraph_GetIthOutputName, const OrtGraphViewer* graph, size_t i) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  return graph_viewer->GetOutputs()[i]->Name().c_str();
+}
+
+ORT_API(int32_t, OrtApis::OrtGraph_GetIthOutputElemType, const OrtGraphViewer* graph, size_t i) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  return graph_viewer->GetOutputs()[i]->TypeAsProto()->tensor_type().elem_type();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {
@@ -2580,6 +2600,16 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetAttributeIthStr, const OrtNode* node, co
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *strs = n->GetAttributes().at(key).strings(i).c_str();
   return nullptr;
+}
+
+ORT_API(const char*, OrtApis::OrtNode_GetAttributeStr, const OrtNode* node, const char* key) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  return n->GetAttributes().at(key).s().c_str();
+}
+
+ORT_API(int64_t, OrtApis::OrtNode_GetAttributeInt, const OrtNode* node, const char* key) {
+  const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
+  return n->GetAttributes().at(key).i();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetSubgraphs, const OrtNode* node, _Out_ size_t* len, _Outptr_ const OrtGraphViewer*** subgraphs) {
@@ -3006,7 +3036,11 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetOrtNode,
     &OrtApis::OrtGraph_GetNodesConsumingInput,
     &OrtApis::OrtGraph_GetNodeProducingOutput,
+    &OrtApis::OrtGraph_NumberOfNodes,
     &OrtApis::OrtGraph_MaxNodeIndex,
+    &OrtApis::OrtGraph_GetOutputSize,
+    &OrtApis::OrtGraph_GetIthOutputName,
+    &OrtApis::OrtGraph_GetIthOutputElemType,
     &OrtApis::OrtNode_GetName,
     &OrtApis::OrtNode_GetDescription,
     &OrtApis::OrtNode_GetDomain,
@@ -3028,6 +3062,8 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtNode_GetAttributeIthInt,
     &OrtApis::OrtNode_GetAttributeIthFloat,
     &OrtApis::OrtNode_GetAttributeIthStr,
+    &OrtApis::OrtNode_GetAttributeStr,
+    &OrtApis::OrtNode_GetAttributeInt,
     &OrtApis::OrtNode_GetSubgraphs,
     &OrtApis::OrtKernelRegistry_RegisterKernel,
     &OrtApis::CreateOrtTypeConstraints,
