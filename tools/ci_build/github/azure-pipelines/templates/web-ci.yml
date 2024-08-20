@@ -52,10 +52,7 @@ parameters:
   displayName: Build with Cache
   type: boolean
   default: false
-- name: ExtraChromiumFlags
-  displayName: 'Extra Chromium flags'
-  type: string
-  default: ''
+
 stages:
 - stage: Precheck_and_extract_commit
   jobs:
