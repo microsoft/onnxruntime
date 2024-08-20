@@ -3,6 +3,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/coreml_execution_provider.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
