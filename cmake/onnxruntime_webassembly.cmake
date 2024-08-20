@@ -304,6 +304,7 @@ else()
     target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_raw_logging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_compile_options(absl_log_severity PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
+    target_compile_options(ortcustomops PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
     target_link_options(onnxruntime_webassembly PRIVATE
       --post-js "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js"
     )
