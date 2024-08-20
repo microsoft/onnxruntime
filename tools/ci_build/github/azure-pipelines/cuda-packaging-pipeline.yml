@@ -67,7 +67,7 @@ variables:
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
   - name: win_trt_home
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: $(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8

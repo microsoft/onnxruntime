@@ -121,7 +121,7 @@ stages:
   parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
       CudaVersion: 12.2
-      docker_base_image: 'nvidia/cuda:12.2.2-cudnn8-devel-ubi8'
+      docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240610.1
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}
