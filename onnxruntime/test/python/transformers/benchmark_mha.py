@@ -18,6 +18,7 @@ import csv
 import math
 import os
 import platform
+import re
 import statistics
 import sys
 import threading
@@ -811,31 +812,29 @@ def sdpa_kernel_from_debug_info(
             session = create_session(config, sess_options, attention_kernel=attention_kernel)
             input_dict = config.random_inputs()
             session.infer(input_dict)
+            captured_text = captured.output.decode()
     except Exception as e:
         print(f"Failed to run {attention_kernel=} for {config=}. Exception: {e}")
     finally:
         os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "0"
 
-    captured_text = captured.output.decode()
-
-    import re
-
-    m = re.search("SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
-    if m is not None:
-        name = m.group("kernel")
-        kernel_names = {
-            "FLASH_ATTENTION": "ort:flash",
-            "EFFICIENT_ATTENTION": "ort:efficient",
-            "CUDNN_FLASH_ATTENTION": "ort:cudnn",
-            "MATH": "ort:math",
-            "TRT_FUSED_ATTENTION": "ort:trt_fmha",
-            "TRT_FLASH_ATTENTION": "ort:trt_flash",
-            "TRT_CROSS_ATTENTION": "ort:trt_cross",
-            "TRT_CAUSAL_ATTENTION": "ort:trt_causal",
-        }
-        return kernel_names[name]
-    else:
-        print("Failed to get sdpa kernel from debug info:", captured_text)
+    if captured_text is not None:
+        m = re.search("SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
+        if m is not None:
+            name = m.group("kernel")
+            kernel_names = {
+                "FLASH_ATTENTION": "ort:flash",
+                "EFFICIENT_ATTENTION": "ort:efficient",
+                "CUDNN_FLASH_ATTENTION": "ort:cudnn",
+                "MATH": "ort:math",
+                "TRT_FUSED_ATTENTION": "ort:trt_fmha",
+                "TRT_FLASH_ATTENTION": "ort:trt_flash",
+                "TRT_CROSS_ATTENTION": "ort:trt_cross",
+                "TRT_CAUSAL_ATTENTION": "ort:trt_causal",
+            }
+            return kernel_names[name]
+        else:
+            print("Failed to get sdpa kernel from debug info:", captured_text)
 
     return None
 
