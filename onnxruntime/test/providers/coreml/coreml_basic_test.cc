@@ -145,11 +145,14 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   const std::function<void(const Graph&)> graph_verifier = [](const Graph& graph) {
-    ASSERT_EQ(graph.NumberOfNodes(), 2);
+    GraphViewer graph_viewer{graph};
+    const auto& node_indices_in_order = graph_viewer.GetNodesInTopologicalOrder();
+    ASSERT_EQ(node_indices_in_order.size(), size_t{2});
     // second node should be an unsupported Cast
-    const auto cast_node_it = ++(graph.Nodes().begin());
-    ASSERT_EQ(cast_node_it->OpType(), "Cast");
-    ASSERT_EQ(cast_node_it->GetExecutionProviderType(), kCpuExecutionProvider);
+    const auto* cast_node = graph.GetNode(node_indices_in_order[1]);
+    ASSERT_NE(cast_node, nullptr);
+    ASSERT_EQ(cast_node->OpType(), "Cast");
+    ASSERT_EQ(cast_node->GetExecutionProviderType(), kCpuExecutionProvider);
   };
 
   EPVerificationParams verification_params{};
