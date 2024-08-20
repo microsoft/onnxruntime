@@ -804,6 +804,10 @@ class TestMultiHeadAttention(unittest.TestCase):
         if get_compute_capability() >= 60:
             self.run_mha_cuda_multi_threading(SdpaKernel.DEFAULT)
 
+    def run_mha_cuda_multi_threading_cudnn(self):
+        if get_compute_capability() in [80, 86, 89, 90]:
+            self.run_mha_cuda_multi_threading(SdpaKernel.CUDNN_FLASH_ATTENTION)
+
     def run_mha_cuda_multi_threading_efficient(self):
         if comprehensive_mode and get_compute_capability() >= 60:
             self.run_mha_cuda_multi_threading(SdpaKernel.EFFICIENT_ATTENTION)
@@ -826,6 +830,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         self.run_mha_cpu()
         self.run_mha_cuda()
         self.run_mha_cuda_multi_threading_default()
+        self.run_mha_cuda_multi_threading_cudnn()
         self.run_mha_cuda_multi_threading_efficient()
         self.run_mha_cuda_multi_threading_math()
         self.run_mha_cuda_multi_threading_trt()
