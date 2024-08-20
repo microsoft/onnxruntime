@@ -74,8 +74,6 @@ struct RoundStdInt4<float, uint8_t> {
                                                 float scale1,
                                                 int zp0,
                                                 int zp1) const {
-    constexpr auto shift0 = (sizeof(int) * 8) - 4;
-    constexpr auto shift1 = (sizeof(int) * 8) - 8;
     int value0 = __float2int_rn(v0 / scale0) + zp0;
     int value1 = __float2int_rn(v1 / scale1) + zp1;
     int value0_clip = max(0, min(15, value0));
@@ -653,13 +651,13 @@ Status CudaDequantizeLinearBlockStdInt4(cudaStream_t stream, const T* input, U* 
   size_t scale_KN = num_block * N;
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
                                                GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
-  DequantizeLinearKernelBlockStdInt4<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
+  DequantizeLinearKernelBlockStdInt4<T, U, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input,
           output,
           scale,
           zero_point,
-          static_cast<int>(num_of_element),
+          static_cast<CUDA_LONG>(num_of_element),
           KN,
           N,
           scale_KN,
