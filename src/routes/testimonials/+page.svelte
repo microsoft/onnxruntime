@@ -6,6 +6,7 @@
 	import antgrouplogo from '../../images/logos/antgroup-logo.png';
 	import algoriddimLogo from '../../images/logos/algoriddim-logo.png';
 	import atlaslogo from '../../images/logos/ATLAS-logo.png';
+	import autodesklogo from '../../images/logos/autodesk-logo.png';
 	import bazaarvoicelogo from '../../images/logos/bazaarvoice-logo.png';
 	import camologo from '../../images/logos/camo-logo.png';
 	import cephablelogo from '../../images/logos/cephable-logo.png';
@@ -76,6 +77,14 @@
 			author: 'ATLAS Experiment team, CERN (European Organization for Nuclear Research)',
 			imgsrc: atlaslogo,
 			imgalt: 'Atlas Experiment logo'
+		},
+		{
+			title: 'Autodesk',
+			quote:
+				"Autodesk Flame's use of ONNX Runtime offers major advantages with cross-platform compatibility and performance, providing artists the flexibility and interactivity they expect. This allows them to make use of machine learning models directly in Flame's creative toolset, augmenting the quality of their work and increasing the software's expandability. Microsoft's ONNX Runtime team has provided expert guidance and support throughout the development process, enabling us to put AI-powered creative tools in the hands of artists seeking high-quality VFX and finishing solutions.",
+			author: 'Louis Martin, Sr. Manager of Software Development for Autodesk Flame',
+			imgsrc: autodesklogo,
+			imgalt: 'Autodesk logo'
 		},
 		{
 			title: 'Bazaarvoice',

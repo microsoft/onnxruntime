@@ -8,6 +8,7 @@
 	import antgroupLogo from '../../images/logos/antgroup-logo.png';
 	import algoriddimLogo from '../../images/logos/algoriddim-logo.png';
 	import ATLASLogo from '../../images/logos/ATLAS-logo.png';
+	import autodeskLogo from '../../images/logos/autodesk-logo.png';
 	import bazaarvoiceLogo from '../../images/logos/bazaarvoice-logo.png';
 	import camoLogo from '../../images/logos/camo-logo.png';
 	import cephableLogo from '../../images/logos/cephable-logo.png';
@@ -60,6 +61,11 @@
 			href: './testimonials#Atlas%20Experiment',
 			src: ATLASLogo,
 			alt: 'ATLAS'
+		},
+		{
+			href: './testimonials#Autodesk',
+			src: autodeskLogo,
+			alt: 'Autodesk'
 		},
 		{
 			href: './testimonials#Bazaarvoice',
