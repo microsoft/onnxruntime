@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import { Env, InferenceSession, Tensor } from 'onnxruntime-common';
 
-import {Attribute} from '../lib/onnxjs/attribute';
-import {Logger} from '../lib/onnxjs/instrument';
+import { Attribute } from '../lib/onnxjs/attribute';
+import { Logger } from '../lib/onnxjs/instrument';
 
 export declare namespace Test {
   export interface NamedTensor extends Tensor {
@@ -53,20 +53,20 @@ export declare namespace Test {
    * - gpu-tensor: inputs and outputs will all be pre-allocated as GPU tensors. `preferredOutputLocation`
    * will not be set.
    */
-  export type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
+  export type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location';
 
   export interface ModelTestCase {
     name: string;
     dataFiles: readonly string[];
-    inputs?: NamedTensor[];   // value should be populated at runtime
-    outputs?: NamedTensor[];  // value should be populated at runtime
+    inputs?: NamedTensor[]; // value should be populated at runtime
+    outputs?: NamedTensor[]; // value should be populated at runtime
   }
 
   export interface ModelTest {
     name: string;
     modelUrl: string;
     externalData?: InferenceSession.SessionOptions['externalData'];
-    backend?: string;  // value should be populated at build time
+    backend?: string; // value should be populated at build time
     ioBinding: IOBindingMode;
     platformCondition?: PlatformCondition;
     cases: readonly ModelTestCase[];
@@ -79,8 +79,8 @@ export declare namespace Test {
 
   export interface OperatorTestCase {
     name: string;
-    inputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
-    outputs: ReadonlyArray<TensorValue|EmptyTensorValue>;
+    inputs: ReadonlyArray<TensorValue | EmptyTensorValue>;
+    outputs: ReadonlyArray<TensorValue | EmptyTensorValue>;
   }
 
   export interface OperatorTestOpsetImport {
@@ -88,14 +88,14 @@ export declare namespace Test {
     version: number;
   }
 
-  export type InputShapeDefinition = ReadonlyArray<number|string>;
+  export type InputShapeDefinition = ReadonlyArray<number | string>;
 
   export interface OperatorTest {
     name: string;
     operator: string;
-    inputShapeDefinitions?: 'none'|'rankOnly'|'static'|ReadonlyArray<InputShapeDefinition|undefined>;
+    inputShapeDefinitions?: 'none' | 'rankOnly' | 'static' | ReadonlyArray<InputShapeDefinition | undefined>;
     opset?: OperatorTestOpsetImport;
-    backend?: string;  // value should be populated at build time
+    backend?: string; // value should be populated at build time
     ioBinding: IOBindingMode;
     platformCondition?: PlatformCondition;
     attributes?: readonly AttributeValue[];
@@ -114,7 +114,7 @@ export declare namespace Test {
       name: string;
       platformCondition: PlatformCondition;
     }
-    export type Test = TestName|TestDescription;
+    export type Test = TestName | TestDescription;
   }
 
   /**
@@ -122,10 +122,10 @@ export declare namespace Test {
    * A testlist should only be applied when running suite test cases (suite0)
    */
   export interface TestList {
-    [backend: string]: {[group: string]: readonly TestList.Test[]};
+    [backend: string]: { [group: string]: readonly TestList.Test[] };
   }
 
-  interface EnvOptions extends Partial<Omit<Env, 'wasm'|'webgl'|'webgpu'>> {
+  interface EnvOptions extends Partial<Omit<Env, 'wasm' | 'webgl' | 'webgpu'>> {
     wasm: Partial<Env.WebAssemblyFlags>;
     webgl: Partial<Env.WebGLFlags>;
     webgpu: Partial<Env.WebGpuFlags>;
@@ -166,7 +166,7 @@ export declare namespace Test {
 
     fileCacheUrls?: readonly string[];
 
-    log: ReadonlyArray<{category: string; config: Logger.Config}>;
+    log: ReadonlyArray<{ category: string; config: Logger.Config }>;
     profile: boolean;
     options: Options;
   }

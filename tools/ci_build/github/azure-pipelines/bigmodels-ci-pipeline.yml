@@ -43,7 +43,7 @@ variables:
   - name: docker_base_image
     value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
   - name: linux_trt_version
-    value: 10.2.0.19-1.cuda11.8
+    value: 10.3.0.26-1.cuda11.8
   - name: Repository
     value: 'onnxruntimecuda11manylinuxbuild'
 
@@ -282,6 +282,7 @@ stages:
 - stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
+  condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
   jobs:
   - job: Llama2_7B_ONNX
     timeoutInMinutes: 120
@@ -321,6 +322,7 @@ stages:
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
         Repository: onnxruntimeubi8packagestest_torch
+        UseImageCacheContainerRegistry: false
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
