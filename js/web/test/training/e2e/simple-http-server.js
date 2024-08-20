@@ -32,35 +32,36 @@ const getRequestData = (url, dir) => {
   return [filepath, mimeType];
 };
 
-module.exports = function(dir, port) {
-  const server = http.createServer(function(request, response) {
-                       const url = request.url.replace(/\n|\r/g, '');
-                       console.log(`request ${url}`);
+module.exports = function (dir, port) {
+  const server = http
+    .createServer(function (request, response) {
+      const url = request.url.replace(/\n|\r/g, '');
+      console.log(`request ${url}`);
 
-                       const requestData = getRequestData(url, dir);
-                       if (!request || !requestData) {
-                         response.writeHead(404);
-                         response.end('404');
-                       } else {
-                         const [filePath, contentType] = requestData;
-                         fs.readFile(path.resolve(dir, filePath), function(error, content) {
-                           if (error) {
-                             if (error.code == 'ENOENT') {
-                               response.writeHead(404);
-                               response.end('404');
-                             } else {
-                               response.writeHead(500);
-                               response.end('500');
-                             }
-                           } else {
-                             response.setHeader('access-control-allow-origin', '*');
-                             response.writeHead(200, {'Content-Type': contentType});
-                             response.end(content, 'utf-8');
-                           }
-                         });
-                       }
-                     })
-                     .listen(port);
+      const requestData = getRequestData(url, dir);
+      if (!request || !requestData) {
+        response.writeHead(404);
+        response.end('404');
+      } else {
+        const [filePath, contentType] = requestData;
+        fs.readFile(path.resolve(dir, filePath), function (error, content) {
+          if (error) {
+            if (error.code == 'ENOENT') {
+              response.writeHead(404);
+              response.end('404');
+            } else {
+              response.writeHead(500);
+              response.end('500');
+            }
+          } else {
+            response.setHeader('access-control-allow-origin', '*');
+            response.writeHead(200, { 'Content-Type': contentType });
+            response.end(content, 'utf-8');
+          }
+        });
+      }
+    })
+    .listen(port);
   console.log(`Server running at http://localhost:${port}/`);
   return server;
 };

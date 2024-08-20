@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 /* eslint-disable @typescript-eslint/restrict-plus-operands */
 
 // parse-profiler
@@ -13,15 +12,14 @@
 // STEP.2 - parse
 // > node script/parse-profiler < profile.raw.log > profile.parsed.log
 
-
 import * as readline from 'readline';
-const lines = readline.createInterface({input: process.stdin, output: process.stdout, terminal: false});
+const lines = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
 
 // eslint-disable-next-line no-control-regex
 const matcher = /Profiler\.([^[\s\x1b]+)(\x1b\[0m)? (\d.+Z)\|([\d.]+)ms on event '([^']+)' at (\d*\.*\d*)/;
 
 const allEvents: any[] = [];
-lines.on('line', input => {
+lines.on('line', (input) => {
   const matches = matcher.exec(input);
   if (matches) {
     // console.log(matches);
@@ -30,13 +28,16 @@ lines.on('line', input => {
     const ms = Number.parseFloat(matches[4]);
     const event = matches[5];
     const endTimeInNumber = matches[6];
-    allEvents.push({event, ms, logTimeStamp, category, endTimeInNumber});
+    allEvents.push({ event, ms, logTimeStamp, category, endTimeInNumber });
   }
 });
 
 lines.on('close', () => {
   for (const i of allEvents) {
-    console.log(`${(i.category + '           ').substring(0, 12)} ${((i.ms) + '           ').substring(0, 12)} ${
-        (i.event + '                                      ').substring(0, 40)} ${i.endTimeInNumber}`);
+    console.log(
+      `${(i.category + '           ').substring(0, 12)} ${(i.ms + '           ').substring(0, 12)} ${(
+        i.event + '                                      '
+      ).substring(0, 40)} ${i.endTimeInNumber}`,
+    );
   }
 });

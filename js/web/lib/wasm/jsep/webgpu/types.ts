@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../wasm-common';
-import {TensorView} from '../tensor-view';
+import { DataType } from '../../wasm-common';
+import { TensorView } from '../tensor-view';
 
-import {ShaderHelper} from './ops/common';
+import { ShaderHelper } from './ops/common';
 
-export type SessionState = 'default'|'capturing'|'replaying';
+export type SessionState = 'default' | 'capturing' | 'replaying';
 
 export enum GpuDataType {
   default = 0,
   upload = 1,
-  profile = 2
+  profile = 2,
 }
 export type GpuDataId = number;
 
 export type GpuArchitecture = 'ampere';
-export type GpuVendor = 'amd'|'intel'|'nvidia';
+export type GpuVendor = 'amd' | 'intel' | 'nvidia';
 export interface AdapterInfo {
   isArchitecture: (architecture: GpuArchitecture) => boolean;
   isVendor: (vendor: GpuVendor) => boolean;
@@ -35,7 +35,7 @@ export interface TensorInfo {
 
 export interface ProgramUniform {
   type: DataType;
-  data: number|readonly number[];
+  data: number | readonly number[];
 }
 
 export type ProgramUniformVariableInfo = [type: DataType, length: number];
@@ -49,7 +49,7 @@ export type ProgramUniformVariableInfo = [type: DataType, length: number];
  * - 'dims': the shader/uniform depends on data type and the dims of this input
  * - 'data': the shader/uniform depends on data type, the dims and the data of this input
  */
-export type ProgramInputTensorInfoDependency = 'none'|'type'|'rank'|'dims'|'data';
+export type ProgramInputTensorInfoDependency = 'none' | 'type' | 'rank' | 'dims' | 'data';
 
 /**
  * Represent information about a program's cache for shader.
@@ -88,7 +88,6 @@ export interface ProgramUniformCacheInfo {
   inputDependencies?: ProgramInputTensorInfoDependency[];
 }
 
-
 /**
  * A set of data that represent a shader program
  */
@@ -119,7 +118,7 @@ export interface ProgramInfo {
    */
   getRunData: (inputs: readonly TensorView[]) => {
     outputs: readonly TensorInfo[];
-    dispatchGroup: {x: number; y?: number; z?: number};
+    dispatchGroup: { x: number; y?: number; z?: number };
     programUniforms?: readonly ProgramUniform[];
   };
 }
@@ -127,7 +126,7 @@ export interface ProgramInfo {
 export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
-  uniformVariablesInfo: readonly ProgramUniformVariableInfo[]|undefined;
+  uniformVariablesInfo: readonly ProgramUniformVariableInfo[] | undefined;
 }
 
 export interface ComputeContextInputsOutputsMapping {
@@ -138,7 +137,7 @@ export interface ComputeContextInputsOutputsMapping {
    *
    * if inputs is not specified, the mapping will be the kernel's inputs in order.
    */
-  readonly inputs?: ReadonlyArray<TensorView|number>;
+  readonly inputs?: ReadonlyArray<TensorView | number>;
   /**
    * specify the mapping to the program's outputs. the value must be a number.
    * - if it's a non-negative number, it's the index of the kernel's output
@@ -174,7 +173,7 @@ export interface ComputeContext {
   /**
    * a custom data object that can be used to store any data that is needed by the kernel
    */
-  readonly kernelCustomData: {[key: string]: unknown};
+  readonly kernelCustomData: { [key: string]: unknown };
 
   /**
    * a buffer that can be used to access custom data created each time the kernel is executed
@@ -192,4 +191,4 @@ export interface ComputeContext {
   getMaxComputeWorkgroupStoragesize(): number;
 }
 
-export type TimestampQuery = 'none'|'inside-passes'|'at-passes';
+export type TimestampQuery = 'none' | 'inside-passes' | 'at-passes';
