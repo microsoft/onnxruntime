@@ -29,14 +29,15 @@ static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
 
-bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
+bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer, bool& has_main_context_node);
 
-bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
+bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                            bool& has_main_context_node);
 
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                           std::vector<int>& main_context_pos,
                           bool share_ep_contexts_,
-                          std::unordered_map<std::string, std::string> externa_file_to_qnn_graph_names);
+                          std::unordered_map<std::string, std::string>& externa_file_to_qnn_graph_names);
 
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,

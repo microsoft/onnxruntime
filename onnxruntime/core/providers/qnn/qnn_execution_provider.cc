@@ -642,7 +642,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   const auto& logger = *GetLogger();
-  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
+  bool has_main_context_node = false;
+  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer, has_main_context_node);
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
@@ -651,7 +652,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   };
 
   // check the ep_shared_contexts contains all the graphs in the context model
-  if (is_qnn_ctx_model && share_ep_contexts_ && !GetEpSharedContexts().empty()) {
+  if (is_qnn_ctx_model && !has_main_context_node && share_ep_contexts_ && !GetEpSharedContexts().empty()) {
     if (EpSharedContextsHasAllGraphs(graph_viewer, GetEpSharedContexts(), logger)) {
       PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, logger);
       return result;
@@ -869,7 +870,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
 
-  bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
+  bool has_main_context_node = false;
+  bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, has_main_context_node);
 
   onnxruntime::PathString context_cache_path;
   bool is_ctx_file_exist = false;
@@ -887,7 +889,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
   if (is_qnn_ctx_model) {
     // Get QnnModel from EP shared contexts
-    if (share_ep_contexts_ && !GetEpSharedContexts().empty()) {
+    if (share_ep_contexts_ && !has_main_context_node && !GetEpSharedContexts().empty()) {
       for (auto fused_node_and_graph : fused_nodes_and_graphs) {
         const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
         const auto& ep_context_node = graph_viewer.Nodes().begin();
@@ -948,7 +950,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
     }
 
-    if (share_ep_contexts_ && qnn_models.size() > 0 && qnn_ep_shared_contexts_.empty()) {
+    if (share_ep_contexts_ && qnn_models.size() > 0 && has_main_context_node) {
       for (auto& [key, value] : qnn_models) {
         qnn_ep_shared_contexts_.push_back(std::move(qnn_models[key]));
       }

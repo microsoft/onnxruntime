@@ -12,8 +12,11 @@
 namespace onnxruntime {
 namespace qnn {
 
-bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
-  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type and the source is QNN or QNNExecutionProvider.
+bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer, bool& has_main_context_node) {
+  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
+  // and the source is QNN or QNNExecutionProvider.
+  bool has_ep_context_node = false;
+  has_main_context_node = false;
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
       NodeAttrHelper node_helper(node);
@@ -25,28 +28,35 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
                      [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
 
       if (cache_source == "qnnexecutionprovider" || cache_source == "qnn") {
-        return true;
+        has_ep_context_node = true;
+
+        int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
+        if (1 == is_main_context) {
+          has_main_context_node = true;
+        }
       }
     }
   }
-  return false;
+  return has_ep_context_node;
 }
 
-bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
+bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                            bool& has_main_context_node) {
+  bool has_qnn_ep_context_node = false;
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
     const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
-    bool has_qnn_ep_context_node = GraphHasEpContextNode(graph_viewer);
+    has_qnn_ep_context_node = GraphHasEpContextNode(graph_viewer, has_main_context_node);
     if (has_qnn_ep_context_node) {
       return true;
     }
   }
-  return false;
+  return has_qnn_ep_context_node;
 }
 
 Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                           std::vector<int>& main_context_pos,
                           bool share_ep_contexts_,
-                          std::unordered_map<std::string, std::string> graph_name_to_externa_file_name) {
+                          std::unordered_map<std::string, std::string>& graph_name_to_externa_file_name) {
   for (size_t i = 0; i < fused_nodes_and_graphs.size(); ++i) {
     // Only EPContext nodes are filtered in
     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
