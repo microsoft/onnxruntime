@@ -20,6 +20,7 @@ Abstract:
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
+#include <vector>
 
 //
 // Define the calling convention for Windows targets.
@@ -1786,6 +1787,15 @@ MlasTranspose(
         reinterpret_cast<uint16_t*>(Output),
         M, N);
 }
+
+
+void
+MLASCALL
+ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size);
+
+void
+MLASCALL
+ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size);
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 /**

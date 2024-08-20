@@ -262,8 +262,8 @@ void RunTest(const TestOptions& opts,
 
 }  // namespace
 
-TEST(MatMulNBits, Float32) {
-  // onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
+template <typename AType>
+void TestMatMulNBitsTyped() {
   for (auto M : {1, 2, 100}) {
     for (auto N : {/*2560, */ 1, 2, 32, 288}) {
       for (auto K : {/*2560, */ 16, 32, 64, 128, 256, 1024, 93, 1234}) {
@@ -276,30 +276,45 @@ TEST(MatMulNBits, Float32) {
 
             if (base_opts.accuracy_level == 4) {
               base_opts.output_abs_error = 0.1f;
+            } else {
+              if constexpr (std::is_same<AType, MLFloat16>::value) {
+                base_opts.output_abs_error = 0.01f;
+              }
             }
 
             {
               TestOptions opts = base_opts;
-              RunTest<float>(opts);
+              RunTest<AType>(opts);
             }
 
             {
               TestOptions opts = base_opts;
               opts.has_zero_point = true;
-              RunTest<float>(opts);
+              RunTest<AType>(opts);
             }
 
 #if !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
             {
               TestOptions opts = base_opts;
               opts.has_g_idx = true;
-              RunTest<float>(opts);
+              RunTest<AType>(opts);
             }
 
+            //{
+            //  // TODO: support has_bias and has_g_idx case in the MatMulNBits kernel
+            //  TestOptions opts = base_opts;
+            //  opts.has_g_idx = true;
+            //  opts.has_bias = true;
+            //  RunTest<AType>(opts);
+            //}
+
             {
-              TestOptions opts = base_opts;
-              opts.has_zero_point = true, opts.zp_is_4bit = false;
-              RunTest<float>(opts);
+              // TODO: support zp_is_4bit false with MLFloat16 in the MatMulNBits kernel
+              if constexpr (std::is_same<AType, float>::value) {
+                TestOptions opts = base_opts;
+                opts.has_zero_point = true, opts.zp_is_4bit = false;
+                RunTest<AType>(opts);
+              }
             }
 #endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
 
@@ -311,7 +326,7 @@ TEST(MatMulNBits, Float32) {
               std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
               explicit_eps.emplace_back(DefaultCpuExecutionProvider());
 
-              RunTest<float>(opts, std::move(explicit_eps));
+              RunTest<AType>(opts, std::move(explicit_eps));
             }
           }
         }
@@ -319,6 +334,17 @@ TEST(MatMulNBits, Float32) {
     }
   }
 }
+
+TEST(MatMulNBits, Float32) {
+  // onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
+  TestMatMulNBitsTyped<float>();
+}
+
+#ifdef MLAS_TARGET_AMD64_IX86
+TEST(MatMulNBits, Float16) {
+  TestMatMulNBitsTyped<MLFloat16>();
+}
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 
