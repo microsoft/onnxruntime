@@ -1,3 +1,5 @@
+#This is the publishing pipeline to publish the alternative cuda NuGet packages to the Azure DevOps feed
+#The current alternative cuda version is 11.8
 resources:
   pipelines:
   - pipeline: build
@@ -17,9 +19,9 @@ parameters:
 variables:
   - name: ArtifactFeed
     ${{ if eq(parameters.isReleaseBuild, false) }}:
-      value: ORT-Nightly
+      value: rt-cuda-11-nightly
     ${{ else }}:
-      value: onnxruntime-cuda-12
+      value: onnxruntime-cuda-11
 
 stages:
   - template: stages/nuget-cuda-publishing-stage.yml

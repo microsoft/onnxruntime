@@ -1,3 +1,5 @@
+#This is the publishing pipeline to publish the cpu nuget pacakge and default cuda NuGet packages to the Azure DevOps feed
+#The current default cuda version is 12.2
 resources:
   pipelines:
   - pipeline: build
@@ -17,9 +19,9 @@ parameters:
 variables:
   - name: ArtifactFeed
     ${{ if eq(parameters.isReleaseBuild, false) }}:
-      value: ort-cuda-11-nightly
+      value: ORT-Nightly
     ${{ else }}:
-      value: onnxruntime-cuda-11
+      value: onnxruntime-cuda-12
 
 stages:
   - template: templates/publish-nuget-steps.yml
