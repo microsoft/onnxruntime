@@ -70,6 +70,7 @@ class CustomOpSymbolicRegistry:
     @classmethod
     def register_all(cls, onnx_opset_version):
         from torch.onnx import register_custom_op_symbolic
+
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             register_custom_op_symbolic(
