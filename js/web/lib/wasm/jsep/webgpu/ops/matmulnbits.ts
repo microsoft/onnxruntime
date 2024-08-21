@@ -80,6 +80,8 @@ export const createMatMulNBitsProgramInfo = (
   const workgroupOutputSize = calculateTensorSizeInBytes(dataType, dimAOuter * nBlocksPerCol)!;
   const maxNumberOfComponents = Math.floor(maxComputeWorkgroupStorageSize / workgroupOutputSize);
   const useBlockwiseMatMulNBits = nBlocksPerCol <= maxComputeWorkgroupSizes[0] && maxNumberOfComponents > 0;
+  const aOuterComponents = Math.min(Math.floor(maxComputeWorkgroupSizes[0] / nBlocksPerCol), dimAOuter);
+  const aRowsPerThread = Math.ceil(dimAOuter / aOuterComponents);
   const components =
     !useBlockwiseMatMulNBits || maxNumberOfComponents >= 4
       ? getMaxComponents(dimBOuter)
@@ -162,8 +164,8 @@ export const createMatMulNBitsProgramInfo = (
               }
             })()};
             // Number of B elements per 32-bit word is 32/bits = 32/4 = 8
-            for (var m: u32 = 0; m < ${useBlockwiseMatMulNBits ? dimAOuter : outputNumber}u; m++) {
-              ${a.indicesSet('a_indices', inputRank - 2, useBlockwiseMatMulNBits ? 'm' : `row * ${outputNumber} + m`)};
+            for (var m: u32 = 0; m < ${useBlockwiseMatMulNBits ? aRowsPerThread : outputNumber}u; m++) {
+              ${a.indicesSet('a_indices', inputRank - 2, useBlockwiseMatMulNBits ? `a_outer_component * ${aRowsPerThread} + m` : `row * ${outputNumber} + m`)};
               ${a.indicesSet('a_indices', inputRank - 1, 'word_offset')};
               var input_offset = ${a.indicesToOffset('a_indices')};
               var a_data: ${qDqDataType};
@@ -200,9 +202,10 @@ export const createMatMulNBitsProgramInfo = (
       ? `
         var<workgroup> workgroup_shared: array<${output.type.value}, ${dimAOuter * nBlocksPerCol}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
-        ${shaderHelper.mainStart([nBlocksPerCol, 1, 1])}
+        ${shaderHelper.mainStart([nBlocksPerCol * aOuterComponents, 1, 1])}
           var a_indices: ${a.type.indices};
-          var block = local_id.x;
+          var block = local_id.x % ${nBlocksPerCol};
+          var a_outer_component =  (local_id.x / ${nBlocksPerCol});
           var col = workgroup_id.y;
           var batch = workgroup_id.z;
           ${a.indicesSet('a_indices', '0', 'batch')};
@@ -230,12 +233,12 @@ export const createMatMulNBitsProgramInfo = (
             let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
             ${b.indicesSet('b_indices', '1', 'block')};
             var word_offset: u32 = block * ${attributes.blockSize / aComponents};
-            var workgroup_shared_offset: u32 = block * ${dimAOuter};
+            var workgroup_shared_offset: u32 = local_idx * ${aRowsPerThread};
             ${processOneBlock}
           }
           workgroupBarrier();
           var output_indices: ${output.type.indices};
-          var elements_per_thread: u32 = ${Math.ceil(dimAOuter / nBlocksPerCol)};
+          var elements_per_thread: u32 = ${Math.ceil(dimAOuter / nBlocksPerCol / aOuterComponents)};
           ${output.indicesSet('output_indices', '0', 'batch')};
           ${output.indicesSet('output_indices', outputRank - 1, 'col')};
           ${output.indicesSet('output_indices', outputRank - 2, 'local_id.x * elements_per_thread')};
