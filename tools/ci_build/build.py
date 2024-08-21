@@ -507,6 +507,7 @@ def parse_arguments():
     parser.add_argument("--emsdk_version", default="4.0.4", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
+    parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
 
     parser.add_argument(
@@ -1422,6 +1423,7 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
+        cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=" + ("ON" if args.enable_wasm_relaxed_simd else "OFF"))
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_rocm:

@@ -252,7 +252,7 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD OR onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/wasm_simd/*.cpp"
     )
