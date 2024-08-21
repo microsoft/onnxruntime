@@ -991,7 +991,6 @@ namespace Dml
             srcDatas.push_back(srcAllocInfo->GetResource());
         }
 
-        const uint64_t srcOffset = 0;
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
