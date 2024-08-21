@@ -1140,13 +1140,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   // Options to align external initializer offset.
+  // For models running on CPU, ORT will try to use mmap to load external initializers.
+  // To use mmap, external initializer need to be offset aligned.
+  // ORT saves external initializers into signle data file, each initializer is accessed with
+  // offset(start position of initializer) and length(byte length of initializer) of the data file.
+  // To use mmap, each offset need to be aligned which means offset need to divisible by
+  // allocation granularity(64KB for windows and 4K for other OSes).
+  // With align_offset to true, ORT will align offset for large initializer when 
+  // save ONNX model with external data file.
   struct OffsetAlignmentInfo {
     // Offset will always be page aligned and allocation granularity aligned for mmap support.
     // This is done by padding previous tensor data with zeros keeping same length.
     bool align_offset = false;
     // Alignment threshold for size of data.
     // Having a low threshold will waste file space for small initializers.
-    // Only when tensor's data is > the page_align_threshold it will be force aligned.
+    // Only when tensor's data size is > the page_align_threshold it will be force aligned.
     // Default to 1MB.
     int64_t align_threshold = 1048576;
     // The allocation Granularity for mmap() support.
