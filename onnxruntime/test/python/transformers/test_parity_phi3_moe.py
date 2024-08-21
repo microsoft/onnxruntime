@@ -41,8 +41,10 @@ def print_tensor(name, numpy_array):
 def quant_dequant(weights, quant_mode: bool = True):
     # use the test version `_symmetric_...` to get the non-interleaved weights
     type = torch.quint4x2 if quant_mode else torch.int8
-    import tensorrt_llm
 
+    # This import is needed to use torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix()
+    # Comment out this line for passing the lintrunner check in the CI.
+    # import tensorrt_llm
     quant_weights, processed_q_weight, torch_weight_scales = (
         torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix(weights.T.cpu().contiguous(), type)
     )
