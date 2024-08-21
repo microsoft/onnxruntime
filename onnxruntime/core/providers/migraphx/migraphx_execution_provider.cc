@@ -316,22 +316,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "ConvInteger") {
-    if (node->InputDefs()[0]->Shape()->dim_size() != 4) {
-      return true;
-    }
-
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "Expand") {
@@ -373,18 +365,14 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       return true;
     }
   } else if (optype == "MatMulInteger") {
-    // migraphx can handle only two inputs
-    if (node->InputDefs().size() != 2) {
-      return true;
-    }
-
-    // only support int8 type
+    // only support int8 and uint8 type
     const auto& input_type = node->InputDefs()[0]->TypeAsProto();
     if (input_type == nullptr) {
       return true;
     }
 
-    if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if ((input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) and
+        (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)) {
       return true;
     }
   } else if (optype == "NonZero") {
@@ -456,7 +444,6 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         return true;
       }
     }
-
   } else if (optype == "ReduceSum") {
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
