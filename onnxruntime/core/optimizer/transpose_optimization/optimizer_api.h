@@ -105,6 +105,12 @@ class ValueInfoRef {
   /// </returns>
   virtual std::optional<std::vector<int64_t>> Shape() const = 0;
 
+  /// <returns>
+  /// The inferred/declared rank of the value's tensor shape, or nullopt if the rank is unknown. A scalar
+  /// has a rank of 0.
+  /// </returns>
+  virtual std::optional<size_t> ShapeRank() const = 0;
+
   /// <returns>The inferred/declared dtype of the value. UNDEFINED (0) if dtype is unknown.</returns>
   virtual DataType DType() const = 0;
 
