@@ -14,7 +14,6 @@ from collections import OrderedDict
 
 import numpy
 import torch
-import torch.nn.functional as F
 from onnx import TensorProto, helper
 from torch import nn
 
@@ -25,7 +24,7 @@ numpy.random.seed(42)
 
 ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
-USE_QUANT = True
+USE_QUANT = False  # Set to True to use quantized weights
 THRESHOLD = 3e-1 if USE_QUANT else 3e-2
 
 
@@ -314,7 +313,7 @@ class PhiMoEBlockSparseTop2MLP(nn.Module):
 
 def masked_sampling_omp_inference(scores, top_k, jitter_eps, training):
     assert top_k == 2
-    assert training == False
+    assert not training
 
     mask_logits_threshold, selected_experts = torch.topk(scores, 2)
 

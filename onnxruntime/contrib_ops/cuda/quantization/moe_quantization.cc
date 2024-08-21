@@ -15,13 +15,13 @@ namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL()                                                                  \
-  ONNX_OPERATOR_KERNEL_EX(QMoE4Bits, kMSDomain, 1, kCudaExecutionProvider,                  \
+  ONNX_OPERATOR_KERNEL_EX(QMoE4Bits, kMSDomain, 1, kCudaExecutionProvider,                 \
                           (*KernelDefBuilder::Create())                                    \
                               .MayInplace(0, 0)                                            \
                               .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
                               .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>()), \
-                          QMoE<true>);                                                    \
-  ONNX_OPERATOR_KERNEL_EX(QMoE8Bits, kMSDomain, 1, kCudaExecutionProvider,                  \
+                          QMoE<true>);                                                     \
+  ONNX_OPERATOR_KERNEL_EX(QMoE8Bits, kMSDomain, 1, kCudaExecutionProvider,                 \
                           (*KernelDefBuilder::Create())                                    \
                               .MayInplace(0, 0)                                            \
                               .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
