@@ -4060,11 +4060,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
         continue;
       }
 
-      for (size_t index = 0; index != tensor_bytes_size; ++index) {
-        external_stream << raw_data[index];
-      }
-
       // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
       if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
         // Align to the larger of the page size or the allocation granularity
         int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
@@ -4079,6 +4079,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
         }
 
         external_offset = new_external_offset;
+      }
+
+      for (size_t index = 0; index != tensor_bytes_size; ++index) {
+        external_stream << raw_data[index];
       }
 
       output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
