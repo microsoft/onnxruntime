@@ -87,7 +87,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     previousSum += attributes.splitSizes[i];
     sizeInSplitAxis[i] = previousSum;
     const outputShape = inputShape.slice();
-    outputShape[attributes.axis] = attributes.splitSizes[i];
+    outputShape[axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
     outputs[i] = outputVariable(`output${i}`, dataType, outputShape.length);
     outputsTensorInfo.push({ dims: outputShapes[i], dataType: inputs[0].dataType });

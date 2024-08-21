@@ -25,8 +25,6 @@ struct MemoryEfficientAttentionParams {
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
-  // The default shape of attn_bias is [1, N, S, S*]. Sometimes we need to use [B, N, S, S*] in custom models.
-  bool is_attn_bias_batched;
 
   float scale;
 
@@ -37,9 +35,12 @@ struct MemoryEfficientAttentionParams {
   const void* query;      // [B, S, N, H]
   const void* key;        // [B, L, N, H], where L is kv_sequence_length
   const void* value;      // [B, L, N, H_v]
-  const void* attn_bias;  // [N, S, S*] or null
-  void* output;           // [B, S, N, H_v]
-  void* workspace;        // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
+  const void* attn_bias;  // [B or 1, N or 1, S, L] or null
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
+
+  void* output;     // [B, S, N, H_v]
+  void* workspace;  // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
   cudaStream_t stream;
 
   static bool need_workspace(size_t v_head_size, bool is_float) {
