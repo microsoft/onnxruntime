@@ -10,6 +10,7 @@ import logging
 import os
 import time
 
+import __init__  # noqa: F401. Walk-around to run this script directly
 import numpy as np
 import torch
 from benchmark_helper import setup_logger

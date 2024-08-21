@@ -1,18 +1,24 @@
-diffusers==0.28.0
-transformers==4.41.2
-numpy>=1.24.1
+diffusers==0.29.2
+transformers>=4.42.4
+numpy==1.26.4
 accelerate
-onnx==1.16.0
+onnx>=1.16.0
 coloredlogs
 packaging
 # Use newer version of protobuf might cause crash
 protobuf==3.20.3
 psutil
 sympy
-controlnet_aux==0.0.7
+controlnet_aux==0.0.9
+
 # The following are for SDXL
-optimum==1.20.0
+optimum>=1.21
 safetensors
 invisible_watermark
-# newer version of opencv-python migth encounter module 'cv2.dnn' has no attribute 'DictValue' error
-opencv-python==4.8.0.74
+
+# newer version of opencv-python (>4.8.0.74) might encounter module 'cv2.dnn' has no attribute 'DictValue' error
+opencv-python==4.10.0.84
+
+# Recommend cuda 12.4 variant of PyTorch
+# torch==2.4.0
+tensorrt==10.2.0

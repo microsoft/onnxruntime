@@ -182,7 +182,6 @@ class EngineBuilder:
         if "clip" in self.stages:
             self.models["clip"] = CLIP(
                 self.pipeline_info,
-                None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
                 clip_skip=0,
@@ -191,7 +190,6 @@ class EngineBuilder:
         if "clip2" in self.stages:
             self.models["clip2"] = CLIPWithProj(
                 self.pipeline_info,
-                None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
                 clip_skip=0,
@@ -200,7 +198,6 @@ class EngineBuilder:
         if "unet" in self.stages:
             self.models["unet"] = UNet(
                 self.pipeline_info,
-                None,  # not loaded yet
                 device=self.torch_device,
                 fp16=export_fp16,
                 max_batch_size=self.max_batch_size,
@@ -210,7 +207,6 @@ class EngineBuilder:
         if "unetxl" in self.stages:
             self.models["unetxl"] = UNetXL(
                 self.pipeline_info,
-                None,  # not loaded yet
                 device=self.torch_device,
                 fp16=export_fp16,
                 max_batch_size=self.max_batch_size,
@@ -222,7 +218,6 @@ class EngineBuilder:
         if "vae" in self.stages:
             self.models["vae"] = VAE(
                 self.pipeline_info,
-                None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
                 fp16=export_fp16,

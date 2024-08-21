@@ -36,7 +36,7 @@ cd onnxruntime
 Install nvidia-docker using [these instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker).
 
 ```
-docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.04-py3 /bin/bash
+docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:24.07-py3 /bin/bash
 ```
 
 #### Build onnxruntime from source
@@ -46,12 +46,16 @@ After launching the docker, you can build and install onnxruntime-gpu wheel like
 ```
 export CUDACXX=/usr/local/cuda/bin/nvcc
 git config --global --add safe.directory '*'
-sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.4 \
+sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.5 \
             --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
             --use_tensorrt --tensorrt_home /usr/src/tensorrt \
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
-            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=90 \
+            --cmake_generator Ninja \
+            --use_binskim_compliant_compile_flags \
+            --enable_cuda_nhwc_ops \
             --allow_running_as_root
+
 python3 -m pip install --upgrade pip
 python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-*.whl --force-reinstall
 ```

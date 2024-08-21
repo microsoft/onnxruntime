@@ -304,7 +304,6 @@ class BaseModel:
     def __init__(
         self,
         pipeline_info: PipelineInfo,
-        model,
         device,
         fp16: bool = False,
         max_batch_size: int = 16,
@@ -315,7 +314,7 @@ class BaseModel:
 
         self.pipeline_info = pipeline_info
 
-        self.model = model
+        self.model = None
         self.fp16 = fp16
         self.device = device
 
@@ -506,7 +505,6 @@ class CLIP(BaseModel):
     def __init__(
         self,
         pipeline_info: PipelineInfo,
-        model,
         device,
         max_batch_size,
         embedding_dim: int = 0,
@@ -514,7 +512,6 @@ class CLIP(BaseModel):
     ):
         super().__init__(
             pipeline_info,
-            model=model,
             device=device,
             max_batch_size=max_batch_size,
             embedding_dim=embedding_dim if embedding_dim > 0 else pipeline_info.clip_embedding_dim(),
@@ -712,6 +709,50 @@ class CLIPWithProj(CLIP):
         return output
 
 
+class SD3_CLIPG(CLIP):
+    def __init__(
+        self,
+        pipeline_info: PipelineInfo,
+        model,
+        device,
+        max_batch_size,
+        embedding_dim,
+    ):
+        super().__init__(
+            pipeline_info, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim, clip_skip=0
+        )
+        self.CLIPG_CONFIG = {
+            "hidden_act": "gelu",
+            "hidden_size": 1280,
+            "intermediate_size": 5120,
+            "num_attention_heads": 20,
+            "num_hidden_layers": 32,
+        }
+        self.subfolder = "text_encoders"
+
+    def load_model(self, framework_model_dir, subfolder=""):
+        clip_g_model_dir = get_checkpoint_dir(
+            self.framework_model_dir, self.version, self.pipeline, self.subfolder, torch_inference
+        )
+        clip_g_filename = "clip_g.safetensors"
+        clip_g_model_path = f"{clip_g_model_dir}/{clip_g_filename}"
+        if not os.path.exists(clip_g_model_path):
+            hf_hub_download(
+                repo_id=self.path,
+                filename=clip_g_filename,
+                local_dir=get_checkpoint_dir(
+                    self.framework_model_dir, self.version, self.pipeline, "", torch_inference
+                ),
+                subfolder=self.subfolder,
+            )
+        with safe_open(clip_g_model_path, framework="pt", device=self.device) as f:
+            dtype = torch.float16 if self.fp16 else torch.float32
+            model = SDXLClipG(self.CLIPG_CONFIG, device=self.device, dtype=dtype)
+            load_into(f, model.transformer, "", self.device, dtype)
+        model = optimize_checkpoint(model, torch_inference)
+        return model
+
+
 class UNet2DConditionControlNetModel(torch.nn.Module):
     def __init__(self, unet, controlnets: ControlNetModel):
         super().__init__()
@@ -810,7 +851,6 @@ class UNet(BaseModel):
     def __init__(
         self,
         pipeline_info: PipelineInfo,
-        model,
         device,
         fp16=False,  # used by TRT
         max_batch_size=16,
@@ -819,7 +859,6 @@ class UNet(BaseModel):
     ):
         super().__init__(
             pipeline_info,
-            model=model,
             device=device,
             fp16=fp16,
             max_batch_size=max_batch_size,
@@ -962,7 +1001,6 @@ class UNetXL(BaseModel):
     def __init__(
         self,
         pipeline_info: PipelineInfo,
-        model,
         device,
         fp16=False,  # used by TRT
         max_batch_size=16,
@@ -972,7 +1010,6 @@ class UNetXL(BaseModel):
     ):
         super().__init__(
             pipeline_info,
-            model,
             device=device,
             fp16=fp16,
             max_batch_size=max_batch_size,
@@ -1148,7 +1185,6 @@ class VAE(BaseModel):
     def __init__(
         self,
         pipeline_info: PipelineInfo,
-        model,
         device,
         max_batch_size,
         fp16: bool = False,
@@ -1156,7 +1192,6 @@ class VAE(BaseModel):
     ):
         super().__init__(
             pipeline_info,
-            model=model,
             device=device,
             fp16=fp16,
             max_batch_size=max_batch_size,
@@ -1262,10 +1297,9 @@ class TorchVAEEncoder(torch.nn.Module):
 
 
 class VAEEncoder(BaseModel):
-    def __init__(self, pipeline_info: PipelineInfo, model, device, max_batch_size):
+    def __init__(self, pipeline_info: PipelineInfo, device, max_batch_size):
         super().__init__(
             pipeline_info,
-            model=model,
             device=device,
             max_batch_size=max_batch_size,
         )
