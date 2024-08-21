@@ -108,6 +108,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("MatMulInteger", op_registrations);
   }
 
+  {  // GRU
+    CreateGruOpBuilder("GRU", op_registrations);
+  }
+
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
