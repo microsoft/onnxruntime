@@ -15,12 +15,18 @@ namespace contrib {
 namespace cuda {
 
 #define REGISTER_KERNEL()                                                                  \
-  ONNX_OPERATOR_KERNEL_EX(QMoE, kMSDomain, 1, kCudaExecutionProvider,                      \
+  ONNX_OPERATOR_KERNEL_EX(QMoE4Bits, kMSDomain, 1, kCudaExecutionProvider,                  \
                           (*KernelDefBuilder::Create())                                    \
                               .MayInplace(0, 0)                                            \
                               .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
                               .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>()), \
-                          QMoE);
+                          QMoE<true>);                                                    \
+  ONNX_OPERATOR_KERNEL_EX(QMoE8Bits, kMSDomain, 1, kCudaExecutionProvider,                  \
+                          (*KernelDefBuilder::Create())                                    \
+                              .MayInplace(0, 0)                                            \
+                              .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
+                              .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>()), \
+                          QMoE<false>);
 
 REGISTER_KERNEL()
 
@@ -39,9 +45,11 @@ struct ToCudaTypeWrapper<uint8_t, true> {
 };
 }  // anonymous namespace
 
-QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {}
+template <bool USE_QUINT4x2>
+QMoE<USE_QUINT4x2>::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {}
 
-Status QMoE::ComputeInternal(OpKernelContext* context) const {
+template <bool USE_QUINT4x2>
+Status QMoE<USE_QUINT4x2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
@@ -60,18 +68,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 #endif
 
   MoEParameters moe_params;
-  MoEQuantType quant_type = MoEQuantType::UINT4;
+  MoEQuantType quant_type = USE_QUINT4x2 ? MoEQuantType::UINT4 : MoEQuantType::UINT8;
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, quant_type, input, router_probs, fc1_experts_weights,
                                   fc1_experts_bias_optional, fc2_experts_weights, fc2_experts_bias_optional,
                                   fc3_experts_weights_optional, fc3_experts_bias_optional));
   ORT_RETURN_IF_ERROR(CheckInputScales(fc1_scales, fc2_scales, fc3_scales_optional, moe_params.num_experts,
                                        moe_params.hidden_size, moe_params.inter_size));
 
-  // Support int4 only at the moment. We can add uint8 if needed.
-  static constexpr bool use_quint4x2 = true;
   using T = MLFloat16;
   using CudaT = typename ToCudaType<T>::MappedType;
-  using CudaWeightT = typename ToCudaTypeWrapper<uint8_t, use_quint4x2>::MappedType;
+  using CudaWeightT = typename ToCudaTypeWrapper<uint8_t, USE_QUINT4x2>::MappedType;
 
   auto stream = context->GetComputeStream();
 
@@ -79,7 +85,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm, fc3_experts_weights_optional != nullptr,
-                                                                           normalize_routing_weights_);
+                                                                           normalize_routing_weights_,
+                                                                           use_sparse_mixer_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

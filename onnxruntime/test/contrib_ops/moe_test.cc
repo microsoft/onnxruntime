@@ -97,7 +97,7 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_arch) && !NeedSkipIfCudaArchGreaterEqualThan(max_cuda_arch);
   if (enable_cuda) {
-    OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+    OpTester tester("QMoE4Bits", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
     tester.AddAttribute<std::string>("activation_type", activation_type);
     tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(normalize_routing_weights));
