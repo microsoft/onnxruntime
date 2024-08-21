@@ -72,8 +72,8 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     }
 
     if (share_ep_contexts_) {
-      //bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
-      //ORT_RETURN_IF(is_embed_mode, "Non embed mode required if share EP contexts enabled.");
+      // bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
+      // ORT_RETURN_IF(is_embed_mode, "Non embed mode required if share EP contexts enabled.");
       std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
       auto pos = graph_name_to_externa_file_name.find(node_name);
       ORT_RETURN_IF_NOT(pos == graph_name_to_externa_file_name.end(), "Unique node name required.");

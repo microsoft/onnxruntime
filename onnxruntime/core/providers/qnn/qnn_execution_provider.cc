@@ -207,7 +207,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
     LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
 
-    
     share_ep_contexts_ =
         session_options->config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
@@ -554,7 +553,6 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
 
   return supported_nodes;
 }
-
 
 static bool EpSharedContextsHasAllGraphs(const onnxruntime::GraphViewer& graph_viewer,
                                          const std::vector<EpSharedContextsPtr>& ep_shared_ctx,

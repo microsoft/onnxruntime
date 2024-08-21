@@ -1749,7 +1749,7 @@ common::Status InferenceSession::Initialize() {
       }
     }
 
-    bool share_ep_contexts = 
+    bool share_ep_contexts =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
     // Get ep shared contexts from global environment
     if (share_ep_contexts && !const_cast<Environment&>(environment_).GetEpSharedContexts().empty()) {
