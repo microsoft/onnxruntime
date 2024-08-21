@@ -267,10 +267,10 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleCons
         break;
       }
 
-      // For now keep it simple and don't support per-axis quantization as that would require updating the axis of
-      // the DQ node during TransposeInputImpl and UnsqueezeInput.
+      // Scale input to DQ must be a constant initializer. We support per-channel quantization by updating the axis
+      // of the DQ node during TransposeInputImpl and UnsqueezeInput.
       auto dq_scale = graph.GetConstant(dq_node->Inputs()[1]);
-      if (!dq_scale || dq_scale->NumElements() != 1) {
+      if (!dq_scale) {
         break;
       }
 
@@ -299,6 +299,82 @@ static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphR
                                                                int64_t opset);
 static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis);
 
+// Returns the unqueezed version of a Q or DQ axis, or std::nullopt on error.
+static std::optional<int64_t> GetUnsqueezedQDQAxis(const api::GraphRef& graph, const api::NodeRef& q_or_dq_node,
+                                                   gsl::span<const int64_t> unsqueeze_axes) {
+  const auto& inputs = q_or_dq_node.Inputs();
+  const auto scale_input = inputs[1];
+  const auto scale_value_info = graph.GetValueInfo(scale_input);
+  auto scale_shape = scale_value_info->Shape();
+  if (!scale_shape) {
+    // axis potentially needs updating but we don't have the required info to do it.
+    return std::nullopt;
+  }
+
+  int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
+
+  if (!IsScalarOr1Element1DTensor(*scale_shape)) {
+    // Get the input[0] rank.
+    const auto input0_info = graph.GetValueInfo(inputs[0]);
+    auto input0_rank = input0_info->ShapeRank();
+    if (!input0_rank.has_value()) {
+      // Some callers (e.g., UnsqueezeInput or TransposeInputImpl) may temporarily remove
+      // the Q/DQ node's input[0], so use the output's rank when input[0] is disconnected.
+      input0_rank = graph.GetValueInfo(q_or_dq_node.Outputs()[0])->ShapeRank();
+    }
+    if (!input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *input0_rank)) {
+      return std::nullopt;  // Unable to normalize the Q or DQ's axis.
+    }
+
+    std::vector<int64_t> norm_axes(unsqueeze_axes.begin(), unsqueeze_axes.end());
+
+    // Normalize negative unsqueeze axes by adding output rank.
+    // Unsqueeze output rank = input_rank + axes.size()
+    // Unsqueeze's input rank is the same as the DQ's input[0] rank.
+    if (!NormalizeAndValidateAxes(norm_axes, *input0_rank + norm_axes.size())) {
+      return std::nullopt;
+    }
+
+    // Need to update axis if Unsqueeze inserts a 1 before the axis dim.
+    std::sort(norm_axes.begin(), norm_axes.end());
+    axis = UnsqueezeAxis(norm_axes, axis);
+  }
+
+  return axis;
+}
+
+// Returns the transposed version of a Q or DQ axis, or std::nullopt on error.
+static std::optional<int64_t> GetTransposedQDQAxis(const api::GraphRef& graph, const api::NodeRef& q_or_dq_node,
+                                                   gsl::span<const int64_t> perm_inv) {
+  const auto& inputs = q_or_dq_node.Inputs();
+  const auto scale_input = inputs[1];
+  const auto scale_value_info = graph.GetValueInfo(scale_input);
+  auto scale_shape = scale_value_info->Shape();
+  if (!scale_shape) {
+    // axis potentially needs updating but we don't have the required info to do it.
+    return std::nullopt;
+  }
+
+  int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
+  if (!IsScalarOr1Element1DTensor(*scale_shape)) {
+    // Get the input[0] rank.
+    const auto input0_info = graph.GetValueInfo(inputs[0]);
+    auto input0_rank = input0_info->ShapeRank();
+    if (!input0_rank.has_value()) {
+      // Some callers (e.g., UnsqueezeInput or TransposeInputImpl) may temporarily remove
+      // the Q/DQ node's input[0], so use the output's rank when input[0] is disconnected.
+      input0_rank = graph.GetValueInfo(q_or_dq_node.Outputs()[0])->ShapeRank();
+    }
+    if (!input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *input0_rank)) {
+      return std::nullopt;  // Unable to normalize the Q or DQ's axis.
+    }
+
+    axis = perm_inv[gsl::narrow_cast<size_t>(axis)];
+  }
+
+  return axis;
+}
+
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
 /// DQ -> next node => DQ -> next node -> Q -> DQ.
@@ -324,53 +400,31 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   const bool is_unsqueeze = next_node.OpType() == "Unsqueeze";
 
   const auto scale_input = dq_inputs[1];
-  const auto scale_value_info = graph.GetValueInfo(scale_input);
   std::optional<std::string_view> zp_input;
-  std::optional<std::unique_ptr<api::ValueInfoRef>> zp_value_info;
-
-  auto scale_shape = scale_value_info->Shape();
-  if (!scale_shape) {
-    // axis potentially needs updating due to the transpose or unsqueeze but we don't have the required info to do it.
-    return false;
-  }
 
   if (dq_inputs.size() > 2) {
     zp_input = dq_inputs[2];
-    zp_value_info = graph.GetValueInfo(zp_input.value());
   }
 
-  // DQ uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
-  // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
-  // so we have to check the scale input's shape.
-  const bool update_dq_axis = !IsScalarOr1Element1DTensor(*scale_shape);
+  // Have to update the axis for newly inserted Q/DQ after a Transpose or Unsqueeze iff using per-channel quantization.
   int64_t axis = dq_node.GetAttributeIntDefault("axis", 1);
 
-  if (update_dq_axis) {
-    const auto dq_input0_info = graph.GetValueInfo(dq_inputs[0]);
-    auto dq_input0_rank = dq_input0_info->ShapeRank();
-    if (!dq_input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *dq_input0_rank)) {
-      return false;  // Unable to normalize the DQ's axis.
+  if (is_transpose) {
+    auto perm = GetPermAttrIfValid(next_node);
+    assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
+    std::optional<int64_t> new_axis = GetTransposedQDQAxis(graph, dq_node, InvertPerm(*perm));
+    if (!new_axis.has_value()) {
+      return false;  // Unable to get transposed axis
     }
-
-    if (is_transpose) {
-      auto perm = GetPermAttrIfValid(next_node);
-      assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
-      axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
-    } else if (is_unsqueeze) {
-      auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
-      assert(axes.has_value());  // 'axes' are required for Unsqueeze
-
-      // Normalize negative unsqueeze axes by adding output rank.
-      // Unsqueeze output rank = input_rank + axes.size()
-      // Unsqueeze's input rank is the same as the DQ's input[0] rank.
-      if (!NormalizeAndValidateAxes(*axes, *dq_input0_rank + axes->size())) {
-        return false;
-      }
-
-      // Need to update axis if Unsqueeze inserts a 1 before the axis dim.
-      std::sort(axes->begin(), axes->end());
-      axis = UnsqueezeAxis(*axes, axis);
+    axis = *new_axis;
+  } else if (is_unsqueeze) {
+    auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
+    assert(axes.has_value());  // 'axes' are required for Unsqueeze
+    std::optional<int64_t> new_axis = GetUnsqueezedQDQAxis(graph, dq_node, *axes);
+    if (!new_axis.has_value()) {
+      return false;  // Unable to get transposed axis
     }
+    axis = *new_axis;
   }
 
   auto next_node_output_name = next_node.Outputs()[0];
@@ -567,7 +621,7 @@ static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphR
 }
 
 // Computes inverse permutation. Unsafe if perm is not a valid permutation.
-std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm) {
+std::vector<int64_t> InvertPerm(gsl::span<const int64_t> perm) {
   size_t rank = perm.size();
   std::vector<int64_t> perm_inv(rank);
   for (size_t i = 0; i < rank; ++i) {
@@ -812,8 +866,10 @@ static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64
   return new_axes;
 }
 
-static void UpdateDQNodeInputAndShape(api::GraphRef& graph, api::NodeRef& dq, std::string_view new_input) {
+static void UpdateDQNodeInputAndShape(api::GraphRef& graph, api::NodeRef& dq, std::string_view new_input,
+                                      int64_t new_axis) {
   dq.SetInput(0, new_input);
+  dq.SetAttributeInt("axis", new_axis);
   auto new_shape = *graph.GetValueInfo(new_input)->Shape();
   graph.GetValueInfo(dq.Outputs()[0])->SetShape(&new_shape);
 }
@@ -874,7 +930,9 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     ctx.graph.ReshapeInitializer(value_to_modify, new_shape);
 
     if (dq_node) {
-      UpdateDQNodeInputAndShape(ctx.graph, *dq_node, constant_dq_input);
+      std::optional<int64_t> new_axis = GetUnsqueezedQDQAxis(ctx.graph, *dq_node, axes);
+      assert(new_axis.has_value());
+      UpdateDQNodeInputAndShape(ctx.graph, *dq_node, constant_dq_input, *new_axis);
     }
 
     node.SetInput(i, input);  // restore the original connection
@@ -898,7 +956,9 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     squeeze_axes = ReadFromAttrOrInput(ctx, *inp_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
     if (squeeze_axes != std::nullopt && *squeeze_axes == axes) {
       if (dq_node) {
-        UpdateDQNodeInputAndShape(ctx.graph, *dq_node, inp_node_inputs[0]);
+        std::optional<int64_t> new_axis = GetUnsqueezedQDQAxis(ctx.graph, *dq_node, axes);
+        assert(new_axis.has_value());
+        UpdateDQNodeInputAndShape(ctx.graph, *dq_node, inp_node_inputs[0], *new_axis);
         node.SetInput(i, dq_node->Outputs()[0]);
       } else {
         node.SetInput(i, inp_node_inputs[0]);
@@ -1064,7 +1124,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     graph.TransposeInitializer(constant_to_modify, perm);
 
     if (dq_node) {
-      UpdateDQNodeInputAndShape(graph, *dq_node, constant_to_modify);
+      std::optional<int64_t> new_axis = GetTransposedQDQAxis(graph, *dq_node, perm_inv);
+      assert(new_axis.has_value());
+      UpdateDQNodeInputAndShape(graph, *dq_node, constant_to_modify, *new_axis);
       constant_dq_input = "";  // DQ input was already updated so we don't need reconnect_nodes to handle it
     }
 
@@ -1090,7 +1152,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
         std::string_view pre_transpose_value = inp_node->Inputs()[0];
 
         if (dq_node) {
-          UpdateDQNodeInputAndShape(graph, *dq_node, pre_transpose_value);
+          std::optional<int64_t> new_axis = GetTransposedQDQAxis(graph, *dq_node, perm_inv);
+          assert(new_axis.has_value());
+          UpdateDQNodeInputAndShape(graph, *dq_node, pre_transpose_value, *new_axis);
           node.SetInput(i, dq_node->Outputs()[0]);
         } else {
           node.SetInput(i, pre_transpose_value);
@@ -2733,38 +2797,19 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
 
   const auto q_domain = q_node.Domain();
   const auto scale_input = q_node_inputs[1];
-  const auto scale_value_info = ctx.graph.GetValueInfo(scale_input);
   std::optional<std::string_view> zp_input;
-  std::optional<std::unique_ptr<api::ValueInfoRef>> zp_value_info;
-
-  auto scale_shape = scale_value_info->Shape();
-  if (!scale_shape) {
-    // Axis potentially needs updating due to the transpose but we don't have the required info to do it.
-    return false;
-  }
 
   if (q_node_inputs.size() > 2) {
     zp_input = q_node_inputs[2];
-    zp_value_info = ctx.graph.GetValueInfo(zp_input.value());
   }
 
-  // Q uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
-  // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
-  // so we have to check the scale input's shape.
-  const bool update_axis = !IsScalarOr1Element1DTensor(*scale_shape);
-  int64_t axis = q_node.GetAttributeIntDefault("axis", 1);
+  // Have to update the axis for newly inserted Q/DQ before a Transpose iff using per-channel quantization.
+  auto perm = GetPermAttrIfValid(transpose_node);
+  assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
 
-  if (update_axis) {
-    auto perm = GetPermAttrIfValid(transpose_node);
-    assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
-
-    const auto q_input0_info = ctx.graph.GetValueInfo(q_node_inputs[0]);
-    std::optional<size_t> q_input0_rank = q_input0_info->ShapeRank();
-    if (!q_input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *q_input0_rank)) {
-      return false;  // Unable to normalize the Q's axis.
-    }
-
-    axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
+  std::optional<int64_t> new_axis = GetTransposedQDQAxis(ctx.graph, q_node, *perm);  // do not invert perm
+  if (!new_axis.has_value()) {
+    return false;  // Unable to get transposed axis
   }
 
   auto transpose_input_shape = ctx.graph.GetValueInfo(transpose_input_name)->Shape();
@@ -2777,7 +2822,7 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   }
 
   // Add Q
-  auto new_q_node = MakeQuantizeOp(ctx.graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"),
+  auto new_q_node = MakeQuantizeOp(ctx.graph, q_domain, inputs, *new_axis, q_node.GetAttributeInt("block_size"),
                                    q_node.GetAttributeInt("output_dtype"), q_node.GetAttributeInt("saturate"));
   auto new_q_node_output = new_q_node->Outputs()[0];
 
@@ -2790,7 +2835,7 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   inputs[0] = new_q_node->Outputs()[0];
 
   // Add new DQ.
-  auto new_dq_node = MakeDequantizeOp(ctx.graph, q_domain, inputs, axis, q_node.GetAttributeInt("block_size"));
+  auto new_dq_node = MakeDequantizeOp(ctx.graph, q_domain, inputs, *new_axis, q_node.GetAttributeInt("block_size"));
   auto new_dq_node_output = new_dq_node->Outputs()[0];
   ctx.graph.CopyValueInfo(transpose_input_name, new_dq_node_output);
 

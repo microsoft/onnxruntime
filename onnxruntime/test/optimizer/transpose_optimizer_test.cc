@@ -4848,6 +4848,8 @@ TEST(TransposeOptimizerTests, ConstantFoldTransposeAndSqueezeOutputCorrectness) 
               testing::ContainerEq(fetches[1].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// TODO(adrianlizarraga): Edit test to actually test the fix-up: initializer is now Unsqueezed and Transposed in-place.
+//
 // Tests the fix-up of a QDQ NodeUnit containing a per-channel DQ followed by an Unsqueeze.
 // Before: DQ (axis = 0) -> Unsqueeze (axes = [0, 1, 2]) -> Op
 // After:  DQ (axis = 0) -> Unsqueeze (axes = [0, 1, 2]) -> Q (axis = 3) -> DQ (axis = 3) -> Op
@@ -4920,8 +4922,8 @@ TEST(TransposeOptimizerTests, FixQDQNodeUnitWithPerChannelDQUnsqueeze) {
     // ToPathString("transpose_optimization_unsqueeze_dq_axis.qdq.updated.onnx")));
 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-    EXPECT_EQ(op_to_count["Unsqueeze"], 1) << "1 Unsqueeze node added to broadcastable Mul weight.";
-    EXPECT_EQ(op_to_count["Transpose"], 1) << "2 Transposes at the I/O cancel. 1 Transpose inserted above Mul weight.";
+    EXPECT_EQ(op_to_count["Unsqueeze"], 0) << "1 Unsqueeze node added to broadcastable Mul weight.";
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "2 Transposes at the I/O cancel. 1 Transpose inserted above Mul weight.";
 
     ASSERT_STATUS_OK(session.Initialize());
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
