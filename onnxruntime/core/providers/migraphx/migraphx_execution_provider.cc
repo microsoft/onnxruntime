@@ -182,6 +182,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
 
+  // Allow for exhaustive tune during compile
+  const std::string exhaustive_tune_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kExhaustiveTune);
+  if (!exhaustive_tune_env.empty()) {
+    exhaustive_tune_ = (std::stoi(exhaustive_tune_env) == 0 ? false : true);
+  }
+
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
@@ -190,6 +196,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
+                        << ", exhaustive_tune: " << exhaustive_tune_
                         << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
                         << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
@@ -1181,6 +1188,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         migraphx::compile_options co;
         co.set_fast_math(false);
+        co.set_exhaustive_tune_flag(exhaustive_tune_);
         LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
         prog.compile(t_, co);
         LOGS_DEFAULT(INFO) << "Model Compile: Complete" << std::endl;
@@ -1345,6 +1353,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           LOGS_DEFAULT(INFO) << "Model Compile: Begin" << std::endl;
           migraphx::compile_options co;
           co.set_fast_math(false);
+          co.set_exhaustive_tune_flag(exhaustive_tune_);
           prog.compile(t, co);
 
           save_compiled_model(prog, mgx_state->save_compiled_mode, mgx_state->save_compiled_path);
