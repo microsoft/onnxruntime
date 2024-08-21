@@ -1062,7 +1062,7 @@ set of 4b integers with a scaling factor and an optional offset.
     )
     parser.add_argument(
         "--op_types_to_quantize",
-        default="MatMul",
+        default=["MatMul"],
         type=str,
         nargs="+",
         choices=["MatMul", "Gather"],
