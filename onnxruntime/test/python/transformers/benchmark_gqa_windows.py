@@ -225,7 +225,6 @@ if __name__ == "__main__":
     )
     parser.set_defaults(use_smooth_softmax=False)
 
-
     args = parser.parse_args()
 
     if args.kernel == "memory_efficient":
