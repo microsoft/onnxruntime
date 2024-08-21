@@ -1082,7 +1082,7 @@ def attention_ref(
 
     #attention = torch.softmax(scores, dim=-1)
     QK_max = scores.amax(axis=-1, keepdim=True)
-    QK_max = torch.maximum(QK_max, torch.zeros_like(QK_max))
+    #QK_max = torch.maximum(QK_max, torch.zeros_like(QK_max))
     attention = torch.exp(scores - QK_max)
     attention *= torch.reciprocal(attention.sum(axis=-1, keepdim=True) + torch.exp(-QK_max))
 

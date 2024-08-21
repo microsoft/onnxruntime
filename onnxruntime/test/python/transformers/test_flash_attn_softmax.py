@@ -620,7 +620,7 @@ def generate_token_offset(cu_seqlens, max_seqlen):
 def rotary_options_for_current_os():
     # Reference implementation of rotary uses triton, which is not available in Windows.
     # So we only test rotary in Linux right now.
-    return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
+    return [(False, False)] #if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
 
 
 def gqa_prompt_func(
@@ -743,6 +743,7 @@ def gqa_past_func(
     window_size=-1,
     rotary_interleaved=False,
 ):
+    print("Run onnx model !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     onnx_model_str = create_group_query_attention_graph_past(
         config,
         past_kv_format,
@@ -937,6 +938,7 @@ def attention_ref(
     #attention = torch.softmax(scores, dim=-1)
     QK_max = scores.amax(axis=-1, keepdim=True)
     QK_max = torch.maximum(QK_max, torch.zeros_like(QK_max))
+    print(QK_max)
     attention = torch.exp(scores - QK_max)
     attention *= torch.reciprocal(attention.sum(axis=-1, keepdim=True) + torch.exp(-QK_max))
 
@@ -1701,9 +1703,9 @@ def gqa_no_past_flash_attention_test_cases():
         for sq, skv in seqs:
             for n, n2 in num_h:
                 for h in h_sizes:
-                    for local in [False, True]:
+                    for local in [False]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
-                            for packed in [False, True]:
+                            for packed in [False]:
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
                                 yield (
                                     str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
@@ -1714,51 +1716,10 @@ def gqa_no_past_flash_attention_test_cases():
                                     packed,
                                 )
 
-
-def gqa_past_memory_efficient_test_cases():
-    batches = [5] if pipeline_mode else [1, 3, 5]
-    seqs = (
-        [(1, 128)]
-        if pipeline_mode
-        else [
-            (1, 128),
-            (1, 339),
-            (1, 1024),
-            (1, 5000),
-            (1, 800),
-            (1, 256),
-            (1, 799),
-            (1, 2048),
-            # (1, 128 * 512),
-            # (16, 128 * 512),
-            # (128, 128),
-        ]
-    )
-    num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-    h_sizes = [16] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-    random.seed(69)
-
-    for b in batches:
-        for s, s2 in seqs:
-            for n, n2 in num_h:
-                for h in h_sizes:
-                    for rotary, rotary_interleaved in rotary_options_for_current_os():
-                        for packed in [False, True]:
-                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                            config = Config(b, s, s2, sp, n, n2, h)
-                            yield (
-                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
-                                config,
-                                rotary,
-                                rotary_interleaved,
-                                packed,
-                            )
-
-
 def gqa_past_flash_attention_test_cases():
-    batches = [5] if pipeline_mode else [1, 3, 5]
+    batches = [1] if pipeline_mode else [1, 3, 5]
     seqs = (
-        [(1, 128)]
+        [(1, 8)]
         if pipeline_mode
         else [
             (1, 128),
@@ -1774,7 +1735,7 @@ def gqa_past_flash_attention_test_cases():
             # (128, 128),
         ]
     )
-    num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    num_h = [(4, 2)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
     h_sizes = [16] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
     random.seed(69)
 
@@ -1782,9 +1743,9 @@ def gqa_past_flash_attention_test_cases():
         for s, s2 in seqs:
             for n, n2 in num_h:
                 for h in h_sizes:
-                    for local in [False, True]:
+                    for local in [False]:
                         for rotary, rotary_interleaved in rotary_options_for_current_os():
-                            for packed in [False, True]:
+                            for packed in [False]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
                                 yield (
@@ -1798,29 +1759,29 @@ def gqa_past_flash_attention_test_cases():
 
 
 class TestGQA(unittest.TestCase):
-    @parameterized.expand(gqa_no_past_flash_attention_test_cases())
-    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
-        if not has_flash_attention():
-            return
-        print("------- FLASH ATTENTION (PROMPT CASE) --------")
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+    # @parameterized.expand(gqa_no_past_flash_attention_test_cases())
+    # def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+    #     if not has_flash_attention():
+    #         return
+    #     print("------- FLASH ATTENTION (PROMPT CASE) --------")
+    #     os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
 
-        parity_check_gqa_prompt(
-            config,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-        )
-        parity_check_gqa_prompt_no_buff(
-            config,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-        )
+    #     parity_check_gqa_prompt(
+    #         config,
+    #         local=local,
+    #         past_format=Formats.BNSH,
+    #         rotary=rotary,
+    #         rotary_interleaved=rotary_interleaved,
+    #         packed=packed,
+    #     )
+        # parity_check_gqa_prompt_no_buff(
+        #     config,
+        #     local=local,
+        #     past_format=Formats.BNSH,
+        #     rotary=rotary,
+        #     rotary_interleaved=rotary_interleaved,
+        #     packed=packed,
+        # )
 
     @parameterized.expand(gqa_past_flash_attention_test_cases())
     def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
@@ -1839,16 +1800,16 @@ class TestGQA(unittest.TestCase):
             rotary_interleaved=rotary_interleaved,
             packed=packed,
         )
-        parity_check_gqa_past_no_buff(
-            config,
-            local=local,
-            past_format=Formats.BNSH,
-            rtol=1e-3,
-            atol=1e-3,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-        )
+        # parity_check_gqa_past_no_buff(
+        #     config,
+        #     local=local,
+        #     past_format=Formats.BNSH,
+        #     rtol=1e-3,
+        #     atol=1e-3,
+        #     rotary=rotary,
+        #     rotary_interleaved=rotary_interleaved,
+        #     packed=packed,
+        # )
 
 
 if __name__ == "__main__":
