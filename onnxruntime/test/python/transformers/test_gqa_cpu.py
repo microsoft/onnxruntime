@@ -914,6 +914,13 @@ def construct_local_mask(
         )
 
 
+def smooth_softmax_ref(x):
+    x_max = x.amax(axis=-1, keepdim=True)
+    x_max = torch.maximum(x_max, torch.zeros_like(x_max))
+    w = torch.exp(x - x_max)
+    return w * torch.reciprocal(w.sum(axis=-1, keepdim=True) + torch.exp(-x_max))
+
+
 def attention_ref(
     q,
     k,
@@ -976,10 +983,7 @@ def attention_ref(
         scores.masked_fill_(local_mask, float("-inf"))
 
     if use_smooth_softmax:
-        qk_max = scores.amax(axis=-1, keepdim=True)
-        qk_max = torch.maximum(qk_max, torch.zeros_like(qk_max))
-        w = torch.exp(scores - qk_max)
-        attention = w * torch.reciprocal(w.sum(axis=-1, keepdim=True) + torch.exp(-qk_max))
+        attention = smooth_softmax_ref(scores)
     else:
         attention = torch.softmax(scores, dim=-1)
 

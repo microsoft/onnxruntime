@@ -14,6 +14,7 @@ import torch
 from benchmark_mha import InputFormats
 from onnx import TensorProto, helper
 from parameterized import parameterized
+from test_gqa_cpu import smooth_softmax_ref
 from torch import Tensor
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
@@ -620,10 +621,7 @@ def group_query_attention_reference(
         attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
 
     if config.use_smooth_softmax:
-        qk_max = attn.amax(axis=-1, keepdim=True)
-        qk_max = torch.maximum(qk_max, torch.zeros_like(qk_max))
-        w = torch.exp(attn - qk_max)
-        attn = w * torch.reciprocal(w.sum(axis=-1, keepdim=True) + torch.exp(-qk_max))
+        attn = smooth_softmax_ref(attn)
     else:
         attn = attn.softmax(-1)
 
