@@ -233,7 +233,7 @@ export const createMatMulNBitsProgramInfo = (
             let zero_point = ${dataType}(${zeroPoints ? '(zero_point_word) & 0xFu' : 8.0});
             ${b.indicesSet('b_indices', '1', 'block')};
             var word_offset: u32 = block * ${attributes.blockSize / aComponents};
-            var workgroup_shared_offset: u32 = local_idx * ${aRowsPerThread};
+            var workgroup_shared_offset: u32 = block * ${dimAOuter} + a_outer_component * ${aRowsPerThread};
             ${processOneBlock}
           }
           workgroupBarrier();
