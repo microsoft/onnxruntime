@@ -307,10 +307,12 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
+  // clang-format off
   const bool has_single_b_matrix = std::all_of(
       helper.RightOffsets().begin(),
       helper.RightOffsets().end(),
       [](size_t offset) { return offset == 0; });
+  // clang-format on
 
 #if defined(ORT_NEURAL_SPEED)
 

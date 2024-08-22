@@ -398,7 +398,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 }
 }  // namespace
 
-TEST(MatMulNBits, Float16) {
+TEST(MatMulNBits, Float16Cuda) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   auto has_gidx_options = {true, false};
 #else

@@ -266,6 +266,35 @@ MlasSQNBitGemmPackQuantBData(
     }
 }
 
+#ifdef MLAS_TARGET_AMD64_IX86
+void
+ConvertFp16ToFp32Avx(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size);
+void
+ConvertFp32ToFp16Avx(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size);
+#endif
+
+void
+MLASCALL
+ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size)
+{
+#ifdef MLAS_TARGET_AMD64_IX86
+    ConvertFp16ToFp32Avx(a_row, a_row_fp32, size);
+#else
+    throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
+#endif
+}
+
+void
+MLASCALL
+ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size)
+{
+#ifdef MLAS_TARGET_AMD64_IX86
+    ConvertFp32ToFp16Avx(c_blk_fp32_v, fp16_data, size);
+#else
+    throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");
+#endif
+}
+
 namespace
 {
 
