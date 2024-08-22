@@ -230,7 +230,7 @@ Status MatMulNBits<AType>::PrePack(const Tensor& tensor, int input_idx, /*out*/ 
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto sptr = tensor.Data<AType>();
       if constexpr (std::is_same<AType, MLFloat16>::value) {
-        std::vector<float> scales_v(tensor.Shape().Size());
+        std::vector<float> scales_v((const unsigned int)(tensor.Shape().Size()));
         ConvertFp16ToFp32(sptr, &scales_v[0], scales_v.size());
         MlasSQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type, nullptr, packed_b_.get(), &scales_v[0], has_zp_input_, nullptr, nullptr);
       } else {
@@ -368,18 +368,18 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
         AllocatorPtr allocator;
         ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
 
-        auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a->Shape().Size());
+        auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
         ConvertFp16ToFp32(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
 
-        auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, scales->Shape().Size());
+        auto tmp_scales_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(scales->Shape().Size()));
         ConvertFp16ToFp32(scales_data, tmp_scales_data_ptr.get(), scales->Shape().Size());
 
         std::vector<float> bias_data_v;
         if (bias_data != nullptr) {
-          bias_data_v.resize(bias->Shape().Size());
+          bias_data_v.resize((const unsigned int)(bias->Shape().Size()));
           ConvertFp16ToFp32(bias_data, &bias_data_v[0], bias_data_v.size());
         }
-        std::vector<float> C_v(y->Shape().Size());
+        std::vector<float> C_v((const unsigned int)(y->Shape().Size()));
         for (size_t i = 0; i < batch_count; ++i) {
           data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
           data[i].lda = lda;
@@ -435,7 +435,7 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   const float* scales_data_;
   std::vector<float> scales_data_v;
   if constexpr (std::is_same<AType, MLFloat16>::value) {
-    scales_data_v.resize(scales->Shape().Size());
+    scales_data_v.resize((const unsigned int)scales->Shape().Size());
     ConvertFp16ToFp32(scales_data, &scales_data_v[0], scales_data_v.size());
     scales_data_ = &scales_data_v[0];
   } else {
@@ -500,10 +500,10 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   if constexpr (std::is_same<AType, MLFloat16>::value) {
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
 
-    auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a->Shape().Size());
+    auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(a->Shape().Size()));
     ConvertFp16ToFp32(a_data, tmp_a_data_ptr.get(), a->Shape().Size());
 
-    auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, y->Shape().Size());
+    auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(y->Shape().Size()));
     for (size_t i = 0; i < batch_count; i++) {
       data[i].BIsPacked = false;
       data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
@@ -519,7 +519,7 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
     // if there is a bias input, copy bias values into C and set beta to 1.0f
     if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
         bias != nullptr) {
-      auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, bias->Shape().Size());
+      auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, (size_t)(bias->Shape().Size()));
       ConvertFp16ToFp32(bias->Data<AType>(), tmp_bias_data_ptr.get(), bias->Shape().Size());
       for (size_t i = 0; i < batch_count; ++i) {
         float* C_row = data[i].C;
