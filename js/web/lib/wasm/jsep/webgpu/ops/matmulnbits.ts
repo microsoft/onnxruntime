@@ -332,7 +332,6 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
 ): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const aRank = inputShape.length;
-  const nBlocksPerCol = inputs[1].dims[1];
   const dimAOuter = inputShape[aRank - 2];
   const dimInner = attributes.k;
   const dimBOuter = attributes.n;
@@ -347,6 +346,8 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   const outputShape = batchDims.concat([dimAOuter, dimBOuter]);
   const outputNumber = dimAOuter > 1 && (dimBOuter / components) % 2 === 0 ? 2 : 1;
   const dispatchSize = ShapeUtil.size(outputShape) / components / outputNumber;
+
+  const workgroupSize = 64;
 
   const programUniforms: ProgramUniform[] = [];
   const inputShapeTemp = [batchSize, dimAOuter, dimInner / aComponents];
@@ -410,7 +411,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
                 return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale${c};`;
               }
             })()};
-            workgroup_shared[block * ${outputNumber} + ${Math.floor(c / components)}]${components > 1 ? `[${c % components}]` : ''} += ${Array.from(
+            workgroup_shared[local_id.x * ${outputNumber} + ${Math.floor(c / components)}]${components > 1 ? `[${c % components}]` : ''} += ${Array.from(
               { length: 8 / aComponents },
               (_, i) =>
                 `${
@@ -428,7 +429,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
       let calcStr = `var col_index = col * ${components};`;
       for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
-            let scale${c} = ${scales.getByOffset(`col_index * ${nBlocksPerCol} + block`)};
+            let scale${c} = ${scales.getByOffset(`col_index * nBlocksPerCol + block`)};
             let b${c}_data = ${b.getByIndices(`${b.type.indices}(col_index, block, word)`)};
             col_index += 1;`;
       }
@@ -442,48 +443,46 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
       return calcStr;
     };
     return `
-        var<workgroup> workgroup_shared: array<${output.type.value}, ${outputNumber * nBlocksPerCol}>;
+        var<workgroup> workgroup_shared: array<${output.type.value}, ${outputNumber * workgroupSize}>;
         ${shaderHelper.declareVariables(...inputVariables, output)}
-        ${shaderHelper.mainStart([nBlocksPerCol, 1, 1])}
-          let block = local_id.x;
-          let output_indices = ${output.offsetToIndices(`(global_idx / ${nBlocksPerCol}) * ${outputNumber}`)};
+        ${shaderHelper.mainStart([workgroupSize, 1, 1])}
+          let output_indices = ${output.offsetToIndices(`(global_idx / ${workgroupSize}) * ${outputNumber}`)};
           let col = output_indices[2];
           let row = output_indices[1];
           let batch = output_indices[0];
+          let nBlocksPerCol = uniforms.b_shape[1];
 
           // The default zero point is 8 for unsigned 4-bit quantization.
           let zero_point = ${dataType}(${8.0});
-          var word_offset: u32 = block * ${attributes.blockSize / aComponents};
 
-          //process one block
-          for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
-            ${prepareScaleAndBData()}
-            for (var i: u32 = 0; i < ${bComponents}; i++) {
-              ${processOneWord()}
-              word_offset += ${8 / aComponents};
+          for (var block = local_id.x; block < nBlocksPerCol; block += ${workgroupSize}) {
+            //process one block
+            var word_offset: u32 = block * ${attributes.blockSize / aComponents};
+            for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
+              ${prepareScaleAndBData()}
+              for (var i: u32 = 0; i < ${bComponents}; i++) {
+                ${processOneWord()}
+                word_offset += ${8 / aComponents};
+              }
             }
           }
           workgroupBarrier();
 
-          var elements_per_thread: u32 = ${Math.ceil(outputNumber / nBlocksPerCol)};
-          for (var e: u32 = 0u; e < elements_per_thread; e++) {
-            let c_offset = e + local_id.x * elements_per_thread;
-            if (c_offset < ${outputNumber}) {
-              var output_value: ${output.type.value} = ${output.type.value}(0);
-              var workgroup_shared_offset: u32 = c_offset;
-              for (var b: u32 = 0u; b < ${nBlocksPerCol}u; b++) {
-                output_value += workgroup_shared[workgroup_shared_offset];
-                workgroup_shared_offset += ${outputNumber};
-              }
-              ${output.setByIndices(`${output.type.indices}(batch, row, col + c_offset)`, 'output_value')};
+          if (local_id.x < ${outputNumber}) {
+            var output_value: ${output.type.value} = ${output.type.value}(0);
+            var workgroup_shared_offset: u32 = local_id.x;
+            for (var b: u32 = 0u; b < ${workgroupSize}u; b++) {
+              output_value += workgroup_shared[workgroup_shared_offset];
+              workgroup_shared_offset += ${outputNumber};
             }
+            ${output.setByIndices(`${output.type.indices}(batch, row, col + local_id.x)`, 'output_value')};
           }
         }`;
   };
   return {
     name: 'BlockwiseMatMulNBitsV1',
     shaderCache: {
-      hint: `${attributes.blockSize};${attributes.bits};${aComponents};${bComponents};${components};${outputNumber};${nBlocksPerCol}`,
+      hint: `${attributes.blockSize};${attributes.bits};${aComponents};${bComponents};${components};${outputNumber};${workgroupSize}`,
       inputDependencies: Array(inputs.length).fill('rank'),
     },
     getRunData: () => ({
@@ -497,11 +496,10 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  const nBlocksPerCol = context.inputs[1].dims[1];
-  const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
-  if (context.inputs.length < 4 && nBlocksPerCol < maxComputeWorkgroupSizes[0]) {
+  if (context.inputs.length < 4) {
     context.compute(createMatMulNBitsBlockwiseProgramInfo(context.inputs, attributes));
   } else {
+    const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
     const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
     context.compute(
       createMatMulNBitsProgramInfo(
