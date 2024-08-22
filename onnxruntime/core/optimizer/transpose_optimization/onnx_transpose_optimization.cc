@@ -267,10 +267,23 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleCons
         break;
       }
 
-      // Scale input to DQ must be a constant initializer. We support per-channel quantization by updating the axis
-      // of the DQ node during TransposeInputImpl and UnsqueezeInput.
-      auto dq_scale = graph.GetConstant(dq_node->Inputs()[1]);
-      if (!dq_scale) {
+      // Scale input to DQ must be a constant initializer.
+      std::string_view dq_scale_input = dq_node->Inputs()[1];
+      auto dq_scale_constant = graph.GetConstant(dq_scale_input);
+      if (!dq_scale_constant) {
+        break;
+      }
+
+      // Need to be able to get the scale input's shape from ValueInfo in order to determine the type of quantization
+      // (per-tensor, per-axis, or blocked). TransposeInputImpl and UnsqueezeInput update the axis of a per-axis DQ
+      // if its input is transposed or unsqueezed.
+      auto dq_scale_shape = dq_scale_constant->Shape();
+      const bool is_per_tensor_quant = IsScalarOr1Element1DTensor(dq_scale_shape);
+
+      // To keep things simple, do not support blocked quantization for now (added in opset 21).
+      int64_t block_size = dq_node->GetAttributeIntDefault("block_size", 0);
+      const bool is_blocked_quant = (block_size > 0) && !is_per_tensor_quant;
+      if (is_blocked_quant) {
         break;
       }
 
@@ -301,7 +314,7 @@ static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_
 
 // Returns the unqueezed version of a Q or DQ axis, or std::nullopt on error.
 static std::optional<int64_t> GetUnsqueezedQDQAxis(const api::GraphRef& graph, const api::NodeRef& q_or_dq_node,
-                                                   gsl::span<const int64_t> unsqueeze_axes) {
+                                                   gsl::span<const int64_t> positive_unsqueeze_axes) {
   const auto& inputs = q_or_dq_node.Inputs();
   const auto scale_input = inputs[1];
   const auto scale_value_info = graph.GetValueInfo(scale_input);
@@ -312,8 +325,12 @@ static std::optional<int64_t> GetUnsqueezedQDQAxis(const api::GraphRef& graph, c
   }
 
   int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
+  const int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
+  const bool is_per_tensor_quant = IsScalarOr1Element1DTensor(*scale_shape);
+  const bool is_blocked_quant = (block_size > 0) && !is_per_tensor_quant;
+  const bool is_per_axis_quant = (block_size == 0) && !is_per_tensor_quant;
 
-  if (!IsScalarOr1Element1DTensor(*scale_shape)) {
+  if (is_per_axis_quant) {
     // Get the input[0] rank.
     const auto input0_info = graph.GetValueInfo(inputs[0]);
     auto input0_rank = input0_info->ShapeRank();
@@ -326,18 +343,13 @@ static std::optional<int64_t> GetUnsqueezedQDQAxis(const api::GraphRef& graph, c
       return std::nullopt;  // Unable to normalize the Q or DQ's axis.
     }
 
-    std::vector<int64_t> norm_axes(unsqueeze_axes.begin(), unsqueeze_axes.end());
-
-    // Normalize negative unsqueeze axes by adding output rank.
-    // Unsqueeze output rank = input_rank + axes.size()
-    // Unsqueeze's input rank is the same as the DQ's input[0] rank.
-    if (!NormalizeAndValidateAxes(norm_axes, *input0_rank + norm_axes.size())) {
-      return std::nullopt;
-    }
+    std::vector<int64_t> sorted_axes(positive_unsqueeze_axes.begin(), positive_unsqueeze_axes.end());
+    std::sort(sorted_axes.begin(), sorted_axes.end());
 
     // Need to update axis if Unsqueeze inserts a 1 before the axis dim.
-    std::sort(norm_axes.begin(), norm_axes.end());
-    axis = UnsqueezeAxis(norm_axes, axis);
+    axis = UnsqueezeAxis(sorted_axes, axis);
+  } else if (is_blocked_quant) {
+    return std::nullopt;  // Do not support blocked quantization for now.
   }
 
   return axis;
@@ -356,7 +368,12 @@ static std::optional<int64_t> GetTransposedQDQAxis(const api::GraphRef& graph, c
   }
 
   int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
-  if (!IsScalarOr1Element1DTensor(*scale_shape)) {
+  const int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
+  const bool is_per_tensor_quant = IsScalarOr1Element1DTensor(*scale_shape);
+  const bool is_blocked_quant = (block_size > 0) && !is_per_tensor_quant;
+  const bool is_per_axis_quant = (block_size == 0) && !is_per_tensor_quant;
+
+  if (is_per_axis_quant) {
     // Get the input[0] rank.
     const auto input0_info = graph.GetValueInfo(inputs[0]);
     auto input0_rank = input0_info->ShapeRank();
@@ -370,6 +387,8 @@ static std::optional<int64_t> GetTransposedQDQAxis(const api::GraphRef& graph, c
     }
 
     axis = perm_inv[gsl::narrow_cast<size_t>(axis)];
+  } else if (is_blocked_quant) {
+    return std::nullopt;  // Do not support blocked quantization for now.
   }
 
   return axis;
@@ -420,6 +439,20 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   } else if (is_unsqueeze) {
     auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
     assert(axes.has_value());  // 'axes' are required for Unsqueeze
+
+    const auto dq_output_info = graph.GetValueInfo(dq_node.Outputs()[0]);
+    auto dq_output_rank = dq_output_info->ShapeRank();
+    if (!dq_output_rank.has_value()) {
+      return false;  // Need to know the rank of the input to the Unsqueeze to normalize unsqueeze axes
+    }
+
+    // Normalize negative unsqueeze axes by adding output rank.
+    // Unsqueeze output rank = unsqueeze input rank + axes.size()
+    if (!NormalizeAndValidateAxes(*axes, *dq_output_rank + axes->size())) {
+      return false;
+    }
+
+    // Need to update axis if Unsqueeze inserts a 1 before the axis dim.
     std::optional<int64_t> new_axis = GetUnsqueezedQDQAxis(graph, dq_node, *axes);
     if (!new_axis.has_value()) {
       return false;  // Unable to get transposed axis
