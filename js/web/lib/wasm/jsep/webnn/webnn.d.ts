@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable @typescript-eslint/naming-convention */
+
 interface NavigatorML {
   readonly ml: ML;
 }
@@ -386,11 +388,25 @@ interface MLBuffer {
 }
 
 type MLNamedBuffers = Record<string, MLBuffer>;
+
+type MLBufferUsageFlags = number;
+
+declare const MLBufferUsage: {
+  readonly WEBGPU_INTEROP: MLBufferUsageFlags;
+  readonly READ_FROM: MLBufferUsageFlags;
+  readonly WRITE_TO: MLBufferUsageFlags;
+};
+
+interface MLBufferDescriptor extends MLOperandDescriptor {
+  usage: MLBufferUsageFlags;
+}
+
 interface MLContext {
-  createBuffer(descriptor: MLOperandDescriptor): Promise<MLBuffer>;
+  createBuffer(descriptor: MLBufferDescriptor): Promise<MLBuffer>;
   writeBuffer(
       dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: number,
       srcElementSize?: number): void;
   readBuffer(srcBuffer: MLBuffer): Promise<ArrayBuffer>;
+  readBuffer(srcBuffer: MLBuffer, dstBuffer: ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
 }

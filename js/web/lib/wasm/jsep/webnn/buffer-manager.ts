@@ -145,7 +145,9 @@ class BufferTracker {
       }
     }
     LOG_DEBUG('verbose', () => `[WebNN] MLContext.createBuffer {dataType: ${dataType}, dimensions: ${dimensions}}`);
-    const buffer = await this.context.createBuffer({ dataType, dimensions });
+    // eslint-disable-next-line no-bitwise
+    const usage = MLBufferUsage.READ_FROM | MLBufferUsage.WRITE_TO;
+    const buffer = await this.context.createBuffer({ dataType, dimensions, usage });
     this.bufferEntry = [buffer, dataType, dimensions];
     this.bufferCache.push(this.bufferEntry);
 

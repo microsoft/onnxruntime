@@ -661,7 +661,11 @@ async function createMLTensorForOutput(mlContext: MLContext, type: ort.Tensor.Ty
 
   const dataType = type === 'bool' ? 'uint8' : type;
 
-  const mlBuffer = await mlContext.createBuffer({ dataType, dimensions: dims as number[] });
+  const mlBuffer = await mlContext.createBuffer({
+    dataType,
+    dimensions: dims as number[],
+    usage: MLBufferUsage.READ_FROM,
+  });
 
   return ort.Tensor.fromMLBuffer(mlBuffer, {
     dataType: type,
@@ -679,7 +683,11 @@ async function createMLTensorForInput(mlContext: MLContext, cpuTensor: ort.Tenso
     throw new Error(`createMLTensorForInput can not work with ${cpuTensor.type} tensor`);
   }
   const dataType = cpuTensor.type === 'bool' ? 'uint8' : cpuTensor.type;
-  const mlBuffer = await mlContext.createBuffer({ dataType, dimensions: cpuTensor.dims as number[] });
+  const mlBuffer = await mlContext.createBuffer({
+    dataType,
+    dimensions: cpuTensor.dims as number[],
+    usage: MLBufferUsage.WRITE_TO,
+  });
   mlContext.writeBuffer(mlBuffer, cpuTensor.data);
   return ort.Tensor.fromMLBuffer(mlBuffer, {
     dataType: cpuTensor.type,
