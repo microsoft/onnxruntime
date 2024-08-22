@@ -315,7 +315,7 @@ class PhiMoEBlockSparseTop2MLP(nn.Module):
 
 def masked_sampling_omp_inference(scores, top_k, jitter_eps, training):
     assert top_k == 2
-    assert training == False
+    assert not training
 
     mask_logits_threshold, selected_experts = torch.topk(scores, 2)
 

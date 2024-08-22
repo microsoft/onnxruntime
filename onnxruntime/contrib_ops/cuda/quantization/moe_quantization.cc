@@ -20,7 +20,7 @@ namespace cuda {
                               .MayInplace(0, 0)                                            \
                               .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()) \
                               .TypeConstraint("T1", BuildKernelDefConstraints<uint8_t>()), \
-                          QMoE);                                                     
+                          QMoE);
 
 REGISTER_KERNEL()
 
@@ -41,25 +41,25 @@ struct ToCudaTypeWrapper<uint8_t, true> {
 }  // anonymous namespace
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info) {
-    ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-    ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
-                "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
+  ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
+              "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
 }
 
-template<typename CudaWeightT>
-Status QMoE::QuantizedMoEImpl(OpKernelContext* context, 
+template <typename CudaWeightT>
+Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
                               MoEParameters& moe_params,
-                              const Tensor* input, 
-                              const Tensor* router_probs, 
+                              const Tensor* input,
+                              const Tensor* router_probs,
                               const Tensor* fc1_experts_weights,
-                              const Tensor* fc1_experts_bias_optional, 
+                              const Tensor* fc1_experts_bias_optional,
                               const Tensor* fc2_experts_weights,
-                              const Tensor* fc2_experts_bias_optional, 
+                              const Tensor* fc2_experts_bias_optional,
                               const Tensor* fc3_experts_weights_optional,
-                              const Tensor* fc3_experts_bias_optional, 
-                              const Tensor* fc1_scales, 
+                              const Tensor* fc3_experts_bias_optional,
+                              const Tensor* fc1_scales,
                               const Tensor* fc2_scales,
-                              const Tensor* fc3_scales_optional, 
+                              const Tensor* fc3_scales_optional,
                               const cudaDeviceProp& device_prop) const {
   auto stream = context->GetComputeStream();
 
@@ -71,14 +71,14 @@ Status QMoE::QuantizedMoEImpl(OpKernelContext* context,
   using T = MLFloat16;
   using CudaT = typename ToCudaType<T>::MappedType;
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm, 
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaWeightT> moe_runner(sm,
                                                                            fc3_experts_weights_optional != nullptr,
                                                                            normalize_routing_weights_,
                                                                            use_sparse_mixer_);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),
-      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), 
+      static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts),
       static_cast<size_t>(k_));
   size_t fc2_output_size = k_ * moe_params.num_rows * moe_params.hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * moe_params.num_rows * sizeof(CudaT);
@@ -167,21 +167,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     return QuantizedMoEImpl<CudaWeightT>(context, moe_params, input, router_probs,
                                          fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
                                          fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                         fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional, 
+                                         fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional,
                                          GetDeviceProp());
   } else {
     using CudaWeightT = typename ToCudaTypeWrapper<uint8_t, false>::MappedType;
     return QuantizedMoEImpl<CudaWeightT>(context, moe_params, input, router_probs,
                                          fc1_experts_weights, fc1_experts_bias_optional, fc2_experts_weights,
                                          fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                         fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional, 
+                                         fc3_experts_bias_optional, fc1_scales, fc2_scales, fc3_scales_optional,
                                          GetDeviceProp());
   }
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
-
 }
 
 }  // namespace cuda

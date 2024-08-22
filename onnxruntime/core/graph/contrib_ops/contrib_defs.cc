@@ -1425,9 +1425,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("expert_weight_bits", 
-              "Number of bits used in quantized weights. Default is 4 bits", 
-              AttributeProto::INT, 
+        .Attr("expert_weight_bits",
+              "Number of bits used in quantized weights. Default is 4 bits",
+              AttributeProto::INT,
               static_cast<int64_t>(4))
         .Input(0,
                "input",
@@ -1435,17 +1435,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-        .Input(2, 
-               "fc1_experts_weights", 
+        .Input(2,
+               "fc1_experts_weights",
                "3D input tensor with shape (num_experts, hidden_size, inter_size) "
-               "or (num_experts, hidden_size, inter_size / 2)", 
+               "or (num_experts, hidden_size, inter_size / 2)",
                "T1")
         .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
         .Input(4,
                "fc1_experts_bias",
                "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Input(5, 
-               "fc2_experts_weights", 
+        .Input(5,
+               "fc2_experts_weights",
                "3D input tensor with shape (num_experts, inter_size, hidden_size) "
                "or (num_experts, inter_size, hidden_size / 2)",
                "T1")
