@@ -308,9 +308,9 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(false);
 
   const bool has_single_b_matrix = std::all_of(
-    helper.RightOffsets().begin(),
-    helper.RightOffsets().end(),
-    [](size_t offset) { return offset == 0; });
+      helper.RightOffsets().begin(),
+      helper.RightOffsets().end(),
+      [](size_t offset) { return offset == 0; });
 
 #if defined(ORT_NEURAL_SPEED)
 
