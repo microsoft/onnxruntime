@@ -30,8 +30,10 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         so_epctx_embed_mode_(so_epctx_embed_mode) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
-    free((void*)cache_dir);
-    cache_dir = nullptr;
+    if (cache_dir != nullptr) {
+      free(const_cast<void*>(static_cast<const void*>(cache_dir)));
+      cache_dir = nullptr;
+    }
   }
 
   ~OpenVINOProviderFactory() override {
@@ -92,7 +94,7 @@ struct OpenVINO_Provider : Provider {
                                              // speeds up the model's compilation to NPU device specific format.
     int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
                                              //  threads with this value at runtime.
-    const char* cache_dir = "";              // [cache_dir]: specify the path to
+    const char* cache_dir = nullptr;         // [cache_dir]: specify the path to
                                              // dump and load the blobs for the model caching/kernel caching (GPU)
                                              // feature. If blob files are already present, it will be directly loaded.
     const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
@@ -323,8 +325,6 @@ struct OpenVINO_Provider : Provider {
           } else {
             ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
           }
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Please enter a valid EP context file path, this field cannot be empty . \n");
         }
       }
     }
