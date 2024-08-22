@@ -30,6 +30,8 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         so_epctx_embed_mode_(so_epctx_embed_mode) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
+    free((void*)cache_dir);
+    cache_dir = nullptr;
   }
 
   ~OpenVINOProviderFactory() override {
@@ -309,14 +311,20 @@ struct OpenVINO_Provider : Provider {
             if(file_path.extension().generic_string() == ".onnx") {
               // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
               auto parent_path = file_path.parent_path();
-              if (!std::filesystem::is_directory(parent_path) &&
+              if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
                   !std::filesystem::create_directory(parent_path)) {
                 ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
               }
-              cache_dir = ep_context_file_path_.c_str();
+#ifdef _WIN32
+              cache_dir = _strdup(ep_context_file_path_.c_str());
+#else
+              cache_dir = strdup(ep_context_file_path_.c_str());
+#endif
             } else {
               ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
             }
+        } else {
+	      ORT_THROW("[ERROR] [OpenVINO] Please enter a valid EP context file path, this field cannot be empty . \n");
         }
       }
     }
