@@ -28,5 +28,6 @@ void node_arg_set_element_type(NodeArg& node_arg,
                                int data_type);
 const ONNX_NAMESPACE::TensorProto& node_arg_get_const_data_as_tensor(const Graph& graph,
                                                                      const NodeArg& node_arg);
+int node_arg_external_location(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);
 
 }  // namespace vaip

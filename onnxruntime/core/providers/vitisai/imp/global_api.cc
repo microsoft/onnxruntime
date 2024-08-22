@@ -186,17 +186,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.model_delete = [](Model* model) { delete model; };
 
-  the_global_api.model_clone = [](const Model& const_model) -> Model* {
-    auto& logger = logging::LoggingManager::DefaultLogger();
-    auto& model = const_cast<onnxruntime::Model&>(const_model);
-    auto model_proto = model.ToProto();
-    auto file_path = model.MainGraph().ModelPath();
-    auto local_registries = IOnnxRuntimeOpSchemaRegistryList{model.MainGraph().GetSchemaRegistry()};
-    auto ret = Model::Create(std::move(*model_proto), ToPathString(file_path), &local_registries, logger);
-    auto status = ret->MainGraph().Resolve();
-    vai_assert(status.IsOK(), status.ErrorMessage());
-    return ret.release();
-  };
+  the_global_api.model_clone = vaip::model_clone;
   the_global_api.model_set_meta_data = [](Model& model, const std::string& key, const std::string& value) {
     const_cast<ModelMetaData&>(model.MetaData())[key] = value;
   };
@@ -390,7 +380,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.graph_set_inputs = [](Graph& graph, gsl::span<const NodeArg* const> inputs) {
     graph.SetInputs(inputs);
   };
-
+  the_global_api.node_arg_external_location = vaip::node_arg_external_location;
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
