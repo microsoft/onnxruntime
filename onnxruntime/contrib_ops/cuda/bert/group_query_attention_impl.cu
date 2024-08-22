@@ -836,7 +836,6 @@ Status EfficientAttention(
   p.key = key;
   p.value = value;
   p.attn_bias = nullptr;
-  p.is_attn_bias_batched = false;
   p.is_kv_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(p.v_head_size, sizeof(T) == sizeof(float))

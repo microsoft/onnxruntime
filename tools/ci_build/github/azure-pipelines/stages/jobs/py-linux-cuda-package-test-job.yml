@@ -49,9 +49,9 @@ jobs:
           value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: 10.2.0.19-1.cuda11.8
+          value: 10.3.0.26-1.cuda11.8
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: 10.2.0.19-1.cuda12.5
+          value: 10.3.0.26-1.cuda12.5
     pool: ${{ parameters.machine_pool }}
     steps:
       - checkout: self
@@ -99,7 +99,7 @@ jobs:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "
-          --network=host 
+          --network=host
           --build-arg BASEIMAGE=${{ variables.docker_base_image }}
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )

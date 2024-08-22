@@ -37,8 +37,8 @@ mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 neural_speed;https://github.com/intel/neural-speed/archive/refs/tags/v0.3.zip;5ec64e3071edc7347ebd8a81679cf06e2bb9b851
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.16.1.zip;2eb9198bb352757d5ff13977cbe0634898e0837c
-#use the latest commit of 10.2-GA
-onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/f161f95883b4ebd8cb789de5efc67b73c0a6e694.zip;2148d0c79a171abf2b9451f3bfec164e85caf2ef
+#use the latest commit of 10.3-GA
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/62bdde2a04fcd53c2409cb895ee18db445b7e755.zip;980a455b07dfa67aa70b9e49d37dd9d4cdf690a0
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
 protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win64.zip;b4521f7ada5b260380f94c4bd7f1b7684c76969a
 protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win32.zip;3688010318192c46ce73213cdfb6b3e5656da874
