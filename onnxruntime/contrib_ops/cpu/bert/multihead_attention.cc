@@ -57,7 +57,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* attn_bias = context->Input<Tensor>(5);
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
 
@@ -75,7 +75,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       value,
                                                                       bias,
                                                                       key_padding_mask,
-                                                                      extra_add_qk,
+                                                                      attn_bias,
                                                                       past_key,
                                                                       past_value,
                                                                       nullptr,
@@ -135,7 +135,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           value->Data<T>(),
                           key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
                           batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+                          qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
   }
 
   OrtValue K;
@@ -149,7 +149,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       !disable_flash_ &&
       !is_unidirectional_ &&
       key_padding_mask == nullptr &&
-      extra_add_qk == nullptr &&
+      attn_bias == nullptr &&
       past_key == nullptr &&
       past_value == nullptr &&
       present_k == nullptr &&
@@ -215,7 +215,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
                         batch_size, q_sequence_length, kv_sequence_length,
-                        qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
+                        qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
