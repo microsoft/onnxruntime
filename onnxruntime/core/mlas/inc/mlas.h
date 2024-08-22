@@ -20,6 +20,7 @@ Abstract:
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
+#include <stdexcept>
 
 //
 // Define the calling convention for Windows targets.
@@ -1796,7 +1797,7 @@ ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size);
 #pragma message("Warning: ConvertFp16ToFp32 is not implemented for this target.")
 void
 MLASCALL
-ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size) {
+ConvertFp16ToFp32(const MLAS_FP16* /*a_row*/, float* /*a_row_fp32*/, uint64_t /*size*/) {
     throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
 }
 #endif
@@ -1809,7 +1810,7 @@ ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size
 #pragma message("Warning: ConvertFp32ToFp16 is not implemented for this target.")
 void
 MLASCALL
-ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size) {
+ConvertFp32ToFp16(const float* /*c_blk_fp32_v*/, MLAS_FP16* /*fp16_data*/, uint64_t /*size*/) {
     throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");
 }
 #endif
