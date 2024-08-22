@@ -325,7 +325,6 @@ export const createMatMulNBitsProgramInfo = (
   };
 };
 
-// TODO: support zeroPoints as input
 export const createMatMulNBitsBlockwiseProgramInfo = (
   inputs: readonly TensorView[],
   attributes: MatMulNBitsAttributes,
@@ -356,6 +355,9 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
   programUniforms.push(...createTensorShapeVariables(inputShapeTemp));
   programUniforms.push(...createTensorShapeVariables(bShape));
   programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+  if (inputs.length === 4) {
+    programUniforms.push(...createTensorShapeVariables(ShapeUtil.convertShape(inputs[3].dims)));
+  }
   const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
   programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
 
@@ -365,6 +367,11 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
     const b = inputVariable('b', DataType.uint32, bShape.length, bComponents);
     const scales = inputVariable('scales', inputs[2].dataType, inputs[2].dims.length);
     const inputVariables = [a, b, scales];
+    const zeroPoints =
+      inputs.length === 4 ? inputVariable('zero_points', DataType.uint32, inputs[3].dims.length) : undefined;
+    if (zeroPoints) {
+      inputVariables.push(zeroPoints);
+    }
     const outputRank = outputShapeTemp.length;
     const output = outputVariable('output', inputs[0].dataType, outputRank, components);
     const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
@@ -405,10 +412,12 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
               if (aComponents === 1) {
                 return `${qDqDataType}(${Array.from(
                   { length: 8 },
-                  (_, i) => `(b_quantized_values[${i}] - zero_point) * scale${c}`,
+                  (_, i) => `(b_quantized_values[${i}] - ${zeroPoints ? `zero_point${c}` : 'zero_point'}) * scale${c}`,
                 ).join(', ')});`;
               } else {
-                return `(b_quantized_values - ${qDqDataType}(${Array(8).fill('zero_point').join(',')})) * scale${c};`;
+                return `(b_quantized_values - ${qDqDataType}(${Array(8)
+                  .fill(`${zeroPoints ? `zero_point${c}` : 'zero_point'}`)
+                  .join(',')})) * scale${c};`;
               }
             })()};
             workgroup_shared[local_id.x * ${outputNumber} + ${Math.floor(c / components)}]${components > 1 ? `[${c % components}]` : ''} += ${Array.from(
@@ -424,12 +433,46 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
       }
       return calcStr;
     };
-
-    const prepareScaleAndBData = (): string => {
-      let calcStr = `var col_index = col * ${components};`;
+    const prepareScaleAndZeroPoint = (): string => {
+      let calcStr = `
+            var col_index = col * ${components};
+            ${
+              zeroPoints
+                ? `
+            let zero_point_bytes_per_col = (nBlocksPerCol + 1) / 2;
+            var zero_point_byte_count: u32;
+            var zero_point_word_index: u32;
+            var zero_point_byte_offset: u32;
+            let zero_point_nibble_offset: u32 = block & 0x1u;
+            var zero_point_bits_offset: u32;
+            var zero_point_word: u32;`
+                : `
+            // The default zero point is 8 for unsigned 4-bit quantization.
+            let zero_point = ${dataType}(${8.0});`
+            }
+            `;
       for (let c = 0; c < components * outputNumber; c++) {
         calcStr += `
             let scale${c} = ${scales.getByOffset(`col_index * nBlocksPerCol + block`)};
+            ${
+              zeroPoints
+                ? `
+            zero_point_byte_count = col_index * zero_point_bytes_per_col + (block >> 0x1u);
+            zero_point_word_index = zero_point_byte_count >> 0x2u;
+            zero_point_byte_offset = zero_point_byte_count & 0x3u;
+            zero_point_bits_offset = (zero_point_byte_offset << 3) + (zero_point_nibble_offset << 2);
+            zero_point_word = ${zeroPoints.getByOffset('zero_point_word_index')} >> zero_point_bits_offset;
+            let zero_point${c} = ${dataType}((zero_point_word) & 0xFu);`
+                : ''
+            }
+            col_index += 1;`;
+      }
+      return calcStr;
+    };
+    const prepareBData = (): string => {
+      let calcStr = `col_index = col * ${components};`;
+      for (let c = 0; c < components * outputNumber; c++) {
+        calcStr += `
             let b${c}_data = ${b.getByIndices(`${b.type.indices}(col_index, block, word)`)};
             col_index += 1;`;
       }
@@ -452,14 +495,12 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
           let batch = output_indices[0];
           let nBlocksPerCol = uniforms.b_shape[1];
 
-          // The default zero point is 8 for unsigned 4-bit quantization.
-          let zero_point = ${dataType}(${8.0});
-
           for (var block = local_id.x; block < nBlocksPerCol; block += ${workgroupSize}) {
             //process one block
             var word_offset: u32 = block * ${attributes.blockSize / aComponents};
+            ${prepareScaleAndZeroPoint()}
             for (var word: u32 = 0; word < ${blobSizeInWords}; word += ${bComponents}) {
-              ${prepareScaleAndBData()}
+              ${prepareBData()}
               for (var i: u32 = 0; i < ${bComponents}; i++) {
                 ${processOneWord()}
                 word_offset += ${8 / aComponents};
@@ -496,20 +537,7 @@ export const createMatMulNBitsBlockwiseProgramInfo = (
 
 export const matMulNBits = (context: ComputeContext, attributes: MatMulNBitsAttributes): void => {
   validateInputs(context.inputs, attributes);
-  if (context.inputs.length < 4) {
-    context.compute(createMatMulNBitsBlockwiseProgramInfo(context.inputs, attributes));
-  } else {
-    const maxComputeWorkgroupSizes: [number, number, number] = context.getMaxComputeWorkgroupSizes();
-    const maxComputeWorkgroupStorageSize = context.getMaxComputeWorkgroupStoragesize();
-    context.compute(
-      createMatMulNBitsProgramInfo(
-        context.inputs,
-        attributes,
-        maxComputeWorkgroupSizes,
-        maxComputeWorkgroupStorageSize,
-      ),
-    );
-  }
+  context.compute(createMatMulNBitsBlockwiseProgramInfo(context.inputs, attributes));
 };
 
 export const parseMatMulNBitsAttributes = (attributes: Record<string, unknown>): MatMulNBitsAttributes =>
