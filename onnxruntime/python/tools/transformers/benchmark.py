@@ -136,15 +136,6 @@ def run_onnxruntime(
             )
             return results
 
-    if provider == "migraphx":
-        optimizer_info = OptimizerInfo.NOOPT
-        warm_up_repeat = 5
-        if "MIGraphXExecutionProvider" not in onnxruntime.get_available_providers():
-            logger.error(
-                "Please install onnxruntime-rocm package, and use a machine with GPU for testing gpu performance."
-            )
-            return results
-
     if optimizer_info == OptimizerInfo.NOOPT:
         logger.warning(
             f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied."
