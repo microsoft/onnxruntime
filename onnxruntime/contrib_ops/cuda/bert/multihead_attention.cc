@@ -233,7 +233,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_runner =
       kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_self_attention_ &&
-      fused_cross_attention_kernel == nullptr &&
       nullptr == attention_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
       nullptr == past_key && nullptr == present_key &&
