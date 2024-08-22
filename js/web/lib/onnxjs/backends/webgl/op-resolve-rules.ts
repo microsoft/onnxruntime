@@ -1,38 +1,55 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OpSet} from '../../opset';
+import { OpSet } from '../../opset';
 
-import {batchNormalization, parseBatchNormalizationAttributes} from './ops/batch-normalization';
+import { batchNormalization, parseBatchNormalizationAttributes } from './ops/batch-normalization';
 import * as binaryOps from './ops/binary-op';
-import {cast, parseCastAttributes} from './ops/cast';
-import {concat, parseConcatAttributes} from './ops/concat';
-import {conv, parseConvAttributes} from './ops/conv';
-import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
-import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
-import {flatten, parseFlattenAttributes} from './ops/flatten';
-import {gather, parseGatherAttributes} from './ops/gather';
-import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
-import {imageScaler, parseImageScalerAttributes} from './ops/image-scaler';
-import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
-import {lrn, parseLrnAttributes} from './ops/lrn';
-import {matMul, parseMatMulAttributes} from './ops/matmul';
-import {padV11, padV2, parsePadAttributesV11, parsePadAttributesV2} from './ops/pad';
-import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
-import {parseReduceAttributes, reduceLogSum, reduceLogSumSquare, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum} from './ops/reduce';
-import {reshape} from './ops/reshape';
-import {parseResizeAttributesV10, parseResizeAttributesV11, resize} from './ops/resize-packed';
-import {shape} from './ops/shape';
-import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
-import {parseSoftmaxAttributes, parseSoftmaxAttributesV13, softmax, softmaxV13} from './ops/softmax';
-import {parseSplitAttributes, split} from './ops/split';
-import {parseSqueezeAttributes, squeeze, squeezeV13} from './ops/squeeze';
-import {sum} from './ops/sum';
-import {tile} from './ops/tile';
-import {parseTransposeAttributes, transpose} from './ops/transpose';
+import { cast, parseCastAttributes } from './ops/cast';
+import { concat, parseConcatAttributes } from './ops/concat';
+import { conv, parseConvAttributes } from './ops/conv';
+import { convTranspose, parseConvTransposeAttributes } from './ops/conv-transpose';
+import { depthToSpace, parseDepthToSpaceAttributes } from './ops/depth-to-space';
+import { flatten, parseFlattenAttributes } from './ops/flatten';
+import { gather, parseGatherAttributes } from './ops/gather';
+import { gemm, parseGemmAttributesV11, parseGemmAttributesV7 } from './ops/gemm';
+import { imageScaler, parseImageScalerAttributes } from './ops/image-scaler';
+import { instanceNormalization, parseInstanceNormalizationAttributes } from './ops/instance-normalization';
+import { lrn, parseLrnAttributes } from './ops/lrn';
+import { matMul, parseMatMulAttributes } from './ops/matmul';
+import { padV11, padV2, parsePadAttributesV11, parsePadAttributesV2 } from './ops/pad';
+import {
+  averagePool,
+  globalAveragePool,
+  globalMaxPool,
+  maxPool,
+  parseAveragePoolAttributes,
+  parseGlobalAveragePoolAttributes,
+  parseMaxPoolAttributes,
+} from './ops/pool';
+import {
+  parseReduceAttributes,
+  reduceLogSum,
+  reduceLogSumSquare,
+  reduceMax,
+  reduceMean,
+  reduceMin,
+  reduceProd,
+  reduceSum,
+} from './ops/reduce';
+import { reshape } from './ops/reshape';
+import { parseResizeAttributesV10, parseResizeAttributesV11, resize } from './ops/resize-packed';
+import { shape } from './ops/shape';
+import { parseSliceAttributes, slice, sliceV10 } from './ops/slice';
+import { parseSoftmaxAttributes, parseSoftmaxAttributesV13, softmax, softmaxV13 } from './ops/softmax';
+import { parseSplitAttributes, split } from './ops/split';
+import { parseSqueezeAttributes, squeeze, squeezeV13 } from './ops/squeeze';
+import { sum } from './ops/sum';
+import { tile } from './ops/tile';
+import { parseTransposeAttributes, transpose } from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
-import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
-import {parseUpsampleAttributesV7, parseUpsampleAttributesV9, upsample} from './ops/upsample';
+import { parseUnsqueezeAttributes, unsqueeze, unsqueezeV13 } from './ops/unsqueeze';
+import { parseUpsampleAttributesV7, parseUpsampleAttributesV9, upsample } from './ops/upsample';
 
 export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Abs', '', '6+', unaryOps.abs],
@@ -99,7 +116,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Shape', '', '1+', shape],
   ['Sigmoid', '', '6+', unaryOps.sigmoid],
   ['Sin', '', '7+', unaryOps.sin],
-  ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
+  ['Slice', '', '10+', sliceV10], // TODO: support 'steps' for Slice-10
   ['Slice', '', '1-9', slice, parseSliceAttributes],
   // The "semantic" meaning of axis has changed in opset-13.
   ['Softmax', '', '1-12', softmax, parseSoftmaxAttributes],

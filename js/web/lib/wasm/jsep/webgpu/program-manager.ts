@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
+import { TRACE_FUNC_BEGIN, TRACE_FUNC_END } from 'onnxruntime-common';
 
-import {WebGpuBackend} from '../backend-webgpu';
-import {LOG_DEBUG} from '../log';
+import { WebGpuBackend } from '../backend-webgpu';
+import { LOG_DEBUG } from '../log';
 
-import {createShaderHelper} from './ops/common';
-import {Artifact, GpuData, ProgramInfo} from './types';
+import { createShaderHelper } from './ops/common';
+import { Artifact, GpuData, ProgramInfo } from './types';
 
 /**
  * ProgramManager is the main class behind running computations
@@ -19,44 +19,52 @@ import {Artifact, GpuData, ProgramInfo} from './types';
  * corresponding Location's in the binary program
  */
 export class ProgramManager {
-  repo: Map<unknown, Artifact>;  // this should be per-session object
+  repo: Map<unknown, Artifact>; // this should be per-session object
   attributesBound: boolean;
 
   constructor(private backend: WebGpuBackend) {
     this.repo = new Map();
     this.attributesBound = false;
   }
-  getArtifact(key: unknown): Artifact|undefined {
+  getArtifact(key: unknown): Artifact | undefined {
     return this.repo.get(key);
   }
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
-      uniformBufferBinding: GPUBindingResource|undefined): void {
+  run(
+    buildArtifact: Artifact,
+    inputs: GpuData[],
+    outputs: GpuData[],
+    dispatchGroup: [number, number, number],
+    uniformBufferBinding: GPUBindingResource | undefined,
+  ): void {
     TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
     this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
     const entries = [];
     for (const input of inputs) {
-      entries.push({binding: entries.length, resource: {buffer: input.buffer}});
+      entries.push({ binding: entries.length, resource: { buffer: input.buffer } });
     }
     for (const output of outputs) {
-      entries.push({binding: entries.length, resource: {buffer: output.buffer}});
+      entries.push({ binding: entries.length, resource: { buffer: output.buffer } });
     }
     if (uniformBufferBinding) {
-      entries.push({binding: entries.length, resource: uniformBufferBinding});
+      entries.push({ binding: entries.length, resource: uniformBufferBinding });
     }
-    const bindGroup = device.createBindGroup(
-        {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
+    const bindGroup = device.createBindGroup({
+      layout: buildArtifact.computePipeline.getBindGroupLayout(0),
+      entries,
+      label: buildArtifact.programInfo.name,
+    });
 
     if (this.backend.sessionStatus === 'capturing') {
       const commandInfo = {
         kernelId: this.backend.currentKernelId!,
         computePipeline: buildArtifact.computePipeline,
         bindGroup,
-        dispatchGroup
+        dispatchGroup,
       };
       const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
       sessionCommandList!.push(commandInfo);
@@ -68,8 +76,10 @@ export class ProgramManager {
     this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
 
-    if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
-        this.backend.queryType === 'at-passes') {
+    if (
+      this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
+      this.backend.queryType === 'at-passes'
+    ) {
       this.backend.endComputePass();
     }
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
@@ -90,21 +100,25 @@ export class ProgramManager {
     const shaderHelper = createShaderHelper(normalizedDispatchGroupSize, this.backend.device.limits);
     const userCode = programInfo.getShaderSource(shaderHelper);
     const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
-    const shaderModule = device.createShaderModule({code, label: programInfo.name});
+    const shaderModule = device.createShaderModule({ code, label: programInfo.name });
     LOG_DEBUG('verbose', () => `[WebGPU] ${programInfo.name} shader code: ${code}`);
 
-    const computePipeline = device.createComputePipeline(
-        {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
+    const computePipeline = device.createComputePipeline({
+      compute: { module: shaderModule, entryPoint: 'main' },
+      layout: 'auto',
+      label: programInfo.name,
+    });
 
     TRACE_FUNC_END(programInfo.name);
-    return {programInfo, computePipeline, uniformVariablesInfo: shaderHelper.variablesInfo};
+    return { programInfo, computePipeline, uniformVariablesInfo: shaderHelper.variablesInfo };
   }
 
-  normalizeDispatchGroupSize(dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup']):
-      [number, number, number] {
+  normalizeDispatchGroupSize(
+    dispatchGroup: ReturnType<ProgramInfo['getRunData']>['dispatchGroup'],
+  ): [number, number, number] {
     const x = typeof dispatchGroup === 'number' ? dispatchGroup : dispatchGroup.x;
-    const y = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.y || 1);
-    const z = typeof dispatchGroup === 'number' ? 1 : (dispatchGroup.z || 1);
+    const y = typeof dispatchGroup === 'number' ? 1 : dispatchGroup.y || 1;
+    const z = typeof dispatchGroup === 'number' ? 1 : dispatchGroup.z || 1;
     const limitPerDimension = this.backend.device.limits.maxComputeWorkgroupsPerDimension;
     if (x <= limitPerDimension && y <= limitPerDimension && z <= limitPerDimension) {
       return [x, y, z];

@@ -1,8 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TextureConstructorParameters} from './tensor-factory.js';
-import {Tensor} from './tensor-impl.js';
+import {
+  CpuPinnedConstructorParameters,
+  GpuBufferConstructorParameters,
+  TextureConstructorParameters,
+} from './tensor-factory.js';
+import { Tensor } from './tensor-impl.js';
 
 /**
  * calculate size from dims.

@@ -60,7 +60,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* relative_position_bias = context->Input<Tensor>(4);
+  const Tensor* attention_bias = context->Input<Tensor>(4);
   const Tensor* past_key = context->Input<Tensor>(kPastInputIndex);
   const Tensor* past_value = context->Input<Tensor>(kPastInputIndex + 1);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
@@ -80,7 +80,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                                                       value,
                                                                       bias,
                                                                       mask_index,
-                                                                      relative_position_bias,
+                                                                      attention_bias,
                                                                       past_key,
                                                                       past_value,
                                                                       past_seq_len,
@@ -141,16 +141,16 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the q buffers
   parameters.q = const_cast<T1*>(query->Data<T1>());
 
-  // Update the relative position bias for self attention
-  if (relative_position_bias != nullptr) {
-    parameters.relative_attention_bias = const_cast<T1*>(relative_position_bias->Data<T1>());
+  // Update the attention bias for self attention
+  if (attention_bias != nullptr) {
+    parameters.attention_bias = const_cast<T1*>(attention_bias->Data<T1>());
   }
 
   // Decoder cross-attention
   if (past_key == nullptr && present_key == nullptr) {
-    if (relative_position_bias != nullptr) {
+    if (attention_bias != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "DecoderMaskedMultiHeadAttention does not support relative position bias for cross-attention");
+                             "DecoderMaskedMultiHeadAttention does not support attention bias for cross-attention");
     }
 
     parameters.is_cross_attention = true;

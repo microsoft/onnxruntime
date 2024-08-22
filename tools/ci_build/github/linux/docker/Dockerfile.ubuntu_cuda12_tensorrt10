@@ -27,11 +27,11 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/python3 python &&\
     ln -s /usr/bin/pip3 pip;
 
-RUN pip install --upgrade pip 
+RUN pip install --upgrade pip
 RUN pip install setuptools>=68.2.2 psutil
 
 # Install TensorRT
-RUN version="10.2.0.19-1+cuda12.5" &&\
+RUN version="10.3.0.26-1+cuda12.5" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \
@@ -98,7 +98,7 @@ RUN if [ -z "$ONNXRUNTIME_COMMIT_ID" ] ; then echo "Building branch ${ONNXRUNTIM
     git reset --hard ${ONNXRUNTIME_COMMIT_ID} && git submodule update --recursive ; fi
 
 # Build ORT
-ENV CUDA_MODULE_LOADING "LAZY" 
+ENV CUDA_MODULE_LOADING "LAZY"
 ARG PARSER_CONFIG=""
 RUN /bin/sh build.sh ${PARSER_CONFIG} --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"'
 

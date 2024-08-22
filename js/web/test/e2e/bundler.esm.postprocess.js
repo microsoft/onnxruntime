@@ -27,7 +27,7 @@ const content = fs.readFileSync(inputFilePath, 'utf8');
 
 // replace all `"file://*/ort.*.mjs"` paths back to `import.meta.url`. Try to keep the same length to make source map
 // work.
-const updatedContent = content.replace(/['"]file:\/\/.+?\/ort\..+?\.mjs['"]/g, match => {
+const updatedContent = content.replace(/['"]file:\/\/.+?\/ort\..+?\.mjs['"]/g, (match) => {
   return 'import.meta.url'.padEnd(match.length, ' ');
 });
 

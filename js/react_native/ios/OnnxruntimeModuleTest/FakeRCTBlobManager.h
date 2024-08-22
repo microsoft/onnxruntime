@@ -8,15 +8,15 @@
 
 @interface FakeRCTBlobManager : RCTBlobManager
 
-@property (nonatomic, strong) NSMutableDictionary *blobs;
+@property(nonatomic, strong) NSMutableDictionary* blobs;
 
-- (NSString *)store:(NSData *)data;
+- (NSString*)store:(NSData*)data;
 
-- (NSData *)resolve:(NSString *)blobId offset:(long)offset size:(long)size;
+- (NSData*)resolve:(NSString*)blobId offset:(long)offset size:(long)size;
 
-- (NSDictionary *)testCreateData:(NSData *)buffer;
+- (NSDictionary*)testCreateData:(NSData*)buffer;
 
-- (NSString *)testGetData:(NSDictionary *)data;
+- (NSString*)testGetData:(NSDictionary*)data;
 
 @end
 
