@@ -189,6 +189,9 @@ export interface ComputeContext {
   output(index: number, dims: readonly number[]): number;
   getMaxComputeWorkgroupSizes(): [number, number, number];
   getMaxComputeWorkgroupStoragesize(): number;
+  isSubgroupsSupported(): boolean;
+  isSubgroupsF16Supported(): boolean;
+  getSubgroupSizeRange(): [number, number] | undefined;
 }
 
 export type TimestampQuery = 'none' | 'inside-passes' | 'at-passes';

@@ -243,13 +243,21 @@ export class WebGpuBackend {
       requiredFeatures,
     };
 
-    if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
-      requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
-    } else if (adapter.features.has('timestamp-query')) {
-      requiredFeatures.push('timestamp-query');
+    // Try requiring WebGPU features
+    const tryRequireFeature = (feature: GPUFeatureName) =>
+      adapter.features.has(feature) && requiredFeatures.push(feature) && true;
+    // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
+    if (!tryRequireFeature('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
+      tryRequireFeature('timestamp-query');
     }
-    if (adapter.features.has('shader-f16')) {
-      requiredFeatures.push('shader-f16');
+    tryRequireFeature('shader-f16');
+    // Try subgroups, and fallback to chromium-experiental-subgroups
+    if (tryRequireFeature('subgroups' as GPUFeatureName)) {
+      // If subgroups feature is available, also try subgroups-f16
+      tryRequireFeature('subgroups-f16' as GPUFeatureName);
+    } else {
+      // Try fallback to chromium-experimental-subgroups, which also enables f16 for subgroups if available.
+      tryRequireFeature('chromium-experimental-subgroups' as GPUFeatureName);
     }
 
     this.device = await adapter.requestDevice(deviceDescriptor);
