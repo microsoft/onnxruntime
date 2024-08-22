@@ -22,6 +22,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+        TensorrtExecutionProvider* p = static_cast<TensorrtExecutionProvider*>(this_);
+        this_->extra_param_for_create_state_func = p;
+        this_->extra_param_for_compute_func = p;
         for (size_t j = 0; j < cnt; j++) {
             std::unordered_map<std::string, size_t> input_map, output_map;
             size_t input_size = 0;
@@ -41,7 +44,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
             }
 
             OrtStatusPtr ret = nullptr;
-            TensorrtExecutionProvider* p = static_cast<TensorrtExecutionProvider*>(this_);
             if (GraphHasCtxNode(graph[j])) {
                 ret = p->CreateNodeComputeInfoFromPrecompiledEngine(graph[j], node[j], input_map, output_map, &node_compute_info[j]);
             } else {
@@ -262,45 +264,42 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
   output_info_[fused_node_name].push_back(output_types);
 
   // Create function state
-  // TODO: remove default capture
-//  NodeComputeInfo compute_info;
-//  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-//    std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
-//    *p = {context->allocate_func,
-//          context->release_func,
-//          context->allocator_handle,
-//          context->node_name,
-//          &engines_[context->node_name],
-//          &contexts_[context->node_name],
-//          input_info_[context->node_name],
-//          output_info_[context->node_name],
-//          context_memory_sharing_enable_,
-//          &max_ctx_mem_size_,
-//          &tensorrt_mu_};
-//    *state = p.release();
-//    return 0;
-//  };
-//
-//  // Release function state
-//  compute_info.release_state_func = [](FunctionState state) {
-//    delete static_cast<TensorrtShortFuncState*>(state);
-//  };
-//
-//  // Create compute function
-//  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-//    Ort::KernelContext ctx(context);
-//
-//    TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
-//
-//    // The whole compute_function should be considered the critical section.
-//    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+  (*node_compute_funcs)->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
+    TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
+    std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
+    *p = { context->AllocateFunc,
+           context->DestroyFunc,
+           context->allocator_handle,
+           context->node_name,
+           &(this_->engines_[context->node_name]),
+           &(this_->contexts_[context->node_name]),
+           this_->input_info_[context->node_name],
+           this_->output_info_[context->node_name],
+           this_->context_memory_sharing_enable_,
+           &this_->max_ctx_mem_size_};
+    *state = p.release();
+    return 0;
+  };
+
+  // Release function state
+  (*node_compute_funcs)->DestroyFunctionStateFunc = [](void* state) {
+    delete reinterpret_cast<TensorrtShortFuncState*>(state);
+  };
+
+  // Create compute function
+  (*node_compute_funcs)->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
+    TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
+    TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
+
+    // The whole compute_function should be considered the critical section.
+    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
 //    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-//
-//    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
-//    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
-//    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
-//    auto fused_node_name = trt_state->fused_node_name;
-//    auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
+
+    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
+    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
+    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
+    auto fused_node_name = trt_state->fused_node_name;
+    auto& dds_output_allocator_map = this_->dds_output_allocator_maps_[fused_node_name];
 //    auto trt_engine = trt_state->engine->get();
 //    auto trt_context = trt_state->context->get();
 //    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
@@ -487,11 +486,10 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
 //        IncrementRegularRunCountBeforeGraphCapture();
 //      }
 //    }
-//
-//    return Status::OK();
-//  };
-//
-//  node_compute_funcs.push_back(compute_info);
+
+    return nullptr;
+  };
+
   return nullptr;
 }
 

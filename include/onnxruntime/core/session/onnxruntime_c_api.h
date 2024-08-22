@@ -737,14 +737,15 @@ typedef struct OrtComputeContext {
 } OrtComputeContext;
 
 typedef struct OrtNodeComputeInfo {
-  int(ORT_API_CALL* CreateFunctionStateFunc)(OrtComputeContext*, void**);
-  OrtStatusPtr(ORT_API_CALL* ComputeFunc)(void*, const OrtApi*, OrtKernelContext*);
+  int(ORT_API_CALL* CreateFunctionStateFunc)(OrtComputeContext*, void*, void**);
+  OrtStatusPtr(ORT_API_CALL* ComputeFunc)(void*, void*, const OrtApi*, OrtKernelContext*);
   void(ORT_API_CALL* DestroyFunctionStateFunc)(void*);
 } OrtNodeComputeInfo;
 
 typedef struct OrtExecutionProvider {
 #ifdef __cplusplus
-  OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr}, CanCopy{nullptr}, CopyTensor{nullptr}, type{nullptr}, create_stream{nullptr}, default_device{nullptr} {}
+  OrtExecutionProvider() : GetCapability{nullptr}, Compile{nullptr}, RegisterKernels{nullptr}, CanCopy{nullptr}, CopyTensor{nullptr}, type{nullptr}, create_stream{nullptr}, default_device{nullptr},
+                           extra_param_for_create_state_func{nullptr}, extra_param_for_compute_func{nullptr} {}
 #endif
   void(ORT_API_CALL* GetCapability)(const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph***);
   OrtStatusPtr(ORT_API_CALL* Compile)(OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info);
@@ -754,6 +755,8 @@ typedef struct OrtExecutionProvider {
   const char* type;
   OrtCreateStream* create_stream;
   const OrtDevice* default_device;
+  void* extra_param_for_create_state_func;
+  void* extra_param_for_compute_func;
 } OrtExecutionProvider;
 
 typedef struct OrtExecutionProviderFactory {

@@ -94,11 +94,11 @@ public:
     for (size_t i = 0; i < count; i++) {
         NodeComputeInfo compute_info;
         compute_info.create_state_func = [&, cache, i](ComputeContext* context, void** state) {
-            if (cache[i].CreateFunctionStateFunc) return cache[i].CreateFunctionStateFunc(reinterpret_cast<OrtComputeContext*>(context), state);
+            if (cache[i].CreateFunctionStateFunc) return cache[i].CreateFunctionStateFunc(reinterpret_cast<OrtComputeContext*>(context), ep_impl_->extra_param_for_create_state_func, state);
             return 0;
         };
         compute_info.compute_func = [&, cache, i](void* state, const OrtApi* api, OrtKernelContext* context) {
-            return ToStatus(cache[i].ComputeFunc(state, api, context));
+            return ToStatus(cache[i].ComputeFunc(state, ep_impl_->extra_param_for_compute_func, api, context));
         };
         compute_info.release_state_func = [&, cache, i](void* state) {
             if (cache[i].DestroyFunctionStateFunc) {

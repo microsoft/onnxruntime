@@ -14,6 +14,9 @@
 
 namespace onnxruntime {
 
+using AllocateFunc = void* (*)(void*, size_t, size_t);
+using DestroyFunc = void (*)(void*, void*);
+
 class TensorrtLogger : public nvinfer1::ILogger {
   nvinfer1::ILogger::Severity verbosity_;
 
@@ -99,6 +102,68 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
 };
 
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
+
+struct TensorrtFuncState {
+  AllocateFunc test_allocate_func = nullptr;
+  DestroyFunc test_release_func = nullptr;
+  void* allocator = nullptr;
+  std::string fused_node_name;
+  nvinfer1::IBuilder* builder;
+  tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
+  std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
+  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
+  std::unique_ptr<nvinfer1::INetworkDefinition>* network = nullptr;
+  std::vector<std::unordered_map<std::string, size_t>> input_info;
+  std::vector<std::unordered_map<std::string, size_t>> output_info;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
+//  OrtMutex* tensorrt_mu_ptr = nullptr;
+  bool fp16_enable = false;
+  bool int8_enable = false;
+  bool int8_calibration_cache_available = false;
+  bool dla_enable = false;
+  int dla_core = 0;
+  size_t* max_workspace_size_ptr = nullptr;
+  std::string trt_node_name_with_precision;
+  bool engine_cache_enable = false;
+  std::string engine_cache_path;
+  nvinfer1::IRuntime* runtime = nullptr;
+  std::vector<nvinfer1::IOptimizationProfile*> profiles;
+  bool context_memory_sharing_enable = false;
+  size_t* max_context_mem_size_ptr = nullptr;
+  std::unordered_map<std::string, float> dynamic_range_map;
+  bool engine_decryption_enable = false;
+  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
+  bool timing_cache_enable = true;
+  std::string timing_cache_path;
+  bool force_timing_cache = false;
+  bool detailed_build_log = false;
+  bool build_heuristics_enable = false;
+  bool sparsity_enable = false;
+  int builder_optimization_level = 3;
+  int auxiliary_streams = -1;
+  bool filter_tactic_sources = false;
+  nvinfer1::TacticSources tactic_sources;
+  bool cuda_graph_enable = 0;
+  std::string cache_prefix;
+  std::string cache_suffix;
+  bool engine_hw_compatible = false;
+};
+
+// Minimum information to construct kernel function state for direct engine load code path
+struct TensorrtShortFuncState {
+  AllocateFunc test_allocate_func = nullptr;
+  DestroyFunc test_release_func = nullptr;
+  void* allocator = nullptr;
+  std::string fused_node_name;
+  std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
+  std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
+  std::vector<std::unordered_map<std::string, size_t>> input_info;
+  std::vector<std::unordered_map<std::string, size_t>> output_info;
+  bool context_memory_sharing_enable = false;
+  size_t* max_context_mem_size_ptr = nullptr;
+//  OrtMutex* tensorrt_mu_ptr = nullptr;
+};
 
 using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
 std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
