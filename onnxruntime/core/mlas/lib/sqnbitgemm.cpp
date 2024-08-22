@@ -266,59 +266,6 @@ MlasSQNBitGemmPackQuantBData(
     }
 }
 
-void
-MLASCALL
-ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size)
-{
-#ifdef MLAS_TARGET_AMD64_IX86
-    size_t i = 0;
-
-    // Process 16 elements at a time using AVX2
-    for (; i + 15 < size; i += 16) {
-        // Load 16 FP16 values into an AVX2 register
-        __m256i fp16_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(a_row + i));
-
-        // Convert FP16 values to FP32
-        __m256 fp32_values1 = _mm256_cvtph_ps(_mm256_castsi256_si128(fp16_values));
-        __m256 fp32_values2 = _mm256_cvtph_ps(_mm256_extracti128_si256(fp16_values, 1));
-
-        // Store the converted FP32 values into the output vector
-        _mm256_storeu_ps(a_row_fp32 + i, fp32_values1);
-        _mm256_storeu_ps(a_row_fp32 + i + 8, fp32_values2);
-    }
-
-    // Process any remaining elements
-    for (; i < size; ++i) {
-        a_row_fp32[i] = a_row[i].ToFloat();
-    }
-#else
-    MLAS_THROW_EX(std::logic_error, "ConvertFp16ToFp32 is not implemented!");
-#endif
-}
-
-void
-MLASCALL
-ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size)
-{
-#ifdef MLAS_TARGET_AMD64_IX86
-    size_t i = 0;
-
-    // Process 8 elements at a time using AVX2
-    for (; i + 8 <= size; i += 8) {
-        __m256 fp32_chunk = _mm256_loadu_ps(&c_blk_fp32_v[i]);
-        __m128i fp16_chunk = _mm256_cvtps_ph(fp32_chunk, _MM_FROUND_TO_NEAREST_INT);
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(&fp16_data[i]), fp16_chunk);
-    }
-
-    // Process any remaining elements
-    for (; i < size; ++i) {
-        fp16_data[i] = MLAS_FP16(c_blk_fp32_v[i]);
-    }
-#else
-    MLAS_THROW_EX(std::logic_error, "ConvertFp32ToFp16 is not implemented!");
-#endif
-}
-
 namespace
 {
 

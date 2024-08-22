@@ -300,21 +300,17 @@ void TestMatMulNBitsTyped() {
               RunTest<AType>(opts);
             }
 
-            //{
-            //  // TODO: support has_bias and has_g_idx case in the MatMulNBits kernel
-            //  TestOptions opts = base_opts;
-            //  opts.has_g_idx = true;
-            //  opts.has_bias = true;
-            //  RunTest<AType>(opts);
-            //}
+            {
+              TestOptions opts = base_opts;
+              opts.has_g_idx = true;
+              opts.has_bias = true;
+              RunTest<AType>(opts);
+            }
 
             {
-              // TODO: support zp_is_4bit false with MLFloat16 in the MatMulNBits kernel
-              if constexpr (std::is_same<AType, float>::value) {
-                TestOptions opts = base_opts;
-                opts.has_zero_point = true, opts.zp_is_4bit = false;
-                RunTest<AType>(opts);
-              }
+              TestOptions opts = base_opts;
+              opts.has_zero_point = true, opts.zp_is_4bit = false;
+              RunTest<AType>(opts);
             }
 #endif  // !defined(ORT_NEURAL_SPEED) && !defined(USE_DML)
 

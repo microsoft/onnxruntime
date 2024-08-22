@@ -20,7 +20,6 @@ Abstract:
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
-#include <vector>
 
 //
 // Define the calling convention for Windows targets.
@@ -1789,13 +1788,31 @@ MlasTranspose(
 }
 
 
+#ifdef MLAS_TARGET_AMD64_IX86
 void
 MLASCALL
 ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size);
+#else
+#pragma message("Warning: ConvertFp16ToFp32 is not implemented for this target.")
+void
+MLASCALL
+ConvertFp16ToFp32(const MLAS_FP16* a_row, float* a_row_fp32, uint64_t size) {
+    throw std::runtime_error("ConvertFp16ToFp32 is not implemented for this target.");
+}
+#endif
 
+#ifdef MLAS_TARGET_AMD64_IX86
 void
 MLASCALL
 ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size);
+#else
+#pragma message("Warning: ConvertFp32ToFp16 is not implemented for this target.")
+void
+MLASCALL
+ConvertFp32ToFp16(const float* c_blk_fp32_v, MLAS_FP16* fp16_data, uint64_t size) {
+    throw std::runtime_error("ConvertFp32ToFp16 is not implemented for this target.");
+}
+#endif
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 /**

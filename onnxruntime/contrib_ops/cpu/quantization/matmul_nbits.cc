@@ -450,7 +450,7 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
+  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<AType>())) {
     // dequantize b, only 4b quantization is supported for now
     MlasDequantizeBlockwise<float, 4>(
         tmp_b_data_ptr.get(),                           // dequantized output
@@ -465,12 +465,12 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   } else {
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
-    if ((zero_points && zero_points->IsDataType<float>())) {
-      DequantizeBlockwise<float, float>(
+    if ((zero_points && zero_points->IsDataType<AType>())) {
+      DequantizeBlockwise<float, AType>(
           tmp_b_data_ptr.get(),                         // dequantized output
           b_data,                                       // quantized input
           scales_data_,                                 // quantization scales
-          static_cast<const float*>(zero_points_data),  // quantization zero points
+          static_cast<const AType*>(zero_points_data),  // quantization zero points
           reorder_idx_data,
           static_cast<int32_t>(block_size_),  // quantization block size
           column_wise_quant_,                 // columnwise quantization or row-wise
@@ -517,15 +517,15 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
     // if there is a bias input, copy bias values into C and set beta to 1.0f
     if (const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
         bias != nullptr) {
-      gsl::span<const float> bias_span = bias->DataAsSpan<float>();
+      auto tmp_bias_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, bias->Shape().Size());
+      ConvertFp16ToFp32(bias->Data<AType>(), tmp_bias_data_ptr.get(), bias->Shape().Size());
       for (size_t i = 0; i < batch_count; ++i) {
         float* C_row = data[i].C;
         const size_t ldc = data[i].ldc;
         for (size_t m = 0; m < M; ++m) {
-          memcpy(C_row, bias_span.data(), bias_span.size_bytes());
+          std::copy(tmp_bias_data_ptr.get(), tmp_bias_data_ptr.get() + bias->Shape().Size(), C_row);
           C_row += ldc;
         }
-
         data[i].beta = 1.0f;
       }
     }
@@ -593,7 +593,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()})
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulNBits<MLFloat16>);
 
