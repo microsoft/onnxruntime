@@ -181,6 +181,8 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
                                       nvinfer1::ICudaEngine* trt_engine,
                                       bool serialize_refitted_engine,
                                       bool detailed_build_log);
+    SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
+                                          const OrtGraphViewer& graph, bool* early_termination) const;
 private:
     static const OrtApi* api_;
 //  mutable TensorrtExecutionProviderInfo info_;

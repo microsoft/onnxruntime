@@ -543,6 +543,12 @@ ORT_API_STATUS_IMPL(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph,
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
 
+ORT_API_STATUS_IMPL(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
+
+ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
+
 ORT_API_STATUS_IMPL(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Out_ size_t* len, _Outptr_ const OrtNode*** consumers);
@@ -553,11 +559,17 @@ ORT_API(int, OrtGraph_NumberOfNodes, const OrtGraphViewer*) ORT_ALL_ARGS_NONNULL
 
 ORT_API_STATUS_IMPL(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out);
 
+// ORT_API_STATUS_IMPL(OrtGraph_CreateModel, const OrtGraphViewer* graph, _Outptr_ OrtModel** out);
+
+ORT_API_STATUS_IMPL(OrtGraph_GetOutputs, const OrtGraphViewer* graph, _Out_ size_t* len, _Outptr_ const OrtNodeArg*** args);
+
 ORT_API(size_t, OrtGraph_GetOutputSize, const OrtGraphViewer*) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(const char*, OrtGraph_GetIthOutputName, const OrtGraphViewer*, size_t i) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(int32_t, OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i) ORT_ALL_ARGS_NONNULL;
+
+ORT_API_STATUS_IMPL(OrtNodeArg_GetName, const OrtNodeArg* node_arg, _Out_ const char** name);
 
 ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 

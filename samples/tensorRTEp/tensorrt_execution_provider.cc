@@ -18,6 +18,14 @@ const OrtApi* TensorrtExecutionProvider::api_ = OrtGetApiBase()->GetApi(ORT_API_
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& ep_info) : OrtExecutionProvider() {
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
+        const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+        if (api->OrtGraph_NumberOfNodes(graph) == 1 && GraphHasCtxNode(graph)) {
+            SubGraph_t supported_node_vector = {{0}, true};
+          // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+         // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+         // return result;
+        }
+        TRTGenerateId(graph);
     };
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
@@ -491,6 +499,17 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
   };
 
   return nullptr;
+}
+
+SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
+                                                                 const OrtGraphViewer& graph, bool* early_termination) const {
+  // Return if iterations are exceeding predefined number
+  SubGraphCollection_t nodes_list_output;
+  if (iterations > max_iterations) {
+    *early_termination = true;
+    return nodes_list_output;
+  }
+  return nodes_list_output;
 }
 
 }   // namespace onnxruntime

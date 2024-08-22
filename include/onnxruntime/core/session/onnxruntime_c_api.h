@@ -307,6 +307,9 @@ ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(ExecutionProviderFactory);
 ORT_RUNTIME_CLASS(Node);
+ORT_RUNTIME_CLASS(NodeArg);
+ORT_RUNTIME_CLASS(Model);
+ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(TypeConstraints);
@@ -4759,6 +4762,12 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
 
+  ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret);
+
+  ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
+
+  ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
+
   ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
   ORT_API2_STATUS(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Out_ size_t* len, _Outptr_ const OrtNode*** consumers); // TODO(leca): ValueConsumers::comprehensive ?
@@ -4769,11 +4778,17 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out);
 
+  // ORT_API2_STATUS(OrtGraph_CreateModel, const OrtGraphViewer* graph, _Outptr_ OrtModel** out);
+
+  ORT_API2_STATUS(OrtGraph_GetOutputs, const OrtGraphViewer* graph, _Out_ size_t* len, _Outptr_ const OrtNodeArg*** args);
+
   size_t(ORT_API_CALL* OrtGraph_GetOutputSize)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   const char*(ORT_API_CALL* OrtGraph_GetIthOutputName)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
+  ORT_API2_STATUS(OrtNodeArg_GetName, const OrtNodeArg* node_arg, _Out_ const char** name);
 
   ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 

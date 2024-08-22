@@ -5,6 +5,28 @@
 #include "tensorrt_execution_provider.h"
 
 namespace onnxruntime {
+
+HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
+  HashValue model_hash = 0;
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtGraph* graph = nullptr;
+  api->OrtGraph_GetOrtGraph(graph_viewer, &graph);
+  bool is_subgraph = false;
+  api->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  while (is_subgraph) {
+    const OrtGraph* parent_graph = nullptr;
+    api->OrtGraph_GetParentGraph(graph, &parent_graph);
+    graph = parent_graph;
+    api->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  }
+
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  // auto hash_str = [&hash](const std::string& str) {
+  //   MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  // };
+}
+
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   int maxNodeIndex = 0;
@@ -12,9 +34,12 @@ bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {
   for (int i = 0; i < maxNodeIndex; ++i) {
     const OrtNode* node = nullptr;
     api->OrtGraph_GetOrtNode(graph_viewer, i, &node);
+    if (node == nullptr) {
+      continue;
+    }
     const char* opType = nullptr;
     api->OrtNode_GetOpType(node, &opType);
-    if (node != nullptr && strcmp(opType, EPCONTEXT_OP.c_str()) == 0) {
+    if (strcmp(opType, EPCONTEXT_OP.c_str()) == 0) {
       return true;
     }
   }
