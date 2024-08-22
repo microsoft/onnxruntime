@@ -308,23 +308,23 @@ struct OpenVINO_Provider : Provider {
         auto file_path = std::filesystem::path(ep_context_file_path_);
         // ep_context_file_path_ file extension must be .onnx
         if (!ep_context_file_path_.empty()) {
-            if(file_path.extension().generic_string() == ".onnx") {
-              // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
-              auto parent_path = file_path.parent_path();
-              if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
-                  !std::filesystem::create_directory(parent_path)) {
-                ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
-              }
-#ifdef _WIN32
-              cache_dir = _strdup(ep_context_file_path_.c_str());
-#else
-              cache_dir = strdup(ep_context_file_path_.c_str());
-#endif
-            } else {
-              ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
+          if (file_path.extension().generic_string() == ".onnx") {
+            // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
+            auto parent_path = file_path.parent_path();
+            if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
+                !std::filesystem::create_directory(parent_path)) {
+              ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
             }
+#ifdef _WIN32
+            cache_dir = _strdup(ep_context_file_path_.c_str());
+#else
+            cache_dir = strdup(ep_context_file_path_.c_str());
+#endif
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
+          }
         } else {
-	      ORT_THROW("[ERROR] [OpenVINO] Please enter a valid EP context file path, this field cannot be empty . \n");
+          ORT_THROW("[ERROR] [OpenVINO] Please enter a valid EP context file path, this field cannot be empty . \n");
         }
       }
     }
