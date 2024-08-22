@@ -307,9 +307,10 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  const bool has_single_b_matrix = std::all_of(helper.RightOffsets().begin(),
-                                                helper.RightOffsets().end(),
-                                                [](size_t offset) { return offset == 0; });
+  const bool has_single_b_matrix = std::all_of(
+    helper.RightOffsets().begin(),
+    helper.RightOffsets().end(),
+    [](size_t offset) { return offset == 0; });
 
 #if defined(ORT_NEURAL_SPEED)
 
@@ -438,7 +439,6 @@ Status MatMulNBits<AType>::Compute(OpKernelContext* ctx) const {
   } else {
     scales_data_ = scales_data;
   }
-
 
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
