@@ -8,7 +8,7 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 10.2.cuda_12_5_cudnn_9
+  default: 10.3.cuda_12_5_cudnn_9
   values:
   - 8.6.cuda_11_8_cudnn_8
   - 8.6.cuda_12_3_cudnn_9
