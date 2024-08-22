@@ -359,7 +359,9 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
   );
   context.compute(
     createGroupedConvProgramInfo(inputs, adjustedAttributes, (outputShape) =>
-      isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : [],
+      isChannelLast
+        ? [outputShape[0], outputShape[2], outputShape[3]]
+        : [outputShape[0], outputShape[1], outputShape[3]],
     ),
   );
 };
