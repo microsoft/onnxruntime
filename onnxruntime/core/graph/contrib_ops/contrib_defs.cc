@@ -1409,67 +1409,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    QMoE4Bits, 1,
+    QMoE, 1,
     OpSchema()
-        .SetDoc("Int4 MoE")
-        .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
-              AttributeProto::STRING,
-              std::string("relu"))
-        .Attr("k",
-              "Number of top experts to select from expert pool",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("normalize_routing_weights",
-              "Whether to normalize routing weights",
-              AttributeProto::INT,
-              static_cast<int64_t>(0))
-        .Input(0,
-               "input",
-               "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-               "(batch_size, sequence_length, hidden_size)",
-               "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size / 2)", "T1")
-        .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
-        .Input(4,
-               "fc1_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Input(5, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size / 2)", "T1")
-        .Input(6, "fc2_scales", "2D input tensor with shape (num_experts, hidden_size)", "T")
-        .Input(7,
-               "fc2_experts_bias",
-               "2D optional input tensor with shape (num_experts, hidden_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(8,
-               "fc3_experts_weights",
-               "3D optional input tensor with shape (num_experts, hidden_size, inter_size / 2)",
-               "T1",
-               OpSchema::Optional)
-        .Input(9,
-               "fc3_scales",
-               "2D optional input tensor with shape (num_experts, inter_size)",
-               "T",
-               OpSchema::Optional)
-        .Input(10,
-               "fc3_experts_bias",
-               "2D optional input tensor with shape (num_experts, inter_size)",
-               "T",
-               OpSchema::Optional)
-        .Output(0,
-                "output",
-                "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
-                "(batch_size, sequence_length, hidden_size)",
-                "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
-        .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    QMoE8Bits, 1,
-    OpSchema()
-        .SetDoc("Int8 MoE")
+        .SetDoc("Quantized MoE")
         .Attr("activation_type",
               "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
               AttributeProto::STRING,
@@ -1483,18 +1425,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("expert_weight_bits", 
+              "Number of bits used in quantized weights. Default is 4 bits", 
+              AttributeProto::INT, 
+              static_cast<int64_t>(4))
         .Input(0,
                "input",
                "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
                "(batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T1")
+        .Input(2, 
+               "fc1_experts_weights", 
+               "3D input tensor with shape (num_experts, hidden_size, inter_size) "
+               "or (num_experts, hidden_size, inter_size / 2)", 
+               "T1")
         .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
         .Input(4,
                "fc1_experts_bias",
                "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Input(5, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T1")
+        .Input(5, 
+               "fc2_experts_weights", 
+               "3D input tensor with shape (num_experts, inter_size, hidden_size) "
+               "or (num_experts, inter_size, hidden_size / 2)",
+               "T1")
         .Input(6, "fc2_scales", "2D input tensor with shape (num_experts, hidden_size)", "T")
         .Input(7,
                "fc2_experts_bias",
@@ -1503,7 +1457,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional input tensor with shape (num_experts, hidden_size, inter_size)",
+               "3D optional input tensor with shape (num_experts, hidden_size, inter_size) "
+               "or (num_experts, hidden_size, inter_size / 2)",
                "T1",
                OpSchema::Optional)
         .Input(9,
