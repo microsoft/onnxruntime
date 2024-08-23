@@ -172,7 +172,7 @@ int real_main(int argc, char* argv[]) {
     std::string last_qnn_ctx_binary_file_name;
     GetLastContextBinaryFileName(ep_ctx_files.back(), last_qnn_ctx_binary_file_name);
     if (last_qnn_ctx_binary_file_name.empty()) {
-      throw std::exception("Can't find QNN context binary file from the Onnx model");
+      throw Ort::Exception("Can't find QNN context binary file from the Onnx model.", OrtErrorCode::ORT_FAIL);
     }
     ep_ctx_files.pop_back();
 
