@@ -36,7 +36,7 @@ parameters:
 
 jobs:
 - job: 'build'
-  pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+  pool: 'onnxruntime-Win2022-Intel-CPU'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
