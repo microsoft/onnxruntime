@@ -242,7 +242,7 @@ ONNX Runtime can quantize certain operators in a model to 4 bit integer types. B
 - [Gather](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gather):
   - The node is quantized only if the input `data` is constant.
   - support QOperator
-  - Gather is replaced by a [GatherBlockQuantized](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftgatherblockquantized) node. Input `data` is blockwise quantized and saved in the new node. Only support RTN algorithm.
+  - Gather is quantized to a [GatherBlockQuantized](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftgatherblockquantized) node. Input `data` is blockwise quantized and saved in the new node. Only support RTN algorithm.
 
 Since Int4/UInt4 types are introduced in [onnx opset 21](https://github.com/onnx/onnx/releases/tag/v1.16.0), if the model's onnx domain version is < 21, it is force upgraded to opset 21. Please make sure the operators in the model are compatible with onnx opset 21.
 
@@ -281,6 +281,8 @@ quant.model.save_model_to_file(
   True) # save data to external file
 
 ```
+
+For AWQ and GTPQ quantization usage, please refer to [Gen-AI model builder](https://github.com/microsoft/onnxruntime-genai/tree/main/src/python/py/models#quantized-pytorch-model).
 
 ## FAQ
 ### Why am I not seeing performance improvements?
