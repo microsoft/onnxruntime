@@ -231,9 +231,9 @@ ONNX Runtime leverages the TensorRT Execution Provider for quantization on GPU n
 
 We provide two end-to end examples: [Yolo V3](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/object_detection/trt/yolov3) and [resnet50](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/trt/resnet50).
 
-## Quantization to Int4/UInt4
+## Quantize to Int4/UInt4
 
-ONNX Runtime can quantize certain operators in a model to 4 bit integer types. Weight only quantizaiton is applied to the operators. The supported op types are:
+ONNX Runtime can quantize certain operators in a model to 4 bit integer types. Block-wise weight-only quantizaiton is applied to the operators. The supported op types are:
 - [MatMul](https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul):
   - The node is quantized only if the input `B` is constant
   - support QOperator or QDQ format.
@@ -242,7 +242,7 @@ ONNX Runtime can quantize certain operators in a model to 4 bit integer types. W
 - [Gather](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gather):
   - The node is quantized only if the input `data` is constant.
   - support QOperator
-  - Gather is replaced by a [GatherBlockQuantized](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftgatherblockquantized) node. Input `data` is blockwise quantized and saved in the new node.
+  - Gather is replaced by a [GatherBlockQuantized](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftgatherblockquantized) node. Input `data` is blockwise quantized and saved in the new node. Only support RTN algorithm.
 
 Since Int4/UInt4 types are introduced in [onnx opset 21](https://github.com/onnx/onnx/releases/tag/v1.16.0), if the model's onnx domain version is < 21, it is force upgraded to opset 21. Please make sure the operators in the model are compatible with onnx opset 21.
 
