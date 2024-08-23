@@ -446,6 +446,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("use_tf32", ["1", "0"])
 
+                test_get_and_set_option_with_values("sdpa_kernel", ["0", "1", "2"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
@@ -1781,7 +1783,7 @@ class TestInferenceSession(unittest.TestCase):
                 return
 
             # https://github.com/microsoft/onnxruntime/issues/18432. Make sure device Id is properly set
-            # Scenario 1, 3 sessions created with differnt device Id under IOBinding
+            # Scenario 1, 3 sessions created with different device Id under IOBinding
             sessions = []
             for i in range(3):
                 sessions.append(

@@ -16,10 +16,10 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/framework/run_options.h"
@@ -199,6 +199,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
     context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
+
+    // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
+    // generate the QNN context model separately.
+    // It could happen that the generated EPContext node in separate graph has same node name.
+    // User can set this context_node_name_prefix for each split pieces to avoid that happens.
+    context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -405,25 +412,38 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 #endif
 }
 
-bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                           const logging::Logger& logger) const {
-  const std::string& op_type = node_unit.OpType();
-  bool supported = false;
-  const auto* op_builder = qnn::GetOpBuilder(op_type);
-  if (op_builder == nullptr) {
-    LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
-                          << node_unit.OpType() << " node `" << node_unit.Name()
-                          << "` will not be assigned to QNN EP.";
-  } else {
-    auto status = op_builder->IsOpSupported(qnn_model_wrapper,
-                                            node_unit, logger);
-    if (Status::OK() != status) {
-      LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
-                            << "` is not supported: " << status.ErrorMessage();
-    }
-    supported = (Status::OK() == status);
+// Logs information about the supported/unsupported nodes.
+static void LogNodeSupport(const logging::Logger& logger,
+                           logging::Severity log_severity,
+                           logging::DataType log_data_type,
+                           const onnxruntime::CodeLocation& call_site,
+                           const qnn::IQnnNodeGroup& qnn_node_group,
+                           Status support_status) {
+  if (!logger.OutputIsEnabled(log_severity, log_data_type)) {
+    return;
   }
-  return supported;
+
+  size_t num_nodes = 0;
+  std::ostringstream oss;
+  for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
+    for (const Node* node : node_unit->GetAllNodesInGroup()) {
+      oss << "\tOperator type: " << node->OpType()
+          << " Node name: " << node->Name()
+          << " Node index: " << node->Index() << std::endl;
+      num_nodes += 1;
+    }
+  }
+  if (!support_status.IsOK()) {
+    oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
+  }
+
+  logging::Capture(logger, log_severity, logging::Category::onnxruntime,
+                   log_data_type, call_site)
+          .Stream()
+      << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for " << num_nodes
+      << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
+      << std::endl
+      << oss.str();
 }
 
 std::unordered_set<const Node*>
@@ -462,68 +482,33 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 initializer_input_lookup,
                                                 qnn_backend_manager_->GetQnnBackendType());
 
-  std::unordered_set<const NodeUnit*> handled_node_units;
-  handled_node_units.reserve(node_unit_size);
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
+  qnn_node_groups.reserve(node_unit_size);
 
-  auto add_supported_nodes = [](std::unordered_set<const Node*>& supported_nodes, const NodeUnit* node_unit) {
-    for (const auto* node_in_group : node_unit->GetAllNodesInGroup()) {
-      supported_nodes.insert(node_in_group);
+  if (Status status = qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper,
+                                            node_unit_map, node_unit_size, logger);
+      !status.IsOK()) {
+    LOGS(logger, ERROR) << status.ErrorMessage();
+    return {};
+  }
+
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
+    const bool supported = status.IsOK();
+
+    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_data_type = logging::DataType::SYSTEM;
+    if (logger.OutputIsEnabled(log_severity, log_data_type)) {
+      LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
     }
-  };
-
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    gsl::not_null<const onnxruntime::Node*> node(graph_viewer.GetNode(node_indices[i]));
-
-    // Get the node_unit associated with the node. Note that the node may not be the node_unit's target node.
-    const NodeUnit* node_unit = node_unit_map.at(node);
-
-    // Visiting 'nodes' in topological order does not guarantee that 'node_units' are
-    // also visited in topological order. Skip this node if it is not the node_unit's target node
-    // to ensure 'node_units' are visited in topological order.
-    if (node != &node_unit->GetNode()) {
-      continue;
-    }
-
-    if (handled_node_units.count(node_unit) != 0) {
-      continue;  // Already handled this node unit
-    }
-
-    // Try to see if this node unit can be fused.
-    std::vector<const NodeUnit*> fused_nodes;
-    Status fusion_status = TryFusions(fused_nodes, qnn_model_wrapper, *node_unit, node_unit_map,
-                                      handled_node_units, logger, true /*do_op_validation*/);
-
-    if (!fusion_status.IsOK()) {
-      LOGS(logger, WARNING) << "Failed to apply fusion: " << fusion_status.ErrorMessage();
-      handled_node_units.insert(node_unit);
-      continue;
-    }
-
-    if (!fused_nodes.empty()) {
-      for (auto fused_node_unit : fused_nodes) {
-        handled_node_units.insert(fused_node_unit);
-        add_supported_nodes(supported_nodes, fused_node_unit);
-      }
-      continue;
-    }
-
-    // Couldn't fuse the node unit. See if it is supported by itself.
-    const bool supported = IsNodeSupported(qnn_model_wrapper, *node_unit, logger);
-    LOGS(logger, VERBOSE) << "Node supported: [" << supported
-                          << "] index: [" << node->Index()
-                          << "] name: [" << node->Name()
-                          << "] Operator type: [" << node->OpType()
-                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                          << "] index: [" << node_unit->Index()
-                          << "] name: [" << node_unit->Name()
-                          << "]";
 
     if (supported) {
-      add_supported_nodes(supported_nodes, node_unit);
+      for (const NodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
+        for (const Node* node : node_unit->GetAllNodesInGroup()) {
+          supported_nodes.insert(node);
+        }
+      }
     }
-
-    handled_node_units.insert(node_unit);
   }
 
   return supported_nodes;
@@ -565,7 +550,8 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
       supported_groups.begin(), supported_groups.end(),
       std::back_inserter(result),
       [&](const auto& supported_partition) {
-        return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN);
+        return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN,
+                                            /*drop_constant_initializers*/ false);  // TODO: could this be set to true?
       });
 
   const size_t num_of_partitions = result.size();
@@ -612,7 +598,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
     int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-    return MakeString(QNN, "_", model_hash, "_", metadef_id);
+    return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
   };
 
   // For model with EPContext, make sure each partition only has one single EPContext node
@@ -660,7 +646,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Create partitions from supported nodes.
   std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(
-      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map, true);
+      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map);
 
   // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
   // We also count the number of supported nodes in all valid partitions.

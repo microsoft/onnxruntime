@@ -47,6 +47,19 @@ TEST(DequantizeLinearOpTest, Int4) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// scalar scale with int4
+TEST(DequantizeLinearOpTest, Int4NoZeroPoint) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // Odd number of int4 values to test packing/unpacking
+  test.AddInput<Int4x2>("x", dims, {Int4x2(-8, -3), Int4x2(1, 7), Int4x2(2, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", dims, {-16.0f, -6.0f, 2.0f, 14.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // scalar zero & scale with uint4
 TEST(DequantizeLinearOpTest, UInt4) {
   OpTester test("DequantizeLinear", 21);
@@ -58,6 +71,19 @@ TEST(DequantizeLinearOpTest, UInt4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<UInt4x2>("x_zero_point", {}, {UInt4x2(1, unused_val)});
   test.AddOutput<float>("y", dims, {-2.0f, 0.0f, 4.0f, 28.0f, 2.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// scalar scale with uint4
+TEST(DequantizeLinearOpTest, UInt4NoZeroPoint) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // Odd number of uint4 values to test packing/unpacking
+  test.AddInput<UInt4x2>("x", dims, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddOutput<float>("y", dims, {0.0f, 2.0f, 6.0f, 30.0f, 4.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

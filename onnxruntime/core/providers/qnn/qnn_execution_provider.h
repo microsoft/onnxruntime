@@ -53,9 +53,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
  private:
-  bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                       const logging::Logger& logger) const;
-
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                                     const size_t node_unit_size,
@@ -80,6 +77,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
+  std::string context_node_name_prefix_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;

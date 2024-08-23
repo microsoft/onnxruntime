@@ -8,6 +8,8 @@
 #include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
+#elif defined(_AIX)
+#include <thread>
 #else
 #include <getopt.h>
 #include <thread>
@@ -436,6 +438,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_cuda) {
 #ifdef USE_CUDA
       OrtCUDAProviderOptionsV2 cuda_options;
+      cuda_options.device_id = device_id;
       cuda_options.do_copy_in_default_stream = true;
       cuda_options.use_tf32 = false;
       // TODO: Support arena configuration for users of test runner
@@ -824,7 +827,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded"),
-        ORT_TSTR("convtranspose_3d")};
+        ORT_TSTR("convtranspose_3d"),
+        ORT_TSTR("gather_elements_negative_indices")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 

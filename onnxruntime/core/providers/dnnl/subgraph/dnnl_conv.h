@@ -32,9 +32,9 @@ class DnnlConv {
 
  private:
   /*
-   * Return the infered padding.
+   * Return the inferred padding.
    *
-   * The padding will be based on the specified padding or will infered based on the
+   * The padding will be based on the specified padding or will inferred based on the
    * Onnx 'auto_pad' attributes.
    *
    * This will return the padding in the format specified in the Onnx specification.
@@ -47,9 +47,9 @@ class DnnlConv {
                                       const dnnl::memory::dims& dilations,
                                       const std::vector<int64_t>& kernel_shape,
                                       const dnnl::memory::dims& strides);
-  /* Get the padding left values from the infered pads */
+  /* Get the padding left values from the inferred pads */
   dnnl::memory::dims GetPaddingLeft(const std::vector<int64_t>& onnx_padding, ConvShape shape);
-  /* Get the padding right values from the infered pads */
+  /* Get the padding right values from the inferred pads */
   dnnl::memory::dims GetPaddingRight(const std::vector<int64_t>& onnx_padding, ConvShape shape);
 
   /*

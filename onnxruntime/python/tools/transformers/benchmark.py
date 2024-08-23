@@ -135,6 +135,15 @@ def run_onnxruntime(
             )
             return results
 
+    if provider == "migraphx":
+        optimizer_info = OptimizerInfo.NOOPT
+        warm_up_repeat = 5
+        if "MIGraphXExecutionProvider" not in onnxruntime.get_available_providers():
+            logger.error(
+                "Please install onnxruntime-rocm package, and use a machine with GPU for testing gpu performance."
+            )
+            return results
+
     if optimizer_info == OptimizerInfo.NOOPT:
         logger.warning(
             f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied."
@@ -802,7 +811,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)  # noqa: G002
+            logger.error("Creation of the directory %s failed", args.cache_dir)
 
     enable_torch = "torch" in args.engines
     enable_torch2 = "torch2" in args.engines
@@ -930,7 +939,7 @@ def main():
 
     if len(results) == 0:
         if args.batch_sizes != [0]:
-            logger.warning("No any result avaiable.")
+            logger.warning("No any result available.")
         return
 
     csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"

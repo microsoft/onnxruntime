@@ -59,7 +59,7 @@ def image_to_numpy(filename, shape, channels_last, add_batch_dim):
         # target size.
         w_ratio = new_w / w
         h_ratio = new_h / h
-        ratio = w_ratio if w_ratio > h_ratio else h_ratio
+        ratio = max(h_ratio, w_ratio)
         interim_w = int(w * ratio)
         interim_h = int(h * ratio)
         img = img.resize((interim_w, interim_h), PIL.Image.ANTIALIAS)

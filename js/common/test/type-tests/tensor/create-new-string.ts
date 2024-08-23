@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TypedTensor} from 'onnxruntime-common';
+import { Tensor, TypedTensor } from 'onnxruntime-common';
 
 // construct from type, data (string array) and shape (number array)
 //

@@ -274,6 +274,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
+  // Only make path checks if model not provided as byte buffer
+  bool make_secure_path_checks = !GetModelPath(graph_viewer).empty();
+
   if (embed_mode) {
     // Get engine from byte stream.
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
@@ -283,6 +286,23 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not deserialize engine from binary data");
+    }
+
+    if (weight_stripped_engine_refit_) {
+      const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
+      std::string placeholder;
+      auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
+                                                           onnx_model_folder_path_,
+                                                           placeholder,
+                                                           make_secure_path_checks,
+                                                           onnx_model_bytestream_,
+                                                           onnx_model_bytestream_size_,
+                                                           (*trt_engine_).get(),
+                                                           false /* serialize refitted engine to disk */,
+                                                           detailed_build_log_);
+      if (status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
     }
   } else {
     // Get engine from cache file.
@@ -343,7 +363,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       auto status = TensorrtExecutionProvider::RefitEngine(onnx_model_filename,
                                                            onnx_model_folder_path_,
                                                            weight_stripped_engine_cache,
-                                                           true /* path check for security */,
+                                                           make_secure_path_checks,
+                                                           onnx_model_bytestream_,
+                                                           onnx_model_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);

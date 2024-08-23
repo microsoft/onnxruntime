@@ -50,8 +50,8 @@ bool IsNodeSupported(const Node& node, const OpBuilderInputParams& input_params,
   }
 }
 
-bool IsInputSupported(const Node& node, const NodeArg& input,
-                      const OpBuilderInputParams& input_params, const logging::Logger& logger) {
+bool IsInputSupported(const Node& node, const NodeArg& input, const OpBuilderInputParams& input_params,
+                      const logging::Logger& logger, bool allow_empty_input) {
   if (!input.Exists()) {
     // optional input that is not provided
     return true;
@@ -84,16 +84,10 @@ bool IsInputSupported(const Node& node, const NodeArg& input,
       return false;
     }
 
-    if (dim == 0) {
-      if (node.OpType() == "Resize" && &input == node.InputDefs()[1]) {
-        // one special case. Resize 'roi' input was originally a required input but is rarely used.
-        // ROI is not supported in the CoreML implementation so we will ignore the value, but is often added
-        // (at least in the unit tests) as an initializer with shape {0}.
-      } else {
-        LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
-                              << ", shape: " << Shape2String(shape);
-        return false;
-      }
+    if (dim == 0 && !allow_empty_input) {
+      LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
+                            << ", shape: " << Shape2String(shape);
+      return false;
     }
   }
 
