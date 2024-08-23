@@ -155,32 +155,28 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   std::string graph_name = "";
   // Epctx file path from SO is mapped to cache_dir variable for OVEP for readability
-  if (global_context_.cache_dir != "") {
+  if (!global_context_.cache_dir.empty()) {
     graph_name = global_context_.cache_dir;
   } else {
     graph_name = global_context_.onnx_model_path_name;
     // Remove extension so we can append suffix to form the complete name of output graph
-    graph_name = [&]() {
-      size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
-    graph_name = graph_name + "_ctx.onnx";
+    size_t dot = global_context_.onnx_model_path_name.find_last_of(".");
+    graph_name = graph_name.substr(0, dot);
+    if (dot != std::string::npos) graph_name += "_ctx.onnx";
   }
+
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
-    model_blob_str = model_blob_stream.str();
-    ORT_ENFORCE(model_blob_str.size() != 0);
+    model_blob_str = std::move(model_blob_stream).str();
+    if (model_blob_str.empty()) {
+      ORT_THROW("Model blob stream is empty after exporting the compiled model.");
+    }
   } else {
     // Remove extension so we can append suffix to form the complete name of output graph
-    auto blob_name = [&]() {
-      size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
+    auto blob_name = graph_name.substr(0, graph_name.find_last_of("."));
     std::ofstream blob_file(blob_name + ".blob",
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
@@ -194,7 +190,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                       graph_name,
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
-                                                      model_blob_str,
+                                                      std::move(model_blob_str),
                                                       openvino_sdk_version_));
 
   return Status::OK();
