@@ -33,7 +33,7 @@ void ValidateBlockQuantizationShapes(const TensorShape& input_shape,
 
 template <class T, class U>
 Status CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
-                   size_t num_of_element, bool /*saturate*/) {
+                          size_t num_of_element, bool /*saturate*/) {
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
@@ -45,7 +45,7 @@ Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, co
 
 template <typename T, typename U>
 Status CudaQuantizeLinearBlock(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
-                        size_t num_of_element, size_t K, size_t N, size_t block_size, bool /*saturate*/){
+                               size_t num_of_element, size_t K, size_t N, size_t block_size, bool /*saturate*/) {
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
