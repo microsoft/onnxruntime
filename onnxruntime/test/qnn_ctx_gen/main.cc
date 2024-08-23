@@ -34,7 +34,7 @@ static void CheckStatus(const Status& status) {
 // from the last context ache Onnx model, find the EPContext node with main_context=1,
 // and get the QNN context binary file name, thie context binary contains all graphs from all Onnx models
 static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
-    std::string& last_ctx_bin_file) {
+                                         std::string& last_ctx_bin_file) {
   std::shared_ptr<Model> ctx_model;
   CheckStatus(Model::Load(ToPathString(last_onnx_ctx_file), ctx_model, nullptr,
                           (*((OrtEnv*)*ort_env.get())->GetEnvironment().GetLoggingManager()).DefaultLogger()));

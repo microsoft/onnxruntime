@@ -59,7 +59,7 @@ static const ORTCHAR_T* delimiter = L";";
 static const ORTCHAR_T* delimiter = ";";
 #endif
 static void ParsePaths(const std::basic_string<ORTCHAR_T>& path, std::vector<std::basic_string<ORTCHAR_T>>& paths) {
-  std::basic_string<ORTCHAR_T>path_str(path);
+  std::basic_string<ORTCHAR_T> path_str(path);
   size_t pos = 0;
   std::basic_string<ORTCHAR_T> token;
   while (pos = path_str.find(delimiter), pos != std::string::npos) {
@@ -211,5 +211,5 @@ static bool ParseSessionConfigs(const std::string& configs_string,
   return true;
 }
 
-}  // namespace perftest
+}  // namespace qnnctxgen
 }  // namespace onnxruntime

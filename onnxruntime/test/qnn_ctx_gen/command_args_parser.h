@@ -15,5 +15,5 @@ class CommandLineParser {
   static bool ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]);
 };
 
-}  // namespace perftest
+}  // namespace qnnctxgen
 }  // namespace onnxruntime

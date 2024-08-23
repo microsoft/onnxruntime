@@ -27,5 +27,5 @@ struct PerformanceTestConfig {
   RunConfig run_config;
 };
 
-}  // namespace perftest
+}  // namespace qnnctxgen
 }  // namespace onnxruntime
