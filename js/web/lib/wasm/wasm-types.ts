@@ -6,7 +6,7 @@
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="jsep/webnn/webnn.d.ts" />
 
-import type {Tensor} from 'onnxruntime-common';
+import type { Tensor } from 'onnxruntime-common';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
@@ -18,8 +18,12 @@ export declare namespace JSEP {
   type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
   type CreateKernelFunction = (name: string, kernel: number, attribute: unknown) => void;
   type ReleaseKernelFunction = (kernel: number) => void;
-  type RunFunction =
-      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
+  type RunFunction = (
+    kernel: number,
+    contextDataOffset: number,
+    sessionHandle: number,
+    errors: Array<Promise<string | null>>,
+  ) => number;
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
@@ -42,11 +46,22 @@ export declare namespace JSEP {
      * backend. This function initializes Asyncify support. If name is 'webgpu', also initializes WebGPU backend and
      * registers a few callbacks that will be called in C++ code.
      */
-    jsepInit(name: 'webgpu', initParams: [
-      backend: BackendType, alloc: AllocFunction, free: FreeFunction, upload: UploadFunction,
-      download: DownloadFunction, createKernel: CreateKernelFunction, releaseKernel: ReleaseKernelFunction,
-      run: RunFunction, captureBegin: CaptureBeginFunction, captureEnd: CaptureEndFunction, replay: ReplayFunction
-    ]): void;
+    jsepInit(
+      name: 'webgpu',
+      initParams: [
+        backend: BackendType,
+        alloc: AllocFunction,
+        free: FreeFunction,
+        upload: UploadFunction,
+        download: DownloadFunction,
+        createKernel: CreateKernelFunction,
+        releaseKernel: ReleaseKernelFunction,
+        run: RunFunction,
+        captureBegin: CaptureBeginFunction,
+        captureEnd: CaptureEndFunction,
+        replay: ReplayFunction,
+      ],
+    ): void;
     jsepInit(name: 'webnn', initParams?: never): void;
   }
 
@@ -94,9 +109,11 @@ export declare namespace JSEP {
      * @param type - specify the tensor type.
      * @returns the generated downloader function.
      */
-    jsepCreateDownloader:
-        (gpuBuffer: GPUBuffer, size: number,
-         type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
+    jsepCreateDownloader: (
+      gpuBuffer: GPUBuffer,
+      size: number,
+      type: Tensor.GpuBufferDataTypes,
+    ) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
     /**
      *  [exported from pre-jsep.js] Called when InferenceSession.run started. This function will be called before
      * _OrtRun[WithBinding]() is called.
@@ -134,10 +151,20 @@ export interface OrtInferenceAPIs {
   _OrtFree(stringHandle: number): void;
 
   _OrtCreateTensor(
-      dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number,
-      dataLocation: number): number;
-  _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
-      number;
+    dataType: number,
+    dataOffset: number,
+    dataLength: number,
+    dimsOffset: number,
+    dimsLength: number,
+    dataLocation: number,
+  ): number;
+  _OrtGetTensorData(
+    tensorHandle: number,
+    dataType: number,
+    dataOffset: number,
+    dimsOffset: number,
+    dimsLength: number,
+  ): number;
   _OrtReleaseTensor(tensorHandle: number): void;
   _OrtCreateBinding(sessionHandle: number): number;
   _OrtBindInput(bindingHandle: number, nameOffset: number, tensorHandle: number): Promise<number>;
@@ -145,16 +172,35 @@ export interface OrtInferenceAPIs {
   _OrtClearBoundOutputs(ioBindingHandle: number): void;
   _OrtReleaseBinding(ioBindingHandle: number): void;
   _OrtRunWithBinding(
-      sessionHandle: number, ioBindingHandle: number, outputCount: number, outputsOffset: number,
-      runOptionsHandle: number): Promise<number>;
+    sessionHandle: number,
+    ioBindingHandle: number,
+    outputCount: number,
+    outputsOffset: number,
+    runOptionsHandle: number,
+  ): Promise<number>;
   _OrtRun(
-      sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
-      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): Promise<number>;
+    sessionHandle: number,
+    inputNamesOffset: number,
+    inputsOffset: number,
+    inputCount: number,
+    outputNamesOffset: number,
+    outputCount: number,
+    outputsOffset: number,
+    runOptionsHandle: number,
+  ): Promise<number>;
 
   _OrtCreateSessionOptions(
-      graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
-      enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
-      logVerbosityLevel: number, optimizedModelFilePath: number): number;
+    graphOptimizationLevel: number,
+    enableCpuMemArena: boolean,
+    enableMemPattern: boolean,
+    executionMode: number,
+    enableProfiling: boolean,
+    profileFilePrefix: number,
+    logId: number,
+    logSeverityLevel: number,
+    logVerbosityLevel: number,
+    optimizedModelFilePath: number,
+  ): number;
   _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
@@ -173,33 +219,66 @@ export interface OrtTrainingAPIs {
   _OrtTrainingReleaseCheckpoint(checkpointHandle: number): void;
 
   _OrtTrainingCreateSession(
-      sessionOptionsHandle: number, checkpointHandle: number, trainOffset: number, trainLength: number,
-      evalOffset: number, evalLength: number, optimizerOffset: number, optimizerLength: number): number;
+    sessionOptionsHandle: number,
+    checkpointHandle: number,
+    trainOffset: number,
+    trainLength: number,
+    evalOffset: number,
+    evalLength: number,
+    optimizerOffset: number,
+    optimizerLength: number,
+  ): number;
 
   _OrtTrainingLazyResetGrad(trainingHandle: number): number;
 
   _OrtTrainingRunTrainStep(
-      trainingHandle: number, inputsOffset: number, inputCount: number, outputsOffset: number, outputCount: number,
-      runOptionsHandle: number): number;
+    trainingHandle: number,
+    inputsOffset: number,
+    inputCount: number,
+    outputsOffset: number,
+    outputCount: number,
+    runOptionsHandle: number,
+  ): number;
 
   _OrtTrainingOptimizerStep(trainingHandle: number, runOptionsHandle: number): number;
 
   _OrtTrainingEvalStep(
-      trainingHandle: number, inputsOffset: number, inputCount: number, outputsOffset: number, outputCount: number,
-      runOptionsHandle: number): number;
+    trainingHandle: number,
+    inputsOffset: number,
+    inputCount: number,
+    outputsOffset: number,
+    outputCount: number,
+    runOptionsHandle: number,
+  ): number;
 
   _OrtTrainingGetParametersSize(trainingHandle: number, paramSizeT: number, trainableOnly: boolean): number;
 
   _OrtTrainingCopyParametersToBuffer(
-      trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+    trainingHandle: number,
+    parametersBuffer: number,
+    parameterCount: number,
+    trainableOnly: boolean,
+  ): number;
 
   _OrtTrainingCopyParametersFromBuffer(
-      trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
+    trainingHandle: number,
+    parametersBuffer: number,
+    parameterCount: number,
+    trainableOnly: boolean,
+  ): number;
 
   _OrtTrainingGetModelInputOutputCount(
-      trainingHandle: number, inputCount: number, outputCount: number, isEvalModel: boolean): number;
-  _OrtTrainingGetModelInputOutputName(trainingHandle: number, index: number, isInput: boolean, isEvalModel: boolean):
-      number;
+    trainingHandle: number,
+    inputCount: number,
+    outputCount: number,
+    isEvalModel: boolean,
+  ): number;
+  _OrtTrainingGetModelInputOutputName(
+    trainingHandle: number,
+    index: number,
+    isInput: boolean,
+    isEvalModel: boolean,
+  ): number;
 
   _OrtTrainingReleaseSession(trainingHandle: number): void;
 }
@@ -207,8 +286,11 @@ export interface OrtTrainingAPIs {
 /**
  * The interface of the WebAssembly module for ONNX Runtime, compiled from C++ source code by Emscripten.
  */
-export interface OrtWasmModule extends EmscriptenModule, OrtInferenceAPIs, Partial<OrtTrainingAPIs>,
-                                       Partial<JSEP.Module> {
+export interface OrtWasmModule
+  extends EmscriptenModule,
+    OrtInferenceAPIs,
+    Partial<OrtTrainingAPIs>,
+    Partial<JSEP.Module> {
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {flatbuffers} from 'flatbuffers';
+import { flatbuffers } from 'flatbuffers';
 import Long from 'long';
 
-import {Graph} from './graph';
-import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
-import {onnx} from './ort-schema/protobuf/onnx';
-import {Tensor} from './tensor';
+import { Graph } from './graph';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import { onnx } from './ort-schema/protobuf/onnx';
+import { Tensor } from './tensor';
 
 // check the inputs shape before running an OP.
 // return true when the inputs pass the check
@@ -40,10 +40,29 @@ export class ArrayUtil {
    * @returns Whether these 2 are equal
    */
   static arraysEqual(
-      n1: readonly number[]|Int8Array|Uint8Array|Int16Array|Uint16Array|Int32Array|Uint32Array|Uint8ClampedArray|
-      Float32Array|Float64Array,
-      n2: readonly number[]|Int8Array|Uint8Array|Int16Array|Uint16Array|Int32Array|Uint32Array|Uint8ClampedArray|
-      Float32Array|Float64Array) {
+    n1:
+      | readonly number[]
+      | Int8Array
+      | Uint8Array
+      | Int16Array
+      | Uint16Array
+      | Int32Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array,
+    n2:
+      | readonly number[]
+      | Int8Array
+      | Uint8Array
+      | Int16Array
+      | Uint16Array
+      | Int32Array
+      | Uint32Array
+      | Uint8ClampedArray
+      | Float32Array
+      | Float64Array,
+  ) {
     if (n1.length !== n2.length) {
       return false;
     }
@@ -63,17 +82,19 @@ export class MatMulUtil {
    * @param dimsB The shape of tensor B. Should be an array of positive integers
    * @returns A tuple containing the preprocessed input shapes as required by ONNX specifications
    */
-  static preprocessInputShapes(dimsA: readonly number[], dimsB: readonly number[]):
-      [readonly number[], readonly number[]] {
+  static preprocessInputShapes(
+    dimsA: readonly number[],
+    dimsB: readonly number[],
+  ): [readonly number[], readonly number[]] {
     // If the first argument is 1-D, it is promoted to a matrix by prepending
     // a 1 to its dimensions. After matrix multiplication the prepended 1 is
     // removed.
-    const a = (dimsA.length === 1) ? [1, dimsA[0]] : dimsA;
+    const a = dimsA.length === 1 ? [1, dimsA[0]] : dimsA;
 
     // If the second argument is 1-D, it is promoted to a matrix by appending
     // a 1 to its dimensions. After matrix multiplication the appended 1 is
     // removed.
-    const b = (dimsB.length === 1) ? [dimsB[0], 1] : dimsB;
+    const b = dimsB.length === 1 ? [dimsB[0], 1] : dimsB;
 
     return [a, b];
   }
@@ -103,8 +124,8 @@ export class MatMulUtil {
    * @param b The shape of tensor B. Should be a tuple of 2 positive integers
    * @returns The expected shape of the result, or undefined if N/A
    */
-  static calcMatMulShape(a: [number, number], b: [number, number]): [number, number]|undefined {
-    return (a[1] !== b[0]) ? undefined : [a[0], b[1]];
+  static calcMatMulShape(a: [number, number], b: [number, number]): [number, number] | undefined {
+    return a[1] !== b[0] ? undefined : [a[0], b[1]];
   }
 }
 
@@ -116,7 +137,11 @@ export class BroadcastUtil {
    * @param isMatMul Whether the operation is MatMul
    * @returns The expected shape of the result, or undefined if N/A
    */
-  static calcShape(adims: readonly number[], bdims: readonly number[], isMatMul = false): readonly number[]|undefined {
+  static calcShape(
+    adims: readonly number[],
+    bdims: readonly number[],
+    isMatMul = false,
+  ): readonly number[] | undefined {
     const arank = adims.length;
     const brank = bdims.length;
     if (arank === 0) {
@@ -133,8 +158,10 @@ export class BroadcastUtil {
       if (arank < 2 || brank < 2) {
         return undefined;
       }
-      const cShapeMatMul =
-          MatMulUtil.calcMatMulShape([adims[arank - 2], adims[arank - 1]], [bdims[brank - 2], bdims[brank - 1]]);
+      const cShapeMatMul = MatMulUtil.calcMatMulShape(
+        [adims[arank - 2], adims[arank - 1]],
+        [bdims[brank - 2], bdims[brank - 1]],
+      );
       if (cShapeMatMul === undefined) {
         return undefined;
       }
@@ -195,8 +222,12 @@ export class BroadcastUtil {
    * @returns The result tensor, or undefined if input not broadcastable.
    */
   static calc(
-      a: Tensor, b: Tensor, op: (a: string|number, b: string|number) => (string | number), inplace: boolean,
-      resultType?: Tensor.DataType): Tensor|undefined {
+    a: Tensor,
+    b: Tensor,
+    op: (a: string | number, b: string | number) => string | number,
+    inplace: boolean,
+    resultType?: Tensor.DataType,
+  ): Tensor | undefined {
     const outputShape = BroadcastUtil.calcShape(a.dims, b.dims);
 
     if (outputShape) {
@@ -218,8 +249,8 @@ export class BroadcastUtil {
         const outputIndices = new Array<number>(outputShape.length);
         const originalIndicesA = new Array(a.dims.length);
         const originalIndicesB = new Array(b.dims.length);
-        let valA: string|number = 0;
-        let valB: string|number = 0;
+        let valA: string | number = 0;
+        let valB: string | number = 0;
         let isAScalar = false;
         let isBScalar = false;
         if (a.dims.length === 0) {
@@ -304,8 +335,12 @@ export class BroadcastUtil {
 // copy array helper
 // mimics memcpy as much as possible
 export function arrayCopyHelper(
-    target: number[]|Tensor.NumberType, source: number[]|Tensor.NumberType, targetIndex: number, sourceIndex: number,
-    blockSize: number) {
+  target: number[] | Tensor.NumberType,
+  source: number[] | Tensor.NumberType,
+  targetIndex: number,
+  sourceIndex: number,
+  blockSize: number,
+) {
   if (sourceIndex < 0 || sourceIndex >= source.length) {
     throw new Error('sourceIndex out of bounds');
   }
@@ -329,8 +364,12 @@ export class GemmUtil {
   // and return back the shape of the output in the form of a tuple
   // will throw exception if the input shapes are not compatible
   static getShapeOfGemmResult(
-      leftShape: readonly number[], transLeft: boolean, rightShape: readonly number[], transRight: boolean,
-      biasShape?: readonly number[]): readonly number[] {
+    leftShape: readonly number[],
+    transLeft: boolean,
+    rightShape: readonly number[],
+    transRight: boolean,
+    biasShape?: readonly number[],
+  ): readonly number[] {
     if (leftShape.length !== 2 || rightShape.length !== 2) {
       throw new Error('shape need to be of size 2');
     }
@@ -374,8 +413,9 @@ export class GemmUtil {
 }
 
 export class ProtoUtil {
-  static tensorDataTypeFromProto(typeProto: onnx.TensorProto.DataType|
-                                 onnxruntime.experimental.fbs.TensorDataType): Tensor.DataType {
+  static tensorDataTypeFromProto(
+    typeProto: onnx.TensorProto.DataType | onnxruntime.experimental.fbs.TensorDataType,
+  ): Tensor.DataType {
     switch (typeProto) {
       case onnx.TensorProto.DataType.INT8:
         return 'int8';
@@ -442,15 +482,15 @@ export class ProtoUtil {
     }
   }
 
-  static tensorDimsFromProto(dims: Array<number|Long>): number[] {
+  static tensorDimsFromProto(dims: Array<number | Long>): number[] {
     // get rid of Long type for dims
-    return dims.map(d => Long.isLong(d) ? d.toNumber() : d);
+    return dims.map((d) => (Long.isLong(d) ? d.toNumber() : d));
   }
 
   static tensorValueTypeFromProto(valueType: onnx.TypeProto.ITensor): Graph.ValueType {
     return {
       tensorType: ProtoUtil.tensorDataTypeFromProto(valueType.elemType!),
-      shape: {dims: ProtoUtil.tensorDimsFromProto(valueType.shape!.dim!.map(d => d.dimValue!))}
+      shape: { dims: ProtoUtil.tensorDimsFromProto(valueType.shape!.dim!.map((d) => d.dimValue!)) },
     };
   }
 
@@ -475,11 +515,11 @@ export class LongUtil {
   // This function is called to get a number from long type of data for attribute, dim, and ir version,
   // which values are signed integers.
   // To make it more generic, add an optional parameter to convert to a unsigned number.
-  static longToNumber(n: Long|flatbuffers.Long|number, unsigned?: boolean) {
+  static longToNumber(n: Long | flatbuffers.Long | number, unsigned?: boolean) {
     if (Long.isLong(n)) {
       return n.toNumber();
     } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({low: n.low, high: n.high, unsigned: unsigned ?? false}).toNumber();
+      return Long.fromValue({ low: n.low, high: n.high, unsigned: unsigned ?? false }).toNumber();
     }
     return n;
   }
@@ -516,8 +556,9 @@ export class ShapeUtil {
       // size cannot be 0 or negative.
       if (dims[i] <= 0) {
         throw new Error(
-            // eslint-disable-next-line max-len
-            'cannot get valid size from specified dimension range. Most likely the range contains 0 or negative values in them.');
+          // eslint-disable-next-line max-len
+          'cannot get valid size from specified dimension range. Most likely the range contains 0 or negative values in them.',
+        );
       }
       size *= dims[i];
     }
@@ -583,7 +624,7 @@ export class ShapeUtil {
   }
 
   static normalizeAxes(axes: readonly number[], tensorRank: number): number[] {
-    return axes.map(x => this.normalizeAxis(x, tensorRank));
+    return axes.map((x) => this.normalizeAxis(x, tensorRank));
   }
 
   // Increment an index into a tensor (in lexicographic
@@ -666,15 +707,18 @@ export class ShapeUtil {
     const oldTensorSize = ShapeUtil.size(originalDims);
     if (unknownDimension !== -1) {
       if (oldTensorSize % newTensorSize !== 0) {
-        throw new Error(`the input tensor cannot be reshaped to the requested shape. Input shape: [${
-            originalDims}] Output shape: [${shapeHints}]`);
+        throw new Error(
+          `the input tensor cannot be reshaped to the requested shape. Input shape: [${
+            originalDims
+          }] Output shape: [${shapeHints}]`,
+        );
       }
       reshapedDims[unknownDimension] = oldTensorSize / newTensorSize;
     }
     // validate sizes from originalDims and reshapedDims match
     else {
       if (newTensorSize !== oldTensorSize) {
-        throw new Error('reshapedDims and originalDims don\'t have matching sizes');
+        throw new Error("reshapedDims and originalDims don't have matching sizes");
       }
     }
     return reshapedDims;
@@ -793,10 +837,10 @@ export class ShapeUtil {
     for (let i = 0; i < axes.length; i++) {
       const axis = ShapeUtil.normalizeAxis(axes[i], outputDims.length);
       if (axis >= outputDims.length) {
-        throw new Error('\'axes\' has an out of range axis');
+        throw new Error("'axes' has an out of range axis");
       }
       if (outputDims[axis] !== 0) {
-        throw new Error('\'axes\' has a duplicate axis');
+        throw new Error("'axes' has a duplicate axis");
       }
 
       outputDims[axis] = 1;
@@ -824,8 +868,12 @@ export class ShapeUtil {
 export class MathUtil {
   // y = (x*x) + y
   static sqr(
-      target: number[]|Tensor.NumberType, source: number[]|Tensor.NumberType, targetIndex: number, sourceIndex: number,
-      blockSize: number) {
+    target: number[] | Tensor.NumberType,
+    source: number[] | Tensor.NumberType,
+    targetIndex: number,
+    sourceIndex: number,
+    blockSize: number,
+  ) {
     if (sourceIndex < 0 || sourceIndex >= source.length) {
       throw new Error('sourceIndex out of bounds');
     }
@@ -846,8 +894,13 @@ export class MathUtil {
 
   // y = ax + y
   static axpy(
-      target: number[]|Tensor.NumberType, source: number[]|Tensor.NumberType, targetIndex: number, sourceIndex: number,
-      blockSize: number, alpha: number) {
+    target: number[] | Tensor.NumberType,
+    source: number[] | Tensor.NumberType,
+    targetIndex: number,
+    sourceIndex: number,
+    blockSize: number,
+    alpha: number,
+  ) {
     if (sourceIndex < 0 || sourceIndex >= source.length) {
       throw new Error('sourceIndex out of bounds');
     }
@@ -862,14 +915,19 @@ export class MathUtil {
     }
 
     for (let offset = 0; offset < blockSize; offset++) {
-      target[targetIndex + offset] += (alpha * source[sourceIndex + offset]);
+      target[targetIndex + offset] += alpha * source[sourceIndex + offset];
     }
   }
 
   // y = pow(x, b)
   static powx(
-      target: number[]|Tensor.NumberType, source: number[]|Tensor.NumberType, targetIndex: number, sourceIndex: number,
-      blockSize: number, b: number) {
+    target: number[] | Tensor.NumberType,
+    source: number[] | Tensor.NumberType,
+    targetIndex: number,
+    sourceIndex: number,
+    blockSize: number,
+    b: number,
+  ) {
     if (sourceIndex < 0 || sourceIndex >= source.length) {
       throw new Error('sourceIndex out of bounds');
     }
@@ -890,8 +948,12 @@ export class MathUtil {
 
   // y = x * y
   static mul(
-      target: number[]|Tensor.NumberType, source: number[]|Tensor.NumberType, targetIndex: number, sourceIndex: number,
-      blockSize: number) {
+    target: number[] | Tensor.NumberType,
+    source: number[] | Tensor.NumberType,
+    targetIndex: number,
+    sourceIndex: number,
+    blockSize: number,
+  ) {
     if (sourceIndex < 0 || sourceIndex >= source.length) {
       throw new Error('sourceIndex out of bounds');
     }
@@ -906,7 +968,7 @@ export class MathUtil {
     }
 
     for (let offset = 0; offset < blockSize; offset++) {
-      target[targetIndex + offset] = (source[sourceIndex + offset] * target[targetIndex + offset]);
+      target[targetIndex + offset] = source[sourceIndex + offset] * target[targetIndex + offset];
     }
   }
 }
@@ -918,11 +980,15 @@ export class SplitUtil {
    * @param axis The dimension along which the Tensor will be split
    * @param splits Offsets for the start of each split
    */
-  static splitShape(dims: readonly number[], axis: number, split: number[], numOutputs?: number):
-      [number[][], number[]] {
+  static splitShape(
+    dims: readonly number[],
+    axis: number,
+    split: number[],
+    numOutputs?: number,
+  ): [number[][], number[]] {
     if (split.length === 0) {
       if (!numOutputs) {
-        throw new Error('need to know number of outputs when the \'split\' attribute is not specified');
+        throw new Error("need to know number of outputs when the 'split' attribute is not specified");
       }
       SplitUtil.determineSplit(dims[axis], numOutputs, split);
     }
@@ -962,8 +1028,12 @@ export class ReduceUtil {
    * @param op2 The operation to be performed between elements in the tensor
    */
   static calcReduce(
-      a: Tensor, axes: number[], keepdims: boolean, op1: (b: number) => number,
-      op2: (a: number, b: number) => number): Tensor {
+    a: Tensor,
+    axes: number[],
+    keepdims: boolean,
+    op1: (b: number) => number,
+    op2: (a: number, b: number) => number,
+  ): Tensor {
     const dims = a.dims.slice(0);
     // if axes is not set, perform reduce on all axes
     if (axes.length === 0) {
@@ -983,9 +1053,17 @@ export class ReduceUtil {
       // map index
       BroadcastUtil.fillIndex(indices, dims, indicesY);
       y.set(
-          indices,
-          ReduceUtil.calcReduceByAxis(
-              a.numberData, axes, dims, 0, ShapeUtil.indicesToOffset(indicesY, inputStrides), op1, op2));
+        indices,
+        ReduceUtil.calcReduceByAxis(
+          a.numberData,
+          axes,
+          dims,
+          0,
+          ShapeUtil.indicesToOffset(indicesY, inputStrides),
+          op1,
+          op2,
+        ),
+      );
     }
 
     if (keepdims) {
@@ -993,7 +1071,13 @@ export class ReduceUtil {
     } else {
       // keepdims == 0, calculate the expected shape
       return new Tensor(
-          ReduceUtil.calcReduceShape(dims, axes, keepdims), y.type, undefined, undefined, y.data, y.dataId);
+        ReduceUtil.calcReduceShape(dims, axes, keepdims),
+        y.type,
+        undefined,
+        undefined,
+        y.data,
+        y.dataId,
+      );
     }
   }
 
@@ -1009,8 +1093,14 @@ export class ReduceUtil {
    * @param op2 The operation to be performed between elements in the tensor
    */
   static calcReduceByAxis(
-      input: Tensor.NumberType, axes: number[], dims: number[], curAxisInd: number, pos: number,
-      op1: (b: number) => number, op2: (a: number, b: number) => number): number {
+    input: Tensor.NumberType,
+    axes: number[],
+    dims: number[],
+    curAxisInd: number,
+    pos: number,
+    op1: (b: number) => number,
+    op2: (a: number, b: number) => number,
+  ): number {
     let res = 0;
     if (curAxisInd >= axes.length) {
       return op1(input[pos]);
@@ -1018,8 +1108,10 @@ export class ReduceUtil {
     const axis = axes[curAxisInd];
     const step = axis >= dims.length ? 1 : ShapeUtil.size(dims.slice(axis + 1));
     for (let i = 0; i < dims[axis]; i++) {
-      res = i === 0 ? ReduceUtil.calcReduceByAxis(input, axes, dims, curAxisInd + 1, pos, op1, op2) :
-                      op2(res, ReduceUtil.calcReduceByAxis(input, axes, dims, curAxisInd + 1, pos, op1, op2));
+      res =
+        i === 0
+          ? ReduceUtil.calcReduceByAxis(input, axes, dims, curAxisInd + 1, pos, op1, op2)
+          : op2(res, ReduceUtil.calcReduceByAxis(input, axes, dims, curAxisInd + 1, pos, op1, op2));
       pos += step;
     }
     return res;
@@ -1041,7 +1133,7 @@ export class ReduceUtil {
         outputDims[axes[i]] = 0;
       }
     }
-    return outputDims.filter(dim => dim !== 0);
+    return outputDims.filter((dim) => dim !== 0);
   }
 }
 
@@ -1056,8 +1148,13 @@ export class PoolConvUtil {
    * @param pads Padding for the beginning and ending along each axis.
    */
   static adjustPoolAttributes(
-      isGlobalOperator: boolean, inputDims: readonly number[], kernelShape: number[], strides: number[],
-      dilations: number[], pads: number[]) {
+    isGlobalOperator: boolean,
+    inputDims: readonly number[],
+    kernelShape: number[],
+    strides: number[],
+    dilations: number[],
+    pads: number[],
+  ) {
     if (!isGlobalOperator && kernelShape.length !== inputDims.length - 2) {
       throw new Error('length of specified kernel shapes should be 2 less than length of input dimensions');
     }
@@ -1120,8 +1217,13 @@ export class PoolConvUtil {
 
   // adjust pad values based on 'autoPad' attribute
   static adjustPadsBasedOnAutoPad(
-      inputDims: readonly number[], strides: readonly number[], dilations: readonly number[],
-      kernelShape: readonly number[], pads: number[], autoPad?: string) {
+    inputDims: readonly number[],
+    strides: readonly number[],
+    dilations: readonly number[],
+    kernelShape: readonly number[],
+    pads: number[],
+    autoPad?: string,
+  ) {
     if (!autoPad) {
       return;
     }
@@ -1130,18 +1232,25 @@ export class PoolConvUtil {
       throw new Error('length of pads should be twice the length of data dimensions');
     }
 
-    if (strides.length !== (inputDims.length - 2)) {
+    if (strides.length !== inputDims.length - 2) {
       throw new Error('length of strides should be the length of data dimensions');
     }
 
-    if (kernelShape.length !== (inputDims.length - 2)) {
+    if (kernelShape.length !== inputDims.length - 2) {
       throw new Error('length of kernel shapes should be the length of data dimensions');
     }
 
     for (let dim = 0; dim < inputDims.length - 2; dim++) {
       PoolConvUtil.adjustPadAndReturnShape(
-          inputDims[dim + 2], strides[dim], dilations[dim], kernelShape[dim], pads, dim, dim + inputDims.length - 2,
-          autoPad);
+        inputDims[dim + 2],
+        strides[dim],
+        dilations[dim],
+        kernelShape[dim],
+        pads,
+        dim,
+        dim + inputDims.length - 2,
+        autoPad,
+      );
     }
   }
 
@@ -1157,8 +1266,14 @@ export class PoolConvUtil {
    *     dimension. Can take values NOTSET, SAME_UPPER, SAME_LOWER, or VALID.
    */
   static computePoolOutputShape(
-      isGlobalOperator: boolean, inputDims: readonly number[], strides: number[], dilations: number[],
-      kernelShape: number[], pads: number[], autoPad?: string): number[] {
+    isGlobalOperator: boolean,
+    inputDims: readonly number[],
+    strides: number[],
+    dilations: number[],
+    kernelShape: number[],
+    pads: number[],
+    autoPad?: string,
+  ): number[] {
     if (inputDims.length <= 0) {
       throw new Error('input shape must be of size greater than 0');
     }
@@ -1167,7 +1282,15 @@ export class PoolConvUtil {
     const outputDims = [inputDims[0], inputDims[1]];
 
     PoolConvUtil.computeShapeHelper(
-        isGlobalOperator, inputDims, outputDims, strides, dilations, kernelShape, pads, autoPad);
+      isGlobalOperator,
+      inputDims,
+      outputDims,
+      strides,
+      dilations,
+      kernelShape,
+      pads,
+      autoPad,
+    );
     return outputDims;
   }
 
@@ -1182,8 +1305,14 @@ export class PoolConvUtil {
    *     dimension. Can take values NOTSET, SAME_UPPER, SAME_LOWER, or VALID.
    */
   static computeConvOutputShape(
-      inputDims: readonly number[], filterDims: readonly number[], strides: number[], dilations: number[],
-      kernelShape: number[], pads: number[], autoPad?: string): number[] {
+    inputDims: readonly number[],
+    filterDims: readonly number[],
+    strides: number[],
+    dilations: number[],
+    kernelShape: number[],
+    pads: number[],
+    autoPad?: string,
+  ): number[] {
     if (inputDims.length <= 0 || filterDims.length <= 0) {
       throw new Error('invalid input tensor dims or invalid filter tensor dims');
     }
@@ -1199,17 +1328,33 @@ export class PoolConvUtil {
   // called by computePoolOutputShape() and computeConvOutputShape()
   // adjust pads based on 'autoPad' attribute prior to shape computation
   private static computeShapeHelper(
-      isGlobalOperator: boolean, inputDims: readonly number[], outputDims: number[], strides: readonly number[],
-      dilations: readonly number[], kernelShape: readonly number[], pads: number[], autoPad?: string) {
+    isGlobalOperator: boolean,
+    inputDims: readonly number[],
+    outputDims: number[],
+    strides: readonly number[],
+    dilations: readonly number[],
+    kernelShape: readonly number[],
+    pads: number[],
+    autoPad?: string,
+  ) {
     if (isGlobalOperator) {
       for (let dim = 0; dim < inputDims.length - 2; dim++) {
         outputDims.push(1);
       }
     } else {
       for (let dim = 0; dim < inputDims.length - 2; dim++) {
-        outputDims.push(PoolConvUtil.adjustPadAndReturnShape(
-            inputDims[dim + 2], strides[dim], dilations[dim], kernelShape[dim], pads, dim, dim + inputDims.length - 2,
-            autoPad));
+        outputDims.push(
+          PoolConvUtil.adjustPadAndReturnShape(
+            inputDims[dim + 2],
+            strides[dim],
+            dilations[dim],
+            kernelShape[dim],
+            pads,
+            dim,
+            dim + inputDims.length - 2,
+            autoPad,
+          ),
+        );
       }
     }
   }
@@ -1217,15 +1362,22 @@ export class PoolConvUtil {
   // helper for computeShapeHelper() and adjustPadsBasedOnAutoPad()
   // adjusts pad value for given 'autoPad' string and computes output shape along a particular dimension
   private static adjustPadAndReturnShape(
-      inSize: number, stride: number, dilation: number, kernel: number, pads: number[], padHeadIndex: number,
-      padTailIndex: number, autoPad?: string): number {
+    inSize: number,
+    stride: number,
+    dilation: number,
+    kernel: number,
+    pads: number[],
+    padHeadIndex: number,
+    padTailIndex: number,
+    autoPad?: string,
+  ): number {
     const dkernel = dilation * (kernel - 1) + 1;
     if (autoPad && autoPad !== 'NOTSET') {
       switch (autoPad) {
         case 'VALID':
           pads[padHeadIndex] = 0;
           pads[padTailIndex] = 0;
-          return Math.floor(((inSize - dkernel) / stride) + 1);
+          return Math.floor((inSize - dkernel) / stride + 1);
         case 'SAME_LOWER':
         case 'SAME_UPPER':
           if (dilation !== 1) {
@@ -1233,22 +1385,21 @@ export class PoolConvUtil {
           } else {
             const legacyTargetSize = (inSize + stride - 1) / stride;
             const padNeeded = (legacyTargetSize - 1) * stride + kernel - inSize;
-            pads[padHeadIndex] =
-                (autoPad === 'SAME_LOWER') ? Math.floor((padNeeded + 1) / 2) : Math.floor(padNeeded / 2);
+            pads[padHeadIndex] = autoPad === 'SAME_LOWER' ? Math.floor((padNeeded + 1) / 2) : Math.floor(padNeeded / 2);
             pads[padTailIndex] = padNeeded - pads[padHeadIndex];
-            return Math.floor(((inSize + padNeeded - kernel) / stride) + 1);
+            return Math.floor((inSize + padNeeded - kernel) / stride + 1);
           }
         default:
           throw new Error('Unsupported AutoPad type');
       }
     } else {
-      return Math.floor(((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride) + 1);
+      return Math.floor((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride + 1);
     }
   }
 }
 
-export const MIN_CLIP = -3.4028234663852886e+38;
-export const MAX_CLIP = 3.4028234663852886e+38;
+export const MIN_CLIP = -3.4028234663852886e38;
+export const MAX_CLIP = 3.4028234663852886e38;
 
 export function decodeUtf8String(buffer: Uint8Array): string {
   return new TextDecoder().decode(buffer);

@@ -1,12 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
+import {
+  createTensorShapeVariables,
+  getElementAt,
+  IndicesHelper,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  UniformDataElementType,
+  UniformsArrayType,
+} from './common';
 
 interface PadAttributes {
   // 0-constant, 1-reflect, 2-edge, 3-wrap
@@ -168,8 +177,10 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
     const input = inputVariable('x', inputs[0].dataType, inputDims.length);
     const dataType = input.type.value;
     const padSnippet = getPadSnippet(output, inputDims.length, attributes);
-    const uniforms: UniformsArrayType =
-        [{name: 'output_size', type: 'u32'}, {name: 'pads', type: 'i32', length: attributes.pads.length}];
+    const uniforms: UniformsArrayType = [
+      { name: 'output_size', type: 'u32' },
+      { name: 'pads', type: 'i32', length: attributes.pads.length },
+    ];
     if (attributes.mode === 0) {
       uniforms.push({name: 'constant_value', type: (isValueFromInput ? dataType : 'f32') as UniformDataElementType});
     }
@@ -191,9 +202,9 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
     name: 'Pad',
     shaderCache: {hint: `${attributes.mode}${isValueFromInput}`, inputDependencies},
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
-      programUniforms
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */) },
+      programUniforms,
     }),
     getShaderSource,
   };
@@ -215,13 +226,13 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
         updatePads[Number(axes[i]) + inputRank] = Number(bigInt64Pads[i + axes.length]);
       }
     } else {
-      bigInt64Pads.forEach((v, i) => updatePads[Number(i)] = (Number(v)));
+      bigInt64Pads.forEach((v, i) => (updatePads[Number(i)] = Number(v)));
     }
 
     const pads: number[] = [];
-    updatePads.forEach(v => pads.push(v));
+    updatePads.forEach((v) => pads.push(v));
 
-    return {mode: attributes.mode, value, pads};
+    return { mode: attributes.mode, value, pads };
   } else {
     return attributes;
   }
@@ -230,5 +241,5 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
 export const pad = (context: ComputeContext, attributes: PadAttributes): void => {
   validateInputs(context.inputs);
   const updatedAttributes = createPadAttributesFromInputs(context.inputs, attributes);
-  context.compute(createPadProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
+  context.compute(createPadProgramInfo(context.inputs, updatedAttributes), { inputs: [0] });
 };

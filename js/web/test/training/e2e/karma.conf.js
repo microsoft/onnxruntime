@@ -15,23 +15,23 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
-module.exports = function(config) {
+module.exports = function (config) {
   const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';
   config.set({
     frameworks: ['mocha'],
     files: [
-      {pattern: distPrefix + ORT_MAIN},
-      {pattern: './common.js'},
-      {pattern: TEST_MAIN},
-      {pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true},
-      {pattern: './data/*', included: false},
+      { pattern: distPrefix + ORT_MAIN },
+      { pattern: './common.js' },
+      { pattern: TEST_MAIN },
+      { pattern: './node_modules/onnxruntime-web/dist/*.*', included: false, nocache: true },
+      { pattern: './data/*', included: false },
     ],
     plugins: [require('@chiragrupani/karma-chromium-edge-launcher'), ...config.plugins],
     proxies: {
       '/model.onnx': '/base/model.onnx',
       '/data/': '/base/data/',
     },
-    client: {captureConsole: true, mocha: {expose: ['body'], timeout: 60000}},
+    client: { captureConsole: true, mocha: { expose: ['body'], timeout: 60000 } },
     reporters: ['mocha'],
     captureTimeout: 120000,
     reportSlowerThan: 100,
@@ -42,13 +42,13 @@ module.exports = function(config) {
     hostname: 'localhost',
     browsers: [],
     customLaunchers: {
-      Chrome_default: {base: 'ChromeHeadless', chromeDataDir: USER_DATA},
+      Chrome_default: { base: 'ChromeHeadless', chromeDataDir: USER_DATA },
       Chrome_no_threads: {
         base: 'ChromeHeadless',
         chromeDataDir: USER_DATA,
         // TODO: no-thread flags
       },
-      Edge_default: {base: 'Edge', edgeDataDir: USER_DATA}
-    }
+      Edge_default: { base: 'Edge', edgeDataDir: USER_DATA },
+    },
   });
 };

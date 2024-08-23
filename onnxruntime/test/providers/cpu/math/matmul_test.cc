@@ -219,6 +219,33 @@ TEST(MathOpTest, MatMulUint64Type) {
   RunMatMulTest<uint64_t>(9);
 }
 
+template <typename T>
+void RunMatMulZeroKTest() {
+  // test with empty inputs and zero filled output
+  constexpr const std::array<T, 0> empty_input{};
+  const std::vector<T> expected_output(4 * 4, T{});
+  OpTester test("MatMul", 13);
+
+  test.AddInput<T>("A", {4, 0}, empty_input);
+  test.AddInput<T>("B", {0, 4}, empty_input);
+  test.AddOutput<T>("Y", {4, 4}, expected_output);
+
+  // No special case is implemented.
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulZeroKFloatType) {
+  RunMatMulZeroKTest<float>();
+}
+
+TEST(MathOpTest, MatMulZeroKInt32Type) {
+  RunMatMulZeroKTest<int32_t>();
+}
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA

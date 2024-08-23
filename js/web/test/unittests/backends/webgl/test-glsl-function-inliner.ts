@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {expect} from 'chai';
+import { expect } from 'chai';
 
-import {replaceInlines} from '../../../../lib/onnxjs/backends/webgl/glsl-function-inliner';
-import {Logger} from '../../../../lib/onnxjs/instrument';
+import { replaceInlines } from '../../../../lib/onnxjs/backends/webgl/glsl-function-inliner';
+import { Logger } from '../../../../lib/onnxjs/instrument';
 
 function removeWhiteSpace(s: string): string {
   return s.replace(/\s+/gm, ' ');
