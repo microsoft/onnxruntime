@@ -3,11 +3,8 @@
 
 import { Env } from 'onnxruntime-common';
 
-<<<<<<< HEAD
-=======
 import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
 
->>>>>>> 4647453e5ece6d0f98ce59cb88ad02a8b9b35fdf
 import type { OrtWasmModule } from '../wasm-types';
 
 import { WebGpuBackend } from './backend-webgpu';
