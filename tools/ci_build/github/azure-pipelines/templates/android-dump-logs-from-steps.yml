@@ -14,7 +14,7 @@ steps:
       else
         echo "Emulator is not running."
       fi
-  name: Determine if emulator is running
+  displayName: "Determine if emulator is running"
 
 - task: CmdLine@2
   inputs:
