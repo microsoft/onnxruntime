@@ -21,7 +21,9 @@
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/graph/constants.h"
+#include "core/graph/model.h"
 #include "core/graph/graph.h"
+#include "core/graph/graph_proto_serializer.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
@@ -2473,6 +2475,23 @@ ORT_API(int32_t, OrtApis::OrtGraph_GetIthOutputElemType, const OrtGraphViewer* g
   return graph_viewer->GetOutputs()[i]->TypeAsProto()->tensor_type().elem_type();
 }
 
+ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  Model model(graph_viewer->Name(), true, ModelMetaData(), PathString(),
+#if defined(ORT_MINIMAL_BUILD)
+    IOnnxRuntimeOpSchemaRegistryList(),
+#else
+    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}),
+#endif
+    graph_viewer->DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
+  onnx::ModelProto model_proto = model.ToProto();
+  GraphViewerToProto(*graph_viewer, *model_proto.mutable_graph(), true, true);
+  size_t ret = model_proto.ByteSizeLong();
+  *data = malloc(ret);
+  model_proto.SerializeToArray(*data, ret);
+  return ret;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetName, const OrtNode* node, _Out_ const char** name) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   *name = n->Name().c_str();
@@ -3041,6 +3060,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetOutputSize,
     &OrtApis::OrtGraph_GetIthOutputName,
     &OrtApis::OrtGraph_GetIthOutputElemType,
+    &OrtApis::OrtGraph_SerializeToArray,
     &OrtApis::OrtNode_GetName,
     &OrtApis::OrtNode_GetDescription,
     &OrtApis::OrtNode_GetDomain,

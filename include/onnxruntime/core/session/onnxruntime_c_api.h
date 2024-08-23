@@ -4775,6 +4775,8 @@ struct OrtApi {
 
   int32_t(ORT_API_CALL* OrtGraph_GetIthOutputElemType)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
+  size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;
+
   ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 
   ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description);

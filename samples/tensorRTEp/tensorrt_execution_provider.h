@@ -170,10 +170,7 @@ std::string GetWeightRefittedEnginePath(std::string engine_cache_path);
 
 struct TensorrtExecutionProvider : public OrtExecutionProvider {
     TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& provider_options);
-    OrtStatusPtr CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
-                                                    std::unordered_map<std::string, size_t>& input_map,
-                                                    std::unordered_map<std::string, size_t>& output_map,
-                                                    OrtNodeComputeInfo** node_compute_funcs);
+    bool IsGraphCaptured(int graph_annotation_id) const { return false; }
     static OrtStatusPtr RefitEngine(std::string onnx_model_filename,
                                       std::string& onnx_model_folder_path,
                                       std::string& weight_stripped_engine_cath_path,
@@ -181,8 +178,8 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
                                       nvinfer1::ICudaEngine* trt_engine,
                                       bool serialize_refitted_engine,
                                       bool detailed_build_log);
-private:
     static const OrtApi* api_;
+private:
 //  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
@@ -278,6 +275,21 @@ private:
   // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
   // to allocate enough memory in Arena before graph capturing.
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+
+  OrtStatusPtr CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
+                                                    std::unordered_map<std::string, size_t>& input_map,
+                                                    std::unordered_map<std::string, size_t>& output_map,
+                                                    OrtNodeComputeInfo** node_compute_funcs);
+
+  OrtStatusPtr CreateNodeComputeInfoFromGraph(const OrtGraphViewer* graph_body_viewer,
+                                        const OrtNode* fused_node,
+                                        std::unordered_map<std::string, size_t>& input_map,
+                                        std::unordered_map<std::string, size_t>& output_map,
+                                        OrtNodeComputeInfo** node_compute_funcs);
+
+  bool IsGraphCaptureAllowed() const { return false; };
+
+  nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 };
 
 struct TensorrtExecutionProviderFactory : public OrtExecutionProviderFactory {
