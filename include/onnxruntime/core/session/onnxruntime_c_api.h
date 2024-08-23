@@ -4790,6 +4790,8 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtNodeArg_GetName, const OrtNodeArg* node_arg, _Out_ const char** name);
 
+  size_t(ORT_API_CALL* OrtGraph_SerializeToArray)(const OrtGraphViewer*, _Out_ void** data)NO_EXCEPTION;
+
   ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 
   ORT_API2_STATUS(OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description);

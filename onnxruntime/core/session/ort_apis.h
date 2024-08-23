@@ -571,6 +571,8 @@ ORT_API(int32_t, OrtGraph_GetIthOutputElemType, const OrtGraphViewer*, size_t i)
 
 ORT_API_STATUS_IMPL(OrtNodeArg_GetName, const OrtNodeArg* node_arg, _Out_ const char** name);
 
+ORT_API(size_t, OrtGraph_SerializeToArray, const OrtGraphViewer*, _Out_ void** data);
+
 ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Out_ const char** name);
 
 ORT_API_STATUS_IMPL(OrtNode_GetDescription, const OrtNode* node, _Out_ const char** description);
