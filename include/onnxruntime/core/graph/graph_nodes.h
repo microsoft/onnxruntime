@@ -117,13 +117,14 @@ class ValidNodes {
       return (current_ != other.current_);
     }
 
-    void operator++() {
+    NodeIterator<TIterator>& operator++() {
       if (current_ < end_) {
         while (++current_ != end_) {
           if (*current_ != nullptr && (!apply_filter_ || (*filter_func_)((*current_)->Index()) == false))
             break;
         }
       }
+      return *this;
     }
 
     NodeIterator<TIterator> operator++(int) {
