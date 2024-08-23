@@ -3,8 +3,12 @@
 
 import { Env } from 'onnxruntime-common';
 
+<<<<<<< HEAD
+=======
+import { calculateTensorSizeInBytes, DataType } from '../wasm-common';
+
+>>>>>>> 4647453e5ece6d0f98ce59cb88ad02a8b9b35fdf
 import type { OrtWasmModule } from '../wasm-types';
-import { DataType, calculateTensorSizeInBytes } from '../wasm-common';
 
 import { WebGpuBackend } from './backend-webgpu';
 import { LOG_DEBUG } from './log';
@@ -29,7 +33,6 @@ class TensorViewImpl implements TensorView {
     const elementCount = ShapeUtil.size(this.dims);
     return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
-
 
   getFloat32Array(): Float32Array {
     if (this.dataType !== DataType.float) {
