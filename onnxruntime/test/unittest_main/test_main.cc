@@ -92,8 +92,8 @@ int TEST_MAIN(int argc, char** argv) {
   int status = 0;
 
   ORT_TRY {
-    ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
+    ortenv_setup();
 
     status = RUN_ALL_TESTS();
   }
