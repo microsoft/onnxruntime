@@ -580,6 +580,27 @@ static bool EpSharedContextsHasAllGraphs(const onnxruntime::GraphViewer& graph_v
   return true;
 }
 
+static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                         const std::vector<EpSharedContextsPtr>& ep_shared_ctx,
+                                         const logging::Logger& logger) {
+  for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+    const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+    const auto& ep_context_node = graph_viewer.Nodes().begin();
+    NodeAttrHelper node_helper(*ep_context_node);
+    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+    const std::string& graph_name = ep_context_node->Name();
+    auto it = find_if(ep_shared_ctx.begin(), ep_shared_ctx.end(),
+                      [&graph_name](const EpSharedContextsPtr& obj) { return obj->Name() == graph_name; });
+    if (it == ep_shared_ctx.end()) {
+      LOGS(logger, VERBOSE) << "Graph: " << graph_name << " from EpContext node not found from shared EP contexts.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // For model with EPContext, filter in EPContext nodes only, and make sure each partition only has one single EPContext node
 static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
@@ -649,8 +670,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
   };
 
-  // check the ep_shared_contexts contains all the graphs in the context model
-  if (is_qnn_ctx_model && !has_main_context_node && share_ep_contexts_ && !GetEpSharedContexts().empty()) {
+  // share ep contexts is enabled
+  // check the ep_shared_contexts to see if it contains all the graphs in the context model
+  // directly use the resource from ep_shared_contexts if it has all the graphs needed by the currect session
+  // no need to setup QNN backend
+  if (is_qnn_ctx_model && share_ep_contexts_ && !GetEpSharedContexts().empty()) {
     if (EpSharedContextsHasAllGraphs(graph_viewer, GetEpSharedContexts(), logger)) {
       PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, logger);
       return result;
@@ -887,25 +911,27 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
   if (is_qnn_ctx_model) {
     // Get QnnModel from EP shared contexts
-    if (share_ep_contexts_ && !has_main_context_node && !GetEpSharedContexts().empty()) {
-      for (auto fused_node_and_graph : fused_nodes_and_graphs) {
-        const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
-        const auto& ep_context_node = graph_viewer.Nodes().begin();
-        const Node& fused_node = fused_node_and_graph.fused_node;
-        const std::string& graph_meta_id = fused_node.Name();
-        std::string key = ep_context_node->Name();
-        auto it = find_if(qnn_ep_shared_contexts_.begin(), qnn_ep_shared_contexts_.end(),
-                          [&key](const EpSharedContextsPtr& obj) { return obj->Name() == key; });
-        ORT_RETURN_IF(it == qnn_ep_shared_contexts_.end(), "Graph: " + key + " not found from shared EP contexts.");
-        auto qnn_model_shared = std::static_pointer_cast<qnn::QnnModel>(*it);
-        ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node));
-        ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput());
-        qnn_models_shared_.emplace(graph_meta_id, qnn_model_shared);
-        use_shared_model_ = true;
-        ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+    if (share_ep_contexts_ && !GetEpSharedContexts().empty()) {
+      if (EpSharedContextsHasAllGraphs(fused_nodes_and_graphs, GetEpSharedContexts(), logger)) {
+        for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+          const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+          const auto& ep_context_node = graph_viewer.Nodes().begin();
+          const Node& fused_node = fused_node_and_graph.fused_node;
+          const std::string& graph_meta_id = fused_node.Name();
+          std::string key = ep_context_node->Name();
+          auto it = find_if(qnn_ep_shared_contexts_.begin(), qnn_ep_shared_contexts_.end(),
+                            [&key](const EpSharedContextsPtr& obj) { return obj->Name() == key; });
+          ORT_RETURN_IF(it == qnn_ep_shared_contexts_.end(), "Graph: " + key + " not found from shared EP contexts.");
+          auto qnn_model_shared = std::static_pointer_cast<qnn::QnnModel>(*it);
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node));
+          ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput());
+          qnn_models_shared_.emplace(graph_meta_id, qnn_model_shared);
+          use_shared_model_ = true;
+          ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+        }
+        qnn_ep_shared_contexts_.clear();
+        return Status::OK();
       }
-      qnn_ep_shared_contexts_.clear();
-      return Status::OK();
     }
 
     // Table<EPContext node name, QnnModel>, the node name is the graph_meta_id (old) created from user model which used to generate the EP context model
