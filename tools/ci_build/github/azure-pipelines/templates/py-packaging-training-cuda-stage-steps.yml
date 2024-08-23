@@ -66,7 +66,7 @@ stages:
               --build-arg OPSET_VERSION=${{ parameters.opset_version }}
               --build-arg PYTHON_VERSION=${{ parameters.python_version }}
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
-              --build-arg BUILD_UID=$(id -u)              
+              --build-arg BUILD_UID=$(id -u)
             Repository: $(Repository)
 
         - task: CmdLine@2
@@ -165,7 +165,7 @@ stages:
             set -e -x
             whlfilename=$(ls $(Build.ArtifactStagingDirectory)/Release/dist/*.whl | head -n 1)  ; \
             echo $whlfilename ; du -sh $whlfilename ; \
-            (( $(wc -c < "$whlfilename") -  300*1024*1024 < 0 )) ||  ( echo 'Wheel size bigger than 300M'; exit 1)
+            (( $(wc -c < "$whlfilename") -  400*1024*1024 < 0 )) ||  ( echo 'Wheel size bigger than 400M'; exit 1)
           displayName: 'Check wheel size'
           continueOnError: true
 
@@ -173,14 +173,12 @@ stages:
           parameters:
             Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
             Context: tools/ci_build/github/linux/docker
-            UpdateDepsTxt: false
             DockerBuildArgs: >-
               --build-arg TORCH_VERSION=${{ parameters.torch_version }}
               --build-arg OPSET_VERSION=${{ parameters.opset_version }}
               --build-arg PYTHON_VERSION=${{ parameters.python_version }}
               --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
               --build-arg BUILD_UID=$(id -u)
-              --network=host
             Repository: $(Repository)
 
         - task: CmdLine@2

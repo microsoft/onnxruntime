@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 19
+#define ORT_API_VERSION 20
 
 #ifdef __cplusplus
 extern "C" {
@@ -621,6 +621,7 @@ typedef struct OrtMIGraphXProviderOptions {
   const char* migraphx_save_model_path;              // migraphx model path name
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
+  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options

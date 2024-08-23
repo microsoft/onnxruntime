@@ -231,6 +231,8 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
     } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
       out << " axis=" << quantize_params.axisScaleOffsetEncoding.axis;
       size_t num_elems = quantize_params.axisScaleOffsetEncoding.numScaleOffsets;
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
       out << " scales=(";
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].scale << (i == num_elems - 1 ? "" : " ");
@@ -239,11 +241,13 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].offset << (i == num_elems - 1 ? "" : " ");
       }
-      out << ")";
+      out << (truncate ? "...)" : ")");
     } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
       out << " axis=" << quantize_params.bwAxisScaleOffsetEncoding.axis;
       out << " bw=" << quantize_params.bwAxisScaleOffsetEncoding.bitwidth;
       size_t num_elems = quantize_params.bwAxisScaleOffsetEncoding.numElements;
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
       out << " scales=(";
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.bwAxisScaleOffsetEncoding.scales[i] << (i == num_elems - 1 ? "" : " ");
@@ -252,7 +256,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.bwAxisScaleOffsetEncoding.offsets[i] << (i == num_elems - 1 ? "" : " ");
       }
-      out << ")";
+      out << (truncate ? "...)" : ")");
     } else {
       out << " encoding not supported.";
     }

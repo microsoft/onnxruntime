@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
+import { Backend, env, InferenceSession, InferenceSessionHandler } from 'onnxruntime-common';
 
-import {initializeOrtEp, initializeWebAssemblyAndOrtRuntime} from './wasm/proxy-wrapper';
-import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
-import {scriptSrc} from './wasm/wasm-utils-import';
+import { initializeOrtEp, initializeWebAssemblyAndOrtRuntime } from './wasm/proxy-wrapper';
+import { OnnxruntimeWebAssemblySessionHandler } from './wasm/session-handler-inference';
+import { scriptSrc } from './wasm/wasm-utils-import';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -21,8 +21,9 @@ export const initializeFlags = (): void => {
   if (env.wasm.simd === false) {
     // eslint-disable-next-line no-console
     console.warn(
-        'Deprecated property "env.wasm.simd" is set to false. ' +
-        'non-SIMD build is no longer provided, and this setting will be ignored.');
+      'Deprecated property "env.wasm.simd" is set to false. ' +
+        'non-SIMD build is no longer provided, and this setting will be ignored.',
+    );
   }
 
   if (typeof env.wasm.proxy !== 'boolean') {
@@ -49,7 +50,7 @@ export const initializeFlags = (): void => {
       env.wasm.numThreads = 1;
     } else {
       const numCpuLogicalCores =
-          typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
+        typeof navigator === 'undefined' ? require('node:os').cpus().length : navigator.hardwareConcurrency;
       env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
     }
   }
@@ -81,12 +82,18 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     // performe EP specific initialization
     await initializeOrtEp(backendName);
   }
-  createInferenceSessionHandler(path: string, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler>;
-  createInferenceSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler>;
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  createInferenceSessionHandler(
+    path: string,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler>;
+  createInferenceSessionHandler(
+    buffer: Uint8Array,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler>;
+  async createInferenceSessionHandler(
+    pathOrBuffer: string | Uint8Array,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
     return Promise.resolve(handler);

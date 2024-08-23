@@ -5,7 +5,7 @@
 
 const path = require('path');
 const fs = require('fs-extra');
-const {spawn} = require('child_process');
+const { spawn } = require('child_process');
 const startServer = require('./simple-http-server');
 const minimist = require('minimist');
 
@@ -31,7 +31,7 @@ const TRAININGDATA_DEST = path.resolve(TEST_E2E_RUN_FOLDER, 'data');
 // always use a new folder as user-data-dir
 let nextUserDataDirId = 0;
 function getNextUserDataDir() {
-  const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString())
+  const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString());
   nextUserDataDirId++;
   fs.emptyDirSync(dir);
   return dir;
@@ -42,10 +42,10 @@ const BROWSER = minimist(process.argv.slice(2)).browser || 'Chrome_default';
 
 async function main() {
   // find packed package
-  const {globbySync} = await import('globby');
+  const { globbySync } = await import('globby');
 
   const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
-  const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', {cwd: ORT_COMMON_FOLDER});
+  const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', { cwd: ORT_COMMON_FOLDER });
 
   const PACKAGES_TO_INSTALL = [];
 
@@ -56,7 +56,7 @@ async function main() {
   }
 
   const ORT_WEB_FOLDER = path.resolve(JS_ROOT_FOLDER, 'web');
-  const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-web-*.tgz', {cwd: ORT_WEB_FOLDER});
+  const ORT_WEB_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-web-*.tgz', { cwd: ORT_WEB_FOLDER });
   if (ORT_WEB_PACKED_FILEPATH_CANDIDATES.length !== 1) {
     throw new Error('cannot find exactly single package for onnxruntime-web.');
   }
@@ -68,7 +68,7 @@ async function main() {
   await runInShell(`npm install`);
 
   // npm install with "--cache" to install packed packages with an empty cache folder
-  await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map(i => `"${i}"`).join(' ')}`);
+  await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`);
 
   // prepare training data
   prepareTrainingDataByCopying();
@@ -77,7 +77,7 @@ async function main() {
   console.log('Running self-hosted tests');
   console.log('===============================================================');
   // test cases with self-host (ort hosted in same origin)
-  await testAllBrowserCases({hostInKarma: true});
+  await testAllBrowserCases({ hostInKarma: true });
 
   console.log('===============================================================');
   console.log('Running not self-hosted tests');
@@ -85,24 +85,27 @@ async function main() {
   // test cases without self-host (ort hosted in cross origin)
   const server = startServer(path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'), 8081);
   try {
-    await testAllBrowserCases({hostInKarma: false});
+    await testAllBrowserCases({ hostInKarma: false });
   } finally {
     // close the server after all tests
     await server.close();
   }
 }
 
-async function testAllBrowserCases({hostInKarma}) {
-  await runKarma({hostInKarma, main: './browser-test-wasm.js'});
+async function testAllBrowserCases({ hostInKarma }) {
+  await runKarma({ hostInKarma, main: './browser-test-wasm.js' });
 }
 
-async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.training.wasm.min.js'}) {
+async function runKarma({ hostInKarma, main, browser = BROWSER, ortMain = 'ort.training.wasm.min.js' }) {
   console.log('===============================================================');
   console.log(`Running karma with the following binary: ${ortMain}`);
   console.log('===============================================================');
   const selfHostFlag = hostInKarma ? '--self-host' : '';
-  await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
-      ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
+  await runInShell(
+    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
+      ortMain
+    } --test-main=${main} --user-data=${getNextUserDataDir()}`,
+  );
 }
 
 async function runInShell(cmd) {
@@ -111,8 +114,8 @@ async function runInShell(cmd) {
   console.log(' > ' + cmd);
   console.log('===============================================================');
   let complete = false;
-  const childProcess = spawn(cmd, {shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER});
-  childProcess.on('close', function(code) {
+  const childProcess = spawn(cmd, { shell: true, stdio: 'inherit', cwd: TEST_E2E_RUN_FOLDER });
+  childProcess.on('close', function (code) {
     if (code !== 0) {
       process.exit(code);
     } else {
@@ -125,8 +128,8 @@ async function runInShell(cmd) {
 }
 
 async function delay(ms) {
-  return new Promise(function(resolve) {
-    setTimeout(function() {
+  return new Promise(function (resolve) {
+    setTimeout(function () {
       resolve();
     }, ms);
   });
