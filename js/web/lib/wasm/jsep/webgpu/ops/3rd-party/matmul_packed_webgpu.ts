@@ -110,13 +110,9 @@ export const makeMatMulPackedVec4Source = (
       workPerThread[0] === 4
     )
   ) {
-    throw new Error(`If transposeA ${transposeA} is true, innerElementSize ${
-      innerElementSize
-    } and workPerThread[1] ${workPerThread[1]} must be 4.
+    throw new Error(`If transposeA ${transposeA} is true, innerElementSize ${innerElementSize} and workPerThread[1] ${workPerThread[1]} must be 4.
       Otherwise, innerElementSize ${innerElementSize} must be 3 or 4.
-  tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}. tileInner ${
-    tileInner
-  } must be divisible by workgroupSize[1] ${workgroupSize[1]}. colPerThread ${workPerThread[0]} must be 4.`);
+  tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}. tileInner ${tileInner} must be divisible by workgroupSize[1] ${workgroupSize[1]}. colPerThread ${workPerThread[0]} must be 4.`);
   }
   return `
 var<workgroup> mm_Asub: array<array<vec${innerElementSize}<${type}>, ${tileAWidth / innerElementSize}>, ${tileAHight}>;
@@ -227,11 +223,7 @@ export const makeMatMulPackedSource = (
     !(tileAHight % workgroupSize[1] === 0 && tileAWidth % workgroupSize[0] === 0 && tileInner % workgroupSize[1] === 0)
   ) {
     throw new Error(
-      `tileAHight ${tileAHight} must be divisible by workgroupSize[1]${
-        workgroupSize[1]
-      }, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${
-        workgroupSize[0]
-      }, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`,
+      `tileAHight ${tileAHight} must be divisible by workgroupSize[1]${workgroupSize[1]}, tileAWidth ${tileAWidth} must be divisible by workgroupSize[0]${workgroupSize[0]}, tileInner ${tileInner} must be divisible by workgroupSize[1]${workgroupSize[1]}`,
     );
   }
   const rowPerThreadA = tileAHight / workgroupSize[1];
@@ -470,6 +462,7 @@ export const createMatmulProgramInfo = (
   outputShape: readonly number[],
   reshapedOutputShape?: readonly number[],
   isChannelsLast = false /* only used for conv2dByMatMul*/,
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const aShape = inputs[0].dims;
   const bShape = inputs[1].dims;
@@ -562,7 +555,12 @@ export const createMatmulProgramInfo = (
       inputDependencies,
     },
     getRunData: () => ({
-      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      outputs: [
+        {
+          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+          dataType: inputs[0].dataType,
+        },
+      ],
       dispatchGroup: { x: dispatch[0], y: dispatch[1], z: dispatch[2] },
       programUniforms,
     }),
