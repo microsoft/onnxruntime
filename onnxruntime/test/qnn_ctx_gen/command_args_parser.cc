@@ -37,7 +37,7 @@ namespace qnnctxgen {
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
-      "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
+      "\t    [Example] -C \"ep.context_enable|1\" \n"
       "\t-i: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
@@ -57,7 +57,6 @@ namespace qnnctxgen {
 static const ORTCHAR_T* delimiter = L";";
 #else
 static const ORTCHAR_T* delimiter = ";";
-ORTSTR(";")
 #endif
 static void ParsePaths(const std::basic_string<ORTCHAR_T>& path, std::vector<std::basic_string<ORTCHAR_T>>& paths) {
   std::basic_string<ORTCHAR_T>path_str(path);
