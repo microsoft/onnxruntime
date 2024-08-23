@@ -537,7 +537,7 @@ class TestMixtralMoE(unittest.TestCase):
         for batch_size in [1, 16]:
             for sequence_length in [128, 512]:
                 # use a small sizes to speed up the test
-                config = PhiMoEConfig(hidden_size=512, intermediate_size=1024)
+                config = PhiMoEConfig(hidden_size=128, intermediate_size=256)
                 phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length)
                 phi3_moe.parity_check()
 
