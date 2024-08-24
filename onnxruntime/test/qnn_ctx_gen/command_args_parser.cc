@@ -54,9 +54,9 @@ namespace qnnctxgen {
       "\t-h: help\n");
 }
 #ifdef _WIN32
-static const ORTCHAR_T* delimiter = L";";
+static const ORTCHAR_T* delimiter = L",";
 #else
-static const ORTCHAR_T* delimiter = ";";
+static const ORTCHAR_T* delimiter = ",";
 #endif
 static void ParsePaths(const std::basic_string<ORTCHAR_T>& path, std::vector<std::basic_string<ORTCHAR_T>>& paths) {
   std::basic_string<ORTCHAR_T> path_str(path);

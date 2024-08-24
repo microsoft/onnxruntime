@@ -149,12 +149,18 @@ int real_main(int argc, char* argv[]) {
       CheckStatus(so.config_options.AddConfigEntry(it.first.c_str(), it.second.c_str()));
     }
 
+    for (auto model_path : test_config.model_file_paths) {
+      std::cout << "Model file path: " << ToUTF8String(model_path) << std::endl;
+    }
+
     // Generate context cache model files with QNN context binary files
     // The context binary file generated later includes all graphs from previous models
     {
-      std::shared_ptr<IExecutionProvider> qnn_ep(QNNProviderFactoryCreator::Create(provider_options, &so)->CreateProvider());
+      auto ep = QNNProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
+      std::shared_ptr<IExecutionProvider> qnn_ep(std::move(ep));
 
       for (auto model_path : test_config.model_file_paths) {
+        std::cout << "Generate context cache model for: " << ToUTF8String(model_path) << std::endl;
         InferenceSession session_object1{so, ((OrtEnv*)*ort_env.get())->GetEnvironment()};
         CheckStatus(session_object1.RegisterExecutionProvider(qnn_ep));
         CheckStatus(session_object1.Load(ToPathString(model_path)));
@@ -162,6 +168,7 @@ int real_main(int argc, char* argv[]) {
       }
     }
 
+    std::cout << "Start to update the generated Onnx model." << std::endl;
     std::vector<std::basic_string<ORTCHAR_T>> ep_ctx_files;
     ep_ctx_files.reserve(test_config.model_file_paths.size());
     for (auto model_path : test_config.model_file_paths) {
@@ -171,6 +178,7 @@ int real_main(int argc, char* argv[]) {
     // Get the last context binary file name
     std::string last_qnn_ctx_binary_file_name;
     GetLastContextBinaryFileName(ep_ctx_files.back(), last_qnn_ctx_binary_file_name);
+    std::cout << "The last context binary file: " << last_qnn_ctx_binary_file_name << std::endl;
     if (last_qnn_ctx_binary_file_name.empty()) {
       throw Ort::Exception("Can't find QNN context binary file from the Onnx model.", OrtErrorCode::ORT_FAIL);
     }

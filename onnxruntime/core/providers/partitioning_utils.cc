@@ -95,8 +95,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const IsNodeSupportedFn& is_node_supported_fn,
     const OnGroupClosedFn& on_group_closed_fn,
     const std::string& execution_provider_type,
-    const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-    bool support_parallel_graph = false) {
+    const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map) {
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
   /*
@@ -130,78 +129,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     in_degree.insert({node.Index(), node_input_edge_count});
     if (node_input_edge_count == 0) {
       nodes_to_process.push_back(&node);
-    }
-  }
-
-  // Process current node to get all direct connected nodes.
-  // Remove it from root_nodes if the node is root node.
-  const auto process_nodes = [&](const Node* current_node, const std::vector<const Node*>& connected_nodes,
-                                 std::list<const Node*>& root_nodes,
-                                 std::unordered_map<const Node*, std::vector<const Node*>>& nodes_to_include,
-                                 std::unordered_map<const Node*, uint16_t>& node_graph_index,
-                                 uint16_t graph_index) {
-    for (const Node* connected_node : connected_nodes) {
-      size_t edge_count = connected_node->GetInputEdgesCount() + connected_node->GetOutputEdgesCount();
-      std::vector<const Node*> nodes_connected;
-      nodes_connected.reserve(edge_count);
-      std::for_each(connected_node->InputNodesBegin(), connected_node->InputNodesEnd(),
-                    [&](const Node& upstream_node) {
-                      if (0 == upstream_node.GetInputEdgesCount()) {
-                        auto pos = std::find(root_nodes.begin(), root_nodes.end(), &upstream_node);
-                        if (pos != root_nodes.end()) {
-                          root_nodes.erase(pos);
-                        }
-                      }
-                      if (current_node != &upstream_node) {
-                        nodes_connected.push_back(&upstream_node);
-                        node_graph_index.emplace(&upstream_node, graph_index);
-                      }
-                    });
-      std::for_each(connected_node->OutputNodesBegin(), connected_node->OutputNodesEnd(),
-                    [&](const Node& downstream_node) {
-                      if (current_node != &downstream_node) {
-                        nodes_connected.push_back(&downstream_node);
-                        node_graph_index.emplace(&downstream_node, graph_index);
-                      }
-                    });
-      nodes_to_include.emplace(connected_node, nodes_connected);
-    }
-  };
-
-  // <node, graph_index> nodes within same graph have same graph_index.
-  // otherwise they are in different parallel graphs with different graph_index.
-  std::unordered_map<const Node*, uint16_t> node_graph_index;
-  if (support_parallel_graph) {
-    // <node, node's input & output nodes>
-    std::unordered_map<const Node*, std::vector<const Node*>> nodes_to_include;
-    std::unordered_map<const Node*, std::vector<const Node*>> new_nodes_to_include;
-    uint16_t graph_index = 0;
-    std::list<const Node*> root_nodes;
-    std::copy(nodes_to_process.begin(), nodes_to_process.end(), std::back_inserter(root_nodes));
-    while (!root_nodes.empty()) {
-      const Node* node = root_nodes.front();
-      root_nodes.erase(root_nodes.begin());
-
-      size_t edge_count = node->GetInputEdgesCount() + node->GetOutputEdgesCount();
-      std::vector<const Node*> nodes_connected;
-      nodes_connected.reserve(edge_count);
-      std::for_each(node->OutputNodesBegin(), node->OutputNodesEnd(),
-                    [&](const Node& downstream_node) {
-                      nodes_connected.push_back(&downstream_node);
-                      node_graph_index.emplace(&downstream_node, graph_index);
-                    });
-      nodes_to_include.emplace(node, nodes_connected);
-      node_graph_index.emplace(node, graph_index);
-
-      while (!nodes_to_include.empty()) {
-        for (auto const& [current_node, connected_nodes] : nodes_to_include) {
-          process_nodes(current_node, connected_nodes, root_nodes,
-                        new_nodes_to_include, node_graph_index, graph_index);
-        }
-        nodes_to_include.clear();
-        nodes_to_include.swap(new_nodes_to_include);
-      }
-      ++graph_index;
     }
   }
 
@@ -261,14 +188,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       // an unsupported node on the border will be processed after the current partition node group
       nodes_to_process_with_next_group.push_back(&node);
       continue;
-    }
-
-    if (support_parallel_graph && !supported_group.empty()) {
-      // leave the node to next graph if it has different graph_index with eisting group
-      if (node_graph_index.at(supported_group[0]) != node_graph_index.at(&node)) {
-        nodes_to_process_with_next_group.push_back(&node);
-        continue;
-      }
     }
 
     if (is_node_supported) {
@@ -451,14 +370,12 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool drop_constant_initializers,
-                          bool support_parallel_graph) {
+                          bool drop_constant_initializers) {
   const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
                                                          is_node_supported_fn,
                                                          on_partition_closed_fn,
                                                          execution_provider_type,
-                                                         node_unit_map,
-                                                         support_parallel_graph);
+                                                         node_unit_map);
 
   std::vector<std::unique_ptr<ComputeCapability>> partitions{};
   partitions.reserve(groups.size());
@@ -482,8 +399,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool drop_constant_initializers,
-                          bool support_parallel_graph) {
+                          bool drop_constant_initializers) {
   const auto excluded_nodes = CreateExcludedNodeSet(graph_viewer, stop_ops);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
@@ -498,8 +414,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       execution_provider_name,
       execution_provider_type,
       node_unit_map,
-      drop_constant_initializers,
-      support_parallel_graph);
+      drop_constant_initializers);
 }
 
 }  // namespace utils

@@ -76,8 +76,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool drop_constant_initializers = false,
-                          bool support_parallel_graph = false);
+                          bool drop_constant_initializers = false);
 
 /**
 Create the supported partitions for the execution provider.
@@ -104,8 +103,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           const std::string& execution_provider_type,
                           const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
-                          bool drop_constant_initializers = false,
-                          bool support_parallel_graph = false);
+                          bool drop_constant_initializers = false);
 
 /**
 Create a ComputeCapability instance from the group of nodes.
