@@ -16,6 +16,7 @@ import numpy
 import torch
 import torch.nn.functional as F
 from onnx import TensorProto, helper
+from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
@@ -62,7 +63,7 @@ def quant_dequant(weights, quant_mode: bool = True):
 
 
 def create_moe_onnx_graph(
-    num_rows,
+    sequence_length,
     num_experts,
     hidden_size,
     inter_size,
@@ -134,19 +135,19 @@ def create_moe_onnx_graph(
     )
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
             ORT_DTYPE,
-            [num_rows, num_experts],
+            [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -162,7 +163,7 @@ def create_moe_onnx_graph(
 
 
 def create_mixtral_moe_onnx_graph(
-    num_rows,
+    sequence_length,
     num_experts,
     hidden_size,
     inter_size,
@@ -223,19 +224,19 @@ def create_mixtral_moe_onnx_graph(
     ]
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
             ORT_DTYPE,
-            [num_rows, num_experts],
+            [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -251,7 +252,7 @@ def create_mixtral_moe_onnx_graph(
 
 
 def create_phi_moe_onnx_graph(
-    num_rows,
+    sequence_length,
     num_experts,
     hidden_size,
     inter_size,
@@ -380,19 +381,19 @@ def create_phi_moe_onnx_graph(
         )
 
     graph_inputs = [
-        helper.make_tensor_value_info("input", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("input", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph_inputs.append(
         helper.make_tensor_value_info(
             "router_probs",
             ORT_DTYPE,
-            [num_rows, num_experts],
+            [sequence_length, num_experts],
         )
     )
 
     graph_outputs = [
-        helper.make_tensor_value_info("output", ORT_DTYPE, [num_rows, hidden_size]),
+        helper.make_tensor_value_info("output", ORT_DTYPE, [sequence_length, hidden_size]),
     ]
 
     graph = helper.make_graph(
@@ -416,7 +417,6 @@ class ClassInstantier(OrderedDict):
 
 ACT2CLS = {
     "silu": nn.SiLU,
-    "relu": nn.ReLU,
     "gelu": nn.GELU,
 }
 ACT2FN = ClassInstantier(ACT2CLS)
@@ -566,7 +566,7 @@ class SparseMoeBlockORTHelper(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         pass
 
-    def ort_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def ort_forward(self, hidden_states: torch.Tensor, iobinding=False) -> torch.Tensor:
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
@@ -579,8 +579,12 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         ort_output = None
         if self.ort_sess is not None:
-            ort_output = self.ort_sess.run(None, ort_inputs)
-            return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
+            if not iobinding:
+                ort_output = self.ort_sess.run(None, ort_inputs)
+                return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
+            else:
+                self.ort_run_with_iobinding(ort_inputs)
+                return None
 
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
@@ -590,22 +594,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         # print_tensor("output", ort_output[0])
 
         return None
-
-    def parity_check(self):
-        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
-        torch_output = self.forward(hidden_state)
-        ort_output = self.ort_forward(hidden_state)
-        if ort_output is not None:
-            assert torch.allclose(torch_output, ort_output.to(torch.float32), rtol=THRESHOLD, atol=THRESHOLD)
-            print(
-                "batch_size:",
-                self.batch_size,
-                " sequence_length:",
-                self.sequence_length,
-                " max_diff:",
-                (torch_output - ort_output).abs().max(),
-                " parity: OK",
-            )
 
     def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
         iobinding = self.ort_sess.io_binding()
@@ -641,6 +629,12 @@ class SparseMoeBlockORTHelper(nn.Module):
             ).data_ptr(),
         )
 
+        # warm up
+        for _ in range(5):
+            iobinding.synchronize_inputs()
+            self.ort_sess.run_with_iobinding(iobinding)
+            iobinding.synchronize_outputs()
+
         import time
 
         s = time.time()
@@ -650,6 +644,92 @@ class SparseMoeBlockORTHelper(nn.Module):
             iobinding.synchronize_outputs()
         e = time.time()
         print(f"MoE cuda kernel time: {(e - s) / repeat * 1000} ms")
+
+
+    def parity_check(self):
+        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
+        torch_output = self.forward(hidden_state)
+        ort_output = self.ort_forward(hidden_state)
+        if ort_output is not None:
+            assert torch.allclose(torch_output, ort_output.to(torch.float32), rtol=THRESHOLD, atol=THRESHOLD)
+            print(
+                "name:",
+                self.__class__.__name__,
+                " batch_size:",
+                self.batch_size,
+                " sequence_length:",
+                self.sequence_length,
+                " max_diff:",
+                (torch_output - ort_output).abs().max(),
+                " parity: OK",
+            )
+
+    def benchmark_ort(self):
+        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
+        self.ort_forward(hidden_state, iobinding=True)
+
+class SwitchMoE(SparseMoeBlockORTHelper):
+    def __init__(
+        self,
+        batch_size,
+        sequence_length,
+        num_experts,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        eval_capacity=-1,
+        activation="gelu",
+    ):
+        super().__init__()
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.num_experts = num_experts
+        self.hidden_dim = in_features
+        self.ffn_dim = hidden_features
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.eval_capacity = eval_capacity  # -1 means we route all tokens
+
+        self.gate = MoEGate(num_experts=num_experts, in_features=in_features)
+        self.moe_experts = MoERuntimeExperts(
+            num_experts=num_experts,
+            in_features=in_features,
+            hidden_features=hidden_features,
+            out_features=out_features,
+            act_layer=ACT2CLS[activation],
+            bias=True,
+        )
+
+        self.moe_onnx_graph = create_moe_onnx_graph(
+            batch_size * sequence_length,
+            num_experts,
+            in_features,
+            hidden_features,
+            self.moe_experts.weight1.transpose(1, 2),
+            self.moe_experts.bias1,
+            self.moe_experts.weight2.transpose(1, 2),
+            self.moe_experts.bias2,
+        )
+
+        self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
+
+        self.torch_input = torch.randn(batch_size, sequence_length, in_features)
+
+
+    def forward(self, hidden_states):
+        b, t, c = hidden_states.shape
+        hidden_states = hidden_states.reshape(-1, c)
+        logits = self.gate(hidden_states)
+        gates = torch.nn.functional.softmax(logits, dim=1)
+        ret = torch.max(gates, dim=1)
+        indices_s = ret.indices  # dim: [bs], the index of the expert with highest softmax value
+        scores = ret.values.unsqueeze(-1).unsqueeze(-1)  # S
+        hidden_states = self.moe_experts(hidden_states, indices_s)
+
+        hidden_states = hidden_states * scores
+        hidden_states = hidden_states.reshape(b, t, c)
+
+        return hidden_states
 
 
 class MixtralSparseMoeBlock(SparseMoeBlockORTHelper):
@@ -910,22 +990,42 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
         return final_hidden_states  # , router_logits
 
 
-class TestMoEs(unittest.TestCase):
-    def test_mixtral_moe_parity(self):
-        for batch_size in [1, 16]:
-            for sequence_length in [128, 1024]:
-                # use a small sizes to speed up the test
-                config = MixtralConfig(hidden_size=256, intermediate_size=1024)
-                mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
-                mixtral_moe.parity_check()
+def small_test_cases():
+    for batch_size in [1, 4, 16]:
+        for sequence_length in [128, 512, 1024]:
+            yield batch_size, sequence_length
 
-    def test_phi3_moe_parity(self):
-        for batch_size in [1, 16]:
-            for sequence_length in [128, 1024]:
-                # use a small sizes to speed up the test
-                config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
-                phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length)
-                phi3_moe.parity_check()
+class TestSwitchMoE(unittest.TestCase):
+    @parameterized.expand(small_test_cases())
+    def test_switch_moe_parity(self, batch_size, sequence_length):
+        # if platform.system() == "Windows":
+        #     pytest.skip("Skip on Windows")
+        switch_moe = SwitchMoE(
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            num_experts=8,
+            in_features=256,
+            hidden_features=1024,
+            out_features=256,
+        )
+        switch_moe.parity_check()
+        switch_moe.benchmark_ort()
+
+class TestMixtralMoE(unittest.TestCase):
+    @parameterized.expand(small_test_cases())
+    def test_mixtral_moe_parity(self, batch_size, sequence_length):
+        config = MixtralConfig(hidden_size=256, intermediate_size=1024)
+        mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
+        mixtral_moe.parity_check()
+        mixtral_moe.benchmark_ort()
+
+class TestPhiMoE(unittest.TestCase):
+    @parameterized.expand(small_test_cases())
+    def test_phi3_moe_parity(self, batch_size, sequence_length):
+        config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
+        phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length)
+        phi3_moe.parity_check()
+        phi3_moe.benchmark_ort()
 
 
 if __name__ == "__main__":
