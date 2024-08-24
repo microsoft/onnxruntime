@@ -116,7 +116,7 @@ def create_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=0,
+            normalize_routing_weights=1,
             use_sparse_mixer=0,
             activation_type="silu",
             domain="com.microsoft",
