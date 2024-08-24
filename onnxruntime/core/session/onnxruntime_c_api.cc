@@ -2441,9 +2441,24 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetParentGraph, const OrtGraph* graph, _Ou
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** path) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *path = reinterpret_cast<const void*>(&graph_viewer->ModelPath());
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph) {
   const ::onnxruntime::GraphViewer* graph_viewer_ptr = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph_viewer);
   *graph = reinterpret_cast<const OrtGraph*>(&graph_viewer_ptr->GetGraph());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Out_ size_t* num_inputs, _Outptr_ const char*** input_names) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const auto& inputs = graph_viewer->GetInputsIncludingInitializers();
+  *num_inputs = inputs.size();
+  *input_names = new const char*[*num_inputs];
+  for (size_t i = 0; i < *num_inputs; i++) (*input_names)[i] = inputs[i]->Name().c_str();
   return nullptr;
 }
 
@@ -2494,15 +2509,6 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph,
 //   return nullptr;
 // }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOutputs, const OrtGraphViewer* graph, _Out_ size_t* len, _Outptr_ const OrtNodeArg*** args) {
-  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  const std::vector<const ::onnxruntime::NodeArg*>& outputs = graph_viewer->GetOutputs();
-  *len = outputs.size();
-  *args = new const OrtNodeArg* [*len];
-  for (size_t i = 0; i < outputs.size(); i++) (*args)[i] = reinterpret_cast<const OrtNodeArg*>(outputs[i]);
-  return nullptr;
-}
-
 ORT_API(size_t, OrtApis::OrtGraph_GetOutputSize, const OrtGraphViewer* graph) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   return graph_viewer->GetOutputs().size();
@@ -2516,12 +2522,6 @@ ORT_API(const char*, OrtApis::OrtGraph_GetIthOutputName, const OrtGraphViewer* g
 ORT_API(int32_t, OrtApis::OrtGraph_GetIthOutputElemType, const OrtGraphViewer* graph, size_t i) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   return graph_viewer->GetOutputs()[i]->TypeAsProto()->tensor_type().elem_type();
-}
-
-ORT_API_STATUS_IMPL(OrtApis::OrtNodeArg_GetName, const OrtNodeArg* node_arg, _Out_ const char** name) {
-  const ::onnxruntime::NodeArg* na = reinterpret_cast<const ::onnxruntime::NodeArg*>(node_arg);
-  *name = na->Name().c_str();
-  return nullptr;
 }
 
 ORT_API(size_t, OrtApis::OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data) {
@@ -3103,18 +3103,18 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtApis::OrtGraph_IsSubgraph,
     &OrtApis::OrtGraph_GetParentGraph,
+    &OrtApis::OrtGraph_GetModelPath,
     &OrtApis::OrtGraph_GetOrtGraph,
+    &OrtApis::OrtGraph_GetInputsIncludingInitializers,
     &OrtApis::OrtGraph_GetOrtNode,
     &OrtApis::OrtGraph_GetNodesConsumingInput,
     &OrtApis::OrtGraph_GetNodeProducingOutput,
     &OrtApis::OrtGraph_NumberOfNodes,
     &OrtApis::OrtGraph_MaxNodeIndex,
     // &OrtApis::OrtGraph_CreateModel,
-    &OrtApis::OrtGraph_GetOutputs,
     &OrtApis::OrtGraph_GetOutputSize,
     &OrtApis::OrtGraph_GetIthOutputName,
     &OrtApis::OrtGraph_GetIthOutputElemType,
-    &OrtApis::OrtNodeArg_GetName,
     &OrtApis::OrtGraph_SerializeToArray,
     &OrtApis::OrtNode_GetName,
     &OrtApis::OrtNode_GetDescription,

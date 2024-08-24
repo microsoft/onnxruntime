@@ -16,19 +16,20 @@ file(GLOB tensorrt_src "./*.cc")
 add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "/usr/local/cuda/include"
-                                             "/home/leca/TensorRT-10.0.1.6/include"
-                                             "../../build/Linux/Debug/_deps/flatbuffers-src/include")
-#                                        "../../build/Linux/Debug/_deps/gsl-src/include"
+                                             "/home/yangu/tensorrt/TensorRT-10.0.0.6/include"
+                                             "../../ortmodule_build7/Release/_deps/flatbuffers-src/include"
+                                             "../../ortmodule_build7/Release/_deps/gsl-src/include")
 #                                        "../../build/Linux/Debug/_deps/onnx-src"
 #                                        "../../build/Linux/Debug/_deps/onnx-build"
 #                                        "../../build/Linux/Debug/_deps/protobuf-src/src")
 #
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
 target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so"
-                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer.so"
-                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer_plugin.so"
-                                     "/home/leca/TensorRT-10.0.1.6/lib/libnvonnxparser.so"
-                                     "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/flatbuffers-build/libflatbuffers.a")
+                                     "/usr/local/cuda/lib64/libcudart.so"
+                                     "/home/yangu/tensorrt/TensorRT-10.0.0.6/lib/libnvinfer.so"
+                                     "/home/yangu/tensorrt/TensorRT-10.0.0.6/lib/libnvinfer_plugin.so"
+                                     "/home/yangu/tensorrt/TensorRT-10.0.0.6/lib/libnvonnxparser.so"
+                                     "/home/yangu/work/onnxruntime/ortmodule_build7/Release/_deps/flatbuffers-build/libflatbuffers.a")
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"

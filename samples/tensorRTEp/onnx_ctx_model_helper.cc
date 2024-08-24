@@ -1,6 +1,8 @@
 #include <cassert>
 #include <iostream>
 #include <fstream>
+#include <gsl/gsl>
+#include "murmurhash3.h"
 #include "onnx_ctx_model_helper.h"
 #include "tensorrt_execution_provider.h"
 
@@ -22,9 +24,42 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
 
   uint32_t hash[4] = {0, 0, 0, 0};
 
-  // auto hash_str = [&hash](const std::string& str) {
-  //   MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
-  // };
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  const std::filesystem::path* model_path = nullptr;
+  api->OrtGraph_GetModelPath(graph_viewer, (const void**)&model_path);
+
+  // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
+  if (model_path->has_filename()) {
+    std::string model_name = model_path->filename();
+
+    // LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+    // Ensure enough characters are hashed in case model names are too short
+    const size_t model_name_length = model_name.size();
+    constexpr size_t hash_string_length = 500;
+    std::string repeat_model_name = model_name;
+    for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      repeat_model_name += model_name;
+    }
+    hash_str(repeat_model_name);
+  } else {
+    // LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+  }
+
+  // fingerprint current graph by hashing graph inputs
+  // const std::vector<const char*>& input_names = nullptr;
+  const char** input_names = nullptr;
+  size_t input_count = 0;
+  api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_count, &input_names);
+  for (size_t i = 0; i < input_count; ++i) {
+    std::cout<<"input_names["<<i<<"] = "<<input_names[i]<<std::endl;
+    hash_str(input_names[i]);
+  }
+  // for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+  //   hash_str(node_arg->Name());
+  // }
 }
 
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {

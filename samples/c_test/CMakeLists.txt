@@ -7,4 +7,4 @@ project(TestOutTreeEp)
 add_executable(TestOutTreeEp test.cpp)
 
 target_include_directories(TestOutTreeEp PUBLIC "../../include/onnxruntime")
-target_link_libraries(TestOutTreeEp PUBLIC "/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so")
+target_link_libraries(TestOutTreeEp PUBLIC "/home/yangu/work/onnxruntime/ortmodule_build7/Release/libonnxruntime.so")

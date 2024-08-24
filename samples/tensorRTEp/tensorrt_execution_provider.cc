@@ -754,9 +754,9 @@ OrtStatusPtr BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_DDS || known_DDS) {
     if (!known_DDS) {
-      auto allocatorPtr = std::make_unique<OutputAllocator>();
-      trt_context->setOutputAllocator(output_name, allocatorPtr.get());
-      dds_output_allocator_map[output_name] = std::move(allocatorPtr);
+      // auto allocatorPtr = std::make_unique<OutputAllocator>();
+      // trt_context->setOutputAllocator(output_name, allocatorPtr.get());
+      // dds_output_allocator_map[output_name] = std::move(allocatorPtr);
     }
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
