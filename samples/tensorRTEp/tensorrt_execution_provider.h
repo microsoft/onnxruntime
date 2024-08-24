@@ -181,6 +181,9 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
     SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                           const OrtGraphViewer& graph, bool* early_termination) const;
     static const OrtApi* api_;
+    std::string trt_node_name_with_precision_;
+    std::unordered_map<std::string, float> dynamic_range_map_;
+    std::string cache_suffix_;
 private:
 //  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;

@@ -26,6 +26,8 @@ static const std::string EPCONTEXT_WARNING =
 HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer);
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
+std::string GetCtxModelPath(const std::string& ep_context_file_path,
+                            const std::string& original_model_path);
 bool IsAbsolutePath(const std::string& path_string);
 bool IsRelativePathToParentPath(const std::string& path_string);
 

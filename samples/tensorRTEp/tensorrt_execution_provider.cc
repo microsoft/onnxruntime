@@ -45,6 +45,191 @@ IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator
                                 }};
 }
 
+bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<std::string, float>& dynamic_range_map) {
+  // Set dynamic range for input tensors
+  for (int i = 0; i < network.getNbInputs(); ++i) {
+    const std::string tensor_name = network.getInput(i)->getName();
+    auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
+    if (dynamic_range_iter != dynamic_range_map.end()) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+      if (!network.getInput(i)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+        //LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for network input " << tensor_name;
+        return false;
+      }
+    }
+  }
+
+  // Set dynamic range for activations and weights
+  for (int i = 0; i < network.getNbLayers(); ++i) {
+    auto trt_layer = network.getLayer(i);
+    for (int j = 0, e = trt_layer->getNbOutputs(); j < e; ++j) {
+      const std::string tensor_name = trt_layer->getOutput(j)->getName();
+      auto dynamic_range_iter = dynamic_range_map.find(tensor_name);
+      if (dynamic_range_iter != dynamic_range_map.end()) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+        if (!trt_layer->getOutput(j)->setDynamicRange(-dynamic_range_iter->second, dynamic_range_iter->second)) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+          //LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for tensor " << tensor_name;
+          return false;
+        }
+      } else if (trt_layer->getType() == nvinfer1::LayerType::kCONSTANT) {
+        nvinfer1::IConstantLayer* const_layer = static_cast<nvinfer1::IConstantLayer*>(trt_layer);
+        const std::string const_layer_name = const_layer->getName();
+        auto trt_weights = const_layer->getWeights();
+        double max_weight = std::numeric_limits<double>::min();
+        for (int64_t k = 0, end = trt_weights.count; k < end; ++k) {
+          double weight{};
+          switch (trt_weights.type) {
+            case nvinfer1::DataType::kFLOAT:
+              weight = static_cast<const float*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kBOOL:
+              weight = static_cast<const bool*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kINT8:
+              weight = static_cast<const int8_t*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kHALF:
+              weight = static_cast<const uint16_t*>(trt_weights.values)[k];
+              break;
+            case nvinfer1::DataType::kINT32:
+              weight = static_cast<const int32_t*>(trt_weights.values)[k];
+              break;
+#if NV_TENSORRT_MAJOR >= 10
+            case nvinfer1::DataType::kINT64:
+              weight = static_cast<double>(static_cast<const int64_t*>(trt_weights.values)[k]);
+              break;
+#endif  // NV_TENSORRT_MAJOR >= 10
+            default:
+              //LOGS_DEFAULT(ERROR) << "Found unsupported datatype for layer " << const_layer_name;
+              return false;
+          }
+          max_weight = std::max(max_weight, std::abs(weight));
+        }
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+        if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+          //LOGS_DEFAULT(ERROR) << "Failed to set dynamic range for layer " << const_layer_name;
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+std::vector<std::string> SplitToStringVec(std::string const& s, char separator) {
+  std::vector<std::string> splitted;
+
+  for (size_t start = 0; start < s.length();) {
+    size_t separatorIndex = s.find(separator, start);
+    if (separatorIndex == std::string::npos) {
+      separatorIndex = s.length();
+    }
+    splitted.emplace_back(s.substr(start, separatorIndex - start));
+    start = separatorIndex + 1;
+  }
+
+  return splitted;
+}
+
+nvinfer1::TacticSources GetTacticSourceFromString(std::string& tactic_string) {
+  nvinfer1::TacticSources disabledTactics = 0;
+  nvinfer1::TacticSources enabledTactics = 0;
+  std::vector<std::string> tacticList = SplitToStringVec(tactic_string, ',');
+  for (auto& t : tacticList) {
+    bool enable{false};
+    if (t.front() == '+') {
+      enable = true;
+    } else if (t.front() != '-') {
+      //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source must be prefixed with + or - skipping: " << t;
+    }
+    t.erase(0, 1);
+
+    const auto toUpper = [](std::string& sourceName) {
+      std::transform(sourceName.begin(), sourceName.end(), sourceName.begin(),
+                     [](char c) { return static_cast<char>(std::toupper(c)); });
+      return sourceName;
+    };
+
+    nvinfer1::TacticSource source{};
+    t = toUpper(t);
+    if (t == "CUBLAS") {
+      //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS is deprecated in TensorRT 10.0";
+#if NV_TENSORRT_MAJOR < 10
+      source = nvinfer1::TacticSource::kCUBLAS;
+#endif
+    } else if (t == "CUBLASLT" || t == "CUBLAS_LT") {
+      //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUBLAS_LT is deprecated in TensorRT 9.0";
+#if NV_TENSORRT_MAJOR < 9
+      source = nvinfer1::TacticSource::kCUBLAS_LT;
+#endif
+    } else if (t == "CUDNN") {
+      //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic kCUDNN is deprecated in TensorRT 10.0";
+#if NV_TENSORRT_MAJOR < 10
+      source = nvinfer1::TacticSource::kCUDNN;
+#endif
+    } else if (t == "EDGE_MASK_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kEDGE_MASK_CONVOLUTIONS;
+    } else if (t == "JIT_CONVOLUTIONS") {
+      source = nvinfer1::TacticSource::kJIT_CONVOLUTIONS;
+    } else {
+      //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Tactic source was not found with name: " << t;
+    }
+
+    uint32_t sourceBit = 1U << static_cast<uint32_t>(source);
+
+    if (enable) {
+      enabledTactics |= sourceBit;
+    } else {
+      disabledTactics |= sourceBit;
+    }
+  }
+  return enabledTactics & ~disabledTactics;
+}
+
+inline std::vector<char> loadTimingCacheFile(const std::string inFileName) {
+  std::ifstream iFile(inFileName, std::ios::in | std::ios::binary);
+  if (!iFile) {
+    //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not read timing cache from: " << inFileName
+    //                      << ". A new timing cache will be generated and written.";
+    return std::vector<char>();
+  }
+  iFile.seekg(0, std::ifstream::end);
+  size_t fsize = iFile.tellg();
+  iFile.seekg(0, std::ifstream::beg);
+  std::vector<char> content(fsize);
+  iFile.read(content.data(), fsize);
+  iFile.close();
+  return content;
+}
+
+inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::IHostMemory* blob) {
+  std::ofstream oFile(outFileName, std::ios::out | std::ios::binary);
+  if (!oFile) {
+    //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Could not write timing cache to: " << outFileName;
+    return;
+  }
+  oFile.write((char*)blob->data(), blob->size());
+  oFile.close();
+}
+
 TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   const auto log_level = verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING;
   static TensorrtLogger trt_logger(log_level);
@@ -169,6 +354,177 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
     }
   }
   return true;
+}
+
+OrtStatusPtr ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
+                                              Ort::KernelContext ctx,
+                                              nvinfer1::ITensor* input,
+                                              ShapeRangesMap& shape_ranges,
+                                              const std::unordered_map<std::string, size_t>& input_indexes,
+                                              std::unordered_map<std::string, std::vector<int32_t>>& shape_tensor_values,
+                                              std::unordered_map<std::string, std::vector<int64_t>>& shape_tensor_values_int64,
+                                              cudaStream_t stream,
+                                              bool* engine_update) {
+  for (size_t i = 0; i < trt_profiles.size(); i++) {
+    const std::string& input_name = input->getName();
+    nvinfer1::Dims dims = input->getDimensions();
+    int nb_dims = dims.nbDims;
+
+    size_t input_index = 0;
+    const auto& iter = input_indexes.find(input_name);
+    if (iter != input_indexes.end()) {
+      input_index = iter->second;
+    }
+
+    auto input_tensor = ctx.GetInput(input_index);
+    auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+    const auto tensor_shapes = tensor_info.GetShape();
+    auto& shape_ranges_per_input = shape_ranges[input_name];
+
+    auto trt_profile = trt_profiles[i];
+
+    // If there are multiple profiles, for second and rest of profiles, simply copy the min/max/opt profile values from the first profile.
+    // Following "if statement" won't be executed since TRT EP currently only allows single profile for non-explicit profiles case.
+    if (i > 0) {
+      if (input->isShapeTensor()) {
+        // shape tensor
+        int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+        std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+        for (int j = 0; j < shape_size; j++) {
+          shapes_min[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN));
+          shapes_max[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX));
+          shapes_opt[j] = *(trt_profiles[0]->getShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT));
+        }
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+        trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+      } else {
+        // execution tensor
+        nvinfer1::Dims dims_min, dims_opt, dims_max;
+        dims_min = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN);
+        dims_max = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX);
+        dims_opt = trt_profiles[0]->getDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+        trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+      }
+      continue;
+    }
+
+    // Create shape profile
+    if (input->isShapeTensor()) {
+      // Get shape values for shape tensor input
+      const auto tensor_type = tensor_info.GetElementType();
+      // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+      int shape_size = dims.nbDims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+      // For setting TRT optimization profile. (Note: the min/opt/max profile values are still int32 even though int64 is supported after TRT 10)
+      std::vector<int32_t> values(shape_size);
+
+      switch (tensor_type) {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+          auto buffer = std::make_unique<int32_t[]>(shape_size);
+          GetShapeOfShapeTensor<int32_t>(input_tensor, buffer.get(), shape_size, stream);
+          shape_tensor_values[input_name].resize(shape_size);
+          for (int j = 0; j < shape_size; ++j) {
+            shape_tensor_values[input_name][j] = buffer[j];
+            values[j] = buffer[j];
+          }
+          break;
+        }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+          auto buffer = std::make_unique<int64_t[]>(shape_size);
+          GetShapeOfShapeTensor<int64_t>(input_tensor, buffer.get(), shape_size, stream);
+          shape_tensor_values_int64[input_name].resize(shape_size);
+          for (int j = 0; j < shape_size; ++j) {
+            shape_tensor_values_int64[input_name][j] = buffer[j];
+            values[j] = static_cast<int32_t>(buffer[j]);
+          }
+          break;
+        }
+        default: {
+          return TensorrtExecutionProvider::api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
+        }
+      }
+
+      // Update shape ranges
+      std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
+      int shape_range_size = static_cast<int>(shape_ranges_per_input.size());
+      if (shape_size == shape_range_size) {
+        // If shape size matches, check/update shape range
+        for (int j = 0; j < shape_size; ++j) {
+          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
+          shapes_min[j] = static_cast<int32_t>(shape_range[0]);
+          shapes_max[j] = static_cast<int32_t>(shape_range[1]);
+          shapes_opt[j] = static_cast<int32_t>(shape_range[2]);
+
+          const auto& tensor_shape_value = values[j];
+          // Update shape range lower bound
+          if (tensor_shape_value < shape_range[0]) {
+            shape_range[0] = tensor_shape_value;
+            shapes_min[j] = tensor_shape_value;
+            *engine_update = true;
+          }
+          // Update shape range upper bound
+          if (tensor_shape_value > shape_range[1]) {
+            shape_range[1] = tensor_shape_value;
+            shape_range[2] = tensor_shape_value;
+            shapes_max[j] = tensor_shape_value;
+            shapes_opt[j] = tensor_shape_value;
+            *engine_update = true;
+          }
+        }
+      } else {
+        // If shape size doesn't match, initialize shape_range with the new shape value
+        shape_ranges_per_input.clear();
+        for (int j = 0; j < shape_size; ++j) {
+          const auto& tensor_shape_value = values[j];
+          std::vector<std::vector<int64_t>> profile_vector;
+          std::vector<int64_t> shape_vector{tensor_shape_value, tensor_shape_value, tensor_shape_value};
+          profile_vector.push_back(shape_vector);  // only one profile needed
+          shape_ranges_per_input[j] = profile_vector;
+          shapes_min[j] = tensor_shape_value;
+          shapes_opt[j] = tensor_shape_value;
+          shapes_max[j] = tensor_shape_value;
+        }
+        *engine_update = true;
+      }
+
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
+      trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
+    } else {  // Execution tensor
+      nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
+      for (int j = 0, end = nb_dims; j < end; ++j) {
+        const auto& tensor_shape = tensor_shapes[j];
+        if (shape_ranges_per_input.find(j) != shape_ranges_per_input.end()) {
+          auto& shape_range = shape_ranges_per_input[j][0];  // only has one profile
+          dims_min.d[j] = static_cast<int32_t>(shape_range[0]);
+          dims_max.d[j] = static_cast<int32_t>(shape_range[1]);
+          dims_opt.d[j] = static_cast<int32_t>(shape_range[2]);
+
+          // Update minimum dimension
+          if (tensor_shape < shape_range[0]) {
+            shape_range[0] = tensor_shape;
+            dims_min.d[j] = static_cast<int32_t>(tensor_shape);
+            *engine_update = true;
+          }
+          // Update maximum dimension
+          if (tensor_shape > shape_range[1]) {
+            shape_range[1] = tensor_shape;
+            shape_range[2] = tensor_shape;
+            dims_max.d[j] = static_cast<int32_t>(tensor_shape);
+            dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
+            *engine_update = true;
+          }
+        }
+      }
+
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+      trt_profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
+    }
+  }
+  return nullptr;
 }
 
 #define CASE_GET_INPUT_TENSOR(DATA_TYPE, SrcT)                                              \
@@ -853,10 +1209,9 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   }
 
   // Load INT8 calibration table
-  std::unordered_map<std::string, float> dynamic_range_map;
   if (int8_enable_ && int8_calibration_cache_available_) {
     const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
-    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
+    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map_)) {
       throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
     }
   }
@@ -864,18 +1219,18 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   // Set precision flags
   const char* node_name = nullptr;
   api_->OrtNode_GetName(fused_node, &node_name);
-  std::string trt_node_name_with_precision(node_name);
+  trt_node_name_with_precision_ = node_name;
   if (fp16_enable_ && int8_enable_) {
     trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-    trt_node_name_with_precision += "_fp16_int8";
+    trt_node_name_with_precision_ += "_fp16_int8";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
   } else if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    trt_node_name_with_precision += "_fp16";
+    trt_node_name_with_precision_ += "_fp16";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
   } else if (int8_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    trt_node_name_with_precision += "_int8";
+    trt_node_name_with_precision_ += "_int8";
     //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
   }
 
@@ -895,7 +1250,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
         trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
         trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
         trt_config->setDLACore(dla_core_);
-        trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
+        trt_node_name_with_precision_ += "_dlacore" + std::to_string(dla_core_);
       }
     }
   }
@@ -922,246 +1277,235 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
   }
 #endif
 
-//#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
-//  // switch optimizaion level
-//  if (builder_optimization_level_ != 3) {
-//    trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
-//  }
-//
-//  // limit auxiliary streams
-//  if (auxiliary_streams_ >= 0) {
-//    trt_config->setMaxAuxStreams(auxiliary_streams_);
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
-//  }
-//#else
-//  if (builder_optimization_level_ != 3) {
-//    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
-//  }
-//  if (auxiliary_streams_ >= 0) {
-//    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
-//  }
-//#endif
-//
-//  if (weight_stripped_engine_enable_) {
-//#if NV_TENSORRT_MAJOR >= 10
-//    trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
-//    trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
-//#else
-//    LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
-//#endif
-//  }
-//
-//  // limit used tactic sources
-//  if (!tactic_sources_.empty()) {
-//    nvinfer1::TacticSources tactics = trt_config->getTacticSources();
-//    tactics |= GetTacticSourceFromString(tactic_sources_);
-//    trt_config->setTacticSources(tactics);
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
-//  }
-//
-//  // Build TRT engine (if needed) and load TRT engine if:
-//  //   (1) Graph has no dynamic shape input
-//  //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
-//  //
-//  // Otherwise engine will be handled at inference time.
-//  std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
-//  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-//
-//  std::string cache_path = "";
-//  std::string cache_suffix = "";
-//  // Customize cache prefix if assigned
-//  if (!cache_prefix_.empty()) {
-//    // Generate cache suffix in case user would like to customize cache prefix
-//    cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
-//    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-//  } else {
-//    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-//  }
-//
-//  std::string cache_hw_compat = "_sm" + compute_capability_;
-//  // Enable hardware compatility mode if assigned
-//  if (engine_cache_enable_ && engine_hw_compatible_) {
-//    trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
-//    cache_hw_compat = "_sm80+";
-//    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
-//  }
-//
-//  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-//  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-//  const std::string cache_path_prefix = cache_path + cache_hw_compat;
-//  std::string engine_cache_path = cache_path_prefix + ".engine";
-//  const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-//  const std::string profile_cache_path = cache_path_prefix + ".profile";
-//
-//  // If weight-stripped engine is enabled and refitted engine cache is not present,
-//  // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-//  const std::filesystem::path engine_cache_fs_path = engine_cache_path;
-//  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
-//    engine_cache_path = cache_path_prefix + ".stripped.engine";
-//    weight_stripped_engine_refit_ = true;
-//  }
-//
-//  // Generate file name for dumping ep context model
-//  if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-//    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
-//  }
-//
-//  if (!has_dynamic_shape) {
-//    std::string timing_cache_path = "";
-//    bool engine_update = false;
-//    if (timing_cache_enable_) {
-//      timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
-//    }
-//    {
-//      // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
-//      auto lock = GetApiLock();
-//
-//      // If explicit profile flag is on and engine cache enable flag is on,
-//      // we need to compare explicit profiles and profiles used to build the engine in order to decide whether to rebuild the engine.
-//      if (has_explicit_profile && engine_cache_enable_) {
-//        engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
-//        if (engine_update) {
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
-//        } else {
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine won't be rebuilt";
-//        }
-//      }
-//
-//      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
-//      if (engine_cache_enable_ && !engine_decryption_enable_ && engine_file && !engine_update) {
-//        engine_file.seekg(0, std::ios::end);
-//        size_t engine_size = engine_file.tellg();
-//        engine_file.seekg(0, std::ios::beg);
-//        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-//        engine_file.read((char*)engine_buf.get(), engine_size);
-//        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-//        if (trt_engine == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
-//        }
-//
-//      } else if (engine_decryption_enable_ && engine_cache_enable_ && std::filesystem::exists(encrypted_engine_cache_path) && !engine_update) {
-//        // Decrypt engine
-//        size_t engine_size = 0;
-//        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not get engine buffer size");
-//        }
-//        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-//        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not call engine decryption function decrypt");
-//        }
-//        // Deserialize engine
-//        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
-//        if (trt_engine == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
-//        }
-//      } else {
-//        // Set INT8 per tensor dynamic range
-//        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
-//#if defined(_MSC_VER)
-//#pragma warning(push)
-//#pragma warning(disable : 4996)
-//#endif
-//          trt_config->setInt8Calibrator(nullptr);
-//#if defined(_MSC_VER)
-//#pragma warning(pop)
-//#endif
-//          if (!SetDynamicRange(*trt_network, dynamic_range_map)) {
-//            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                   "TensorRT EP could not set INT8 dynamic range for fused node: " + fused_node.Name());
-//          }
-//        }
-//
-//        // Load timing cache from file. Create a fresh cache if the file doesn't exist
-//        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
-//        if (timing_cache_enable_) {
-//          std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
-//          timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
-//          if (timing_cache == nullptr) {
-//            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                   "TensorRT EP could not create timing cache: " + timing_cache_path);
-//          }
-//          trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
-//          if (detailed_build_log_) {
-//            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
-//          }
-//        }
-//
-//        // Build engine
-//        std::chrono::steady_clock::time_point engine_build_start;
-//        if (detailed_build_log_) {
-//          engine_build_start = std::chrono::steady_clock::now();
-//        }
-//        std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network, *trt_config)};
-//        if (serialized_engine == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP failed to create engine from network for fused node: " + fused_node.Name());
-//        }
-//        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
-//        if (trt_engine == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP failed to deserialize engine for fused node: " + fused_node.Name());
-//        }
-//        if (detailed_build_log_) {
-//          auto engine_build_stop = std::chrono::steady_clock::now();
-//          LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
-//        }
-//        if (engine_cache_enable_) {
-//          // Serialize engine profile if it has explicit profiles
-//          if (has_explicit_profile) {
-//            SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
-//            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
-//          }
-//
-//          if (engine_decryption_enable_) {
-//            // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-//            if (engine_encryption_ != nullptr) {
-//              if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
-//                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                       "TensorRT EP call to engine encryption library failed");
-//              }
-//              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
-//            } else {
-//              LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
-//            }
-//          } else {
-//            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-//            file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-//            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
-//          }
-//        }
-//        // serialize and save timing cache
-//        if (timing_cache_enable_) {
-//          auto timing_cache = trt_config->getTimingCache();
-//          std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
-//          if (timingCacheHostData == nullptr) {
-//            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                   "TensorRT EP could not serialize timing cache: " + timing_cache_path);
-//          }
-//          saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
-//          if (detailed_build_log_) {
-//            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
-//          }
-//        }
-//        // dump EP context node model
-//        if (dump_ep_context_model_) {
-//          // "ep_cache_context" node attribute should be a relative path to context model directory
-//          if (ep_cache_context_attr_.empty()) {
-//            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-//            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-//          }
-//          std::string compute_capability_hw_compat = compute_capability_;
-//          if (engine_cache_enable_ && engine_hw_compatible_) {
-//            compute_capability_hw_compat = "80+";
-//          }
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
+  // switch optimizaion level
+  if (builder_optimization_level_ != 3) {
+    trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+  }
+
+  // limit auxiliary streams
+  if (auxiliary_streams_ >= 0) {
+    trt_config->setMaxAuxStreams(auxiliary_streams_);
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
+  }
+#else
+  if (builder_optimization_level_ != 3) {
+    //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+  }
+  if (auxiliary_streams_ >= 0) {
+    //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+  }
+#endif
+
+  if (weight_stripped_engine_enable_) {
+#if NV_TENSORRT_MAJOR >= 10
+    trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
+    trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
+#else
+    //LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
+#endif
+  }
+
+  // limit used tactic sources
+  if (!tactic_sources_.empty()) {
+    nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+    tactics |= GetTacticSourceFromString(tactic_sources_);
+    trt_config->setTacticSources(tactics);
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
+  }
+
+  // Build TRT engine (if needed) and load TRT engine if:
+  //   (1) Graph has no dynamic shape input
+  //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
+  //
+  // Otherwise engine will be handled at inference time.
+  std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
+  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+
+  std::string cache_path = "";
+  // Customize cache prefix if assigned
+  if (!cache_prefix_.empty()) {
+    // Generate cache suffix in case user would like to customize cache prefix
+    cache_suffix_ = "_" + GetCacheSuffix(node_name, trt_node_name_with_precision_);
+    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix_;
+  } else {
+    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision_);
+  }
+
+  std::string cache_hw_compat = "_sm" + compute_capability_;
+  // Enable hardware compatility mode if assigned
+  if (engine_cache_enable_ && engine_hw_compatible_) {
+    trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
+    cache_hw_compat = "_sm80+";
+    //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
+  }
+
+  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+  const std::string cache_path_prefix = cache_path + cache_hw_compat;
+  std::string engine_cache_path = cache_path_prefix + ".engine";
+  const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
+  const std::string profile_cache_path = cache_path_prefix + ".profile";
+
+  // If weight-stripped engine is enabled and refitted engine cache is not present,
+  // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
+  const std::filesystem::path engine_cache_fs_path = engine_cache_path;
+  if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
+    engine_cache_path = cache_path_prefix + ".stripped.engine";
+    weight_stripped_engine_refit_ = true;
+  }
+
+  // Generate file name for dumping ep context model
+  if (dump_ep_context_model_ && ctx_model_path_.empty()) {
+    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+  }
+
+  if (!has_dynamic_shape) {
+    std::string timing_cache_path = "";
+    bool engine_update = false;
+    if (timing_cache_enable_) {
+      timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
+    }
+    {
+      // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
+      // auto lock = GetApiLock(); // TODO(leca)
+
+      // If explicit profile flag is on and engine cache enable flag is on,
+      // we need to compare explicit profiles and profiles used to build the engine in order to decide whether to rebuild the engine.
+      if (has_explicit_profile && engine_cache_enable_) {
+        engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+        if (engine_update) {
+          //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
+        } else {
+          //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine won't be rebuilt";
+        }
+      }
+
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+      if (engine_cache_enable_ && !engine_decryption_enable_ && engine_file && !engine_update) {
+        engine_file.seekg(0, std::ios::end);
+        size_t engine_size = engine_file.tellg();
+        engine_file.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        engine_file.read((char*)engine_buf.get(), engine_size);
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+        if (trt_engine == nullptr) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not deserialize engine from cache: " + engine_cache_path).c_str());
+        }
+
+      } else if (engine_decryption_enable_ && engine_cache_enable_ && std::filesystem::exists(encrypted_engine_cache_path) && !engine_update) {
+        // Decrypt engine
+        size_t engine_size = 0;
+        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP could not get engine buffer size");
+        }
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        if (!engine_decryption_(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP could not call engine decryption function decrypt");
+        }
+        // Deserialize engine
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
+        if (trt_engine == nullptr) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path).c_str());
+        }
+      } else {
+        // Set INT8 per tensor dynamic range
+        if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+          trt_config->setInt8Calibrator(nullptr);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+          if (!SetDynamicRange(*trt_network, dynamic_range_map_)) {
+            return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not set INT8 dynamic range for fused node: " + std::string(node_name)).c_str());
+          }
+        }
+
+        // Load timing cache from file. Create a fresh cache if the file doesn't exist
+        std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+        if (timing_cache_enable_) {
+          std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+          timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+          if (timing_cache == nullptr) {
+            return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not create timing cache: " + timing_cache_path).c_str());
+          }
+          trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+          if (detailed_build_log_) {
+            //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
+          }
+        }
+
+        // Build engine
+        std::chrono::steady_clock::time_point engine_build_start;
+        if (detailed_build_log_) {
+          engine_build_start = std::chrono::steady_clock::now();
+        }
+        std::unique_ptr<nvinfer1::IHostMemory> serialized_engine{trt_builder->buildSerializedNetwork(*trt_network, *trt_config)};
+        if (serialized_engine == nullptr) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP failed to create engine from network for fused node: " + std::string(node_name)).c_str());
+        }
+        trt_engine = std::unique_ptr<nvinfer1::ICudaEngine>(runtime_->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
+        if (trt_engine == nullptr) {
+          return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP failed to deserialize engine for fused node: " + std::string(node_name)).c_str());
+        }
+        if (detailed_build_log_) {
+          auto engine_build_stop = std::chrono::steady_clock::now();
+          //LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+        }
+        if (engine_cache_enable_) {
+          // Serialize engine profile if it has explicit profiles
+          if (has_explicit_profile) {
+            SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
+            //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+          }
+
+          if (engine_decryption_enable_) {
+            // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+            if (engine_encryption_ != nullptr) {
+              if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
+                return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP call to engine encryption library failed");
+              }
+              //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+            } else {
+              //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
+            }
+          } else {
+            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+            //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized engine " + engine_cache_path;
+          }
+        }
+        // serialize and save timing cache
+        if (timing_cache_enable_) {
+          auto timing_cache = trt_config->getTimingCache();
+          std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+          if (timingCacheHostData == nullptr) {
+            return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not serialize timing cache: " + timing_cache_path).c_str());
+          }
+          saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
+          if (detailed_build_log_) {
+            //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
+          }
+        }
+        // dump EP context node model
+        if (dump_ep_context_model_) {
+          // "ep_cache_context" node attribute should be a relative path to context model directory
+          if (ep_cache_context_attr_.empty()) {
+            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+          }
+          std::string compute_capability_hw_compat = compute_capability_;
+          if (engine_cache_enable_ && engine_hw_compatible_) {
+            compute_capability_hw_compat = "80+";
+          }
 //          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
 //                                                                                 ep_cache_context_attr_,
 //                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
@@ -1171,98 +1515,95 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //                                                                                 model_path_,
 //                                                                                 GetLogger())};
 //          DumpCtxModel(model_proto.get(), ctx_model_path_);
-//        }
-//      }
-//    }
-//
-//    if (weight_stripped_engine_refit_) {
-//      auto status = RefitEngine(model_path_,
-//                                onnx_model_folder_path_,
-//                                engine_cache_path,
-//                                false /* path check for security */,
-//                                trt_engine.get(),
-//                                true /* serialize refitted engine to disk */,
-//                                detailed_build_log_);
-//      if (status != Status::OK()) {
-//        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-//      }
-//    }
-//
-//    // Build context
-//    // Note: Creating an execution context from an engine is thread safe per TRT doc
-//    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-//    if (context_memory_sharing_enable_) {
-//#if defined(_MSC_VER)
-//#pragma warning(push)
-//#pragma warning(disable : 4996)
-//#endif
-//      size_t mem_size = trt_engine->getDeviceMemorySize();
-//#if defined(_MSC_VER)
-//#pragma warning(pop)
-//#endif
-//      if (mem_size > max_ctx_mem_size_) {
-//        max_ctx_mem_size_ = mem_size;
-//      }
-//#if NV_TENSORRT_MAJOR < 10
-//      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
-//#else
-//      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-//#endif
-//    } else {
-//      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-//    }
-//    if (!trt_context) {
-//      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                             "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
-//    }
-//  }
-//
-//  // Create input to index map
-//  for (int i = 0; i < num_inputs; ++i) {
-//    auto input = trt_network->getInput(i);
-//    const std::string& input_name = input->getName();
-//    const auto& iter = input_map.find(input_name);
-//    if (iter != input_map.end()) {
-//      input_indexes[input_name] = iter->second;
-//    }
-//  }
-//
-//  // Create output to index and type maps
-//  const auto& graph_output = model_proto->graph().output();
-//  for (int i = 0; i < num_outputs; ++i) {
-//    const std::string& output_name = trt_network->getOutput(i)->getName();
-//    const auto& iter = output_map.find(output_name);
-//    if (iter != output_map.end()) {
-//      output_indexes[output_name] = iter->second;
-//    }
-//    const auto& tensor_type = graph_output[i].type().tensor_type();
-//    output_types[output_name] = tensor_type.elem_type();
-//  }
-//
-//  // Save TRT engine, other TRT objects and input/output info to map
-//  parsers_.emplace(fused_node.Name(), std::move(trt_parser));
-//  engines_.emplace(fused_node.Name(), std::move(trt_engine));
-//  contexts_.emplace(fused_node.Name(), std::move(trt_context));
-//  networks_.emplace(fused_node.Name(), std::move(trt_network));
-//  input_info_[fused_node.Name()].push_back(input_indexes);
-//  output_info_[fused_node.Name()].push_back(output_indexes);
-//  output_info_[fused_node.Name()].push_back(output_types);
-//  input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
-//  profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
-//
-//  // For dynamic shape input model, firstly TRT EP creates a model proto which includes inputs, outputs and empty engine.
-//  // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
-//  // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
-//  if (dump_ep_context_model_ && has_dynamic_shape) {
-//    // "ep_cache_context" node attribute should be a relative path to context model directory
-//    if (ep_cache_context_attr_.empty()) {
-//      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-//      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-//    }
-//    std::string compute_capability_hw_compat = compute_capability_;
-//    if (engine_cache_enable_ && engine_hw_compatible_) {
-//      compute_capability_hw_compat = "80+";
-//    }
+        }
+      }
+    }
+
+    if (weight_stripped_engine_refit_) {
+      auto status = RefitEngine(model_path_,
+                                onnx_model_folder_path_,
+                                engine_cache_path,
+                                false /* path check for security */,
+                                trt_engine.get(),
+                                true /* serialize refitted engine to disk */,
+                                detailed_build_log_);
+      if (status != nullptr) {
+        return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, api_->GetErrorMessage(status));
+      }
+    }
+
+    // Build context
+    // Note: Creating an execution context from an engine is thread safe per TRT doc
+    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+    if (context_memory_sharing_enable_) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+      size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+      if (mem_size > max_ctx_mem_size_) {
+        max_ctx_mem_size_ = mem_size;
+      }
+#if NV_TENSORRT_MAJOR < 10
+      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+#else
+      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+#endif
+    } else {
+      trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+    }
+    if (!trt_context) {
+      return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not build execution context for fused node: " + std::string(node_name)).c_str());
+    }
+  }
+
+  // Create input to index map
+  for (int i = 0; i < num_inputs; ++i) {
+    auto input = trt_network->getInput(i);
+    const std::string& input_name = input->getName();
+    const auto& iter = input_map.find(input_name);
+    if (iter != input_map.end()) {
+      input_indexes[input_name] = iter->second;
+    }
+  }
+
+  // Create output to index and type maps
+  for (int i = 0; i < num_outputs; ++i) {
+    const std::string& output_name = trt_network->getOutput(i)->getName();
+    const auto& iter = output_map.find(output_name);
+    if (iter != output_map.end()) {
+      output_indexes[output_name] = iter->second;
+    }
+    output_types[output_name] = api_->OrtGraph_GetIthOutputElemType(graph_body_viewer, i);
+  }
+
+  // Save TRT engine, other TRT objects and input/output info to map
+  parsers_.emplace(node_name, std::move(trt_parser));
+  engines_.emplace(node_name, std::move(trt_engine));
+  contexts_.emplace(node_name, std::move(trt_context));
+  networks_.emplace(node_name, std::move(trt_network));
+  input_info_[node_name].push_back(input_indexes);
+  output_info_[node_name].push_back(output_indexes);
+  output_info_[node_name].push_back(output_types);
+  input_shape_ranges_[node_name] = input_implicit_shape_ranges;
+  profiles_.emplace(node_name, std::move(trt_profiles));
+
+  // For dynamic shape input model, firstly TRT EP creates a model proto which includes inputs, outputs and empty engine.
+  // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
+  // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
+  if (dump_ep_context_model_ && has_dynamic_shape) {
+    // "ep_cache_context" node attribute should be a relative path to context model directory
+    if (ep_cache_context_attr_.empty()) {
+      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+    }
+    std::string compute_capability_hw_compat = compute_capability_;
+    if (engine_cache_enable_ && engine_hw_compatible_) {
+      compute_capability_hw_compat = "80+";
+    }
 //    model_proto_.reset(CreateCtxModel(graph_body_viewer,
 //                                      ep_cache_context_attr_,
 //                                      nullptr,
@@ -1274,549 +1615,543 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //    if (ep_context_embed_mode_ == 0) {
 //      DumpCtxModel(model_proto_.get(), ctx_model_path_);
 //    }
-//  }
-//
-//  // Create function state
-//  // TODO: remove default capture
-//  NodeComputeInfo compute_info;
-//  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-//    std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
-//    // translate tactic sources string to nvinfer1::TacticSources
-//    nvinfer1::TacticSources tactics = 0;
-//    if (!tactic_sources_.empty()) {
-//      tactics = GetTacticSourceFromString(tactic_sources_);
-//    }
-//    *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
-//          &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
-//          &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-//          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-//          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
-//          engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
-//          context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
-//          engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
-//          detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
-//          auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_};
-//    *state = p.release();
-//    return 0;
-//  };
-//
-//  // Release function state
-//  compute_info.release_state_func = [](FunctionState state) {
-//    delete static_cast<TensorrtFuncState*>(state);
-//  };
-//
-//  // Create compute function
-//  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-//    Ort::KernelContext ctx(context);
-//
-//    TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-//
-//    // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
-//    // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
-//    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-//    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-//    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
-//    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
-//    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
-//    auto fused_node_name = trt_state->fused_node_name;
-//    // This map "shape_ranges" contains the shape range info for setting TRT optimization profiles.
-//    // The info is used for both shape tensor and execution tensor:
-//    // tensor name->(dimension->[min, max, opt])
-//    auto& shape_ranges = trt_state->input_shape_ranges;
-//    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
-//    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
-//    auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
-//    auto trt_builder = trt_state->builder;
-//    auto trt_engine = trt_state->engine->get();
-//    auto trt_context = trt_state->context->get();
-//    auto trt_profiles = trt_state->profiles;
-//    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
-//    int num_inputs = static_cast<int>(input_indexes.size());
-//    int num_outputs = static_cast<int>(output_indexes.size());
-//    bool engine_update = false;
-//    bool context_update = false;
-//    std::unordered_set<std::string> input_names;
-//
-//    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-//    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
-//    if (alloc_ == nullptr) {
-//      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
-//    }
-//    OrtAllocator* alloc = alloc_;
-//
-//    void* cuda_stream;
-//    Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
-//    cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
-//
-//    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-//    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-//    // Prepare cache name
-//    std::string cache_path = "";
-//    // Customize cache prefix if assigned
-//    if (!cache_prefix_.empty()) {
-//      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
-//    } else {
-//      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-//    }
-//
-//    // Enable hardware compatility mode if assigned
-//    std::string cache_hw_compat = "_sm" + compute_capability_;
-//    if (engine_cache_enable_ && engine_hw_compatible_) {
-//      cache_hw_compat = "_sm80+";
-//      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
-//    }
-//
-//    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-//    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-//    const std::string cache_path_prefix = cache_path + cache_hw_compat;
-//    std::string engine_cache_path = cache_path_prefix + ".engine";
-//    const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-//    const std::string profile_cache_path = cache_path_prefix + ".profile";
-//    std::string timing_cache_path = "";
-//    if (timing_cache_enable_) {
-//      timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
-//    }
-//
-//    // If weight-stripped engine is enabled and refitted engine cache is not present,
-//    // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
-//    const std::filesystem::path engine_cache_fs_path = engine_cache_path;
-//    if (weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
-//      engine_cache_path = cache_path_prefix + ".stripped.engine";
-//      weight_stripped_engine_refit_ = true;
-//    }
-//
-//    // Load serialized engine
-//    if (trt_state->engine_cache_enable && trt_engine == nullptr) {
-//      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
-//      std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-//      if (engine_file && !trt_state->engine_decryption_enable && profile_file) {
-//        // Deserialize profile
-//        shape_ranges = DeserializeProfileV2(profile_file);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-//
-//        // Prepare buffer
-//        engine_file.seekg(0, std::ios::end);
-//        size_t engine_size = engine_file.tellg();
-//        engine_file.seekg(0, std::ios::beg);
-//        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-//        engine_file.read((char*)engine_buf.get(), engine_size);
-//
-//        // Deserialize engine
-//        // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-//        // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-//        trt_state->engine->reset();
-//        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-//            trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
-//        if (!(*(trt_state->engine))) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-//        }
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-//        trt_engine = trt_state->engine->get();
-//        context_update = true;
-//
-//      } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
-//        shape_ranges = DeserializeProfileV2(profile_file);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-//        // Decrypt engine
-//        size_t engine_size = 0;
-//        if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not get engine buffer size");
-//        }
-//        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-//        if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not call engine decryption function decrypt");
-//        }
-//        // Deserialize engine
-//        // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-//        // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-//        trt_state->engine->reset();
-//        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
-//        if (!(*(trt_state->engine))) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path);
-//        }
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
-//        trt_engine = trt_state->engine->get();
-//        context_update = true;
-//      }
-//    }
-//
-//    // Check and update shape ranges for dynamic shape inputs.
-//    for (int i = 0, end = num_inputs; i < end; ++i) {
-//      auto input = trt_state->network->get()->getInput(i);
-//      const std::string& input_name = input->getName();
-//      input_names.insert(input_name);
-//
-//      // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
-//      // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
-//      if (shape_ranges.find(input_name) != shape_ranges.end()) {
-//        auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, shape_tensor_values, shape_tensor_values_int64, stream, &engine_update);
-//        if (status != Status::OK()) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
-//        }
-//      }
-//    }
-//
-//    // Regenerate engine
-//    if (engine_update) {
-//      // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
-//      trt_state->context->reset();
-//      trt_state->engine->reset();
-//      auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-//      trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, *(trt_state->max_workspace_size_ptr));
-//      for (auto trt_profile : trt_profiles) {
-//        trt_config->addOptimizationProfile(trt_profile);
-//      }
-//
-//      // Set INT8 Per Tensor Dynamic range
-//      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
-//#if defined(_MSC_VER)
-//#pragma warning(push)
-//#pragma warning(disable : 4996)
-//#endif
-//        trt_config->setInt8Calibrator(nullptr);
-//#if defined(_MSC_VER)
-//#pragma warning(pop)
-//#endif
-//        if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
-//        }
-//      }
-//
-//      // Set precision
-//      if (trt_state->fp16_enable && trt_state->int8_enable) {
-//        trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-//      } else if (trt_state->fp16_enable) {
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-//      } else if (trt_state->int8_enable) {
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-//      }
-//
-//      // Set DLA (DLA can only run with FP16 or INT8)
-//      if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
-//        trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
-//        trt_config->setDLACore(trt_state->dla_core);
-//      }
-//
-//      // enable sparse weights
-//      if (trt_state->sparsity_enable) {
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
-//      }
-//#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
-//      // enable builder heuristics
-//      if (trt_state->build_heuristics_enable) {
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
-//      }
-//#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
-//      // switch optimizaion level
-//      if (trt_state->builder_optimization_level != 3) {
-//        trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
-//      }
-//
-//      // limit auxiliary streams
-//      if (trt_state->auxiliary_streams >= 0) {
-//        trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
-//      }
-//#else
-//      if (trt_state->builder_optimization_level != 3) {
-//        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
-//      }
-//      if (trt_state->auxiliary_streams >= 0) {
-//        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
-//      }
-//#endif
-//      if (weight_stripped_engine_enable_) {
-//#if NV_TENSORRT_MAJOR >= 10
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
-//        trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
-//#else
-//        LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
-//#endif
-//      }
-//      // limit used tactic sources
-//      if (trt_state->filter_tactic_sources) {
-//        nvinfer1::TacticSources tactics = trt_config->getTacticSources();
-//        tactics |= trt_state->tactic_sources;
-//        trt_config->setTacticSources(tactics);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using bitmask " << tactics;
-//      }
-//
-//      // Load timing cache from file. Create a fresh cache if the file doesn't exist
-//      std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
-//      if (trt_state->timing_cache_enable) {
-//        std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
-//        timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
-//        if (timing_cache == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not create timing cache: " + timing_cache_path);
-//        }
-//        trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
-//        if (detailed_build_log_) {
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
-//        }
-//      }
-//
-//      // Enable hardware compatility mode if assigned
-//      if (trt_state->engine_hw_compatible) {
-//        trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
-//        LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
-//      }
-//
-//      // Build engine
-//      std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
-//      {
-//        auto lock = GetApiLock();
-//        std::chrono::steady_clock::time_point engine_build_start;
-//        if (detailed_build_log_) {
-//          engine_build_start = std::chrono::steady_clock::now();
-//        }
-//        serialized_engine = std::unique_ptr<nvinfer1::IHostMemory>(
-//            trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
-//        if (!serialized_engine) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create engine from network.");
-//        }
-//        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-//            trt_state->runtime->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
-//        if (!(*(trt_state->engine))) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to deserialize engine.");
-//        }
-//        if (detailed_build_log_) {
-//          auto engine_build_stop = std::chrono::steady_clock::now();
-//          LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
-//        }
-//      }
-//      if (!(*(trt_state->engine))) {
-//        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-//      }
-//      trt_engine = trt_state->engine->get();
-//      if (trt_state->engine_cache_enable) {
-//        // Serialize engine profile
-//        SerializeProfileV2(profile_cache_path, shape_ranges);
-//        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
-//
-//        // Serialize engine
-//        if (trt_state->engine_decryption_enable) {
-//          // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-//          if (trt_state->engine_encryption != nullptr) {
-//            if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
-//              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                     "TensorRT EP could not call engine encryption function encrypt");
-//            }
-//            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
-//          } else {
-//            LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
-//          }
-//        } else {
-//          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-//          file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
-//        }
-//      }
-//
-//      // serialize and save timing cache
-//      if (trt_state->timing_cache_enable) {
-//        auto timing_cache = trt_config->getTimingCache();
-//        std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
-//        if (timingCacheHostData == nullptr) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-//                                 "TensorRT EP could not serialize timing cache: " + timing_cache_path);
-//        }
-//        saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
-//        if (detailed_build_log_) {
-//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
-//        }
-//      }
-//
-//      // dump ep context model
-//      if (dump_ep_context_model_ && ep_context_embed_mode_) {
-//        UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-//        DumpCtxModel(model_proto_.get(), ctx_model_path_);
-//      }
-//      context_update = true;
-//
-//      if (weight_stripped_engine_refit_) {
-//        auto status = RefitEngine(model_path_,
-//                                  onnx_model_folder_path_,
-//                                  engine_cache_path,
-//                                  false /* path check for security */,
-//                                  trt_engine,
-//                                  true /* serialize refitted engine to disk */,
-//                                  detailed_build_log_);
-//        if (status != Status::OK()) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-//        }
-//      }
-//    }
-//
-//    if (context_update) {
-//      if (trt_state->context_memory_sharing_enable) {
-//#if NV_TENSORRT_MAJOR < 10
-//        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
-//            trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
-//#else
-//        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
-//            trt_state->engine->get()->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
-//#endif
-//      } else {
-//        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
-//            trt_state->engine->get()->createExecutionContext());
-//      }
-//      if (!(*(trt_state->context))) {
-//        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-//      }
-//      trt_context = trt_state->context->get();
-//    }
-//
-//    // Get input and output binding names
-//    int total_bindings = trt_engine->getNbIOTensors();
-//    std::vector<char const*> input_binding_names, output_binding_names;
-//    for (int i = 0, end = total_bindings; i < end; ++i) {
-//      auto const& name = trt_engine->getIOTensorName(i);
-//      auto const& mode = trt_engine->getTensorIOMode(name);
-//      if (mode == nvinfer1::TensorIOMode::kINPUT) {
-//        input_binding_names.push_back(name);
-//      } else {
-//        output_binding_names.push_back(name);
-//      }
-//    }
-//
-//    /*
-//     * Set input shapes and bind input buffers
-//     */
-//    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-//    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
-//      char const* input_name = input_binding_names[i];
-//
-//      size_t input_index = 0;
-//      const auto iter = input_indexes.find(input_name);
-//      if (iter != input_indexes.end()) {
-//        input_index = iter->second;
-//      }
-//      auto input_tensor = ctx.GetInput(input_index);
-//      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-//      const auto tensor_shapes = tensor_info.GetShape();
-//
-//      auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream);
-//      if (status != Status::OK()) {
-//        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-//      }
-//    }
-//
-//    /*
-//     * Set output shapes and bind output buffers
-//     */
-//    std::unordered_map<char const*, void*> buffers;
-//    buffers.reserve(num_outputs);
-//    using OutputOrtValue = Ort::UnownedValue;
-//    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-//    output_tensors.reserve(num_outputs);
-//    std::unordered_map<size_t, int> output_dim_sizes;
-//    output_dim_sizes.reserve(num_outputs);
-//
-//    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-//      char const* output_name = output_binding_names[i];
-//
-//      size_t output_index = 0;
-//      const auto& index_iter = output_indexes.find(output_name);
-//      if (index_iter != output_indexes.end()) {
-//        output_index = index_iter->second;
-//      }
-//
-//      size_t output_type = 0;
-//      const auto type_iter = output_types.find(output_name);
-//      if (type_iter != output_types.end()) {
-//        output_type = type_iter->second;
-//      }
-//
-//      Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-//                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
-//      if (status != Status::OK()) {
-//        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-//      }
-//    }
-//
-//    // Set execution context memory
-//    if (trt_state->context_memory_sharing_enable) {
-//#if defined(_MSC_VER)
-//#pragma warning(push)
-//#pragma warning(disable : 4996)
-//#endif
-//      size_t mem_size = trt_engine->getDeviceMemorySize();
-//#if defined(_MSC_VER)
-//#pragma warning(pop)
-//#endif
-//      if (mem_size > *max_context_mem_size_ptr) {
-//        *max_context_mem_size_ptr = mem_size;
-//      }
-//      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
-//    }
-//
-//    // Start CUDA graph capture.
-//    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
-//    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
+  }
+
+  // Create function state
+  (*node_compute_funcs)->CreateFunctionStateFunc = [](OrtComputeContext* context, void* extra_param, void** state) -> int {
+    TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
+    std::unique_ptr<TensorrtFuncState> p = std::make_unique<TensorrtFuncState>();
+
+    // translate tactic sources string to nvinfer1::TacticSources
+    nvinfer1::TacticSources tactics = 0;
+    if (!this_->tactic_sources_.empty()) {
+      tactics = GetTacticSourceFromString(this_->tactic_sources_);
+    }
+    *p = {context->AllocateFunc, context->DestroyFunc, context->allocator_handle, context->node_name, this_->builder_.get(),
+          &(this_->parsers_[context->node_name]), &(this_->engines_[context->node_name]), &(this_->contexts_[context->node_name]),
+          &(this_->networks_[context->node_name]), this_->input_info_[context->node_name], this_->output_info_[context->node_name],
+          this_->input_shape_ranges_[context->node_name], /*&tensorrt_mu_,*/ this_->fp16_enable_, this_->int8_enable_, this_->int8_calibration_cache_available_,
+          this_->dla_enable_, this_->dla_core_, &(this_->max_workspace_size_), this_->trt_node_name_with_precision_,
+          this_->engine_cache_enable_, this_->cache_path_, this_->runtime_.get(), this_->profiles_[context->node_name],
+          this_->context_memory_sharing_enable_, &(this_->max_ctx_mem_size_), this_->dynamic_range_map_, this_->engine_decryption_enable_,
+          this_->engine_decryption_, this_->engine_encryption_, this_->timing_cache_enable_, this_->global_cache_path_, this_->force_timing_cache_match_,
+          this_->detailed_build_log_, this_->build_heuristics_enable_, this_->sparsity_enable_, this_->builder_optimization_level_,
+          this_->auxiliary_streams_, !(this_->tactic_sources_.empty()), tactics, this_->cuda_graph_enable_, this_->cache_prefix_, this_->cache_suffix_, this_->engine_hw_compatible_};
+    *state = p.release();
+    return 0;
+  };
+
+  // Release function state
+  (*node_compute_funcs)->DestroyFunctionStateFunc = [](void* state) {
+    delete static_cast<TensorrtFuncState*>(state);
+  };
+
+  // Create compute function
+  (*node_compute_funcs)->ComputeFunc = [](void* state, void* extra_param, const OrtApi* api, OrtKernelContext* context) -> OrtStatusPtr {
+    Ort::KernelContext ctx(context);
+    TensorrtExecutionProvider* this_ = reinterpret_cast<TensorrtExecutionProvider*>(extra_param);
+    TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
+
+    // The whole compute_function should be considered the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
+    // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
+    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+    //std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));  // TODO(leca)
+    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
+    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
+    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
+    auto fused_node_name = trt_state->fused_node_name;
+    // This map "shape_ranges" contains the shape range info for setting TRT optimization profiles.
+    // The info is used for both shape tensor and execution tensor:
+    // tensor name->(dimension->[min, max, opt])
+    auto& shape_ranges = trt_state->input_shape_ranges;
+    std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
+    std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
+    auto& dds_output_allocator_map = this_->dds_output_allocator_maps_[fused_node_name];
+    auto trt_builder = trt_state->builder;
+    auto trt_engine = trt_state->engine->get();
+    auto trt_context = trt_state->context->get();
+    auto trt_profiles = trt_state->profiles;
+    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
+    int num_inputs = static_cast<int>(input_indexes.size());
+    int num_outputs = static_cast<int>(output_indexes.size());
+    bool engine_update = false;
+    bool context_update = false;
+    std::unordered_set<std::string> input_names;
+
+    OrtMemoryInfo* mem_info = nullptr;
+    api->CreateMemoryInfo("Cuda", OrtAllocatorType::OrtDeviceAllocator, this_->device_id_, OrtMemType::OrtMemTypeDefault, &mem_info);
+    if (this_->alloc_ == nullptr) {
+      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, mem_info, &(this_->alloc_)));
+    }
+    OrtAllocator* alloc = this_->alloc_;
+
+    void* cuda_stream;
+    Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
+    cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+    // Prepare cache name
+    std::string cache_path = "";
+    // Customize cache prefix if assigned
+    if (!this_->cache_prefix_.empty()) {
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
+    } else {
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+    }
+
+    // Enable hardware compatility mode if assigned
+    std::string cache_hw_compat = "_sm" + this_->compute_capability_;
+    if (this_->engine_cache_enable_ && this_->engine_hw_compatible_) {
+      cache_hw_compat = "_sm80+";
+      //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
+    }
+
+    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+    const std::string cache_path_prefix = cache_path + cache_hw_compat;
+    std::string engine_cache_path = cache_path_prefix + ".engine";
+    const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
+    const std::string profile_cache_path = cache_path_prefix + ".profile";
+    std::string timing_cache_path = "";
+    if (this_->timing_cache_enable_) {
+      timing_cache_path = GetTimingCachePath(this_->global_cache_path_, this_->compute_capability_);
+    }
+
+    // If weight-stripped engine is enabled and refitted engine cache is not present,
+    // TRT EP will use the engine cache with ".stripped.engine" appended to the end.
+    const std::filesystem::path engine_cache_fs_path = engine_cache_path;
+    if (this_->weight_stripped_engine_enable_ && !std::filesystem::exists(engine_cache_fs_path)) {
+      engine_cache_path = cache_path_prefix + ".stripped.engine";
+      this_->weight_stripped_engine_refit_ = true;
+    }
+
+    // Load serialized engine
+    if (trt_state->engine_cache_enable && trt_engine == nullptr) {
+      std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+      std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+      if (engine_file && !trt_state->engine_decryption_enable && profile_file) {
+        // Deserialize profile
+        shape_ranges = DeserializeProfileV2(profile_file);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+
+        // Prepare buffer
+        engine_file.seekg(0, std::ios::end);
+        size_t engine_size = engine_file.tellg();
+        engine_file.seekg(0, std::ios::beg);
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        engine_file.read((char*)engine_buf.get(), engine_size);
+
+        // Deserialize engine
+        // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+        // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+        trt_state->engine->reset();
+        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+            trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
+        if (!(*(trt_state->engine))) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP Failed to Build Engine.");
+        }
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+        trt_engine = trt_state->engine->get();
+        context_update = true;
+
+      } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
+        shape_ranges = DeserializeProfileV2(profile_file);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+        // Decrypt engine
+        size_t engine_size = 0;
+        if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP could not get engine buffer size");
+        }
+        std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+        if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP could not call engine decryption function decrypt");
+        }
+        // Deserialize engine
+        // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+        // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+        trt_state->engine->reset();
+        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size));
+        if (!(*(trt_state->engine))) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not deserialize engine from encrypted cache: " + encrypted_engine_cache_path).c_str());
+        }
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Decrypted and DeSerialized " + encrypted_engine_cache_path;
+        trt_engine = trt_state->engine->get();
+        context_update = true;
+      }
+    }
+
+    // Check and update shape ranges for dynamic shape inputs.
+    for (int i = 0, end = num_inputs; i < end; ++i) {
+      auto input = trt_state->network->get()->getInput(i);
+      const std::string& input_name = input->getName();
+      input_names.insert(input_name);
+
+      // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
+      // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
+      if (shape_ranges.find(input_name) != shape_ranges.end()) {
+        auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, shape_tensor_values, shape_tensor_values_int64, stream, &engine_update);
+        if (status != nullptr) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+        }
+      }
+    }
+
+    // Regenerate engine
+    if (engine_update) {
+      // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
+      trt_state->context->reset();
+      trt_state->engine->reset();
+      auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+      trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, *(trt_state->max_workspace_size_ptr));
+      for (auto trt_profile : trt_profiles) {
+        trt_config->addOptimizationProfile(trt_profile);
+      }
+
+      // Set INT8 Per Tensor Dynamic range
+      if (trt_state->int8_enable && trt_builder->platformHasFastInt8() && trt_state->int8_calibration_cache_available) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+        trt_config->setInt8Calibrator(nullptr);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+        if (!SetDynamicRange(*trt_state->network->get(), trt_state->dynamic_range_map)) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
+        }
+      }
+
+      // Set precision
+      if (trt_state->fp16_enable && trt_state->int8_enable) {
+        trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
+      } else if (trt_state->fp16_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+      } else if (trt_state->int8_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+      }
+
+      // Set DLA (DLA can only run with FP16 or INT8)
+      if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
+        trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
+        trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
+        trt_config->setDLACore(trt_state->dla_core);
+      }
+
+      // enable sparse weights
+      if (trt_state->sparsity_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+      }
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
+      // enable builder heuristics
+      if (trt_state->build_heuristics_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+      }
+#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
+      // switch optimizaion level
+      if (trt_state->builder_optimization_level != 3) {
+        trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
+      }
+
+      // limit auxiliary streams
+      if (trt_state->auxiliary_streams >= 0) {
+        trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
+      }
+#else
+      if (trt_state->builder_optimization_level != 3) {
+        //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
+      }
+      if (trt_state->auxiliary_streams >= 0) {
+        //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
+      }
+#endif
+      if (this_->weight_stripped_engine_enable_) {
+#if NV_TENSORRT_MAJOR >= 10
+        trt_config->setFlag(nvinfer1::BuilderFlag::kSTRIP_PLAN);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] STRIP_PLAN is enabled";
+        trt_config->setFlag(nvinfer1::BuilderFlag::kREFIT_IDENTICAL);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] REFIT_IDENTICAL is enabled";
+#else
+        //LOGS_DEFAULT(WARNING) << "[TensorRT EP] weight-stripped engines can only be used on TRT 10.0 onwards!";
+#endif
+      }
+      // limit used tactic sources
+      if (trt_state->filter_tactic_sources) {
+        nvinfer1::TacticSources tactics = trt_config->getTacticSources();
+        tactics |= trt_state->tactic_sources;
+        trt_config->setTacticSources(tactics);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using bitmask " << tactics;
+      }
+
+      // Load timing cache from file. Create a fresh cache if the file doesn't exist
+      std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
+      if (trt_state->timing_cache_enable) {
+        std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
+        timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
+        if (timing_cache == nullptr) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not create timing cache: " + timing_cache_path).c_str());
+        }
+        trt_config->setTimingCache(*timing_cache, this_->force_timing_cache_match_);
+        if (this_->detailed_build_log_) {
+          //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
+        }
+      }
+
+      // Enable hardware compatility mode if assigned
+      if (trt_state->engine_hw_compatible) {
+        trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
+        //LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
+      }
+
+      // Build engine
+      std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;
+      {
+        //auto lock = GetApiLock(); // TODO(leca)
+        std::chrono::steady_clock::time_point engine_build_start;
+        if (this_->detailed_build_log_) {
+          engine_build_start = std::chrono::steady_clock::now();
+        }
+        serialized_engine = std::unique_ptr<nvinfer1::IHostMemory>(
+            trt_builder->buildSerializedNetwork(*trt_state->network->get(), *trt_config));
+        if (!serialized_engine) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP failed to create engine from network.");
+        }
+        *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+            trt_state->runtime->deserializeCudaEngine(serialized_engine->data(), serialized_engine->size()));
+        if (!(*(trt_state->engine))) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP failed to deserialize engine.");
+        }
+        if (this_->detailed_build_log_) {
+          auto engine_build_stop = std::chrono::steady_clock::now();
+          //LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+        }
+      }
+      if (!(*(trt_state->engine))) {
+        return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP Failed to Build Engine.");
+      }
+      trt_engine = trt_state->engine->get();
+      if (trt_state->engine_cache_enable) {
+        // Serialize engine profile
+        SerializeProfileV2(profile_cache_path, shape_ranges);
+        //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+
+        // Serialize engine
+        if (trt_state->engine_decryption_enable) {
+          // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
+          if (trt_state->engine_encryption != nullptr) {
+            if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size())) {
+              return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP could not call engine encryption function encrypt");
+            }
+            //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized and encrypted engine " + encrypted_engine_cache_path;
+          } else {
+            //LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine cache encryption function is not found. No cache is written to disk";
+          }
+        } else {
+          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+          file.write(reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+          //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+        }
+      }
+
+      // serialize and save timing cache
+      if (trt_state->timing_cache_enable) {
+        auto timing_cache = trt_config->getTimingCache();
+        std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
+        if (timingCacheHostData == nullptr) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT EP could not serialize timing cache: " + timing_cache_path).c_str());
+        }
+        saveTimingCacheFile(timing_cache_path, timingCacheHostData.get());
+        if (this_->detailed_build_log_) {
+          //LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
+        }
+      }
+
+      // dump ep context model
+      if (this_->dump_ep_context_model_ && this_->ep_context_embed_mode_) {
+        //UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());  // TODO(leca)
+        //DumpCtxModel(model_proto_.get(), ctx_model_path_);
+      }
+      context_update = true;
+
+      if (this_->weight_stripped_engine_refit_) {
+        auto status = RefitEngine(this_->model_path_,
+                                  this_->onnx_model_folder_path_,
+                                  engine_cache_path,
+                                  false /* path check for security */,
+                                  trt_engine,
+                                  true /* serialize refitted engine to disk */,
+                                  this_->detailed_build_log_);
+        if (status != nullptr) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, api->GetErrorMessage(status));
+        }
+      }
+    }
+
+    if (context_update) {
+      if (trt_state->context_memory_sharing_enable) {
+#if NV_TENSORRT_MAJOR < 10
+        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+#else
+        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContext(nvinfer1::ExecutionContextAllocationStrategy::kUSER_MANAGED));
+#endif
+      } else {
+        *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
+            trt_state->engine->get()->createExecutionContext());
+      }
+      if (!(*(trt_state->context))) {
+        return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP failed to create context.");
+      }
+      trt_context = trt_state->context->get();
+    }
+
+    // Get input and output binding names
+    int total_bindings = trt_engine->getNbIOTensors();
+    std::vector<char const*> input_binding_names, output_binding_names;
+    for (int i = 0, end = total_bindings; i < end; ++i) {
+      auto const& name = trt_engine->getIOTensorName(i);
+      auto const& mode = trt_engine->getTensorIOMode(name);
+      if (mode == nvinfer1::TensorIOMode::kINPUT) {
+        input_binding_names.push_back(name);
+      } else {
+        output_binding_names.push_back(name);
+      }
+    }
+
+    /*
+     * Set input shapes and bind input buffers
+     */
+    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
+      char const* input_name = input_binding_names[i];
+
+      size_t input_index = 0;
+      const auto iter = input_indexes.find(input_name);
+      if (iter != input_indexes.end()) {
+        input_index = iter->second;
+      }
+      auto input_tensor = ctx.GetInput(input_index);
+      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+      const auto tensor_shapes = tensor_info.GetShape();
+
+      auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_tensor_values, shape_tensor_values_int64, scratch_buffers, alloc, stream);
+      if (status != nullptr) {
+        return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, api->GetErrorMessage(status));
+      }
+    }
+
+    /*
+     * Set output shapes and bind output buffers
+     */
+    std::unordered_map<char const*, void*> buffers;
+    buffers.reserve(num_outputs);
+    using OutputOrtValue = Ort::UnownedValue;
+    std::unordered_map<size_t, OutputOrtValue> output_tensors;
+    output_tensors.reserve(num_outputs);
+    std::unordered_map<size_t, int> output_dim_sizes;
+    output_dim_sizes.reserve(num_outputs);
+
+    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+      char const* output_name = output_binding_names[i];
+
+      size_t output_index = 0;
+      const auto& index_iter = output_indexes.find(output_name);
+      if (index_iter != output_indexes.end()) {
+        output_index = index_iter->second;
+      }
+
+      size_t output_type = 0;
+      const auto type_iter = output_types.find(output_name);
+      if (type_iter != output_types.end()) {
+        output_type = type_iter->second;
+      }
+
+      OrtStatusPtr status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+                                        dds_output_allocator_map, scratch_buffers, alloc, buffers);
+      if (status != nullptr) {
+        return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, api->GetErrorMessage(status));
+      }
+    }
+
+    // Set execution context memory
+    if (trt_state->context_memory_sharing_enable) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+      size_t mem_size = trt_engine->getDeviceMemorySize();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+      if (mem_size > *max_context_mem_size_ptr) {
+        *max_context_mem_size_ptr = mem_size;
+      }
+      trt_context->setDeviceMemory(MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+    }
+
+    // Start CUDA graph capture.
+    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
+    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
 //    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
 //      LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
 //      cuda_graph_.SetStream(stream);
 //      CaptureBegin(0);
 //    }
-//
-//    // Run TRT inference
-//    if (!trt_context->enqueueV3(stream)) {
-//      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
-//    }
-//
-//    /*
-//     * Given that InferenceSession::Run() is guaranteed to be thread-safe meaning multiple threads can call this function concurrently,
-//     * TRT EP needs to carefully take care of concurrency here, if not, following concurrent issue might happen:
-//     *
-//     * It's suggested that to perform inference concurrently in multiple streams, use one trt execution context per stream.
-//     * In the design of TRT EP (Not apply per-thread context implementation) and if multiple threads are calling InferenceSession::Run() concurrently,
-//     * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
-//     * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
-//     * But, since the whole compute_func() is protected by the lock and if cudaStreamSynchronize() is enforced here, one trt execution context per stream
-//     * is guaranteed.
-//     *
-//     * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
-//     * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
-//     */
-//    if (sync_stream_after_enqueue_) {
-//      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-//    }
-//
-//    // Assign TRT output back to ORT output
-//    // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
-//    // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
-//    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-//      char const* output_name = output_binding_names[i];
-//
-//      size_t output_type = 0;
-//      const auto& iter = output_types.find(output_name);
-//      if (iter != output_types.end()) {
-//        output_type = iter->second;
-//      }
-//
-//      if (dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end()) {
-//        size_t output_index = 0;
-//        const auto& index_iter = output_indexes.find(output_name);
-//        if (index_iter != output_indexes.end()) {
-//          output_index = index_iter->second;
-//        }
-//        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
-//        if (status != Status::OK()) {
-//          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
-//        }
-//      } else {
-//        auto& output_tensor = output_tensors[i];
+
+    // Run TRT inference
+    if (!trt_context->enqueueV3(stream)) {
+      return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP execution context enqueue failed.");
+    }
+
+    /*
+     * Given that InferenceSession::Run() is guaranteed to be thread-safe meaning multiple threads can call this function concurrently,
+     * TRT EP needs to carefully take care of concurrency here, if not, following concurrent issue might happen:
+     *
+     * It's suggested that to perform inference concurrently in multiple streams, use one trt execution context per stream.
+     * In the design of TRT EP (Not apply per-thread context implementation) and if multiple threads are calling InferenceSession::Run() concurrently,
+     * the trt execution context instance is shared by all the threads and each thread aquires different stream from ORT.
+     * So TRT EP will end up having one trt execution context using multiple streams which is not suggested.
+     * But, since the whole compute_func() is protected by the lock and if cudaStreamSynchronize() is enforced here, one trt execution context per stream
+     * is guaranteed.
+     *
+     * Therefore, TRT EP needs to call cudaStreamSynchronize() which means to wait until stream has completed all operations to prevent the concurrent issue mentioned above.
+     * However, if cuda graph is enabled, TRT EP won't call cudaStreamSynchronize() since it's not allowed during graph capture.
+     */
+    if (this_->sync_stream_after_enqueue_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    }
+
+    // Assign TRT output back to ORT output
+    // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
+    // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
+    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+      char const* output_name = output_binding_names[i];
+
+      size_t output_type = 0;
+      const auto& iter = output_types.find(output_name);
+      if (iter != output_types.end()) {
+        output_type = iter->second;
+      }
+
+      if (dds_output_allocator_map.find(output_name) != dds_output_allocator_map.end()) {
+        size_t output_index = 0;
+        const auto& index_iter = output_indexes.find(output_name);
+        if (index_iter != output_indexes.end()) {
+          output_index = index_iter->second;
+        }
+        auto status = BindKernelOutput(ctx, mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
+        if (status != nullptr) {
+          return api->CreateStatus(OrtErrorCode::ORT_EP_FAIL, api->GetErrorMessage(status));
+        }
+      } else {
+        auto& output_tensor = output_tensors[i];
 //#if NV_TENSORRT_MAJOR < 10
 //        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
 //          auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
@@ -1831,9 +2166,9 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
 //          }
 //        }
-//      }
-//    }
-//
+      }
+    }
+
 //    // End CUDA graph capture.
 //    // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
 //    // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
@@ -1848,9 +2183,9 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //        IncrementRegularRunCountBeforeGraphCapture();
 //      }
 //    }
-//
-//    return nullptr;
-//  };
+
+    return nullptr;
+  };
 
   return nullptr;
 }
