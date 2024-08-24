@@ -31,23 +31,66 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::
   return array_as_tensor;
 }
 
-// static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<float> array, std::string name) {
-//   ONNX_NAMESPACE::TensorProto array_as_tensor;
-//   array_as_tensor.set_name(name);
-//   array_as_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-//   array_as_tensor.add_dims(array.size());
-//   for (auto v : array) {
-//     array_as_tensor.add_float_data(v);
-//   }
+static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<float> array, std::string name) {
+  ONNX_NAMESPACE::TensorProto array_as_tensor;
+  array_as_tensor.set_name(name);
+  array_as_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  array_as_tensor.add_dims(array.size());
+  for (auto v : array) {
+    array_as_tensor.add_float_data(v);
+  }
 
-//   return array_as_tensor;
-// }
+  return array_as_tensor;
+}
 
-TEST(MLOpTest, TreeEnsembleOneTree) {
+template <typename T>
+void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+  std::vector<T> copy = data;
+  data.resize(copy.size() * n);
+  T cst = 0;
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      data[j + i * copy.size()] = copy[j] + cst;
+    }
+    cst += inc;
+  }
+}
+
+template <typename T>
+void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& childleafs, std::vector<T>& otherchildleafs, int n) {
+  int64_t leafs_cnt = 0;
+  int64_t nodes_cnt = childnodes.size();
+  for (auto& childleaf : childleafs) {
+    if (childleaf) {
+      leafs_cnt++;
+    }
+  }
+  for (auto& childleaf : otherchildleafs) {
+    if (childleaf) {
+      leafs_cnt++;
+    }
+  }
+
+  std::vector<T> copy = childnodes;
+  childnodes.resize(copy.size() * n);
+  T leafs_cst = 0;
+  T nodes_cst = 0;
+  for (int i = 0; i < n; ++i) {
+    for (size_t j = 0; j < copy.size(); ++j) {
+      T curr_inc = childleafs[j] ? leafs_cst : nodes_cst;
+      childnodes[j + i * copy.size()] = copy[j] + curr_inc;
+    }
+
+    leafs_cst += leafs_cnt;
+    nodes_cst += nodes_cnt;
+  }
+}
+
+template <typename T>
+void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
   int64_t n_targets = 2;
 
-  int64_t aggregate_function = 1;
   int64_t post_transform = 0;
   std::vector<int64_t> tree_roots = {0};
   std::vector<int64_t> nodes_featureids = {0, 0, 0};
@@ -58,12 +101,25 @@ TEST(MLOpTest, TreeEnsembleOneTree) {
   std::vector<int64_t> leaf_targetids = {0, 1, 0, 1};
 
   std::vector<uint8_t> nodes_modes = {0, 0, 0};
+  std::vector<T> nodes_splits = {3.14, 1.2, 4.2};
+  std::vector<T> leaf_weights = {5.23, 12.12, -12.23, 7.21};
+
+  if (n_trees > 1) {
+    // Multiplies the number of trees to test the parallelization by trees.
+    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    _multiply_update_array(nodes_featureids, n_trees);
+    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    _multiply_update_array(nodes_trueleafs, n_trees);
+    _multiply_update_array(nodes_falseleafs, n_trees);
+    _multiply_update_array(leaf_targetids, n_trees);
+    _multiply_update_array(nodes_modes, n_trees);
+    _multiply_update_array(nodes_splits, n_trees);
+    _multiply_update_array(leaf_weights, n_trees);
+  }
+
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
-
-  std::vector<double> nodes_splits = {3.14, 1.2, 4.2};
   auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
-
-  std::vector<double> leaf_weights = {5.23, 12.12, -12.23, 7.21};
   auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
 
   // add attributes
@@ -82,12 +138,32 @@ TEST(MLOpTest, TreeEnsembleOneTree) {
   test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
 
   // fill input data
-  std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
-  std::vector<double> Y = {5.23, 0, 5.23, 0, 0, 12.12};
-  test.AddInput<double>("X", {3, 2}, X);
-  test.AddOutput<double>("Y", {3, 2}, Y);
+  test.AddInput<T>("X", {3, 2}, X);
+  test.AddOutput<T>("Y", {3, 2}, Y);
   test.Run();
 }
+
+TEST(MLOpTest, TreeEnsembleOneTreeFloat) {
+  std::vector<float> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
+  std::vector<float> Y = {5.23, 0, 5.23, 0, 0, 12.12};
+
+  GenTreeAndRunTest<float>(X, Y, 1, 1);
+}
+
+TEST(MLOpTest, TreeEnsembleOneTreeDouble) {
+  std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
+  std::vector<double> Y = {5.23, 0, 5.23, 0, 0, 12.12};
+
+  GenTreeAndRunTest<double>(X, Y, 1, 1);
+}
+
+TEST(MLOpTest, TreeEnsembleManyTrees) {
+  std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
+  std::vector<double> Y = {15.69, 0, 15.69, 0, 0, 36.36};
+
+  GenTreeAndRunTest<double>(X, Y, 1, 3);
+}
+
 
 }  // namespace test
 }  // namespace onnxruntime

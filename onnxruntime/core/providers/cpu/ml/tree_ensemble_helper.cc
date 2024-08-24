@@ -19,14 +19,6 @@ namespace ml {
 template <typename TH>
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
                                ONNX_NAMESPACE::TensorProto_DataType proto_type, std::vector<TH>& data) {
-  data.clear();
-
-  if constexpr (std::is_same_v<TH, std::string> || std::is_same_v<TH, float> || std::is_same_v<TH, int64_t>) {
-    if (info.GetAttrs<TH>(name, data).IsOK()) {
-      return Status::OK();
-    }
-  }
-
   ONNX_NAMESPACE::TensorProto proto;
   auto result = info.GetAttr(name, &proto);
 
@@ -40,11 +32,13 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
   }
 
   const SafeInt<size_t> tensor_size(n_elements);
+  data.clear();
   data.resize(tensor_size);
 
   result = utils::UnpackTensor<TH>(proto, std::filesystem::path(), data.data(), tensor_size);
+  ORT_ENFORCE(result.IsOK(), "TreeEnsemble could not unpack tensor attribute ", name);
 
-  return result;
+  return Status::OK();
 }
 
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<double>& data) {

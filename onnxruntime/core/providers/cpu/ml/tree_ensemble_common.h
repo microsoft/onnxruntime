@@ -1125,7 +1125,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
     nodes_modes_old.push_back(7);
     nodes_truenodeids_old.push_back(-1);
     nodes_falsenodeids_old.push_back(-1);
-    nodes_values_as_tensor_old.push_back(-2.f);
+    nodes_values_as_tensor_old.push_back(-1);
 
     target_class_ids_old.push_back(leaf_targetids[curr_id]);
     target_class_nodeids_old.push_back(curr_nodeid);
@@ -1150,6 +1150,8 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
   }
 
   int64_t false_nodeid = curr_nodeid + 1;
+  int64_t truenodeid_id = nodes_truenodeids_old.size();
+
   nodes_falsenodeids_old.push_back(false_nodeid);
   nodes_truenodeids_old.push_back(0); //  temporary
 
@@ -1162,7 +1164,8 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
                     target_class_treeids_old, target_class_weights_as_tensor_old);
 
   int64_t true_nodeid = false_nodeid + 1;
-  nodes_truenodeids_old[curr_nodeid] = true_nodeid;
+
+  nodes_truenodeids_old[truenodeid_id] = true_nodeid;
   true_nodeid = transformTreeInputOneTree(
                     nodes_truenodeids[curr_id], curr_treeid, true_nodeid, nodes_trueleafs[curr_id],
                     leaf_targetids, leaf_weights, membership_values, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
@@ -1191,7 +1194,6 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInput(
   ) {
   int curr_treeid = 0;
   for (const auto& tree_root : tree_roots) {
-    std::cout << "entering " << tree_root << ' ' << curr_treeid << std::endl;
     transformTreeInputOneTree(tree_root, curr_treeid, 0, false, // can be true
                         leaf_targetids, leaf_weights, membership_values, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
                         nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
@@ -1202,17 +1204,26 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInput(
   }
 }
 
+//DELETE LATER
+template<typename T>
+static void print_vec(std::string name, std::vector<T> array) {
+  std::cout << name << ' ' << array.size() << std::endl;
+  for (const auto& el : array) {
+    std::cout << (float) el << ' ';
+  }
+  std::cout << std::endl;
+}
+
 template <typename IOType, typename ThresholdType>
 Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& info) {
   std::vector<ThresholdType> leaf_weights, nodes_hitrates, membership_values, nodes_splits;
   std::vector<uint8_t> nodes_modes;
-#if !defined(ORT_MINIMAL_BUILD)
+
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "leaf_weights", leaf_weights));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "membership_values", membership_values));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates", nodes_hitrates));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes));
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_splits", nodes_splits));
-#endif
 
   return Init(
       80,
@@ -1237,15 +1248,6 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(const OpKernelInfo& inf
       );
 }
 
-template<typename T>
-static void print_vec(std::string name, std::vector<T> array) {
-  std::cout << name << ' ' << array.size() << std::endl;
-  for (const auto& el : array) {
-    std::cout << (float) el << ' ';
-  }
-  std::cout << std::endl;
-}
-
 template <typename IOType, typename ThresholdType>
 Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(
     int parallel_tree,
@@ -1267,6 +1269,20 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(
     const std::vector<int64_t>& nodes_truenodeids,
     const int64_t& post_transform,
     const std::vector<int64_t>& tree_roots) {
+
+  // print_vec("nodes_falseleafs", nodes_falseleafs);
+  // print_vec("nodes_falsenodeids", nodes_falsenodeids);
+  // print_vec("nodes_featureids", nodes_featureids);
+  // print_vec("nodes_hitrates", nodes_hitrates);
+  // print_vec("nodes_missing_value_tracks_true", nodes_missing_value_tracks_true);
+  // print_vec("nodes_modes", nodes_modes);
+  // print_vec("nodes_splits", nodes_splits);
+  // print_vec("nodes_trueleafs", nodes_trueleafs);
+  // print_vec("nodes_truenodeids", nodes_truenodeids);
+  // print_vec("leaf_targetids", leaf_targetids);
+  // print_vec("leaf_weights", leaf_weights);
+  // print_vec("tree_roots", tree_roots);
+
   std::string aggregate_function_old, post_transform_old;
   aggregateFunctionToString(aggregate_function, aggregate_function_old);
   postTransformToString(post_transform, post_transform_old);

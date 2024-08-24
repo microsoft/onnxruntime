@@ -8,20 +8,6 @@
 namespace onnxruntime {
 namespace ml {
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
-    TreeEnsemble,
-    5, 5,
-    float,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
-    TreeEnsemble<float>);
-
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
-    TreeEnsemble,
-    5, 5,
-    double,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
-    TreeEnsemble<double>);
-
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsemble,
     5,
@@ -51,13 +37,7 @@ Status TreeEnsemble<T>::GetRemovableAttributes(InlinedVector<std::string>& remov
   InlinedVector<std::string> names{
       "leaf_targetids", "leaf_weights", "membership_values", "nodes_falseleafs",
       "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates", "nodes_missing_value_tracks_true",
-      "nodes_modes", "nodes_splits",
-      "nodes_trueleafs", "nodes_truenodeids"
-#if !defined(ORT_MINIMAL_BUILD)
-      "base_values_as_tensor",
-      "nodes_hitrates_as_tensor", "nodes_values_as_tensor",
-      "class_weights_as_tensor"
-#endif
+      "nodes_modes", "nodes_splits", "nodes_trueleafs", "nodes_truenodeids"
   };
   removable_attributes.swap(names);
   return Status::OK();
