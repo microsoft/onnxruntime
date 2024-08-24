@@ -302,13 +302,11 @@ class PhiMoEBlockSparseTop2MLP(nn.Module):
         self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
         self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False)
         self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
-        self.expert_dropout = nn.Dropout(config.expert_dropout)
 
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, hidden_states):
         current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
-        current_hidden_states = self.expert_dropout(current_hidden_states)
         current_hidden_states = self.w2(current_hidden_states)
         return current_hidden_states
 

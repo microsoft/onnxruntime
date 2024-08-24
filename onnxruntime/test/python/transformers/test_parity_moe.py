@@ -241,7 +241,7 @@ class MoE(nn.Module):
             in_features=in_features,
             hidden_features=hidden_features,
             out_features=out_features,
-            act_layer=get_activation_fn(activation),
+            act_layer=ACT2CLS[activation],
             bias=True,
         )
 
