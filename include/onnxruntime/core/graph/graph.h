@@ -475,6 +475,10 @@ class Node {
                           to ensure the complete Graph is valid.
   */
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const;
+  void ToProtoFinal(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false);
+
+  template <bool copy_attributes = true>
+  static void ToProtoInternal(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false);
 
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::Node>& fbs_node) const;
@@ -1624,7 +1628,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
-  void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  template <typename TInstance>
+  static void ToGraphProtoInternal(TInstance& instance, ONNX_NAMESPACE::GraphProto& graph_proto);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

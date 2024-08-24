@@ -381,6 +381,13 @@ ModelProto Model::ToProto() const {
   return result;
 }
 
+ModelProto Model::ToProtoFinal() {
+  ModelProto result(model_proto_);
+  auto& graph = *graph_;
+  *(result.mutable_graph()) = graph.ToGraphProto();
+  return result;
+}
+
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                        const std::filesystem::path& file_path,
                                                        size_t initializer_size_threshold,

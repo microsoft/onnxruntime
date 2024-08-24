@@ -71,11 +71,14 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   }
   // Create EP context node
   graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, std::move(*node_attributes), kMSDomain);
+
+#ifndef NDEBUG
   ORT_ENFORCE(graph_build.Resolve().IsOK());
+#endif
 
   {
     // Serialize modelproto to string
-    auto model_proto = model_build->ToProto();
+    auto model_proto = model_build->ToProtoFinal();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Finally, dump the model
@@ -89,6 +92,7 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
     }
   }
+
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
 
   return Status::OK();

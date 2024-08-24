@@ -650,40 +650,51 @@ void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
 }
 
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
-  proto.set_name(name_);
-  proto.set_op_type(op_type_);
+  ToProtoInternal(proto, update_subgraphs);
+}
+void Node::ToProtoFinal(NodeProto& proto, bool update_subgraphs) {
+  ToProtoInternal<false>(proto, update_subgraphs);
+}
+template <bool copy_attributes>
+void Node::ToProtoInternal(NodeProto& proto, bool update_subgraphs) {
+  proto.set_name(instance.name_);
+  proto.set_op_type(instance.op_type_);
 
-  if (!domain_.empty())
-    proto.set_domain(domain_);
+  if (!instance.domain_.empty())
+    proto.set_domain(instance.domain_);
 
-  if (!description_.empty())
-    proto.set_doc_string(description_);
+  if (!instance.description_.empty())
+    proto.set_doc_string(instance.description_);
 
   // Checks an attribute was not removed.
-  if (!can_be_saved_) {
+  if (!instance.can_be_saved_) {
     ORT_THROW("Removable attributes were removed before the conversion is started.");
   }
 
   // Set attributes.
   proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
+  for (auto&& attribute : instance.attributes_) {
     const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
+    if constexpr (copy_attributes) {
+      *attr = attribute.second;  // copy
+    } else {
+      *attr = std::move(attribute.second);  // move
+    }
     if (update_subgraphs && attr->has_g()) {
       attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+      *attr->mutable_g() = instance.attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
     }
   }
 
   // Set inputs' definitions.
   proto.clear_input();
-  for (auto& input_def : definitions_.input_defs) {
+  for (auto& input_def : instance.definitions_.input_defs) {
     proto.add_input(input_def->Name());
   }
 
   // Set outputs' definitions.
   proto.clear_output();
-  for (auto& output_def : definitions_.output_defs) {
+  for (auto& output_def : instance.definitions_.output_defs) {
     proto.add_output(output_def->Name());
   }
 }
@@ -4034,7 +4045,7 @@ const ONNX_NAMESPACE::GraphProto& Graph::ToGraphProto() {
   }
 
   // Nodes.
-  ToGraphProtoInternal(*graph_proto_);
+  ToGraphProtoInternal(*this, *graph_proto_);
 
   GraphProtoSyncNeeded(false);
 
@@ -4053,7 +4064,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 #endif
 
   GraphProto result;
-  ToGraphProtoInternal(result);
+  ToGraphProtoInternal(*this, result);
   // Path of the owning model
   // This is used for constructing full path for external data
   // if it exists
@@ -4089,7 +4100,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
                                                                        size_t initializer_size_threshold,
                                                                        const OffsetAlignmentInfo& align_info) const {
   GraphProto result;
-  ToGraphProtoInternal(result);
+  ToGraphProtoInternal(*this, result);
   ORT_ENFORCE(external_file_path.is_relative());
   // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
   // be empty. Else, save external data file in same directory as the model.
@@ -4177,26 +4188,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
   return result;
 }
 
-void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
-  graph_proto.set_name(Name());
-  graph_proto.set_doc_string(Description());
+template <typename TInstance>
+void Graph::ToGraphProtoInternal(TInstance& instance, ONNX_NAMESPACE::GraphProto& graph_proto) {
+  instance.graph_proto_->clear_node();
+  instance.graph_proto_->clear_input();
+  instance.graph_proto_->clear_output();
+  instance.graph_proto_->clear_value_info();
+  graph_proto.set_name(instance.Name());
+  graph_proto.set_doc_string(instance.Description());
 
-  for (const auto* input_arg : GetInputsIncludingInitializers()) {
+  for (const auto* input_arg : instance.GetInputsIncludingInitializers()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
-  for (const auto* output_arg : GetOutputs()) {
+  for (const auto* output_arg : instance.GetOutputs()) {
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
   // Before adding value info to GraphProto, sort its unordered values so that across multiple calls
   // to this function, its values are consistently written to the GraphProto
   auto sort_predicate = [](const NodeArg* v1, const NodeArg* v2) { return v1->Name() < v2->Name(); };
-  std::vector<const NodeArg*> value_info_sorted{value_info_.begin(), value_info_.end()};
+  std::vector<const NodeArg*> value_info_sorted{instance.value_info_.begin(), instance.value_info_.end()};
   std::sort(value_info_sorted.begin(), value_info_sorted.end(), sort_predicate);
 
   for (const auto* value_info : value_info_sorted) {
@@ -4204,20 +4216,25 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 
   // add the NodeArg info for outer scope NodeArgs so we capture the type information
-  for (const auto& name : outer_scope_node_arg_names_) {
-    auto* node_arg = GetNodeArg(name);
+  for (const auto& name : instance.outer_scope_node_arg_names_) {
+    auto* node_arg = instance.GetNodeArg(name);
     ORT_ENFORCE(node_arg, "Outer scope node arg name '" + name + "'was added but does not exist. ");
     *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
   }
 
-  GraphViewer graph_viewer(*this);
+  GraphViewer graph_viewer(instance);
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     const gsl::not_null<NodeProto*> node_proto{graph_proto.add_node()};
-    const gsl::not_null<const Node*> p_node{GetNode(node_idx)};
+    auto node_ptr = instance.GetNode(node_idx);
+    const gsl::not_null<decltype(node_ptr)> p_node{node_ptr};
     // we need to update any GraphProto attributes for subgraphs so that any changes made by things
     // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
-    p_node->ToProto(*node_proto, /* update_subgraphs */ true);
+    if constexpr (std::is_const<TInstance>()) {
+      p_node->ToProto(*node_proto, /* update_subgraphs */ true);
+    } else {
+      p_node->ToProtoFinal(*node_proto, /* update_subgraphs */ true);
+    }
   }
 }
 
