@@ -179,6 +179,9 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
                                       bool serialize_refitted_engine,
                                       bool detailed_build_log);
     static const OrtApi* api_;
+    std::string trt_node_name_with_precision_;
+    std::unordered_map<std::string, float> dynamic_range_map_;
+    std::string cache_suffix_;
 private:
 //  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;

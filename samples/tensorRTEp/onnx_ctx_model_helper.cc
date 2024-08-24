@@ -36,6 +36,27 @@ std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_contex
   }
 }
 
+std::string GetCtxModelPath(const std::string& ep_context_file_path,
+                            const std::string& original_model_path) {
+  std::string ctx_model_path;
+
+  if (!ep_context_file_path.empty() && !std::filesystem::is_directory(ep_context_file_path)) {
+    ctx_model_path = ep_context_file_path;
+  } else {
+    std::filesystem::path model_path = original_model_path;
+    std::filesystem::path model_name_stem = model_path.stem();  // model_name.onnx -> model_name
+    std::string ctx_model_name = model_name_stem.string() + "_ctx.onnx";
+
+    if (std::filesystem::is_directory(ep_context_file_path)) {
+      std::filesystem::path model_directory = ep_context_file_path;
+      ctx_model_path = model_directory.append(ctx_model_name).string();
+    } else {
+      ctx_model_path = ctx_model_name;
+    }
+  }
+  return ctx_model_path;
+}
+
 bool IsAbsolutePath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
