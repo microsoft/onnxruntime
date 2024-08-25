@@ -975,7 +975,7 @@ class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IO
                                const std::vector<uint8_t>& nodes_modes);
 
   int64_t transformInputOneTree(
-              int64_t curr_id, int64_t curr_treeid, int64_t curr_nodeid, size_t curr_membership_value_id, bool is_leaf,
+              const int64_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
               // input
               const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
               const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
@@ -1129,7 +1129,7 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::getMembershipValuesById(
 
 template <typename IOType, typename ThresholdType>
 int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputOneTree(
-    int64_t curr_id, int64_t curr_treeid, int64_t curr_nodeid, size_t curr_membership_value_id, bool is_leaf,
+    const int64_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id, const bool is_leaf,
     // input
     const std::vector<int64_t>& leaf_targetids, const std::vector<ThresholdType>& leaf_weights, const std::vector<std::vector<ThresholdType>>& membership_values_by_id,
     const std::vector<int64_t>& nodes_falseleafs, const std::vector<int64_t>& nodes_falsenodeids, const std::vector<int64_t>& nodes_featureids,
