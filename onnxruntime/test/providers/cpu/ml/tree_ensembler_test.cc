@@ -143,27 +143,97 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
   test.Run();
 }
 
-TEST(MLOpTest, TreeEnsembleOneTreeFloat) {
+template <typename T>
+void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+  int64_t n_targets = 4;
+
+  int64_t post_transform = 0;
+  std::vector<int64_t> tree_roots = {0};
+  std::vector<int64_t> nodes_featureids = {0, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {1, 0, 1};
+  std::vector<int64_t> nodes_trueleafs = {0, 1, 1};
+  std::vector<int64_t> nodes_falsenodeids = {2, 2, 3};
+  std::vector<int64_t> nodes_falseleafs = {1, 0, 1};
+  std::vector<int64_t> leaf_targetids = {0, 1, 2, 3};
+
+  std::vector<uint8_t> nodes_modes = {0, 6, 6};
+  std::vector<T> nodes_splits = {11, 232344.0, NAN};
+  std::vector<T> membership_values = {1.2, 3.7, 8, 9, NAN, 12, 7, NAN};
+  std::vector<T> leaf_weights = {1, 10, 1000, 100};
+
+  if (n_trees > 1) {
+    // Multiplies the number of trees to test the parallelization by trees.
+    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    _multiply_update_array(nodes_featureids, n_trees);
+    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    _multiply_update_array(nodes_trueleafs, n_trees);
+    _multiply_update_array(nodes_falseleafs, n_trees);
+    _multiply_update_array(leaf_targetids, n_trees);
+    _multiply_update_array(nodes_modes, n_trees);
+    _multiply_update_array(nodes_splits, n_trees);
+    _multiply_update_array(leaf_weights, n_trees);
+  }
+
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto membership_values_as_tensor = make_tensor(membership_values, "membership_values");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
+
+  // add attributes
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("membership_values", membership_values_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
+
+  // fill input data
+  test.AddInput<T>("X", {6, 1}, X);
+  test.AddOutput<T>("Y", {6, 4}, Y);
+  test.Run();
+}
+
+TEST(MLOpTest, TreeEnsembleFloat) {
   std::vector<float> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
   std::vector<float> Y = {5.23, 0, 5.23, 0, 0, 12.12};
-
   GenTreeAndRunTest<float>(X, Y, 1, 1);
+
+  Y = {15.69, 0, 15.69, 0, 0, 36.36};
+  GenTreeAndRunTest<float>(X, Y, 1, 3);
 }
 
-TEST(MLOpTest, TreeEnsembleOneTreeDouble) {
+TEST(MLOpTest, TreeEnsembleDouble) {
   std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
   std::vector<double> Y = {5.23, 0, 5.23, 0, 0, 12.12};
-
   GenTreeAndRunTest<double>(X, Y, 1, 1);
-}
 
-TEST(MLOpTest, TreeEnsembleManyTrees) {
-  std::vector<double> X = {1.2, 3.4, -0.12, 1.66, 4.14, 1.77};
-  std::vector<double> Y = {15.69, 0, 15.69, 0, 0, 36.36};
-
+  Y = {15.69, 0, 15.69, 0, 0, 36.36};
   GenTreeAndRunTest<double>(X, Y, 1, 3);
 }
 
+TEST(MLOpTest, TreeEnsembleSetMembership) {
+  std::vector<double> X = {1.2, 3.4, -0.12, NAN, 12.0, 7.0};
+  std::vector<double> Y = {
+                1, 0, 0, 0,
+                0, 0, 0, 100,
+                0, 0, 0, 100,
+                0, 0, 1000, 0,
+                0, 0, 1000, 0,
+                0, 10, 0, 0
+            };
+
+  GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
