@@ -87,6 +87,14 @@ void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& chil
 }
 
 template <typename T>
+void _multiply_arrays_values(std::vector<T>& data, int64_t val) {
+  for (auto& curr : data) {
+    curr *= val;
+  }
+}
+
+
+template <typename T>
 void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
   int64_t n_targets = 2;
@@ -94,14 +102,14 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
   int64_t post_transform = 0;
   std::vector<int64_t> tree_roots = {0};
   std::vector<int64_t> nodes_featureids = {0, 0, 0};
+  std::vector<uint8_t> nodes_modes = {0, 0, 0};
+  std::vector<T> nodes_splits = {3.14, 1.2, 4.2};
   std::vector<int64_t> nodes_truenodeids = {1, 0, 1};
   std::vector<int64_t> nodes_trueleafs = {0, 1, 1};
   std::vector<int64_t> nodes_falsenodeids = {2, 2, 3};
   std::vector<int64_t> nodes_falseleafs = {0, 1, 1};
-  std::vector<int64_t> leaf_targetids = {0, 1, 0, 1};
 
-  std::vector<uint8_t> nodes_modes = {0, 0, 0};
-  std::vector<T> nodes_splits = {3.14, 1.2, 4.2};
+  std::vector<int64_t> leaf_targetids = {0, 1, 0, 1};
   std::vector<T> leaf_weights = {5.23, 12.12, -12.23, 7.21};
 
   if (n_trees > 1) {
@@ -173,6 +181,7 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
     _multiply_update_array(leaf_targetids, n_trees);
     _multiply_update_array(nodes_modes, n_trees);
     _multiply_update_array(nodes_splits, n_trees);
+    _multiply_update_array(membership_values, n_trees);
     _multiply_update_array(leaf_weights, n_trees);
   }
 
@@ -217,7 +226,7 @@ TEST(MLOpTest, TreeEnsembleDouble) {
   std::vector<double> Y = {5.23, 0, 5.23, 0, 0, 12.12};
   GenTreeAndRunTest<double>(X, Y, 1, 1);
 
-  Y = {15.69, 0, 15.69, 0, 0, 36.36};
+  _multiply_arrays_values(Y, 3);
   GenTreeAndRunTest<double>(X, Y, 1, 3);
 }
 
@@ -231,9 +240,58 @@ TEST(MLOpTest, TreeEnsembleSetMembership) {
                 0, 0, 1000, 0,
                 0, 10, 0, 0
             };
-
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
+
+  _multiply_arrays_values(Y, 5);
+  GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 5);
 }
+
+TEST(MLOpTest, TreeEnsembleLeafOnly) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+  int64_t n_targets = 1;
+
+  int64_t aggregate_function = 1;
+  int64_t post_transform = 0;
+  std::vector<int64_t> tree_roots = {0};
+  std::vector<uint8_t> nodes_modes = {0};
+  std::vector<int64_t> nodes_featureids = {0};
+  std::vector<double> nodes_splits = {0};
+  std::vector<int64_t> nodes_truenodeids = {0};
+  std::vector<int64_t> nodes_trueleafs = {1};
+  std::vector<int64_t> nodes_falsenodeids = {0};
+  std::vector<int64_t> nodes_falseleafs = {1};
+
+  std::vector<int64_t> leaf_targetids = {0};
+  std::vector<double> leaf_weights = {6.23};
+
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
+
+  // add attributes
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
+
+  // fill input data
+  std::vector<double> X = {1, 4};
+  std::vector<double> Y = {6.23, 6.23};
+
+  test.AddInput<double>("X", {2, 1}, X);
+  test.AddOutput<double>("Y", {2, 1}, Y);
+  test.Run();
+}
+
 
 }  // namespace test
 }  // namespace onnxruntime

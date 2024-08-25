@@ -1246,7 +1246,7 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::transformInputAllTrees(
   ) {
   int curr_treeid = 0;
   for (const auto& tree_root : tree_roots) {
-    transformInputOneTree(tree_root, curr_treeid, 0, 0, false, // can be true
+    transformInputOneTree(tree_root, curr_treeid, 0, 0, nodes_falsenodeids[tree_root] == nodes_truenodeids[tree_root],
                         leaf_targetids, leaf_weights, membership_values_by_id, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
                         nodes_hitrates, nodes_missing_value_tracks_true, nodes_modes, nodes_splits, nodes_trueleafs, nodes_truenodeids, tree_roots,
                         nodes_falsenodeids_old, nodes_featureids_old, nodes_hitrates_as_tensor_old, nodes_missing_value_tracks_true_old, nodes_modes_old,
