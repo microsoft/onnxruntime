@@ -494,10 +494,6 @@ def parity_check_mha(
     rtol=1e-3,
     atol=1e-3,
 ):
-    # CUDA kernel does not support causal so skip such test cases.
-    if config.causal and config.provider == "CUDAExecutionProvider":
-        return
-
     ort_mha = OrtMultiHeadAttention(config, use_tf32=False)
     ort_outputs = ort_mha.infer()
     out = ort_outputs["output"]
@@ -602,9 +598,6 @@ def parity_check_mha_multi_threading(
 ):
     # Use the first config to create a session, which is shared by all configs to run in parallel.
     config = test_inputs[0]["config"]
-    # For now, MHA CUDA kernel does not support causal so skip such test cases.
-    if config.causal and config.provider == "CUDAExecutionProvider":
-        return None
 
     # Some kernel does not support certain input format.
     if attention_kernel not in [
