@@ -245,15 +245,27 @@ static std::unique_ptr<api::NodeRef> GetDQIfProducingValue(const api::GraphRef& 
                                                                                      : std::unique_ptr<api::NodeRef>();
 }
 
+// Forward declarations for utils used by MakeQDQNodeUnit
+static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank);
+static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphRef& graph, api::NodeRef& node,
+                                                               std::string_view attr_name, size_t inp_index,
+                                                               int64_t opset);
+static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis);
+
 enum class QuantizationMode : uint8_t {
+  kUnknown,
   kPerTensor,
   kPerAxis,
-  // kBlocked not yet supported
+  kBlocked,
 };
 
+constexpr bool IsSupportedQuantizationMode(QuantizationMode mode) {
+  return (mode == QuantizationMode::kPerTensor) || (mode == QuantizationMode::kPerAxis);
+}
+
 struct QuantInfo {
-  QuantizationMode mode = QuantizationMode::kPerTensor;
-  int64_t norm_axis = 1;
+  QuantizationMode mode;
+  int64_t norm_axis;
 };
 
 static std::optional<std::vector<int64_t>> GetQOrDQScaleShape(const api::GraphRef& graph,
@@ -283,13 +295,8 @@ static std::optional<QuantInfo> GetQuantInfo(const api::GraphRef& graph, const a
   QuantInfo qinfo = {};
   if (IsScalarOr1Element1DTensor(*scale_shape)) {
     qinfo.mode = QuantizationMode::kPerTensor;
-    qinfo.norm_axis = 1;
+    qinfo.norm_axis = 1;  // 1 is the default 'axis' even for per-tensor quantization (axis is ignored).
   } else {
-    int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
-    if (block_size != 0) {
-      return std::nullopt;  // Don't yet support blocked quantization.
-    }
-
     int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
     const auto input0_info = graph.GetValueInfo(inputs[0]);
     auto input0_rank = input0_info->ShapeRank();
@@ -297,12 +304,56 @@ static std::optional<QuantInfo> GetQuantInfo(const api::GraphRef& graph, const a
       return std::nullopt;  // Unable to normalize the DQ's axis.
     }
 
-    qinfo.mode = QuantizationMode::kPerAxis;
-    qinfo.norm_axis = axis;
+    int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
+    if (block_size != 0) {
+      qinfo.mode = QuantizationMode::kBlocked;
+      qinfo.norm_axis = axis;
+    } else {
+      qinfo.mode = QuantizationMode::kPerAxis;
+      qinfo.norm_axis = axis;
+    }
   }
 
   return qinfo;
 }
+
+struct DQToLookPast {
+  DQToLookPast() = default;
+  DQToLookPast(std::unique_ptr<api::NodeRef>&& dq_node, QuantInfo quant_info)
+      : node(std::move(dq_node)), quant_info(quant_info) {
+  }
+
+  DQToLookPast(DQToLookPast&& other) = default;
+  DQToLookPast& operator=(DQToLookPast&& other) = default;
+
+  void SetTransposedInput(api::GraphRef& graph, std::string_view new_input, gsl::span<const int64_t> perm_inv) {
+    int64_t axis = quant_info.norm_axis;
+    if (quant_info.mode == QuantizationMode::kPerAxis) {
+      axis = perm_inv[gsl::narrow_cast<size_t>(axis)];
+    }
+
+    node->SetInput(0, new_input);
+    node->SetAttributeInt("axis", axis);
+    auto new_shape = *graph.GetValueInfo(new_input)->Shape();
+    graph.GetValueInfo(node->Outputs()[0])->SetShape(&new_shape);
+  }
+
+  void SetUnsqueezedInput(api::GraphRef& graph, std::string_view new_input,
+                          gsl::span<const int64_t> positive_unsqueeze_axes) {
+    int64_t axis = quant_info.norm_axis;
+    if (quant_info.mode == QuantizationMode::kPerAxis) {
+      axis = UnsqueezeAxis(positive_unsqueeze_axes, axis);
+    }
+
+    node->SetInput(0, new_input);
+    node->SetAttributeInt("axis", axis);
+    auto new_shape = *graph.GetValueInfo(new_input)->Shape();
+    graph.GetValueInfo(node->Outputs()[0])->SetShape(&new_shape);
+  }
+
+  std::unique_ptr<api::NodeRef> node;
+  QuantInfo quant_info;
+};
 
 /// <summary>
 /// Return a DequantizeLinear node if it's input is a constant initializer and it has a single consumer.
@@ -311,10 +362,9 @@ static std::optional<QuantInfo> GetQuantInfo(const api::GraphRef& graph, const a
 /// <param name="graph">Current graph</param>
 /// <param name="value_name">Value to check if produced by a DQ node who's input is a constant initializer</param>
 /// <returns>NodeRef for DQ node if it meets the requirements.</returns>
-static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleConsumer(const api::GraphRef& graph,
-                                                                                     std::string_view value_name,
-                                                                                     /*out*/ QuantInfo& quant_info) {
-  std::unique_ptr<api::NodeRef> result;
+static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsumer(const api::GraphRef& graph,
+                                                                                   std::string_view value_name) {
+  std::optional<DQToLookPast> result;
   std::optional<QuantInfo> quant_info_opt;
   auto dq_node = GetDQIfProducingValue(graph, value_name);
 
@@ -338,7 +388,7 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleCons
       // Get the quantization mode (per-tensor, per-channel) and the normalized quantization axis.
       // To keep things simple, do not support blocked quantization for now (added in opset 21).
       quant_info_opt = GetQuantInfo(graph, *dq_node);
-      if (!quant_info_opt.has_value()) {
+      if (!quant_info_opt.has_value() || !IsSupportedQuantizationMode(quant_info_opt->mode)) {
         break;
       }
 
@@ -353,20 +403,12 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleCons
         break;
       }
 
-      result = std::move(dq_node);
-      quant_info = *quant_info_opt;
+      result = DQToLookPast(std::move(dq_node), *quant_info_opt);
     } while (false);
   }
 
   return result;
 }
-
-// Forward declarations for utils used by MakeQDQNodeUnit
-static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank);
-static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphRef& graph, api::NodeRef& node,
-                                                               std::string_view attr_name, size_t inp_index,
-                                                               int64_t opset);
-static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis);
 
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
@@ -401,7 +443,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
 
   // Have to update the axis for newly inserted Q/DQ after a Transpose or Unsqueeze iff using per-channel quantization.
   auto dq_quant_info = GetQuantInfo(graph, dq_node);
-  if (!dq_quant_info.has_value()) {
+  if (!dq_quant_info.has_value() || !IsSupportedQuantizationMode(dq_quant_info->mode)) {
     return false;
   }
 
@@ -875,14 +917,6 @@ static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64
   return new_axes;
 }
 
-static void UpdateDQNodeInputAndShape(api::GraphRef& graph, api::NodeRef& dq, std::string_view new_input,
-                                      int64_t new_axis) {
-  dq.SetInput(0, new_input);
-  dq.SetAttributeInt("axis", new_axis);
-  auto new_shape = *graph.GetValueInfo(new_input)->Shape();
-  graph.GetValueInfo(dq.Outputs()[0])->SetShape(&new_shape);
-}
-
 /////// </Helper Utils> ///////
 
 /////// <Core Helpers> ///////
@@ -899,28 +933,27 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   std::unique_ptr<api::TensorRef> constant = ctx.graph.GetLocalConstant(input);
 
   // allow a constant initializer coming via a DQ node with a single consumer
-  QuantInfo dq_quant_info = {};
-  std::unique_ptr<api::NodeRef> dq_node;
+  std::optional<DQToLookPast> dq_to_look_past;
   std::string_view constant_dq_input;
 
   if (!constant) {
     // look past a DQ node for a constant initializer. essentially we pretend the DQ node doesn't exist
     // to enable directly making changes to the initializer. any nodes added for other consumers of the initializer
     // in 'Case 1' are prior to the DQ so we don't break up any QDQ node units.
-    dq_node = GetDQWithConstInitializerInputAndSingleConsumer(ctx.graph, input, dq_quant_info);
-    if (dq_node) {
+    dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(ctx.graph, input);
+    if (dq_to_look_past) {
       // underlying string for the input name is in the Node so it's safe to store in string_view constant_dq_input
-      constant_dq_input = dq_node->Inputs()[0];
+      constant_dq_input = dq_to_look_past->node->Inputs()[0];
       constant = ctx.graph.GetLocalConstant(constant_dq_input);
       // remove the DQ node as a consumer of the initializer while we modify things
-      dq_node->SetInput(0, "");
+      dq_to_look_past->node->SetInput(0, "");
     }
   }
 
   // Clear the input, which also removes this node's input as a consumer of the value.
   // NOTE: the node may have multiple inputs consuming the value.
   node.SetInput(i, "");
-  auto value_to_modify = dq_node ? constant_dq_input : input;
+  auto value_to_modify = dq_to_look_past ? constant_dq_input : input;
   auto consumers = ctx.graph.GetValueConsumers(value_to_modify);
 
   // Case 1: input is a constant with a known list of consumer nodes
@@ -939,12 +972,8 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     auto new_shape = UnsqueezeShape(constant->Shape(), axes);
     ctx.graph.ReshapeInitializer(value_to_modify, new_shape);
 
-    if (dq_node) {
-      int64_t dq_axis = dq_quant_info.norm_axis;
-      if (dq_quant_info.mode == QuantizationMode::kPerAxis) {
-        dq_axis = UnsqueezeAxis(axes, dq_axis);
-      }
-      UpdateDQNodeInputAndShape(ctx.graph, *dq_node, constant_dq_input, dq_axis);
+    if (dq_to_look_past) {
+      dq_to_look_past->SetUnsqueezedInput(ctx.graph, constant_dq_input, axes);
     }
 
     node.SetInput(i, input);  // restore the original connection
@@ -958,10 +987,9 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     auto dq_quant_info_opt = GetQuantInfo(ctx.graph, *inp_node);
 
-    if (dq_quant_info_opt.has_value()) {
-      dq_node = std::move(inp_node);
-      dq_quant_info = *dq_quant_info_opt;
-      auto dq_input = dq_node->Inputs()[0];
+    if (dq_quant_info_opt.has_value() && IsSupportedQuantizationMode(dq_quant_info_opt->mode)) {
+      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info_opt);
+      auto dq_input = dq_to_look_past->node->Inputs()[0];
       inp_node = ctx.graph.GetNodeProducingOutput(dq_input);
       consumers = ctx.graph.GetValueConsumers(dq_input);
     }
@@ -972,13 +1000,9 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
     std::optional<std::vector<int64_t>> squeeze_axes = std::nullopt;
     squeeze_axes = ReadFromAttrOrInput(ctx, *inp_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
     if (squeeze_axes != std::nullopt && *squeeze_axes == axes) {
-      if (dq_node) {
-        int64_t dq_axis = dq_quant_info.norm_axis;
-        if (dq_quant_info.mode == QuantizationMode::kPerAxis) {
-          dq_axis = UnsqueezeAxis(axes, dq_axis);
-        }
-        UpdateDQNodeInputAndShape(ctx.graph, *dq_node, inp_node_inputs[0], dq_axis);
-        node.SetInput(i, dq_node->Outputs()[0]);
+      if (dq_to_look_past) {
+        dq_to_look_past->SetUnsqueezedInput(ctx.graph, inp_node_inputs[0], axes);
+        node.SetInput(i, dq_to_look_past->node->Outputs()[0]);
       } else {
         node.SetInput(i, inp_node_inputs[0]);
       }
@@ -986,7 +1010,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
       // Remove the Squeeze node if possible
       // if there's a DQ node the `consumers` list still includes it so allow for that.
       // in that case UpdateDQNodeInputAndShape already updated the input of the DQ node so it's safe to remove it.
-      if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_node ? 1 : 0)) {
+      if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_to_look_past ? 1 : 0)) {
         ctx.graph.RemoveNode(*inp_node);
 
         if (ctx.opset >= 13 && !ctx.graph.HasValueConsumers(inp_node_inputs[1])) {
@@ -1001,8 +1025,9 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   }
 
   // any DQ node special casing doesn't apply anymore, so go back to the original inp_node
-  if (dq_node) {
-    inp_node = std::move(dq_node);
+  if (dq_to_look_past) {
+    inp_node = std::move(dq_to_look_past->node);
+    dq_to_look_past = std::nullopt;
   }
 
   // Case 3: Add an Unsqueeze node.
@@ -1068,21 +1093,20 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   std::unique_ptr<api::TensorRef> constant = graph.GetLocalConstant(input);
 
   // allow a constant initializer coming via a DQ node with a single consumer
-  std::unique_ptr<api::NodeRef> dq_node;
-  QuantInfo dq_quant_info = {};
+  std::optional<DQToLookPast> dq_to_look_past;
   std::string_view constant_dq_input;
 
   if (!constant) {
     // look past a DQ node for a constant initializer. essentially we pretend the DQ node doesn't exist
     // to enable directly making changes to the initializer. any nodes added for other consumers of the initializer
     // in 'Case 1' are prior to the DQ so we don't break up any QDQ node units.
-    dq_node = GetDQWithConstInitializerInputAndSingleConsumer(graph, input, dq_quant_info);
-    if (dq_node) {
+    dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, input);
+    if (dq_to_look_past) {
       // underlying string for the input name is in the Node so it's safe to store in string_view constant_dq_input
-      constant_dq_input = dq_node->Inputs()[0];
+      constant_dq_input = dq_to_look_past->node->Inputs()[0];
       constant = graph.GetLocalConstant(constant_dq_input);
       // remove the DQ node as a consumer of the initializer while we modify things
-      dq_node->SetInput(0, "");
+      dq_to_look_past->node->SetInput(0, "");
     }
   }
 
@@ -1090,7 +1114,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   // NOTE: the node may have multiple inputs consuming the value.
   node.SetInput(i, "");
 
-  auto constant_to_modify = dq_node ? constant_dq_input : input;
+  auto constant_to_modify = dq_to_look_past ? constant_dq_input : input;
   auto consumers = graph.GetValueConsumers(constant_to_modify);
 
   // Case 1: input is a constant with a known list of consumer nodes
@@ -1098,13 +1122,13 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // we modify the initializer in-place and need to reconnect things up when we're done. this helper will
     // do that when it goes out of scope. if we have manually reconnected, input or constant_dq_input is
     // set to an empty string.
-    auto reconnect_nodes = gsl::finally([i, &node, &dq_node, &input, &constant_dq_input] {
+    auto reconnect_nodes = gsl::finally([i, &node, &dq_to_look_past, &input, &constant_dq_input] {
       if (!input.empty()) {
         node.SetInput(i, input);
       }
 
       if (!constant_dq_input.empty()) {
-        dq_node->SetInput(0, constant_dq_input);
+        dq_to_look_past->node->SetInput(0, constant_dq_input);
       }
     });
 
@@ -1117,12 +1141,13 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     //   e.g. it provides a set of values that are relative to the input axes like the `sizes` input for Resize
     // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is removed only if
     // there are no other consumers.
+    // TODO(adrianlizarraga): Examine this use-case more carefully for per-axis quantization
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
-      auto& node_to_update = dq_node ? *dq_node : node;
+      auto& node_to_update = dq_to_look_past ? *(dq_to_look_past->node) : node;
       Permute1DConstant(graph, node_to_update, *constant, i, constant_to_modify, perm);
 
       // unset updated input so reconnect_nodes doesn't change it back
-      if (dq_node) {
+      if (dq_to_look_past) {
         constant_dq_input = "";
       } else {
         input = "";
@@ -1143,12 +1168,8 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
     graph.TransposeInitializer(constant_to_modify, perm);
 
-    if (dq_node) {
-      int64_t dq_axis = dq_quant_info.norm_axis;
-      if (dq_quant_info.mode == QuantizationMode::kPerAxis) {
-        dq_axis = perm_inv[gsl::narrow_cast<size_t>(dq_axis)];
-      }
-      UpdateDQNodeInputAndShape(graph, *dq_node, constant_to_modify, dq_axis);
+    if (dq_to_look_past) {
+      dq_to_look_past->SetTransposedInput(graph, constant_to_modify, perm_inv);
       constant_dq_input = "";  // DQ input was already updated so we don't need reconnect_nodes to handle it
     }
 
@@ -1162,10 +1183,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
     auto dq_quant_info_opt = GetQuantInfo(graph, *inp_node);
 
-    if (dq_quant_info_opt.has_value()) {
-      dq_node = std::move(inp_node);
-      dq_quant_info = *dq_quant_info_opt;
-      auto dq_input = dq_node->Inputs()[0];
+    if (dq_quant_info_opt.has_value() && IsSupportedQuantizationMode(dq_quant_info_opt->mode)) {
+      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info_opt);
+      auto dq_input = dq_to_look_past->node->Inputs()[0];
       inp_node = graph.GetNodeProducingOutput(dq_input);
       consumers = graph.GetValueConsumers(dq_input);
     }
@@ -1178,13 +1198,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
       if (*perm2 == perm_inv) {
         std::string_view pre_transpose_value = inp_node->Inputs()[0];
 
-        if (dq_node) {
-          int64_t dq_axis = dq_quant_info.norm_axis;
-          if (dq_quant_info.mode == QuantizationMode::kPerAxis) {
-            dq_axis = perm_inv[gsl::narrow_cast<size_t>(dq_axis)];
-          }
-          UpdateDQNodeInputAndShape(graph, *dq_node, pre_transpose_value, dq_axis);
-          node.SetInput(i, dq_node->Outputs()[0]);
+        if (dq_to_look_past) {
+          dq_to_look_past->SetTransposedInput(graph, pre_transpose_value, perm_inv);
+          node.SetInput(i, dq_to_look_past->node->Outputs()[0]);
         } else {
           node.SetInput(i, pre_transpose_value);
         }
@@ -1192,14 +1208,14 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
         // Remove the Transpose node if possible
         // if there's a DQ node the `consumers` list still includes it so allow for that.
         // in that case UpdateDQNodeInputAndShape already updated the input of the DQ node so it's safe to remove it.
-        if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_node ? 1 : 0)) {
+        if (consumers->comprehensive && consumers->nodes.size() == size_t(dq_to_look_past ? 1 : 0)) {
           graph.RemoveNode(*inp_node);
         }
 
         return;
       }
 
-      if (!dq_node) {
+      if (!dq_to_look_past) {
         // Otherwise, compose the perm and Transpose pre_transpose_value. Cost is the same and we may be able to remove
         // the other Transpose.
         const std::vector<int64_t>& perm_combined = ComposePerm(*perm2, perm);
@@ -1223,8 +1239,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   }
 
   // any DQ node special casing doesn't apply anymore, so go back to the original inp_node
-  if (dq_node) {
-    inp_node = std::move(dq_node);
+  if (dq_to_look_past) {
+    inp_node = std::move(dq_to_look_past->node);
+    dq_to_look_past = std::nullopt;
     consumers = graph.GetValueConsumers(input);
   }
 
@@ -1414,9 +1431,8 @@ static bool IsConstant(const api::GraphRef& graph, std::string_view value_name) 
 
   // look past a DQ node
   if (producer_node->OpType() == "DequantizeLinear") {
-    QuantInfo dq_quant_info = {};
-    std::unique_ptr<api::NodeRef> dq_node = GetDQWithConstInitializerInputAndSingleConsumer(graph, value_name, dq_quant_info);
-    if (dq_node != nullptr) {
+    std::optional<DQToLookPast> dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, value_name);
+    if (dq_to_look_past && IsSupportedQuantizationMode(dq_to_look_past->quant_info.mode)) {
       // DQ node pointing to an constant initializer
       return true;
     }
@@ -2834,8 +2850,8 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
   }
 
   auto q_quant_info = GetQuantInfo(ctx.graph, q_node);
-  if (!q_quant_info.has_value()) {
-    return false;  // Can't determine if Q is using per-tensor or per-channel quantization, so exit.
+  if (!q_quant_info.has_value() || !IsSupportedQuantizationMode(q_quant_info->mode)) {
+    return false;  // Can't determine quantization mode (e.g., per-tensor) or is one we don't yet support.
   }
 
   int64_t axis = q_quant_info->norm_axis;
