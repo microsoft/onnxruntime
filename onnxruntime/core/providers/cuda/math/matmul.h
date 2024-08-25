@@ -16,6 +16,7 @@ class MatMul final : public CudaKernel {
  public:
   MatMul(const OpKernelInfo& info)
       : CudaKernel(info),
+        // TODO why do try to get attribute values if MatMul doesn't have any attributes?
         alpha_{info.GetAttrOrDefault<float>("alpha", 1.0f)},
         trans_A_{info.GetAttrOrDefault<int64_t>("transA", 0) != 0},
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
@@ -24,6 +25,7 @@ class MatMul final : public CudaKernel {
         use_fp8_("1" == info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN)),
         allocator_(info.GetAllocator(OrtMemType::OrtMemTypeDefault)) {
           if (use_fp8_) {
+            // TODO since there are no attributes, should we just initialize the epilogue to CUBLASLT_EPILOGUE_DEFAULT?
             std::string activation = info.GetAttrOrDefault<std::string>("activation", "NONE");
             if (activation == "NONE") {
               epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;

@@ -141,89 +141,71 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
 
 Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   cudaStream_t& stream,  const cudaDeviceProp& device_prop,
-  AllocatorPtr allocator, const cublasLtEpilogue_t& epilogue, bool trans_A, bool trans_B, float alpha)
+  AllocatorPtr allocator, const cublasLtEpilogue_t& epilogue, float alpha)
 {
-  const Tensor* left_X = ctx->Input<Tensor>(0);
-  const Tensor* right_X = ctx->Input<Tensor>(1);
-  Tensor* Y = ctx->Output(0, helper.OutputShape());
-
-  // Ignore the transpose flag if rank of input being 1.
-  // Be noted: numpy.transpose on vector does not change anything.
-  bool transa = trans_A;
-  bool transb = trans_B;
-  if (left_X->Shape().NumDimensions() == 1) {
-    transa = false;
-  }
-  if (right_X->Shape().NumDimensions() == 1) {
-    transb = false;
-  }
-
-  cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
-  cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
-  const int lda = helper.Lda(transa);
-  const int ldb = helper.Ldb(transb);
-  const int ldc = helper.Ldc();
-
-  const TensorShape& shape_A = left_X->Shape();
-  const TensorShape& shape_B = right_X->Shape();
-  const TensorShape& shape_Y = Y->Shape();
-
-  const int M = static_cast<int>(helper.M());
-  const int K = static_cast<int>(helper.K());
-  const int N = static_cast<int>(helper.N());
-
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
   cublasLtHandle_t cublasLt;
   CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublasLt));
 
-  const void* p_input_a = left_X->DataRaw();
-  const void* p_input_b = right_X->DataRaw();
-  void* p_output_y = Y->MutableDataRaw();
+  const Tensor* left_X = ctx->Input<Tensor>(0);
+  const Tensor* right_X = ctx->Input<Tensor>(1);
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
+
+  // onnxruntime is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
+  const TensorShape& shape_A = right_X->Shape();
+  const TensorShape& shape_B = left_X->Shape();
+  const TensorShape& shape_Y = Y->Shape();
+
+  // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasStatus_t#cublasltmatmul
+  // cublasLtMatmul only works if A is transposed and B is not.
+  cublasOperation_t transA = CUBLAS_OP_T;
+  cublasOperation_t transB = CUBLAS_OP_N;
+
+  const int M = static_cast<int>(helper.M());
+  const int K = static_cast<int>(helper.K());
+  const int N = static_cast<int>(helper.N());
+
+  const int lda = helper.Ldb(transA); // right_X transposed is N,K in row_major, so leading dimension is K in col_major
+  const int ldb = helper.Lda(transB); // left_X is M,K in row_major, so leading dimension is K in col_major
+  const int ldc = N; // result in col major (cublas) has the N,M shape
+  const int ldy = ldc;
+
+  // TODO create new tensors on the device which will convert left_X and right_X from fp16 to fp8 (__nv_fp8_e4m3)
+  // TODO should we create an fp8 tensor for Y as well?
+
+  // TODO always transpose A (in cublas, so right_X in ORT)
+
+  // TODO PrePack optimization (transpose + convert to fp8) for the case when right_X (input_idx = 1) is constant.
 
   // `cublasltmatmul` computes the following formula: D = alpha*(A*B) + beta*(C).
   // Our matrix multiplication doesn't use a beta * C bias, so we just set the beta to 0 when calling the API.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
-  std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), helper.OutputShape(), allocator);
+
+  // TODO isn't this created on the host, while A,B and Y are on the device?
+  // TODO the data type should also be fp8?
+  // All values show up as 0 on device (beta is 0 anyways, so it doesn't matter).
+  std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), Y->Shape(), allocator);
 
   // Create matrix descriptors. Not setting any extra attributes.
-  int32_t dtype_A = left_X->GetElementType();
-  int32_t dtype_B = right_X->GetElementType();
+  // ORT is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
+  // TODO use fp8 versions of left_X and right_X.
+  // TODO after the conversion, will [a,b]_data_type = CUDA_R_8F_E4M3? same for [c,y]_cuda_type?
+  int32_t dtype_A = right_X->GetElementType();
+  int32_t dtype_B = left_X->GetElementType();
   int32_t dtype_C = C->GetElementType();
   int32_t dtype_Y = Y->GetElementType();
   cudaDataType_t a_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_A);
   cudaDataType_t b_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_B);
   cudaDataType_t c_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_C);
   cudaDataType_t y_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_Y);
-  cudaDataType_t scale_cuda_type = onnxruntime::cuda::ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  cublasComputeType_t compute_type;
-  switch (y_cuda_type) {
-    case CUDA_R_16F:
-      switch (a_cuda_type) {
-#if !defined(DISABLE_FLOAT8_TYPES)
-#if CUDA_VERSION < 11080
-#error CUDA_R_8F_E4M3 (float 8 types) is defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES.
-#endif
-        case CUDA_R_8F_E4M3:
-        case CUDA_R_8F_E5M2:
-          compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
-          break;
-#endif
-        default:
-          compute_type = CUBLAS_COMPUTE_32F_FAST_16F;
-          break;
-      }
-      break;
-    case CUDA_R_16BF:
-      compute_type = CUBLAS_COMPUTE_32F_FAST_16BF;
-      break;
-    case CUDA_R_32F:
-      compute_type = CUBLAS_COMPUTE_32F_FAST_TF32;
-      break;
-    default:
-      ORT_THROW("Unable to determine computeType in operator GemmFloat8.");
-  }
+
+  // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasStatus_t#cublasltmatmul
+  // "The compute type must be CUBLAS_COMPUTE_32F."
+  // "The scale type must be CUDA_R_32F."
+  cudaDataType_t scale_cuda_type = CUDA_R_32F;
+  cublasComputeType_t compute_type = CUBLAS_COMPUTE_32F;
 
   cublasLtMatmulDesc_t operationDesc = nullptr;
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&operationDesc, compute_type, scale_cuda_type));
@@ -231,11 +213,9 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transB, sizeof(transB)));
 
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr, Ydesc = nullptr;
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, transa ? K : M, transa ? M : K, lda));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, transb ? N : K, transb ? K : N, ldb));
-
-  const int ldy = ldc;
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ydesc, y_cuda_type, M, N, ldy));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, K, N, lda)); // right_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, K, M, ldb)); // left_X
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ydesc, y_cuda_type, N, M, ldc)); // cublas is col major
 
   int64_t sm_count_ = device_prop.multiProcessorCount;
 #if CUDA_VERSION >= 11060
@@ -248,17 +228,18 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   }
 #endif
 
-  // gemm float 8
+  // matmul float 8
 #if CUDA_VERSION >= 11080
-  // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
-  // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
-  const int8_t ifast_accumulation_mode = 1;
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
-      &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
+  // TODO It looks like the below breaks the unit test.
+  // // CUBLASLT_MATMUL_DESC_FAST_ACCUM, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+  // // CUBLASLT_MATMUL_DESC_D_SCALE_POINTER exist from https://docs.nvidia.com/cuda/archive/11.8.0/pdf/CUBLAS_Library.pdf
+  // const int8_t ifast_accumulation_mode = 1;
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
+  //     operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
+  //     &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
 
+  // TODO values for CUBLASLT_MATMUL_DESC_A_SCALE_POINTER need to be device pointers.
   // Create the the scale tensors
-  const std::vector<int64_t> dimensions = {1, 1};
   const TensorShape scalar_shape({1, 1});
   MLDataType float_type = onnxruntime::DataTypeImpl::GetType<float>();
   std::unique_ptr<Tensor> p_scale_a = Tensor::Create(float_type, scalar_shape, allocator);
@@ -277,42 +258,40 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
 
   // Get the weights of the model
   float scale_a, scale_b;
-  auto status = ComputeScale(stream, left_X, std_quant, scale_a);
+  auto status = ComputeScale(stream, right_X, std_quant, scale_a);
   if (! status.IsOK())
     return status;
-  status = ComputeScale(stream, right_X, std_quant, scale_b);
+  status = ComputeScale(stream, left_X, std_quant, scale_b);
   if (! status.IsOK())
     return status;
   float scale_y = 1.0f;
 
-  void* scale_a_data = &scale_a;
-  void* scale_b_data = &scale_b;
-  void* scale_y_data = &scale_y;
-  OrtValue ort_value_a(scale_a_data, float_type, NoOpDeleter);
-  OrtValue ort_value_b(scale_b_data, float_type, NoOpDeleter);
-  OrtValue ort_value_y(scale_y_data, float_type, NoOpDeleter);
+  OrtValue ort_value_a(&scale_a, float_type, NoOpDeleter);
+  OrtValue ort_value_b(&scale_b, float_type, NoOpDeleter);
+  OrtValue ort_value_y(&scale_y, float_type, NoOpDeleter);
   p_scale_a->InitOrtValue(float_type, scalar_shape, allocator, ort_value_a);
   p_scale_b->InitOrtValue(float_type, scalar_shape, allocator, ort_value_b);
   p_scale_y->InitOrtValue(float_type, scalar_shape, allocator, ort_value_y);
 
-  const void* sa(p_scale_a.get());
-  const void* sb(p_scale_b.get());
-  const void* sy(p_scale_y.get());
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &sb, sizeof(sb)));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &sy, sizeof(sy)));
+  const float* sa = (float*)(p_scale_a->DataRaw());
+  const float* sb = (float*)(p_scale_b->DataRaw());
+  const float* sy = (float*)(p_scale_y->DataRaw());
+
+  // TODO why does this break the test? Most likely because sa/sb/sy need to be pointers on the device
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &sb, sizeof(sb)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_C_SCALE_POINTER, &sy, sizeof(sy)));
+  // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &sy, sizeof(sy)));
 #endif
+
 // float 8
 #if !defined(DISABLE_FLOAT8_TYPES)
 // For E4M3FN FP8 output, cuBLAS requires C_type to be same as bias_type
-CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, M, N, ldy));
+CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_cuda_type, N, M, ldc));
 CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
     operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &c_cuda_type, sizeof(c_cuda_type)));
 #else
-CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy));
+CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc));
 #endif
 
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE, &epilogue, sizeof(epilogue));
@@ -322,9 +301,9 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
   // is running at a time (which is not necessarily true with H100).
   size_t workspaceSize = static_cast<size_t>(1 << 25);  // suggested fixed value 32Mb
   cublasLtMatmulPreference_t preference = nullptr;
-  cublasLtMatmulPreferenceCreate(&preference);
-  cublasLtMatmulPreferenceSetAttribute(
-    preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceCreate(&preference));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceSetAttribute(
+    preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize)));
 
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic
   cublasLtMatmulHeuristicResult_t heuristicResult = {};
@@ -343,7 +322,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(y_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA, ", transB=", transB,
       ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1],
       ", shape_B=", shape_B[0], "x", shape_B[1],
@@ -357,6 +336,10 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
   if (workspaceSize > 0) {
     CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
   }
+
+  const void* p_input_a = right_X->DataRaw();
+  const void* p_input_b = left_X->DataRaw();
+  void* p_output_y = Y->MutableDataRaw();
 
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   cuda_status = cublasLtMatmul(
@@ -387,7 +370,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, M, N, ldy
       ", result_type=", onnxruntime::cuda::CudaDataTypeToString(y_cuda_type),
       ", scale_type=", onnxruntime::cuda::CudaDataTypeToString(scale_cuda_type),
       ", computeType=", onnxruntime::cuda::CublasComputeTypeToString(compute_type),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transa, ", transB=", transb,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA, ", transB=", transB,
       ", fastAccumulationMode=", 1,
       ", shape_A=", shape_A[0], "x", shape_A[1],
       ", shape_B=", shape_B[0], "x", shape_B[1],
@@ -600,11 +583,10 @@ template Status FuncMatMul<MLFloat16>(
 
 template <>
 Status MatMul<MLFloat16>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
-  if (use_fp8_)
-  {
+  if (use_fp8_) {
     cudaStream_t stream = Stream(ctx);
     auto& device_prop = GetDeviceProp();
-    return ComputeUsingFp8(ctx, helper, stream, device_prop, allocator_, epilogue_, trans_A_, trans_B_, alpha_);
+    return ComputeUsingFp8(ctx, helper, stream, device_prop, allocator_, epilogue_, alpha_);
   }
 
   return ComputeDefaultImpl(ctx, helper);
