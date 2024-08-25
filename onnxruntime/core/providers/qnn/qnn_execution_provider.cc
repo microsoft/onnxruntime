@@ -423,14 +423,14 @@ static void LogNodeSupport(const logging::Logger& logger,
     return;
   }
 
+  size_t num_nodes = 0;
   std::ostringstream oss;
-  oss << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for nodes ("
-      << qnn_node_group.Type() << "):" << std::endl;
   for (const NodeUnit* node_unit : qnn_node_group.GetNodeUnits()) {
     for (const Node* node : node_unit->GetAllNodesInGroup()) {
       oss << "\tOperator type: " << node->OpType()
           << " Node name: " << node->Name()
           << " Node index: " << node->Index() << std::endl;
+      num_nodes += 1;
     }
   }
   if (!support_status.IsOK()) {
@@ -440,6 +440,9 @@ static void LogNodeSupport(const logging::Logger& logger,
   logging::Capture(logger, log_severity, logging::Category::onnxruntime,
                    log_data_type, call_site)
           .Stream()
+      << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for " << num_nodes
+      << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
+      << std::endl
       << oss.str();
 }
 

@@ -83,14 +83,14 @@ export const createTransposeProgramInfo = (inputTensor: TensorView, permAttr: nu
   return {
     name: 'Transpose',
     shaderCache: { hint: `${permAttr}`, inputDependencies: ['rank'] },
-    getRunData: (inputs) => {
+    getRunData: () => {
       const outputSize = ShapeUtil.size(outputShape);
       return {
-        outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+        outputs: [{ dims: outputShape, dataType: inputTensor.dataType }],
         dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
         programUniforms: [
           { type: DataType.uint32, data: outputSize },
-          ...createTensorShapeVariables(inputs[0].dims, outputShape),
+          ...createTensorShapeVariables(inputTensor.dims, outputShape),
         ],
       };
     },

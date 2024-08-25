@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (4u)
+#define VAIP_ORT_API_MAJOR (7u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -28,10 +28,10 @@ struct OrtApiForVaip {
   onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
-  Model* (*model_load)(const std::string& file);  // [0]
-  void (*model_delete)(Model* model);             // [1]
-  Model* (*model_clone)(const Model& model);      // [2]
-  Graph& (*model_main_graph)(Model& model);       // [3]
+  Model* (*model_load)(const std::string& file);                               // [0]
+  void (*model_delete)(Model* model);                                          // [1]
+  Model* (*model_clone)(const Model& model, int64_t external_data_threshold);  // [2]
+  Graph& (*model_main_graph)(Model& model);                                    // [3]
   void (*model_set_meta_data)(Model& model, const std::string& key,
                               const std::string& value);  // [4]
   DllSafe<std::string> (*model_get_meta_data)(const Model& model,
@@ -227,7 +227,8 @@ struct OrtApiForVaip {
   const std::filesystem::path& (*get_model_path)(const Graph& graph);                                                          // [90]
   Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);  //[91]
   void (*graph_set_inputs)(Graph& graph,
-                           gsl::span<const NodeArg* const> inputs);  // [92]
+                           gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
+  int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
 };
 
 #ifndef USE_VITISAI
