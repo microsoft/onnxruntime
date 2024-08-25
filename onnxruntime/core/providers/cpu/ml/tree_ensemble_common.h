@@ -1029,37 +1029,38 @@ class TreeEnsembleCommonV5 : public TreeEnsembleCommon<IOType, ThresholdType, IO
 template <typename IOType, typename ThresholdType>
 void TreeEnsembleCommonV5<IOType, ThresholdType>::aggregateFunctionToString(const int64_t& aggregate_function, std::string& aggregate_function_as_string) {
   switch (aggregate_function) {
-    case 0:
+    case static_cast<int64_t>(AGGREGATE_FUNCTION::AVERAGE):
       aggregate_function_as_string = "AVERAGE";
       break;
-    case 1:
+    case static_cast<int64_t>(AGGREGATE_FUNCTION::SUM):
       aggregate_function_as_string = "SUM";
       break;
-    case 2:
+    case static_cast<int64_t>(AGGREGATE_FUNCTION::MIN):
       aggregate_function_as_string = "MIN";
       break;
-    case 3:
+    case static_cast<int64_t>(AGGREGATE_FUNCTION::MAX):
       aggregate_function_as_string = "MAX";
       break;
   }
 }
 
+
 template <typename IOType, typename ThresholdType>
 void TreeEnsembleCommonV5<IOType, ThresholdType>::postTransformToString(const int64_t& post_transform, std::string& post_transform_as_string) {
   switch (post_transform) {
-    case 0:
+    case static_cast<int64_t>(POST_EVAL_TRANSFORM::NONE):
       post_transform_as_string = "NONE";
       break;
-    case 1:
+    case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX):
       post_transform_as_string = "SOFTMAX";
       break;
-    case 2:
+    case static_cast<int64_t>(POST_EVAL_TRANSFORM::LOGISTIC):
       post_transform_as_string = "LOGISTIC";
       break;
-    case 3:
+    case static_cast<int64_t>(POST_EVAL_TRANSFORM::SOFTMAX_ZERO):
       post_transform_as_string = "SOFTMAX_ZERO";
       break;
-    case 4:
+    case static_cast<int64_t>(POST_EVAL_TRANSFORM::PROBIT):
       post_transform_as_string = "PROBIT";
       break;
   }
@@ -1070,28 +1071,28 @@ void TreeEnsembleCommonV5<IOType, ThresholdType>::nodeModesToStrings(const std::
   node_modes_as_strings.reserve(node_modes.size());
   for (auto& node_mode : node_modes) {
     switch (node_mode) {
-      case 0:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_LEQ):
         node_modes_as_strings.push_back("BRANCH_LEQ");
         break;
-      case 1:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_LT):
         node_modes_as_strings.push_back("BRANCH_LT");
         break;
-      case 2:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_GTE):
         node_modes_as_strings.push_back("BRANCH_GTE");
         break;
-      case 3:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_GT):
         node_modes_as_strings.push_back("BRANCH_GT");
         break;
-      case 4:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_EQ):
         node_modes_as_strings.push_back("BRANCH_EQ");
         break;
-      case 5:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_NEQ):
         node_modes_as_strings.push_back("BRANCH_NEQ");
         break;
-      case 6:
+      case static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER):
         node_modes_as_strings.push_back("BRANCH_MEMBER");
         break;
-      case 7:
+      case static_cast<uint8_t>(NODE_MODE_V5::LEAF):
         node_modes_as_strings.push_back("LEAF");
         break;
     }
@@ -1107,7 +1108,6 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
     const std::vector<ThresholdType>& nodes_hitrates, const std::vector<int64_t>& nodes_missing_value_tracks_true, const std::vector<uint8_t>& nodes_modes,
     const std::vector<ThresholdType>& nodes_splits, const std::vector<int64_t>& nodes_trueleafs, const std::vector<int64_t>& nodes_truenodeids,
     const std::vector<int64_t>& tree_roots,
-
     // output
     std::vector<int64_t>& nodes_falsenodeids_old, std::vector<int64_t>& nodes_featureids_old, std::vector<ThresholdType>& nodes_hitrates_as_tensor_old,
     std::vector<int64_t>& nodes_missing_value_tracks_true_old, std::vector<uint8_t>& nodes_modes_old, std::vector<int64_t>& nodes_nodeids_old,
@@ -1122,7 +1122,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
     if (!nodes_missing_value_tracks_true.empty()) {
       nodes_missing_value_tracks_true_old.push_back(0);
     }
-    nodes_modes_old.push_back(7);
+    nodes_modes_old.push_back(static_cast<int64_t>(NODE_MODE_V5::LEAF));
     nodes_truenodeids_old.push_back(-1);
     nodes_falsenodeids_old.push_back(-1);
     nodes_values_as_tensor_old.push_back(-1);
@@ -1153,8 +1153,7 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
   int64_t truenodeid_id = nodes_truenodeids_old.size();
 
   nodes_falsenodeids_old.push_back(false_nodeid);
-  nodes_truenodeids_old.push_back(0); //  temporary
-
+  nodes_truenodeids_old.push_back(0); // changed afterwards
   false_nodeid = transformTreeInputOneTree(
                     nodes_falsenodeids[curr_id], curr_treeid, false_nodeid, nodes_falseleafs[curr_id],
                     leaf_targetids, leaf_weights, membership_values, nodes_falseleafs, nodes_falsenodeids, nodes_featureids,
@@ -1164,7 +1163,6 @@ int64_t TreeEnsembleCommonV5<IOType, ThresholdType>::transformTreeInputOneTree(
                     target_class_treeids_old, target_class_weights_as_tensor_old);
 
   int64_t true_nodeid = false_nodeid + 1;
-
   nodes_truenodeids_old[truenodeid_id] = true_nodeid;
   true_nodeid = transformTreeInputOneTree(
                     nodes_truenodeids[curr_id], curr_treeid, true_nodeid, nodes_trueleafs[curr_id],
