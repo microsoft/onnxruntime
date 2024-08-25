@@ -607,6 +607,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             shape=ort_inputs["input"].shape,
             buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(ort_inputs["input"], "cuda", device_id).data_ptr(),
         )
+
         iobinding.bind_input(
             name="router_probs",
             device_type="cuda",
@@ -1009,7 +1010,7 @@ class TestSwitchMoE(unittest.TestCase):
             out_features=256,
         )
         switch_moe.parity_check()
-        switch_moe.benchmark_ort()
+        # switch_moe.benchmark_ort()
 
 
 class TestMixtralMoE(unittest.TestCase):
@@ -1018,7 +1019,7 @@ class TestMixtralMoE(unittest.TestCase):
         config = MixtralConfig(hidden_size=256, intermediate_size=1024)
         mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
         mixtral_moe.parity_check()
-        mixtral_moe.benchmark_ort()
+        # mixtral_moe.benchmark_ort()
 
 
 class TestPhiMoE(unittest.TestCase):
@@ -1027,7 +1028,7 @@ class TestPhiMoE(unittest.TestCase):
         config = PhiMoEConfig(hidden_size=256, intermediate_size=1024)
         phi3_moe = PhiMoESparseMoeBlock(config, batch_size, sequence_length)
         phi3_moe.parity_check()
-        phi3_moe.benchmark_ort()
+        # phi3_moe.benchmark_ort()
 
 
 if __name__ == "__main__":
