@@ -52,6 +52,11 @@ void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   });
 }
 
+template <>
+inline void ComputeSmoothSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+}
+
 template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
@@ -94,7 +99,7 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, false, tp);
 }
 
 template <typename T>
