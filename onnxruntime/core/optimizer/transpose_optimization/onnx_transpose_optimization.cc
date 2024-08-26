@@ -339,7 +339,7 @@ class DQToLookPast {
   DQToLookPast(DQToLookPast&& other) = default;
   DQToLookPast& operator=(DQToLookPast&& other) = default;
 
-  inline QuantizationMode QuantizationMode() const {
+  inline QuantizationMode GetQuantMode() const {
     return quant_info_.mode;
   }
 
@@ -1496,7 +1496,7 @@ static bool IsConstant(const api::GraphRef& graph, std::string_view value_name) 
   // look past a DQ node
   if (producer_node->OpType() == "DequantizeLinear") {
     std::optional<DQToLookPast> dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, value_name);
-    if (dq_to_look_past && IsSupportedQuantizationMode(dq_to_look_past->QuantizationMode())) {
+    if (dq_to_look_past && IsSupportedQuantizationMode(dq_to_look_past->GetQuantMode())) {
       // DQ node pointing to an constant initializer
       return true;
     }
