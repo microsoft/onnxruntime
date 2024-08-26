@@ -69,6 +69,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
+
+    // Cache model_proto for all cases with dynamic shapes
+    model_proto_ = std::move(model_proto);
+
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
                 "QDQ stripping should not be enabled for models with dynamic input shapes. "
@@ -83,7 +87,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
                                                           GetGlobalContext(),
                                                           subgraph_context_,
                                                           ep_ctx_handle_);
-          model_proto_ = std::move(model_proto);
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
