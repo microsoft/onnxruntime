@@ -230,6 +230,51 @@ inline void saveTimingCacheFile(const std::string outFileName, const nvinfer1::I
   oFile.close();
 }
 
+#if NV_TENSORRT_MAJOR >= 10
+void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
+                                             uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
+  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
+  // even for empty tensors, so allocate a dummy byte.
+  size = std::max(size, static_cast<uint64_t>(1));
+  if (size > allocated_size) {
+    cudaFree(outputPtr);
+    outputPtr = nullptr;
+    allocated_size = 0;
+    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
+      allocated_size = size;
+    }
+  }
+  // if cudaMalloc fails, returns nullptr.
+  return outputPtr;
+}
+#else
+// Only override this method when TensorRT <= 8.6
+void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
+                                        uint64_t /*alignment*/) noexcept {
+  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
+  // even for empty tensors, so allocate a dummy byte.
+  size = std::max(size, static_cast<uint64_t>(1));
+  if (size > allocated_size) {
+    cudaFree(outputPtr);
+    outputPtr = nullptr;
+    allocated_size = 0;
+    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
+      allocated_size = size;
+    }
+  }
+  // if cudaMalloc fails, returns nullptr.
+  return outputPtr;
+}
+#endif
+
+void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
+  output_shapes.clear();
+  output_shapes.reserve(dims.nbDims);
+  for (int i = 0; i < dims.nbDims; i++) {
+    output_shapes.push_back(dims.d[i]);
+  }
+}
+
 TensorrtLogger& GetTensorrtLogger(bool verbose_log) {
   const auto log_level = verbose_log ? nvinfer1::ILogger::Severity::kVERBOSE : nvinfer1::ILogger::Severity::kWARNING;
   static TensorrtLogger trt_logger(log_level);

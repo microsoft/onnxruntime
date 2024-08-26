@@ -28,7 +28,8 @@ target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/Linu
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer.so"
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer_plugin.so"
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvonnxparser.so"
-                                     "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/flatbuffers-build/libflatbuffers.a")
+                                     "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/flatbuffers-build/libflatbuffers.a"
+                                     CUDA::cudart)
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
 #                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"

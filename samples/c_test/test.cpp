@@ -18,6 +18,12 @@ void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) 
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "kernelEp", env, keys.data(), values.data(), keys.size()));
 }
 
+void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
+    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+    std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+}
+
 int main() {
     const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtEnv* p_env = nullptr;
@@ -27,7 +33,8 @@ int main() {
     THROW_ON_ERROR(g_ort->CreateSessionOptions(&so));
 
     //TestCompileBasedEp(g_ort, p_env, so);
-    TestKernelBasedEp(g_ort, p_env, so);
+    //TestKernelBasedEp(g_ort, p_env, so);
+    TestTensorRTEp(g_ort, p_env, so);
 
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
