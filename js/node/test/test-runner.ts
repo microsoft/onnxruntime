@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import * as fs from 'fs-extra';
-import {InferenceSession, Tensor} from 'onnxruntime-common';
+import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
-import {assertTensorEqual, atol, loadTensorFromFile, rtol, shouldSkipModel} from './test-utils';
+import { assertTensorEqual, atol, loadTensorFromFile, rtol, shouldSkipModel } from './test-utils';
 
 export function run(testDataRoot: string): void {
   const opsets = fs.readdirSync(testDataRoot);
@@ -19,7 +19,7 @@ export function run(testDataRoot: string): void {
         // read each model folders
         const modelFolder = path.join(testDataFolder, model);
         let modelPath: string;
-        const modelTestCases: Array<[Array<Tensor|undefined>, Array<Tensor|undefined>]> = [];
+        const modelTestCases: Array<[Array<Tensor | undefined>, Array<Tensor | undefined>]> = [];
         for (const currentFile of fs.readdirSync(modelFolder)) {
           const currentPath = path.join(modelFolder, currentFile);
           const stat = fs.lstatSync(currentPath);
@@ -29,14 +29,14 @@ export function run(testDataRoot: string): void {
               modelPath = currentPath;
             }
           } else if (stat.isDirectory()) {
-            const inputs: Array<Tensor|undefined> = [];
-            const outputs: Array<Tensor|undefined> = [];
+            const inputs: Array<Tensor | undefined> = [];
+            const outputs: Array<Tensor | undefined> = [];
             for (const dataFile of fs.readdirSync(currentPath)) {
               const dataFileFullPath = path.join(currentPath, dataFile);
               const ext = path.extname(dataFile);
 
               if (ext.toLowerCase() === '.pb') {
-                let tensor: Tensor|undefined;
+                let tensor: Tensor | undefined;
                 try {
                   tensor = loadTensorFromFile(dataFileFullPath);
                 } catch (e) {
@@ -56,7 +56,7 @@ export function run(testDataRoot: string): void {
 
         // add cases
         describe(`${opset}/${model}`, () => {
-          let session: InferenceSession|null = null;
+          let session: InferenceSession | null = null;
           let skipModel = shouldSkipModel(model, opset, ['cpu']);
           if (!skipModel) {
             before(async () => {
@@ -68,8 +68,10 @@ export function run(testDataRoot: string): void {
                 // fails. Since this is by design such a failure is acceptable in the context of this test. Therefore we
                 // simply skip this test. Setting env variable ALLOW_RELEASED_ONNX_OPSET_ONLY=0 allows loading a model
                 // with opset > released onnx opset.
-                if (process.env.ALLOW_RELEASED_ONNX_OPSET_ONLY !== '0' &&
-                    e.message.includes('ValidateOpsetForDomain')) {
+                if (
+                  process.env.ALLOW_RELEASED_ONNX_OPSET_ONLY !== '0' &&
+                  e.message.includes('ValidateOpsetForDomain')
+                ) {
                   session = null;
                   console.log(`Skipping ${model}. To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY=0`);
                   skipModel = true;
@@ -86,7 +88,7 @@ export function run(testDataRoot: string): void {
             const testCase = modelTestCases[i];
             const inputs = testCase[0];
             const expectedOutputs = testCase[1];
-            if (!skipModel && !inputs.some(t => t === undefined) && !expectedOutputs.some(t => t === undefined)) {
+            if (!skipModel && !inputs.some((t) => t === undefined) && !expectedOutputs.some((t) => t === undefined)) {
               it(`case${i}`, async () => {
                 if (skipModel) {
                   return;

@@ -13,13 +13,13 @@ const trainingSessionAllOptions = {
   checkpointState: TRAININGDATA_CKPT,
   trainModel: TRAININGDATA_TRAIN_MODEL,
   evalModel: TRAININGDATA_EVAL_MODEL,
-  optimizerModel: TRAININGDATA_OPTIMIZER_MODEL
-}
+  optimizerModel: TRAININGDATA_OPTIMIZER_MODEL,
+};
 
 const trainingSessionMinOptions = {
   checkpointState: TRAININGDATA_CKPT,
   trainModel: TRAININGDATA_TRAIN_MODEL,
-}
+};
 
 // ASSERT METHODS
 
@@ -51,7 +51,7 @@ function assertTwoListsUnequal(list1, list2) {
 
 // HELPER METHODS FOR TESTS
 
-function generateGaussianRandom(mean=0, scale=1) {
+function generateGaussianRandom(mean = 0, scale = 1) {
   const u = 1 - Math.random();
   const v = Math.random();
   const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
@@ -106,12 +106,12 @@ function checkEvalModel(trainingSession) {
  */
 function checkNoEvalModel(trainingSession) {
   try {
-    assertStrictEquals(trainingSession.evalInputNames, "should have thrown an error upon accessing");
+    assertStrictEquals(trainingSession.evalInputNames, 'should have thrown an error upon accessing');
   } catch (error) {
     assertStrictEquals(error.message, 'This training session has no evalModel loaded.');
   }
   try {
-    assertStrictEquals(trainingSession.evalOutputNames, "should have thrown an error upon accessing");
+    assertStrictEquals(trainingSession.evalOutputNames, 'should have thrown an error upon accessing');
   } catch (error) {
     assertStrictEquals(error.message, 'This training session has no evalModel loaded.');
   }
@@ -124,15 +124,15 @@ function checkNoEvalModel(trainingSession) {
  * @param {*} feeds
  * @returns
  */
-var runTrainStepAndCheck = async function(trainingSession, feeds) {
-  const results =  await trainingSession.runTrainStep(feeds);
+var runTrainStepAndCheck = async function (trainingSession, feeds) {
+  const results = await trainingSession.runTrainStep(feeds);
   assertStrictEquals(Object.keys(results).length, 1);
   assertStrictEquals(results['onnx::loss::21273'].data.length, 1);
   assertStrictEquals(results['onnx::loss::21273'].type, 'float32');
   return results;
 };
 
-var loadParametersBufferAndCheck = async function(trainingSession, paramsLength, constant, paramsBefore) {
+var loadParametersBufferAndCheck = async function (trainingSession, paramsLength, constant, paramsBefore) {
   // make a float32 array that is filled with the constant
   const newParams = new Float32Array(paramsLength);
   for (let i = 0; i < paramsLength; i++) {
@@ -155,18 +155,20 @@ var loadParametersBufferAndCheck = async function(trainingSession, paramsLength,
   }
 
   return paramsAfterLoad;
-}
+};
 
 // TESTS
 
-var testInferenceFunction = async function(ort, options) {
+var testInferenceFunction = async function (ort, options) {
   const session = await ort.InferenceSession.create('data/model.onnx', options || {});
 
   const dataA = Float32Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   const dataB = Float32Array.from([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]);
 
-  const fetches =
-      await session.run({a: new ort.Tensor('float32', dataA, [3, 4]), b: new ort.Tensor('float32', dataB, [4, 3])});
+  const fetches = await session.run({
+    a: new ort.Tensor('float32', dataA, [3, 4]),
+    b: new ort.Tensor('float32', dataB, [4, 3]),
+  });
 
   const c = fetches.c;
 
@@ -183,12 +185,12 @@ var testInferenceFunction = async function(ort, options) {
   assert(c.data[8] === 3300);
 };
 
-var testTrainingFunctionMin = async function(ort, options) {
+var testTrainingFunctionMin = async function (ort, options) {
   const trainingSession = await createTrainingSessionAndCheckTrainingModel(ort, trainingSessionMinOptions, options);
   checkNoEvalModel(trainingSession);
   const input0 = new ort.Tensor('float32', generateGaussianFloatArray(2 * 784), [2, 784]);
   const labels = new ort.Tensor('int32', [2, 1], [2]);
-  const feeds = {"input-0": input0, "labels": labels};
+  const feeds = { 'input-0': input0, labels: labels };
 
   // check getParametersSize
   const paramsSize = await trainingSession.getParametersSize();
@@ -204,15 +206,15 @@ var testTrainingFunctionMin = async function(ort, options) {
   await runTrainStepAndCheck(trainingSession, feeds);
 
   await loadParametersBufferAndCheck(trainingSession, 397510, -1.2, originalParams);
-}
+};
 
-var testTrainingFunctionAll = async function(ort, options) {
+var testTrainingFunctionAll = async function (ort, options) {
   const trainingSession = await createTrainingSessionAndCheckTrainingModel(ort, trainingSessionAllOptions, options);
   checkEvalModel(trainingSession);
 
   const input0 = new ort.Tensor('float32', generateGaussianFloatArray(2 * 784), [2, 784]);
   const labels = new ort.Tensor('int32', [2, 1], [2]);
-  let feeds = {"input-0": input0, "labels": labels};
+  let feeds = { 'input-0': input0, labels: labels };
 
   // check getParametersSize
   const paramsSize = await trainingSession.getParametersSize();
@@ -228,7 +230,7 @@ var testTrainingFunctionAll = async function(ort, options) {
   const results = await runTrainStepAndCheck(trainingSession, feeds);
 
   await trainingSession.runOptimizerStep(feeds);
-  feeds = {"input-0": input0, "labels": labels};
+  feeds = { 'input-0': input0, labels: labels };
   // check getContiguousParameters after optimizerStep -- that the parameters have been updated
   const optimizedParams = await trainingSession.getContiguousParameters();
   assertTwoListsUnequal(originalParams.data, optimizedParams.data);
@@ -239,7 +241,7 @@ var testTrainingFunctionAll = async function(ort, options) {
   assert(results2['onnx::loss::21273'].data < results['onnx::loss::21273'].data);
 
   await loadParametersBufferAndCheck(trainingSession, 397510, -1.2, optimizedParams);
-}
+};
 
 if (typeof module === 'object') {
   module.exports = [testInferenceFunction, testTrainingFunctionMin, testTrainingFunctionAll, testTest];

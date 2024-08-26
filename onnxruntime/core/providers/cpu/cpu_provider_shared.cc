@@ -225,12 +225,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
-                                    const Tensor* relative_position_bias,
+                                    const Tensor* attention_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  relative_position_bias,
+                                                  attention_bias,
                                                   parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
