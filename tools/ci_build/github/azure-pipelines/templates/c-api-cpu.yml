@@ -83,14 +83,14 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-latest'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
       parameters:
-        xcodeVersion: 14.3.1
+        xcodeVersion: 14.2
 
     - template: download-deps.yml
 
@@ -779,7 +779,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-13
+    AgentPool : macOS-latest
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -815,4 +815,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+    PoolName: 'macOS-latest'

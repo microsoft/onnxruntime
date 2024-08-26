@@ -393,7 +393,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-13'
+        vmImage: 'macOS-latest'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '11.0'
       strategy:
@@ -420,7 +420,7 @@ stages:
 
       - template: use-xcode-version.yml
         parameters:
-          xcodeVersion: 14.3.1
+          xcodeVersion: 14.2
 
       - template: download-deps.yml
 

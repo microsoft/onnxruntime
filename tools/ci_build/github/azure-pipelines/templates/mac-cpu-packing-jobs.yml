@@ -37,7 +37,7 @@ jobs:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-13'
+    vmImage: 'macOS-latest'
   timeoutInMinutes: 300
   steps:
   - checkout: self
@@ -62,7 +62,7 @@ jobs:
 
   - template: use-xcode-version.yml
     parameters:
-      xcodeVersion: 14.3.1
+      xcodeVersion: 14.2
 
   - template: download-deps.yml
 

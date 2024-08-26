@@ -41,7 +41,7 @@ stages:
 
   - job: Build_Ios_Pod_For_React_Native
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-12'
 
     timeoutInMinutes: 90
 
@@ -99,7 +99,9 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
-      vmImage: 'macOS-13'
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
+      vmImage: 'macOS-12'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90
@@ -116,9 +118,9 @@ stages:
         architecture: "x64"
 
     - task: JavaToolInstaller@0
-      displayName: Use jdk 17
+      displayName: Use jdk 11
       inputs:
-        versionSpec: '17'
+        versionSpec: '11'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
 
