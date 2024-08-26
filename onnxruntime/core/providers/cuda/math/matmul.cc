@@ -1,14 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_scale.cuh"
+#include "matmul_utils.cuh"
 
 #include "core/providers/cuda/math/matmul.h"
+#include "core/framework/float8.h"
 #include "core/framework/ort_value.h"
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/tunable/math/matmul.h"
+
+#include <memory.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -121,7 +124,7 @@ float ComputeStandardDeviation(const U* elems, const int32_t size)
 Status ComputeScale(cudaStream_t& stream, const Tensor* tensor, const float std_quant, float& scale)
 {
   const int32_t num_coef = tensor->Shape().Size();
-  MLFloat16* scale_coef = (MLFloat16*)malloc(num_coef * sizeof(MLFloat16));
+  Float8E4M3FN* scale_coef = (Float8E4M3FN*)malloc(num_coef * sizeof(Float8E4M3FN));
   auto status = ComputeStdDevCoefficientsForScale(stream, tensor, num_coef, scale_coef);
   if (! status.IsOK())
     return status;
@@ -171,21 +174,28 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   const int ldc = N; // result in col major (cublas) has the N,M shape
   const int ldy = ldc;
 
-  // TODO create new tensors on the device which will convert left_X and right_X from fp16 to fp8 (__nv_fp8_e4m3)
-  // TODO should we create an fp8 tensor for Y as well?
+  // Create new tensors on the device which hold fp8 (__nv_fp8_e4m3) equivalents of left_X and right_X.
+  // TODO is this the correct way of creating fp8 tensors?
+  MLDataType fp8_type = DataTypeImpl::GetType<Float8E4M3FN>();
+  std::unique_ptr<Tensor> left_X_fp8 = Tensor::Create(fp8_type, shape_A, allocator);
+  std::unique_ptr<Tensor> right_X_fp8 = Tensor::Create(fp8_type, shape_B, allocator);
+  auto status = MLFloat16ToFloat8E4M3FN(stream, left_X, left_X_fp8.get());
+  if (! status.IsOK())
+    return status;
+  status = MLFloat16ToFloat8E4M3FN(stream, right_X, right_X_fp8.get());
+  if (! status.IsOK())
+    return status;
 
-  // TODO always transpose A (in cublas, so right_X in ORT)
 
-  // TODO PrePack optimization (transpose + convert to fp8) for the case when right_X (input_idx = 1) is constant.
+  // TODO transpose A (in cublas, so right_X in ORT) if not constant (in which case it's transposed in PrePack)
 
   // `cublasltmatmul` computes the following formula: D = alpha*(A*B) + beta*(C).
   // Our matrix multiplication doesn't use a beta * C bias, so we just set the beta to 0 when calling the API.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
 
-  // TODO isn't this created on the host, while A,B and Y are on the device?
-  // TODO the data type should also be fp8?
-  // All values show up as 0 on device (beta is 0 anyways, so it doesn't matter).
+  // TODO should we create an fp8 tensor for Y as well?
+  // TODO should the C data type also be fp8?
   std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), Y->Shape(), allocator);
 
   // Create matrix descriptors. Not setting any extra attributes.
@@ -238,44 +248,46 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   //     operationDesc, cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
   //     &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
 
-  // TODO values for CUBLASLT_MATMUL_DESC_A_SCALE_POINTER need to be device pointers.
-  // Create the the scale tensors
-  const TensorShape scalar_shape({1, 1});
-  MLDataType float_type = onnxruntime::DataTypeImpl::GetType<float>();
-  std::unique_ptr<Tensor> p_scale_a = Tensor::Create(float_type, scalar_shape, allocator);
-  std::unique_ptr<Tensor> p_scale_b = Tensor::Create(float_type, scalar_shape, allocator);
-  std::unique_ptr<Tensor> p_scale_y = Tensor::Create(float_type, scalar_shape, allocator);
-  ORT_ENFORCE(p_scale_a->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  // // TODO values for CUBLASLT_MATMUL_DESC_A_SCALE_POINTER need to be device pointers.
+  // // Create the the scale tensors
+  // const TensorShape scalar_shape({1, 1});
+  // MLDataType float_type = onnxruntime::DataTypeImpl::GetType<float>();
+  // std::unique_ptr<Tensor> p_scale_a = Tensor::Create(float_type, scalar_shape, allocator);
+  // std::unique_ptr<Tensor> p_scale_b = Tensor::Create(float_type, scalar_shape, allocator);
+  // std::unique_ptr<Tensor> p_scale_y = Tensor::Create(float_type, scalar_shape, allocator);
+  // ORT_ENFORCE(p_scale_a->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  // ORT_ENFORCE(p_scale_b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  // ORT_ENFORCE(p_scale_y == nullptr || p_scale_y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  float* quant_float = (float*)malloc(256 * sizeof(float));
-  for (int i = 0; i < 256; i ++) {
-    quant_float[i] = i; // TODO: Float8e4m3ToFloat32(i)?
-  }
-  float std_quant = ComputeStandardDeviation(quant_float, 256);
-  free(quant_float);
+  // float* quant_float = (float*)malloc(256 * sizeof(float));
+  // for (int i = 0; i < 256; i ++) {
+  //   quant_float[i] = i; // TODO: Float8e4m3ToFloat32(i)?
+  // }
+  // float std_quant = ComputeStandardDeviation(quant_float, 256);
+  // free(quant_float);
 
-  // Get the weights of the model
-  float scale_a, scale_b;
-  auto status = ComputeScale(stream, right_X, std_quant, scale_a);
-  if (! status.IsOK())
-    return status;
-  status = ComputeScale(stream, left_X, std_quant, scale_b);
-  if (! status.IsOK())
-    return status;
-  float scale_y = 1.0f;
+  // // Get the weights of the model
+  // float scale_a, scale_b;
+  // status = ComputeScale(stream, right_X_fp8.get(), std_quant, scale_a);
+  // if (! status.IsOK())
+  //   return status;
+  // status = ComputeScale(stream, left_X_fp8.get(), std_quant, scale_b);
+  // if (! status.IsOK())
+  //   return status;
+  // float scale_y = 1.0f;
 
-  OrtValue ort_value_a(&scale_a, float_type, NoOpDeleter);
-  OrtValue ort_value_b(&scale_b, float_type, NoOpDeleter);
-  OrtValue ort_value_y(&scale_y, float_type, NoOpDeleter);
-  p_scale_a->InitOrtValue(float_type, scalar_shape, allocator, ort_value_a);
-  p_scale_b->InitOrtValue(float_type, scalar_shape, allocator, ort_value_b);
-  p_scale_y->InitOrtValue(float_type, scalar_shape, allocator, ort_value_y);
+  // printf("scale_a = %f, scale_b = %f\n", scale_a, scale_b);
 
-  const float* sa = (float*)(p_scale_a->DataRaw());
-  const float* sb = (float*)(p_scale_b->DataRaw());
-  const float* sy = (float*)(p_scale_y->DataRaw());
+  // OrtValue ort_value_a(&scale_a, float_type, NoOpDeleter);
+  // OrtValue ort_value_b(&scale_b, float_type, NoOpDeleter);
+  // OrtValue ort_value_y(&scale_y, float_type, NoOpDeleter);
+  // p_scale_a->InitOrtValue(float_type, scalar_shape, allocator, ort_value_a);
+  // p_scale_b->InitOrtValue(float_type, scalar_shape, allocator, ort_value_b);
+  // p_scale_y->InitOrtValue(float_type, scalar_shape, allocator, ort_value_y);
+
+  // const float* sa = (float*)(p_scale_a->DataRaw());
+  // const float* sb = (float*)(p_scale_b->DataRaw());
+  // const float* sy = (float*)(p_scale_y->DataRaw());
 
   // TODO why does this break the test? Most likely because sa/sb/sy need to be pointers on the device
   // CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &sa, sizeof(sa)));
@@ -388,6 +400,20 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Adesc));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescDestroy(operationDesc));
   CUBLAS_RETURN_IF_ERROR(cublasLtDestroy(cublasLt));
+  return Status::OK();
+}
+
+template <typename T>
+Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                          bool& is_packed, PrePackedWeights* prepacked_weights) {
+  is_packed = false;
+
+  if (input_idx == 1) { // right_X
+    // TODO transpose tensor
+    // TODO convert to fp8
+    // is_packed = true;
+  }
+
   return Status::OK();
 }
 
