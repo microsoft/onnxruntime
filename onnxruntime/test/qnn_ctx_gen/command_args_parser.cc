@@ -41,14 +41,14 @@ namespace qnnctxgen {
       "\t-i: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
+      "\t    [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'.\n"
       "\t    [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
-      "\t    '0', '1', '2', '3', default is '0'.\n"
+      "\t    [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
       "\t    [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
       "\t    [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. eg: '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
       "\t    [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
       "\t    Otherwise, it will be fp32 precision. Only works for float32 model. Defaults to '0' (with FP32 precision.). \n"
-      "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '0' (disabled).\n"
+      "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
       "\t-h: help\n");
@@ -161,7 +161,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           std::string key(token.substr(0, pos));
           std::string value(token.substr(pos + 1));
 
-          if (key == "vtcm_mb" || key == "soc_model" || key == "htp_arch") {
+          if (key == "backend_path" || key == "vtcm_mb" || key == "soc_model" || key == "htp_arch") {
             // no validation
           } else if (key == "htp_graph_finalization_optimization_mode") {
             std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
@@ -182,7 +182,8 @@ static bool ParseSessionConfigs(const std::string& configs_string,
               ORT_THROW("Wrong value for " + key + ". select from: " + str);
             }
           } else {
-            ORT_THROW(R"(Wrong key type entered. Choose from options: ['vtcm_mb', 'htp_performance_mode', 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing'])");
+            ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'vtcm_mb', 'htp_performance_mode',
+ 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing'])");
           }
 
           test_config.run_config.qnn_options[key] = value;
