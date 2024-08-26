@@ -98,7 +98,8 @@ struct OrtVitisAIEpAPI {
 
 static OrtVitisAIEpAPI s_library_vitisaiep;
 static std::shared_ptr<KernelRegistry> s_kernel_registry_vitisaiep;
-static vaip_core::OrtApiForVaip the_global_api;g
+static std::vector<OrtCustomOpDomain*> s_domains_vitisaiep;
+static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
