@@ -30,6 +30,10 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
         so_epctx_embed_mode_(so_epctx_embed_mode) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
+    if (cache_dir != nullptr) {
+      free(const_cast<void*>(static_cast<const void*>(cache_dir)));
+      cache_dir = nullptr;
+    }
   }
 
   ~OpenVINOProviderFactory() override {
@@ -90,7 +94,7 @@ struct OpenVINO_Provider : Provider {
                                              // speeds up the model's compilation to NPU device specific format.
     int num_of_threads = 0;                  // [num_of_threads]: Overrides the accelerator default value of number of
                                              //  threads with this value at runtime.
-    const char* cache_dir = "";              // [cache_dir]: specify the path to
+    const char* cache_dir = nullptr;         // [cache_dir]: specify the path to
                                              // dump and load the blobs for the model caching/kernel caching (GPU)
                                              // feature. If blob files are already present, it will be directly loaded.
     const char* model_priority = "DEFAULT";  // High-level OpenVINO model priority hint
@@ -305,17 +309,22 @@ struct OpenVINO_Provider : Provider {
         auto ep_context_file_path_ = provider_options_map.at("so_epctx_path");
         auto file_path = std::filesystem::path(ep_context_file_path_);
         // ep_context_file_path_ file extension must be .onnx
-        if (!ep_context_file_path_.empty() &&
-            file_path.extension().generic_string() == ".onnx") {
-          // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
-          auto parent_path = file_path.parent_path();
-          if (!std::filesystem::is_directory(parent_path) &&
-              !std::filesystem::create_directory(parent_path)) {
-            ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
+        if (!ep_context_file_path_.empty()) {
+          if (file_path.extension().generic_string() == ".onnx") {
+            // ep_context_file_path_ must be provided as a directory, create it if doesn't exist
+            auto parent_path = file_path.parent_path();
+            if (!parent_path.empty() && !std::filesystem::is_directory(parent_path) &&
+                !std::filesystem::create_directory(parent_path)) {
+              ORT_THROW("[ERROR] [OpenVINO] Failed to create directory : " + file_path.parent_path().generic_string() + " \n");
+            }
+#ifdef _WIN32
+            cache_dir = _strdup(ep_context_file_path_.c_str());
+#else
+            cache_dir = strdup(ep_context_file_path_.c_str());
+#endif
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
           }
-          cache_dir = ep_context_file_path_.c_str();
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Invalid ep_ctx_file_path" + ep_context_file_path_ + " \n");
         }
       }
     }

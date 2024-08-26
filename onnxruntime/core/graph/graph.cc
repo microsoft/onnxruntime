@@ -4021,7 +4021,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold) const {
+                                                                       size_t initializer_size_threshold,
+                                                                       const OffsetAlignmentInfo& align_info) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4057,6 +4058,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
+      }
+
+      // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
+        // Align to the larger of the page size or the allocation granularity
+        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
+        // Align to the next page or alloc granularity boundary
+        int64_t new_external_offset = static_cast<int64_t>(
+                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                      alignment_factor;
+
+        // padding tensor with zeros for alignment
+        for (int64_t index = external_offset; index != new_external_offset; ++index) {
+          external_stream << '0';
+        }
+
+        external_offset = new_external_offset;
       }
 
       for (size_t index = 0; index != tensor_bytes_size; ++index) {
