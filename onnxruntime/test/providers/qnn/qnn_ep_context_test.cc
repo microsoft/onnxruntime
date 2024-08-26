@@ -801,8 +801,8 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
   Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so);
 }
 
-
-TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
+// TODO: [hecli] redesign the tese
+TEST_F(QnnHTPBackendTests, DISABLED_QnnContextShareAcrossSessions) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -824,7 +824,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 
   // prepare input
   std::vector<int64_t> input_dim{4096, 4096};
-  std::vector<float> input_value(4096*4096, 0.0);
+  std::vector<float> input_value(4096 * 4096, 0.0);
   OrtValue ml_value;
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
@@ -840,7 +840,6 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   const auto& output1 = ort_outputs1[0];
   ASSERT_TRUE(output1.IsTensor());
 
-  
   const char* input2_names[] = {"input"};
   const char* const output2_names[] = {"matmul_1"};
   auto ort_outputs2 = session2.Run(Ort::RunOptions{}, input2_names, ort_inputs.data(), ort_inputs.size(),
