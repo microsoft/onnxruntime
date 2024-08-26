@@ -114,18 +114,11 @@ class ComputeContextImpl implements ComputeContext {
   }
 
   isSubgroupsSupported(): boolean {
-    return (
-      this.backend.device.features.has('subgroups' as GPUFeatureName) ||
-      this.backend.device.features.has('chromium-experimental-subgroups' as GPUFeatureName)
-    );
+    return this.backend.device.features.has('subgroups' as GPUFeatureName);
   }
 
   isSubgroupsF16Supported(): boolean {
-    return (
-      this.backend.device.features.has('subgroups-f16' as GPUFeatureName) ||
-      (this.backend.device.features.has('chromium-experimental-subgroups' as GPUFeatureName) &&
-        this.backend.device.features.has('shader-f16'))
-    );
+    return this.backend.device.features.has('subgroups-f16' as GPUFeatureName);
   }
 
   getSubgroupSizeRange(): [number, number] | undefined {

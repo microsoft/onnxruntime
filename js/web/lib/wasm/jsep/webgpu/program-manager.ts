@@ -100,7 +100,6 @@ export class ProgramManager {
       { feature: 'shader-f16', extension: 'f16' },
       { feature: 'subgroups' as GPUFeatureName, extension: 'subgroups' },
       { feature: 'subgroups-f16' as GPUFeatureName, extension: 'subgroups_f16' },
-      { feature: 'chromium-experimental-subgroups' as GPUFeatureName, extension: 'chromium_experimental_subgroups' },
     ];
     extensionsInfo.forEach((info) => {
       if (device.features.has(info.feature)) {
