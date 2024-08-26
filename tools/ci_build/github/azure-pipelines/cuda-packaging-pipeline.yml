@@ -1,3 +1,6 @@
+#This is the CUDA-Zip-Nuget-Java-Packaging-Pipeline with following parameters:
+#CUDA version 12.2
+#CuDNN version 9
 parameters:
   - name: RunOnnxRuntimeTests
     displayName: Run Tests?
