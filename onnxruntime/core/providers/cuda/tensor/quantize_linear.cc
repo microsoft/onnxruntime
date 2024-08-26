@@ -34,18 +34,42 @@ void ValidateBlockQuantizationShapes(const TensorShape& input_shape,
 template <class T, class U>
 Status CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
                           size_t num_of_element, bool /*saturate*/) {
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
 template <class T, class U>
 Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
                               size_t num_of_element, size_t batch_size, size_t n_scales, bool /*saturate*/) {
+                                ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(n_scales);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
 template <typename T, typename U>
 Status CudaQuantizeLinearBlock(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
                                size_t num_of_element, size_t K, size_t N, size_t block_size, bool /*saturate*/) {
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(block_size);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
@@ -192,6 +216,12 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 template <class T, class U>
 Status CudaDequantizeLinear(cudaStream_t stream, const T* input, U* output, const U* scale,
                             const T* zero_point, size_t num_of_element) {
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
@@ -199,6 +229,14 @@ template <class T, class U>
 Status CudaDequantizeLinearAxis(cudaStream_t stream, const T* input, U* output, const U* scale,
                                 const T* zero_point, size_t num_of_element,
                                 size_t batch_size, size_t n_scales) {
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(n_scales);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
@@ -206,6 +244,15 @@ template <class T, class U>
 Status CudaDequantizeLinearBlockInt4(cudaStream_t stream, const T* input, U* output, const U* scale,
                                      const T* zero_point, size_t num_of_element, size_t K, size_t N,
                                      size_t block_size) {
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(output);
+  ORT_UNUSED_PARAMETER(scale);
+  ORT_UNUSED_PARAMETER(zero_point);
+  ORT_UNUSED_PARAMETER(num_of_element);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(block_size);
   ORT_NOT_IMPLEMENTED("Unsupported quantization type.");
 }
 
