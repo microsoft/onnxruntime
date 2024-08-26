@@ -88,7 +88,6 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
     if (!model_proto->SerializeToOstream(epctx_onnx_model)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
     }
-    model_proto->SerializeToOstream(epctx_onnx_model);
   }
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
 
