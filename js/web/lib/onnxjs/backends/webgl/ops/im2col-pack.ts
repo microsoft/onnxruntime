@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType } from '../types';
 
-import {ConvAttributes} from './conv';
-import {unpackFromChannel} from './packing-utils';
+import { ConvAttributes } from './conv';
+import { unpackFromChannel } from './packing-utils';
 
 const createPackedIm2ColProgramMetadata = (cacheHint: string) => ({
   name: 'Im2Col (packed)',
@@ -16,23 +16,28 @@ const createPackedIm2ColProgramMetadata = (cacheHint: string) => ({
   cacheHint,
 });
 
-const createPackedIm2ColProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, x: Tensor, w: Tensor,
-     outputShape: readonly number[], attributes: ConvAttributes): ProgramInfo => {
-      const xshape = x.dims;
-      const wshape = w.dims;
-      const rowDim = 2;
-      const colDim = 3;
-      const rank = outputShape.length;
-      const im2colShape = [wshape[1] * wshape[2] * wshape[3], outputShape[2] * outputShape[3]];
-      const kernelSize = wshape[2] * wshape[3];
-      const unpackChannel = unpackFromChannel();
-      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      let unrolled = '';
+const createPackedIm2ColProgramInfo = (
+  inferenceHandler: WebGLInferenceHandler,
+  metadata: ProgramMetadata,
+  x: Tensor,
+  w: Tensor,
+  outputShape: readonly number[],
+  attributes: ConvAttributes,
+): ProgramInfo => {
+  const xshape = x.dims;
+  const wshape = w.dims;
+  const rowDim = 2;
+  const colDim = 3;
+  const rank = outputShape.length;
+  const im2colShape = [wshape[1] * wshape[2] * wshape[3], outputShape[2] * outputShape[3]];
+  const kernelSize = wshape[2] * wshape[3];
+  const unpackChannel = unpackFromChannel();
+  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+  let unrolled = '';
 
-      for (let row = 0; row <= 1; row++) {
-        for (let col = 0; col <= 1; col++) {
-          unrolled += `
+  for (let row = 0; row <= 1; row++) {
+    for (let col = 0; col <= 1; col++) {
+      unrolled += `
             blockIndex = rc.x + ${col};
             pos = rc.y + ${row};
 
@@ -58,10 +63,10 @@ const createPackedIm2ColProgramInfo =
             }
 
           `;
-        }
-      }
+    }
+  }
 
-      const shaderSource = `
+  const shaderSource = `
       ${unpackChannel}
 
       void main() {
@@ -73,20 +78,24 @@ const createPackedIm2ColProgramInfo =
           ${glsl.output} = result;
       }
             `;
-      return {
-        ...metadata,
-        output: {dims: im2colShape, type: x.type, textureType: TextureType.packed},
-        shaderSource,
-        hasMain: true
-      };
-    };
+  return {
+    ...metadata,
+    output: { dims: im2colShape, type: x.type, textureType: TextureType.packed },
+    shaderSource,
+    hasMain: true,
+  };
+};
 
-export const createPackedIm2ColProgramInfoLoader =
-    (inferenceHandler: WebGLInferenceHandler, x: Tensor, w: Tensor, outputShape: readonly number[],
-     attributes: ConvAttributes): ProgramInfoLoader => {
-      const metadata = createPackedIm2ColProgramMetadata(attributes.cacheKey);
-      return {
-        ...metadata,
-        get: () => createPackedIm2ColProgramInfo(inferenceHandler, metadata, x, w, outputShape, attributes)
-      };
-    };
+export const createPackedIm2ColProgramInfoLoader = (
+  inferenceHandler: WebGLInferenceHandler,
+  x: Tensor,
+  w: Tensor,
+  outputShape: readonly number[],
+  attributes: ConvAttributes,
+): ProgramInfoLoader => {
+  const metadata = createPackedIm2ColProgramMetadata(attributes.cacheKey);
+  return {
+    ...metadata,
+    get: () => createPackedIm2ColProgramInfo(inferenceHandler, metadata, x, w, outputShape, attributes),
+  };
+};

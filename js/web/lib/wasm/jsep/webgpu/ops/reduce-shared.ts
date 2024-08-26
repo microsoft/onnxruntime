@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo, ProgramShaderCacheInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { ComputeContext, ProgramInfo, ProgramShaderCacheInfo } from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
-import {createReduceAttributesFromInputs, ReduceAttributes} from './reduce';
-import {createTransposeProgramInfo} from './transpose';
+import { inputVariable, outputVariable, ShaderHelper } from './common';
+import { createReduceAttributesFromInputs, ReduceAttributes } from './reduce';
+import { createTransposeProgramInfo } from './transpose';
 
-const reduceOps: {[key: string]: string} = {
+const reduceOps: { [key: string]: string } = {
   max: 'select(bestValue, candidate, candidate > bestValue)',
   min: 'select(bestValue, candidate, candidate < bestValue)',
   mean: 'bestValue + candidate',
@@ -20,10 +20,10 @@ const reduceOps: {[key: string]: string} = {
   logSumExp: 'bestValue + exp(candidate)',
   l1: 'bestValue + abs(candidate)',
   l2: 'bestValue + candidate * candidate',
-  logSum: 'bestValue + candidate'
+  logSum: 'bestValue + candidate',
 };
 
-const reduceSharedOps: {[key: string]: string} = {
+const reduceSharedOps: { [key: string]: string } = {
   max: 'select(bestValue, candidate, candidate > bestValue)',
   min: 'select(bestValue, candidate, candidate < bestValue)',
   mean: 'bestValue + candidate',
@@ -33,10 +33,10 @@ const reduceSharedOps: {[key: string]: string} = {
   logSumExp: 'bestValue + candidate',
   l1: 'bestValue + candidate',
   l2: 'bestValue + candidate',
-  logSum: 'bestValue + candidate'
+  logSum: 'bestValue + candidate',
 };
 
-const reduceInitValues: {[key: string]: string} = {
+const reduceInitValues: { [key: string]: string } = {
   max: '_A[offset]',
   min: '_A[offset]',
   mean: '0',
@@ -46,10 +46,10 @@ const reduceInitValues: {[key: string]: string} = {
   logSumExp: '0',
   l1: '0',
   l2: '0',
-  logSum: '0'
+  logSum: '0',
 };
 
-const reduceOutputValues: {[key: string]: string} = {
+const reduceOutputValues: { [key: string]: string } = {
   max: 'bestValue',
   min: 'bestValue',
   sum: 'bestValue',
@@ -58,7 +58,7 @@ const reduceOutputValues: {[key: string]: string} = {
   logSumExp: 'log(bestValue)',
   l1: 'bestValue',
   l2: 'sqrt(bestValue)',
-  logSum: 'log(bestValue)'
+  logSum: 'log(bestValue)',
 };
 
 const getInnerMostAxes = (numInnerAxes: number, rank: number): number[] => {
@@ -77,7 +77,7 @@ const computeOutAndReduceShapes = (shape: readonly number[], axes: readonly numb
       outputShape.push(shape[dim]);
     }
   }
-  const reduceShape = axes.map(dim => shape[dim]);
+  const reduceShape = axes.map((dim) => shape[dim]);
   return [outputShape, reduceShape];
 };
 
@@ -112,29 +112,35 @@ const getAxesPermutation = (axes: number[], rank: number): number[] => {
         res.push(i);
       }
     }
-    axes.forEach(axis => res.push(axis));
+    axes.forEach((axis) => res.push(axis));
   }
   return res;
 };
 
-export const createReduceSharedProgramInfo =
-    (name: string, shaderCache: ProgramShaderCacheInfo, inputs: readonly TensorView[], reduceType: string,
-     outputDataType: DataType, outputShape: number[], reduceShape: number[]): ProgramInfo => {
-      const inputShape = inputs[0].dims;
+export const createReduceSharedProgramInfo = (
+  name: string,
+  shaderCache: ProgramShaderCacheInfo,
+  inputs: readonly TensorView[],
+  reduceType: string,
+  outputDataType: DataType,
+  outputShape: number[],
+  reduceShape: number[],
+): ProgramInfo => {
+  const inputShape = inputs[0].dims;
 
-      const outputSize = ShapeUtil.size(outputShape);
-      const reduceSize = ShapeUtil.size(reduceShape);
+  const outputSize = ShapeUtil.size(outputShape);
+  const reduceSize = ShapeUtil.size(reduceShape);
 
-      const input = inputVariable('_A', inputs[0].dataType, inputShape);
-      const output = outputVariable('output', outputDataType, outputShape);
+  const input = inputVariable('_A', inputs[0].dataType, inputShape);
+  const output = outputVariable('output', outputDataType, outputShape);
 
-      const workgroupSize = 32;
+  const workgroupSize = 32;
 
-      const sharedMemorySnippet = `
+  const sharedMemorySnippet = `
           var<workgroup> aBestValues : array<f32, ${workgroupSize}>;
        `;
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
         ${shaderHelper.registerUniform('reduceSize', 'u32').declareVariables(input, output)}
         ${sharedMemorySnippet}
         fn DIV_CEIL(a : u32, b : u32) -> u32 {
@@ -168,61 +174,75 @@ export const createReduceSharedProgramInfo =
          }
 
          if (local_idx == 0u) {
-          ${
-          output.setByOffset(
-              'outputIndex',
-              `${
-                  reduceType === 'mean' ? `${output.type.storage}(bestValue / f32(uniforms.reduceSize))` :
-                                          `${output.type.storage}(${reduceOutputValues[reduceType]})`}`)};
+          ${output.setByOffset(
+            'outputIndex',
+            `${
+              reduceType === 'mean'
+                ? `${output.type.storage}(bestValue / f32(uniforms.reduceSize))`
+                : `${output.type.storage}(${reduceOutputValues[reduceType]})`
+            }`,
+          )};
          }
         }`;
 
-      // One work group is responsible for only one element of output.
-      return {
-        name,
-        shaderCache,
-        getShaderSource,
-        getRunData: () => ({
-          outputs: [{dims: outputShape, dataType: outputDataType}],
-          dispatchGroup: {x: outputSize},
-          programUniforms: [{type: DataType.uint32, data: reduceSize}]
-        }),
-      };
-    };
+  // One work group is responsible for only one element of output.
+  return {
+    name,
+    shaderCache,
+    getShaderSource,
+    getRunData: () => ({
+      outputs: [{ dims: outputShape, dataType: outputDataType }],
+      dispatchGroup: { x: outputSize },
+      programUniforms: [{ type: DataType.uint32, data: reduceSize }],
+    }),
+  };
+};
 
-const reduceCommon =
-    (context: ComputeContext, name: string, attributes: ReduceAttributes,
-     reduceType: 'sum'|'sumSquare'|'prod'|'min'|'max'|'mean'|'logSumExp'|'l1'|'l2'|'logSum'): void => {
-      const updatedAttributes: ReduceAttributes =
-          context.inputs.length === 1 ? attributes : createReduceAttributesFromInputs(context.inputs, attributes);
+const reduceCommon = (
+  context: ComputeContext,
+  name: string,
+  attributes: ReduceAttributes,
+  reduceType: 'sum' | 'sumSquare' | 'prod' | 'min' | 'max' | 'mean' | 'logSumExp' | 'l1' | 'l2' | 'logSum',
+): void => {
+  const updatedAttributes: ReduceAttributes =
+    context.inputs.length === 1 ? attributes : createReduceAttributesFromInputs(context.inputs, attributes);
 
-      let updatedAxes = updatedAttributes.axes;
-      if (updatedAxes.length === 0 && !updatedAttributes.noopWithEmptyAxes) {
-        updatedAxes = context.inputs[0].dims.map((_dim, i) => i);
-      }
-      const normalizeAxes = ShapeUtil.normalizeAxes(updatedAxes, context.inputs[0].dims.length);
+  let updatedAxes = updatedAttributes.axes;
+  if (updatedAxes.length === 0 && !updatedAttributes.noopWithEmptyAxes) {
+    updatedAxes = context.inputs[0].dims.map((_dim, i) => i);
+  }
+  const normalizeAxes = ShapeUtil.normalizeAxes(updatedAxes, context.inputs[0].dims.length);
 
-      let axes = normalizeAxes;
-      let input = context.inputs[0];
-      const permutedAxes = getAxesPermutation(axes, context.inputs[0].dims.length);
-      if (permutedAxes.length > 0) {
-        input = context.compute(
-            createTransposeProgramInfo(context.inputs[0], permutedAxes), {inputs: [0], outputs: [-1]})[0];
-        axes = getInnerMostAxes(axes.length, input.dims.length);
-      }
+  let axes = normalizeAxes;
+  let input = context.inputs[0];
+  const permutedAxes = getAxesPermutation(axes, context.inputs[0].dims.length);
+  if (permutedAxes.length > 0) {
+    input = context.compute(createTransposeProgramInfo(context.inputs[0], permutedAxes), {
+      inputs: [0],
+      outputs: [-1],
+    })[0];
+    axes = getInnerMostAxes(axes.length, input.dims.length);
+  }
 
-      const [outputShape, reduceShape] = computeOutAndReduceShapes(input.dims, axes);
-      let finalOutputShape = outputShape;
-      if (updatedAttributes.keepDims) {
-        finalOutputShape = expandShapeToKeepDim(outputShape, normalizeAxes);
-      }
+  const [outputShape, reduceShape] = computeOutAndReduceShapes(input.dims, axes);
+  let finalOutputShape = outputShape;
+  if (updatedAttributes.keepDims) {
+    finalOutputShape = expandShapeToKeepDim(outputShape, normalizeAxes);
+  }
 
-      context.compute(
-          createReduceSharedProgramInfo(
-              name, {hint: updatedAttributes.cacheKey, inputDependencies: ['type']}, [input], reduceType,
-              context.inputs[0].dataType, finalOutputShape, reduceShape),
-          {inputs: [input]});
-    };
+  context.compute(
+    createReduceSharedProgramInfo(
+      name,
+      { hint: updatedAttributes.cacheKey, inputDependencies: ['type'] },
+      [input],
+      reduceType,
+      context.inputs[0].dataType,
+      finalOutputShape,
+      reduceShape,
+    ),
+    { inputs: [input] },
+  );
+};
 
 export const reduceMeanShared = (context: ComputeContext, attributes: ReduceAttributes): void => {
   reduceCommon(context, 'ReduceMeanShared', attributes, 'mean');

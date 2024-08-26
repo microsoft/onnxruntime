@@ -427,7 +427,7 @@ struct TensorCheck<MLFloat16> {
 
     for (int64_t i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
-        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
+        EXPECT_TRUE(std::isnan(f_actual[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {

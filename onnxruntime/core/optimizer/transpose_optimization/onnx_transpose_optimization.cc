@@ -24,6 +24,12 @@ static constexpr bool IsOnnxDomain(std::string_view domain) {
   return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
 }
 
+// Returns true if the given tensor shape represents a Scalar value (rank == 0) or a tensor with shape (1,).
+constexpr bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape) {
+  const size_t rank = tensor_shape.size();
+  return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
+}
+
 static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
@@ -286,6 +292,13 @@ static std::unique_ptr<api::NodeRef> GetDQWithConstInitializerInputAndSingleCons
   return result;
 }
 
+// Forward declarations for utils used by MakeQDQNodeUnit
+static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank);
+static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphRef& graph, api::NodeRef& node,
+                                                               std::string_view attr_name, size_t inp_index,
+                                                               int64_t opset);
+static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis);
+
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
 /// DQ -> next node => DQ -> next node -> Q -> DQ.
@@ -308,6 +321,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   const auto dq_domain = dq_node.Domain();
   const auto& dq_inputs = dq_node.Inputs();
   const bool is_transpose = next_node.OpType() == "Transpose";
+  const bool is_unsqueeze = next_node.OpType() == "Unsqueeze";
 
   const auto scale_input = dq_inputs[1];
   const auto scale_value_info = graph.GetValueInfo(scale_input);
@@ -315,8 +329,8 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   std::optional<std::unique_ptr<api::ValueInfoRef>> zp_value_info;
 
   auto scale_shape = scale_value_info->Shape();
-  if (!scale_shape && is_transpose) {
-    // axis potentially needs updating due to the transpose but we don't have the required info to do it.
+  if (!scale_shape) {
+    // axis potentially needs updating due to the transpose or unsqueeze but we don't have the required info to do it.
     return false;
   }
 
@@ -325,19 +339,38 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     zp_value_info = graph.GetValueInfo(zp_input.value());
   }
 
-  // per-axis quantization if not a scalar (shape is empty for scalar).
-  // note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
-  // so we have to check the shape.
-  auto update_dq_axis = scale_shape && !scale_shape->empty();
+  // DQ uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
+  // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
+  // so we have to check the scale input's shape.
+  const bool update_dq_axis = !IsScalarOr1Element1DTensor(*scale_shape);
   int64_t axis = dq_node.GetAttributeIntDefault("axis", 1);
 
-  // TODO(adrianlizarraga): Also need to update axis if Unsqueeze inserts a 1 before the axis dim.
-  if (update_dq_axis && is_transpose) {
-    // update axis.
-    auto perm = GetPermAttrIfValid(next_node);
-    assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
-    NormalizeAndValidateAxis(axis, scale_shape->size());
-    axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
+  if (update_dq_axis) {
+    const auto dq_input0_info = graph.GetValueInfo(dq_inputs[0]);
+    auto dq_input0_rank = dq_input0_info->ShapeRank();
+    if (!dq_input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *dq_input0_rank)) {
+      return false;  // Unable to normalize the DQ's axis.
+    }
+
+    if (is_transpose) {
+      auto perm = GetPermAttrIfValid(next_node);
+      assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
+      axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
+    } else if (is_unsqueeze) {
+      auto axes = ReadFromAttrOrInput(graph, next_node, "axes", /*inp_index*/ 1, /*opset*/ 13);
+      assert(axes.has_value());  // 'axes' are required for Unsqueeze
+
+      // Normalize negative unsqueeze axes by adding output rank.
+      // Unsqueeze output rank = input_rank + axes.size()
+      // Unsqueeze's input rank is the same as the DQ's input[0] rank.
+      if (!NormalizeAndValidateAxes(*axes, *dq_input0_rank + axes->size())) {
+        return false;
+      }
+
+      // Need to update axis if Unsqueeze inserts a 1 before the axis dim.
+      std::sort(axes->begin(), axes->end());
+      axis = UnsqueezeAxis(*axes, axis);
+    }
   }
 
   auto next_node_output_name = next_node.Outputs()[0];
@@ -469,32 +502,67 @@ static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank) {
   for (size_t i = 0; i < axes.size(); ++i) {
     if (axes[i] < 0) {
       axes[i] += rank_int;
-      size_t x_size_t = gsl::narrow_cast<size_t>(axes[i]);
-      if (axes[i] < 0 || axes[i] >= rank_int || used_dims[x_size_t]) {
-        return false;
-      }
-      used_dims[x_size_t] = true;
     }
+
+    size_t x_size_t = gsl::narrow_cast<size_t>(axes[i]);
+    if (axes[i] < 0 || axes[i] >= rank_int || used_dims[x_size_t]) {
+      return false;
+    }
+    used_dims[x_size_t] = true;
   }
   return true;
 }
 
+// Read constant int64 data from a node's input.
+static std::optional<std::vector<int64_t>> ReadInt64sFromInput(const api::GraphRef& graph, api::NodeRef& node,
+                                                               size_t inp_index) {
+  auto inputs = node.Inputs();
+  if (inp_index >= inputs.size() || inputs[inp_index] == "") {
+    return std::nullopt;
+  }
+  auto constant = graph.GetConstant(inputs[inp_index]);
+  if (constant == nullptr) {
+    return std::nullopt;
+  }
+  return DataInt64(*constant);
+}
+
 // Read int64 data from attribute or input, depending on whether model opset < provided opset
+// Assumes that node is in the default ONNX domain.
 static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(OptimizerCtx& ctx, api::NodeRef& node,
                                                                std::string_view attr_name, size_t inp_index,
                                                                int64_t opset) {
+  assert(IsOnnxDomain(node.Domain()));  // ctx.opset is only for Onnx domain.
   if (ctx.opset < opset) {
     return node.GetAttributeInts(attr_name);
   } else {
-    auto inputs = node.Inputs();
-    if (inp_index >= inputs.size() || inputs[inp_index] == "") {
-      return std::nullopt;
+    return ReadInt64sFromInput(ctx.graph, node, inp_index);
+  }
+}
+
+// Read int64 data from attribute or input, depending on whether model opset < provided opset
+static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphRef& graph, api::NodeRef& node,
+                                                               std::string_view attr_name, size_t input_index,
+                                                               int64_t opset_with_input) {
+  std::optional<int64_t> actual_opset;
+
+  if (IsOnnxDomain(node.Domain())) {
+    actual_opset = graph.Opset(onnxruntime::kOnnxDomain);
+    if (!actual_opset.has_value()) {
+      actual_opset = graph.Opset(onnxruntime::kOnnxDomainAlias);
     }
-    auto constant = ctx.graph.GetConstant(inputs[inp_index]);
-    if (constant == nullptr) {
-      return std::nullopt;
-    }
-    return DataInt64(*constant);
+  } else {
+    actual_opset = graph.Opset(node.Domain());
+  }
+
+  if (!actual_opset.has_value()) {
+    return std::nullopt;
+  }
+
+  if (*actual_opset < opset_with_input) {
+    return node.GetAttributeInts(attr_name);
+  } else {
+    return ReadInt64sFromInput(graph, node, input_index);
   }
 }
 
@@ -683,6 +751,24 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
   }
 
   return new_perm;
+}
+
+// Computes a new axis value for an unsqueezed version of a tensor. Incorrect if any axes
+// values are negative, duplicated, or are not sorted in increasing order.
+//
+// Ex: axes = [0, 1, 2], axis = 0, new_axis = 3
+//     axes = [0, 1, 3], axis = 1, new_axis = 4
+static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis) {
+  assert(axis >= 0);
+  int64_t new_axis = axis;
+
+  for (int64_t unsqueeze_axis : sorted_positive_unsqueeze_axes) {
+    if (unsqueeze_axis <= new_axis) {
+      new_axis += 1;
+    }
+  }
+
+  return new_axis;
 }
 
 // Computes a new axes attribute for an input that has been permuted using perm. Unsafe if axes/perm are invalid or
@@ -2662,16 +2748,22 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
     zp_value_info = ctx.graph.GetValueInfo(zp_input.value());
   }
 
-  // Per-axis quantization if not a scalar (shape is empty for scalar).
-  // note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
-  // so we have to check the shape.
-  const bool update_axis = scale_shape && !scale_shape->empty();
+  // Q uses per-axis quantization if its scale input is not a scalar and not a tensor with shape (1,).
+  // Note there could be an axis value as the onnx spec says that is ignored for per-tensor quantization,
+  // so we have to check the scale input's shape.
+  const bool update_axis = !IsScalarOr1Element1DTensor(*scale_shape);
   int64_t axis = q_node.GetAttributeIntDefault("axis", 1);
 
   if (update_axis) {
     auto perm = GetPermAttrIfValid(transpose_node);
     assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
-    NormalizeAndValidateAxis(axis, scale_shape->size());
+
+    const auto q_input0_info = ctx.graph.GetValueInfo(q_node_inputs[0]);
+    std::optional<size_t> q_input0_rank = q_input0_info->ShapeRank();
+    if (!q_input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *q_input0_rank)) {
+      return false;  // Unable to normalize the Q's axis.
+    }
+
     axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
   }
 

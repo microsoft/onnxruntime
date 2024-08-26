@@ -48,8 +48,9 @@ class NodeGroupSelector {
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit DropQDQNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                    bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -58,6 +59,7 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool allow_nonpositive_scale_;
 };
 
 // Single DQ -> node.
@@ -300,8 +302,8 @@ class BaseSelector : public NodeSelector {
 
 class DropQDQNodesSelector : public BaseSelector {
  public:
-  explicit DropQDQNodesSelector(bool allow_16bit = false, bool allow_4bit = false)
-      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit, allow_4bit)) {}
+  explicit DropQDQNodesSelector(bool allow_16bit = false, bool allow_4bit = false, bool allow_nonpositive_scale = true)
+      : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale)) {}
 };
 
 class DropDQNodesSelector : public BaseSelector {

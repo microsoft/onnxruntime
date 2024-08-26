@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {spawnSync} from 'child_process';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs-extra';
 import minimist from 'minimist';
 import * as os from 'os';
@@ -11,13 +11,13 @@ import * as path from 'path';
 const buildArgs = minimist(process.argv.slice(2));
 
 // --config=Debug|Release|RelWithDebInfo
-const CONFIG: 'Debug'|'Release'|'RelWithDebInfo' =
-    buildArgs.config || (os.platform() === 'win32' ? 'RelWithDebInfo' : 'Release');
+const CONFIG: 'Debug' | 'Release' | 'RelWithDebInfo' =
+  buildArgs.config || (os.platform() === 'win32' ? 'RelWithDebInfo' : 'Release');
 if (CONFIG !== 'Debug' && CONFIG !== 'Release' && CONFIG !== 'RelWithDebInfo') {
   throw new Error(`unrecognized config: ${CONFIG}`);
 }
 // --arch=x64|ia32|arm64|arm
-const ARCH: 'x64'|'ia32'|'arm64'|'arm' = buildArgs.arch || os.arch();
+const ARCH: 'x64' | 'ia32' | 'arm64' | 'arm' = buildArgs.arch || os.arch();
 if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
   throw new Error(`unrecognized architecture: ${ARCH}`);
 }
@@ -51,7 +51,7 @@ if (REBUILD) {
 
 const args = [
   'cmake-js',
-  (REBUILD ? 'reconfigure' : 'configure'),
+  REBUILD ? 'reconfigure' : 'configure',
   `--arch=${ARCH}`,
   '--CDnapi_build_version=6',
   `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
@@ -92,12 +92,13 @@ if (os.platform() === 'darwin') {
 // In Windows, "npx cmake-js configure" uses a powershell script to detect the Visual Studio installation.
 // The script uses the environment variable LIB. If an invalid path is specified in LIB, the script will fail.
 // So we override the LIB environment variable to remove invalid paths.
-const envOverride = os.platform() === 'win32' && process.env.LIB ?
-    {...process.env, LIB: process.env.LIB.split(';').filter(fs.existsSync).join(';')} :
-    process.env;
+const envOverride =
+  os.platform() === 'win32' && process.env.LIB
+    ? { ...process.env, LIB: process.env.LIB.split(';').filter(fs.existsSync).join(';') }
+    : process.env;
 
 // launch cmake-js configure
-const procCmakejs = spawnSync('npx', args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER, env: envOverride});
+const procCmakejs = spawnSync('npx', args, { shell: true, stdio: 'inherit', cwd: ROOT_FOLDER, env: envOverride });
 if (procCmakejs.status !== 0) {
   if (procCmakejs.error) {
     console.error(procCmakejs.error);
@@ -106,8 +107,11 @@ if (procCmakejs.status !== 0) {
 }
 
 // launch cmake to build
-const procCmake =
-    spawnSync('cmake', ['--build', '.', '--config', CONFIG], {shell: true, stdio: 'inherit', cwd: BUILD_FOLDER});
+const procCmake = spawnSync('cmake', ['--build', '.', '--config', CONFIG], {
+  shell: true,
+  stdio: 'inherit',
+  cwd: BUILD_FOLDER,
+});
 if (procCmake.status !== 0) {
   if (procCmake.error) {
     console.error(procCmake.error);

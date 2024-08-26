@@ -7,7 +7,7 @@
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -117,49 +117,20 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
 
-  std::unordered_set<const NodeUnit*> handled_node_units;
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
+  qnn_node_groups.reserve(node_unit_holder.size());
 
-  // Op builer
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer.GetNode(node_indices[i]));
+  ORT_RETURN_IF_ERROR(qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map,
+                                            node_unit_holder.size(), logger_));
 
-    // Check whether it's part of NodeUnit
-    const NodeUnit& node_unit = GetNodeUnit(node, node_unit_map);
-    // Q, DQ nodes in the node unit only carry the quantization parameters
-    // Add the QNN node when it is the target node (It's a normal node or a single Q/DQ node)
-    const std::string& op_type = node_unit.OpType();
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group->AddToModelBuilder(qnn_model_wrapper, logger_);
 
-    if (node != &node_unit.GetNode()) {
-      continue;
+    if (!status.IsOK()) {
+      LOGS(logger_, ERROR) << "[QNN EP] Failed to add supported node to QNN graph during EP's compile call: "
+                           << status.ErrorMessage() << std::endl;
+      return status;
     }
-
-    if (handled_node_units.count(&node_unit) != 0) {
-      continue;  // Already handled.
-    }
-
-    // Try to see if this node unit can be fused.
-    std::vector<const NodeUnit*> fused_nodes;
-    ORT_RETURN_IF_ERROR(TryFusions(fused_nodes, qnn_model_wrapper, node_unit, node_unit_map,
-                                   handled_node_units, logger_, false /*do_op_validation*/));
-
-    if (!fused_nodes.empty()) {
-      for (auto fused_node_unit : fused_nodes) {
-        handled_node_units.insert(fused_node_unit);
-      }
-      continue;
-    }
-
-    LOGS(logger_, VERBOSE) << " node name: [" << node->Name()
-                           << "] node optype: [" << op_type
-                           << "] as part of the NodeUnit type: [" << node_unit.OpType()
-                           << "] name: [" << node_unit.Name()
-                           << "]";
-    if (const auto* op_builder = GetOpBuilder(op_type)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_));
-    }
-
-    handled_node_units.insert(&node_unit);
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");

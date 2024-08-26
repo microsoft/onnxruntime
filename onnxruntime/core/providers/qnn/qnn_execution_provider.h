@@ -65,9 +65,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                       const logging::Logger& logger) const;
-
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                                     const size_t node_unit_size,

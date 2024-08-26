@@ -38,10 +38,6 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
   }
-  wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
-  if (!wnn_builder_.as<bool>()) {
-    ORT_THROW("Failed to create WebNN builder.");
-  }
 }
 
 WebNNExecutionProvider::~WebNNExecutionProvider() {}
@@ -81,14 +77,13 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto& logger = *GetLogger();
 
-  if (!wnn_builder_.as<bool>()) {
-    // The GetCapability function may be called again after Compile due to the logic in the
-    // PartitionOnnxFormatModel function (see onnxruntime/core/framework/graph_partitioner.cc).
-    // We need to re-create the wnn_builder_ here to avoid it's been released in last Compile.
-    wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
+  emscripten::val wnn_builder = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
+  if (!wnn_builder.as<bool>()) {
+    ORT_THROW("Failed to create WebNN builder.");
   }
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, wnn_device_type_, logger);
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, logger);
+  wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
     return result;
@@ -218,9 +213,10 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
     webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                wnn_builder_, preferred_layout_, wnn_device_type_);
+                                preferred_layout_, wnn_device_type_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
+
     // Build map from input name to its index in input definitions.
     {
       InlinedHashMap<std::string, size_t> input_map;
@@ -276,10 +272,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         auto input_tensor = ctx.GetInput(input_idx);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
-        // If we have an empty shape, this is a scalar input,
-        // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
-        if (shape.empty())
-          shape.push_back(1);
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -301,12 +293,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           const auto& output_info = model->GetInputOutputInfo(output_name);
           auto output_shape = output_info.shape;
           auto output_type = output_info.data_type;
-
-          // Since WebNN EP use {1} tensor as scalar, if the model output should have empty shape.
-          // We are going to replace the {1} shape of the output back to {}.
-          if (model->IsScalarOutput(output_name))
-            output_shape.clear();
-
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
@@ -328,9 +314,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
     node_compute_funcs.push_back(compute_info);
   }
-
-  // Explicitly release the WebNN builder to free memory.
-  wnn_builder_ = emscripten::val::undefined();
 
   return Status::OK();
 }

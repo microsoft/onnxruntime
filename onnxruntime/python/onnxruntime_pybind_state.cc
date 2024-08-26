@@ -844,7 +844,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           1,
           "./compiled_model.mxr",
           1,
-          "./compiled_model.mxr"};
+          "./compiled_model.mxr",
+          1};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -928,6 +929,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
                 "file name i.e. 'compiled_model.mxr'.\n");
+          }
+        } else if (option.first == "migraphx_exhaustive_tune") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_exhaustive_tune = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_exhaustive_tune = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_exhaustive_tune' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else {
           ORT_THROW("Invalid MIGraphX EP option: ", option.first);

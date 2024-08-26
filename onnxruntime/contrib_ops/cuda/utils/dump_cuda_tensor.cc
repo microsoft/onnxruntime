@@ -13,6 +13,9 @@ namespace cuda {
 
 #if DUMP_TENSOR_LEVEL > 0
 
+// Environment variable to enable/disable GPU Tensor dumping
+constexpr const char* kEnableGpuTensorDumper = "ORT_ENABLE_GPU_DUMP";
+
 // Total number of elements which trigger snippet rather than full dump (default 200). Value 0 disables snippet.
 constexpr const char* kTensorSnippetThreshold = "ORT_TENSOR_SNIPPET_THRESHOLD";
 
@@ -202,6 +205,10 @@ void DumpGpuTensor(const char* name, const Tensor& tensor) {
   DumpGpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
 }
 
+CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
+  is_enabled_ = ParseEnvironmentVariableWithDefault<int>(kEnableGpuTensorDumper, 1) != 0;
+}
+
 void CudaTensorConsoleDumper::Print(const std::string& value) const {
   std::cout << value << std::endl;
 }
@@ -328,7 +335,32 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
   }
 }
 
+void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, int32_t>(this, name, tensor, dims);
+}
+void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, int64_t>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, float>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const half* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, half>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, MLFloat16>(this, name, tensor, dims);
+}
+
+void CudaTensorConsoleDumper::Print(const char* name, const BFloat16* tensor, gsl::span<const int64_t>& dims) const {
+  PrintTensorByDims<CudaTensorConsoleDumper, BFloat16>(this, name, tensor, dims);
+}
+
 #else
+CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
+}
 
 void CudaTensorConsoleDumper::Print(const std::string&) const {
 }
@@ -401,6 +433,25 @@ void CudaTensorConsoleDumper::Print(const char*, int, bool) const {
 
 void CudaTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
+
+void CudaTensorConsoleDumper::Print(const char*, const int32_t*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const int64_t*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const float*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const half*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, gsl::span<const int64_t>&) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const BFloat16*, gsl::span<const int64_t>&) const {
+}
+
 #endif
 
 }  // namespace cuda
