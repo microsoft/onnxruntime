@@ -523,8 +523,8 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     zp_input = dq_inputs[2];
   }
 
-  auto dq_quant_info = GetQuantizationInfo(graph, dq_node);
-  if (!dq_quant_info.has_value() || !IsSupportedQuantizationMode(dq_quant_info->mode)) {
+  std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(graph, dq_node);
+  if (!dq_quant_info || !IsSupportedQuantizationMode(dq_quant_info->mode)) {
     return false;  // Can't get the quantization mode/axis or is a quantization mode that is not supported.
   }
 
@@ -541,7 +541,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
       assert(axes.has_value());  // 'axes' are required for Unsqueeze
 
       const auto dq_output_info = graph.GetValueInfo(dq_node.Outputs()[0]);
-      auto dq_output_rank = dq_output_info->ShapeRank();
+      std::optional<size_t> dq_output_rank = dq_output_info->ShapeRank();
       if (!dq_output_rank.has_value()) {
         return false;  // Need to know the rank of the input to the Unsqueeze to normalize unsqueeze axes
       }
@@ -1067,10 +1067,10 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
 
   // look past a DQ node for a Squeeze to cancel
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
-    auto dq_quant_info_opt = GetQuantizationInfo(ctx.graph, *inp_node);
+    std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(ctx.graph, *inp_node);
 
-    if (dq_quant_info_opt.has_value() && IsSupportedQuantizationMode(dq_quant_info_opt->mode)) {
-      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info_opt);
+    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode)) {
+      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info);
       auto dq_input = dq_to_look_past->GetInput0();
       inp_node = ctx.graph.GetNodeProducingOutput(dq_input);
       consumers = ctx.graph.GetValueConsumers(dq_input);
@@ -1224,9 +1224,10 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is removed only if
     // there are no other consumers.
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
-      // A per-axis DQ for this special case (1D const with length == perm) would be uncommon. Nonetheless, the
-      // DQ axis, which is 0, does not need updating because the DQ's input[0] will not be transposed (only permuted).
-      // However, the scale and zero-point inputs for per-axis DQ do need to be permuted.
+      // TODO(adrianlizarraga): Remove handling of a DQ node from this special case.
+      // A quantized (roi/scales/sizes) input for Resize or a quantized pads input for Pad would be unlikely.
+      // HandleResize/HandlePad permute these kinds of inputs directly and do not try to call TransposeInput on them.
+      // So, we should not have a DQ to look past at this point, but we can handle it until verified.
       if (dq_to_look_past) {
         QuantizationMode quant_mode = dq_to_look_past->GetQuantMode();
         std::unique_ptr<api::NodeRef> dq_node = DQToLookPast::TakeDQNode(dq_to_look_past);
@@ -1235,6 +1236,9 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
         Permute1DConstant(graph, *dq_node, *constant, /*input_index*/ 0, constant_to_modify, perm);
 
         if (quant_mode == QuantizationMode::kPerAxis) {
+          // A per-axis quantized input would be even less common. Nonetheless, the DQ axis, which is 0, does not
+          // need updating because the DQ's input[0] will not be transposed (only permuted).
+          // However, the scale and zero-point inputs for per-axis DQ do need to be permuted.
           auto dq_inputs = dq_node->Inputs();
           auto dq_scale_input = dq_inputs[1];
           auto dq_scale_constant = graph.GetConstant(dq_scale_input);
@@ -1285,11 +1289,11 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
   // Look past a DQ for the Transpose
   if (inp_node && inp_node->OpType() == "DequantizeLinear") {
-    auto dq_quant_info_opt = GetQuantizationInfo(graph, *inp_node);
+    std::optional<QuantizationInfo> dq_quant_info = GetQuantizationInfo(graph, *inp_node);
 
-    if (dq_quant_info_opt.has_value() && IsSupportedQuantizationMode(dq_quant_info_opt->mode)) {
-      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info_opt);
-      auto dq_input = dq_to_look_past->GetInput0();
+    if (dq_quant_info && IsSupportedQuantizationMode(dq_quant_info->mode)) {
+      dq_to_look_past = std::make_optional<DQToLookPast>(std::move(inp_node), *dq_quant_info);
+      std::string_view dq_input = dq_to_look_past->GetInput0();
       inp_node = graph.GetNodeProducingOutput(dq_input);
       consumers = graph.GetValueConsumers(dq_input);
     }
@@ -2952,8 +2956,8 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
     zp_input = q_node_inputs[2];
   }
 
-  auto q_quant_info = GetQuantizationInfo(ctx.graph, q_node);
-  if (!q_quant_info.has_value() || !IsSupportedQuantizationMode(q_quant_info->mode)) {
+  std::optional<QuantizationInfo> q_quant_info = GetQuantizationInfo(ctx.graph, q_node);
+  if (!q_quant_info || !IsSupportedQuantizationMode(q_quant_info->mode)) {
     return false;  // Can't get quantization mode/axis or is a quantization mode that is not supported.
   }
 
