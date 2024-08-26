@@ -5,7 +5,10 @@ import numpy as np
 import onnx
 
 
-def subgraph_1D_const_input_dq(inputs, initializers, nodes) -> str:
+def subgraph_1d_const_input_dq(inputs, initializers, nodes) -> str:
+    """
+    Creates mul_weight -> DQ. mul_weight is a constant of rank 1.
+    """
     mul_weight_i8_data = np.array([1, 2, 3], dtype=np.int8)
     mul_weight = onnx.numpy_helper.from_array(mul_weight_i8_data, "mul_weight")
     initializers.append(mul_weight)
@@ -23,7 +26,11 @@ def subgraph_1D_const_input_dq(inputs, initializers, nodes) -> str:
 
     return dq_output_name
 
-def subgraph_1D_input_dq(inputs, initializers, nodes) -> str:
+
+def subgraph_1d_input_dq(inputs, initializers, nodes) -> str:
+    """
+    Creates input1 -> DQ. input1 is a graph input of rank 1.
+    """
     input1_shape = (3,)
     inputs.append(onnx.helper.make_tensor_value_info("input1", onnx.TensorProto.INT8, input1_shape))
 
@@ -40,17 +47,17 @@ def subgraph_1D_input_dq(inputs, initializers, nodes) -> str:
 
     return dq_output_name
 
-def subgraph_4D_input_squeeze_dq(inputs, initializers, nodes) -> str:
+
+def subgraph_4d_input_squeeze_dq(inputs, initializers, nodes) -> str:
+    """
+    Creates input1 -> Squeeze -> DQ. input1 is a graph input of rank 4.
+    """
     input1_shape = (1, 1, 1, 3)
     inputs.append(onnx.helper.make_tensor_value_info("input1", onnx.TensorProto.INT8, input1_shape))
 
     axes_data = np.array([0, 1, 2], dtype=np.int64)
-    initializers.append(
-        onnx.numpy_helper.from_array(axes_data, "axes_const")
-    )
-    nodes.append(
-        onnx.helper.make_node("Squeeze", ["input1", "axes_const"], ["squeeze_out"], name="squeeze_node")
-    )
+    initializers.append(onnx.numpy_helper.from_array(axes_data, "axes_const"))
+    nodes.append(onnx.helper.make_node("Squeeze", ["input1", "axes_const"], ["squeeze_out"], name="squeeze_node"))
 
     dq_output_name = "mul_input_1"
     nodes.append(
@@ -65,14 +72,16 @@ def subgraph_4D_input_squeeze_dq(inputs, initializers, nodes) -> str:
 
     return dq_output_name
 
-def subgraph_4D_input_transpose_dq(inputs, initializers, nodes) -> str:
+
+def subgraph_4d_input_transpose_dq(inputs, initializers, nodes) -> str:
+    """
+    Creates input1 -> Transpose -> DQ. input1 is a graph input of rank 4.
+    """
     input1_shape = (1, 3, 1, 1)
     inputs.append(onnx.helper.make_tensor_value_info("input1", onnx.TensorProto.INT8, input1_shape))
 
     perm = [0, 2, 3, 1]  # To channel-last
-    nodes.append(
-        onnx.helper.make_node("Transpose", ["input1"], ["tp_out_"], perm=perm, name="transpose_")
-    )
+    nodes.append(onnx.helper.make_node("Transpose", ["input1"], ["tp_out_"], perm=perm, name="transpose_"))
 
     dq_output_name = "mul_input_1"
     nodes.append(
@@ -86,6 +95,7 @@ def subgraph_4D_input_transpose_dq(inputs, initializers, nodes) -> str:
     )
 
     return dq_output_name
+
 
 def make_model(model_path: str, build_mul_input_1_subgraph):
     """
@@ -177,20 +187,21 @@ def make_model(model_path: str, build_mul_input_1_subgraph):
     print(f"[INFO]: Saving {model_path}")
     onnx.save_model(qdq_model, model_path)
 
+
 if __name__ == "__main__":
     make_model(
         "transpose_optimizer_qdq_fixup_unsqueeze_per_axis_dq.onnx",
-        subgraph_1D_input_dq,
+        subgraph_1d_input_dq,
     )
     make_model(
         "transpose_optimizer_in_place_transpose_unsqueeze_per_axis_dq.onnx",
-        subgraph_1D_const_input_dq,
+        subgraph_1d_const_input_dq,
     )
     make_model(
         "transpose_optimizer_cancel_squeeze_per_axis_dq.onnx",
-        subgraph_4D_input_squeeze_dq,
+        subgraph_4d_input_squeeze_dq,
     )
     make_model(
         "transpose_optimizer_cancel_transpose_per_axis_dq.onnx",
-        subgraph_4D_input_transpose_dq,
+        subgraph_4d_input_transpose_dq,
     )
