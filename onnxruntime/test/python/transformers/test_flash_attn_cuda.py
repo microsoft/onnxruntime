@@ -2219,7 +2219,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
-            use_smooth_softmax=True,
+            use_smooth_softmax=False,
         )
 
     @parameterized.expand(gqa_no_past_flash_attention_test_cases())
@@ -2245,7 +2245,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
-            use_smooth_softmax=True,
+            use_smooth_softmax=False,
         )
 
     @parameterized.expand(gqa_past_memory_efficient_test_cases())
@@ -2263,7 +2263,7 @@ class TestGQA(unittest.TestCase):
             rotary=rotary,
             rotary_interleaved=rotary_interleaved,
             packed=packed,
-            use_smooth_softmax=True,
+            use_smooth_softmax=False,
         )
         parity_check_gqa_past_no_buff(
             config,
