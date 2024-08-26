@@ -20,7 +20,7 @@ namespace openvino_ep {
 
 using namespace backend_utils;
 
-BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
+BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_proto,
                            GlobalContext& global_context,
                            const SubGraphContext& subgraph_context,
                            EPCtxHandler& ep_ctx_handle)
@@ -94,7 +94,10 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                  hw_target.find("NPU") != std::string::npos) {
         std::shared_ptr<ov::Model> ov_model;
         {
-          const std::string model = model_proto.SerializeAsString();
+          const std::string model = model_proto->SerializeAsString();
+          if (!subgraph_context.has_dynamic_input_shape) {
+            delete model_proto.release();
+          }
           ov_model = global_context_.ie_core.Get().read_model(model, ov::Tensor());
         }
         exe_network_ = OVExeNetwork(global_context_.ie_core.Get().compile_model(ov_model, hw_target, device_config));
@@ -103,19 +106,19 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
                   (global_context_.OpenVINO_Version.at(0) >= 2024 && global_context_.OpenVINO_Version.at(1) > 2))) {
         // Optimized OV compile_model API is supported with AUTO from version 2024.3 and above
         // Inputs with static dimenstions
-        const std::string model = model_proto.SerializeAsString();
+        const std::string model = model_proto->SerializeAsString();
         exe_network_ = global_context_.ie_core.CompileModel(model,
                                                             hw_target,
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
       } else {  // For all other types use ov::Model Type
-        ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
+        ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.CompileModel(
             ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
       }
 #endif
     } else {  // Full graph is not supported
-      ie_cnn_network_ = CreateOVModel(model_proto, global_context_, const_outputs_map_);
+      ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.CompileModel(
           ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
     }
