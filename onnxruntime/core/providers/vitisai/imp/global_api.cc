@@ -41,17 +41,15 @@ using namespace onnxruntime;
 #define LIBRARY_PREFIX "lib"
 #define LIBRARY_EXTENSION ".so"
 #endif
-
-namespace vaip_core {
-
-void initialize_onnxruntime_vitisai_ep(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
-uint32_t vaip_get_version();
-extern "C" int create_ep_context_nodes(
+extern "C" {
+void initialize_onnxruntime_vitisai_ep_c(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+uint32_t vaip_get_version_c();
+int create_ep_context_nodes_c(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     vaip_core::DllSafe<std::vector<Node*>>* ret_value);
-std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* compile_onnx_model_with_options(
+std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* compile_onnx_model_with_options_c(
     const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
-}  // namespace vaip_core
+};
 vaip_core::OrtApiForVaip* create_org_api_hook();
 struct OrtVitisAIEpAPI {
   void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
@@ -77,13 +75,21 @@ struct OrtVitisAIEpAPI {
                                 size_t input_xmodel_size,
                                 const char* config_xmodel,
                                 size_t config_xmodel_size, void* state,
-                                char* (*allocator)(void*, size_t)) = nullptr;
+                                void (*k)(void*, void*, size_t)) = nullptr;
+  const char* (*vaip_get_default_config)() = nullptr;
+  int (*vaip_get_pattern_as_binary)(const char* name, void* state, void (*k)(void*, void*, size_t)) = nullptr;
+  void (*vaip_get_pattern_list)(void* state, void (*k)(void*, void*, size_t)) = nullptr;
+  int (*vaip_get_mem_xclbin)(const char* name, void* state, void (*k)(void*, void*, size_t)) = nullptr;
+  bool (*vaip_has_mem_xclbin)(const char* name) = nullptr;
   void Ensure() {
-    this->initialize_onnxruntime_vitisai_ep = vaip_core::initialize_onnxruntime_vitisai_ep;
-    this->compile_onnx_model_with_options = vaip_core::compile_onnx_model_with_options;
-    this->create_ep_context_nodes = vaip_core::create_ep_context_nodes;
-    this->vaip_get_version = vaip_core::vaip_get_version;
-    //
+    if (handle_)
+      return;
+
+    this->initialize_onnxruntime_vitisai_ep = initialize_onnxruntime_vitisai_ep_c;
+    this->compile_onnx_model_with_options = compile_onnx_model_with_options_c;
+    this->create_ep_context_nodes = create_ep_context_nodes_c;
+    this->vaip_get_version = vaip_get_version_c;
+
     auto& env = Provider_GetHost()->Env__Default();
     auto& logger = *Provider_GetHost()->LoggingManager_GetDefaultLogger();
 
@@ -104,6 +110,11 @@ struct OrtVitisAIEpAPI {
     ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, true, &handle_));
 #endif
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_xcompiler_compile", (void**)&vaip_xcompiler_compile));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_get_default_config", (void**)&vaip_get_default_config));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_get_pattern_as_binary", (void**)&vaip_get_pattern_as_binary));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_get_pattern_list", (void**)&vaip_get_pattern_list));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_get_mem_xclbin", (void**)&vaip_get_mem_xclbin));
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vaip_has_mem_xclbin", (void**)&vaip_has_mem_xclbin));
   }
   void Clear() {
     if (handle_) {
@@ -120,10 +131,9 @@ struct OrtVitisAIEpAPI {
 
 static OrtVitisAIEpAPI s_library_vitisaiep;
 static std::shared_ptr<KernelRegistry> s_kernel_registry_vitisaiep;
+static std::vector<OrtCustomOpDomain*> s_domains_vitisaiep;
 static vaip_core::OrtApiForVaip the_global_api;
-g
-    std::shared_ptr<KernelRegistry>
-    get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
+std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
 void profiler_collect(
@@ -524,7 +534,16 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return &the_global_api;
   }
   the_global_api.vaip_xcompiler_compile = s_library_vitisaiep.vaip_xcompiler_compile;
-  return &the_global_api;
+  the_global_api.vaip_get_default_config = s_library_vitisaiep.vaip_get_default_config;
+  the_global_api.vaip_get_pattern_as_binary = s_library_vitisaiep.vaip_get_pattern_as_binary;
+  the_global_api.vaip_get_pattern_list = s_library_vitisaiep.vaip_get_pattern_list;
+  the_global_api.vaip_get_mem_xclbin = s_library_vitisaiep.vaip_get_mem_xclbin;
+  the_global_api.vaip_has_mem_xclbin = s_library_vitisaiep.vaip_has_mem_xclbin;
+  if (!s_library_vitisaiep.vaip_get_version) {
+    return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
+  } else {
+    return &the_global_api;
+  }
 }
 
 void deinitialize_vitisai_ep() {
