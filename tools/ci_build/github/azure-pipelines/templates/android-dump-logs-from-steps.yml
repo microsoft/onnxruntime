@@ -6,7 +6,7 @@ parameters:
 
 steps:
 - task: CmdLine@2
-  input:
+  inputs:
     script: |
       if [ -f $(Build.BinariesDirectory)/emulator.pid ]; then
         echo "Emulator is running."
@@ -14,7 +14,7 @@ steps:
       else
         echo "Emulator is not running."
       fi
-  name: Determine if emulator is running
+  displayName: "Determine if emulator is running"
 
 - task: CmdLine@2
   inputs:
