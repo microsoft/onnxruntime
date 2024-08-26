@@ -62,8 +62,6 @@ stages:
         architecture: "x64"
 
     - template: ../use-xcode-version.yml
-      parameters:
-        xcodeVersion: ${{ variables.xcodeVersion }}
 
     - template: ../install-appcenter.yml
 

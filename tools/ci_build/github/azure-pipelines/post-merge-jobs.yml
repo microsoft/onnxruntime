@@ -435,8 +435,6 @@ stages:
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
@@ -473,8 +471,6 @@ stages:
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.3.1
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt

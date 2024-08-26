@@ -43,8 +43,6 @@ jobs:
     displayName: Install coreutils and ninja
 
   - template: templates/use-xcode-version.yml
-    parameters:
-      xcodeVersion: 14.3.1
 
   - template: templates/mac-build-step-with-cache.yml
     parameters:

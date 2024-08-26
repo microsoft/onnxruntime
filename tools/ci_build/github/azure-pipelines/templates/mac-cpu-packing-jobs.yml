@@ -61,8 +61,6 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: 14.3.1
 
   - template: download-deps.yml
 
