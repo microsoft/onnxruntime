@@ -427,13 +427,13 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
         auto h_in = input_shape[input_rank - 2];
         auto w_in = input_shape[input_rank - 1];
 
-        if (!utils::IsScalingByAFactorOfN(h_in, scale_h)) {
+        if (!utils::ReciprocalIsAFactorOfN(h_in, scale_h)) {
           LOGS(logger, VERBOSE) << "Resize: downsampling scale " << scale_h
                                 << " is not a factor of input height: " << h_in;
           return false;
         }
 
-        if (!utils::IsScalingByAFactorOfN(w_in, scale_w)) {
+        if (!utils::ReciprocalIsAFactorOfN(w_in, scale_w)) {
           LOGS(logger, VERBOSE) << "Resize: downsampling scale " << scale_w
                                 << " is not a factor of input width: " << w_in;
           return false;

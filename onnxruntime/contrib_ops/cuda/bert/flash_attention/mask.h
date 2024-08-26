@@ -116,7 +116,7 @@ struct Mask {
   __forceinline__ __device__ Mask(const int max_seqlen_k, const int max_seqlen_q,
                                   const int window_size_left, const int window_size_right,
                                   const float alibi_slope = 0.f)
-      : max_seqlen_k(max_seqlen_k), max_seqlen_q(max_seqlen_q), window_size_left(window_size_left), window_size_right(window_size_right), alibi_slope(!Has_alibi ? 0.0 : alibi_slope){};
+      : max_seqlen_k(max_seqlen_k), max_seqlen_q(max_seqlen_q), window_size_left(window_size_left), window_size_right(window_size_right), alibi_slope(!Has_alibi ? 0.0 : alibi_slope) {};
 
   // Causal_mask: whether this particular iteration needs causal masking
   template <bool Causal_mask = false, bool Is_even_MN = true, typename Engine, typename Layout>

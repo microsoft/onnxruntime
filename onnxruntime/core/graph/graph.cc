@@ -3254,27 +3254,6 @@ Status Graph::PerformTypeAndShapeInferencing(const ResolveOptions& options) {
   return Status::OK();
 }
 
-void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
-  for (auto& node : Nodes()) {
-    for (auto& subgraph : node.MutableSubgraphs()) {
-      subgraphs.push_back(subgraph.get());
-      subgraph->FindAllSubgraphs(subgraphs);
-    }
-  }
-}
-
-Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
-  auto status = func(*this);
-  ORT_RETURN_IF_ERROR(status);
-
-  for (auto& subgraph : subgraphs) {
-    status = func(*subgraph);
-    ORT_RETURN_IF_ERROR(status);
-  }
-
-  return status;
-}
-
 Status Graph::Resolve(const ResolveOptions& options) {
   if (parent_graph_) {
     // Resolve must start at the top level graph in-order to handle outer scope
@@ -3386,6 +3365,39 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     t.mutable_tensor_type()->set_elem_type(tensor.data_type());
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor.name(), &t));
   }
+}
+
+void Graph::FindAllSubgraphs(std::vector<Graph*>& subgraphs) {
+  for (auto& node : Nodes()) {
+    for (auto& subgraph : node.MutableSubgraphs()) {
+      subgraphs.push_back(subgraph.get());
+      subgraph->FindAllSubgraphs(subgraphs);
+    }
+  }
+}
+
+Status Graph::ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func) {
+  auto status = func(*this);
+  ORT_RETURN_IF_ERROR(status);
+
+  for (auto& subgraph : subgraphs) {
+    status = func(*subgraph);
+    ORT_RETURN_IF_ERROR(status);
+  }
+
+  return status;
+}
+
+Status Graph::RemovedUnusedInitializersOrtFormat() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  auto cleanup_func = [](Graph& graph) {
+    graph.CleanUnusedInitializersAndNodeArgs(nullptr);
+    return Status::OK();
+  };
+
+  auto result = ForThisAndAllSubgraphs(all_subgraphs, cleanup_func);
+  return result;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -4009,7 +4021,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold) const {
+                                                                       size_t initializer_size_threshold,
+                                                                       const OffsetAlignmentInfo& align_info) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4045,6 +4058,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
+      }
+
+      // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
+        // Align to the larger of the page size or the allocation granularity
+        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
+        // Align to the next page or alloc granularity boundary
+        int64_t new_external_offset = static_cast<int64_t>(
+                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                      alignment_factor;
+
+        // padding tensor with zeros for alignment
+        for (int64_t index = external_offset; index != new_external_offset; ++index) {
+          external_stream << '0';
+        }
+
+        external_offset = new_external_offset;
       }
 
       for (size_t index = 0; index != tensor_bytes_size; ++index) {
@@ -4122,6 +4156,9 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
@@ -4253,8 +4290,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     }
   }
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 void Graph::ComputeOverridableInitializers() {
   graph_overridable_initializers_.clear();

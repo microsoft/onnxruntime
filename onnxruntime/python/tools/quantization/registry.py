@@ -79,9 +79,11 @@ QDQRegistry = {
     "MatMul": QDQMatMul,
     "Split": QDQSplit,
     "Gather": QDQGather,
+    "GatherElements": QDQGather,
     "Where": QDQWhere,
     "InstanceNormalization": QDQNormalization,
     "LayerNormalization": QDQNormalization,
+    "BatchNormalization": QDQNormalization,
 }
 
 

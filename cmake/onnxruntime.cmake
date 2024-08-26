@@ -27,6 +27,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -37,10 +38,14 @@ function(get_c_cxx_api_headers HEADERS_VAR)
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    file(GLOB _provider_headers CONFIGURE_DEPENDS
-      "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
-    )
-    list(APPEND _headers ${_provider_headers})
+    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory 
+    # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
+    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+      file(GLOB _provider_headers CONFIGURE_DEPENDS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
+      )
+      list(APPEND _headers ${_provider_headers})
+    endif()
   endforeach()
 
   set(${HEADERS_VAR} ${_headers} PARENT_SCOPE)
@@ -150,7 +155,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
   # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
-  # affecting downstream ort library users with the behaviour of dummy __cxa_demangle. So the dummy
+  # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
   # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
   # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
   # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.

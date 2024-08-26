@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import { env } from 'onnxruntime-common';
 
-import {Backend, SessionHandler} from '../backend';
-import {Logger} from '../instrument';
-import {Session} from '../session';
+import { Backend, SessionHandler } from '../backend';
+import { Logger } from '../instrument';
+import { Session } from '../session';
 
-import {WebGLSessionHandler} from './webgl/session-handler';
-import {WebGLContext} from './webgl/webgl-context';
-import {createWebGLContext} from './webgl/webgl-context-factory';
+import { WebGLSessionHandler } from './webgl/session-handler';
+import { WebGLContext } from './webgl/webgl-context';
+import { createWebGLContext } from './webgl/webgl-context-factory';
 
 /**
  * WebGLBackend is the entry point for all WebGL opeartions
@@ -19,38 +19,38 @@ import {createWebGLContext} from './webgl/webgl-context-factory';
 export class WebGLBackend implements Backend {
   glContext: WebGLContext;
 
-  get contextId(): 'webgl'|'webgl2'|undefined {
+  get contextId(): 'webgl' | 'webgl2' | undefined {
     return env.webgl.contextId;
   }
-  set contextId(value: 'webgl'|'webgl2'|undefined) {
+  set contextId(value: 'webgl' | 'webgl2' | undefined) {
     env.webgl.contextId = value;
   }
 
-  get matmulMaxBatchSize(): number|undefined {
+  get matmulMaxBatchSize(): number | undefined {
     return env.webgl.matmulMaxBatchSize;
   }
-  set matmulMaxBatchSize(value: number|undefined) {
+  set matmulMaxBatchSize(value: number | undefined) {
     env.webgl.matmulMaxBatchSize = value;
   }
 
-  get textureCacheMode(): 'initializerOnly'|'full'|undefined {
+  get textureCacheMode(): 'initializerOnly' | 'full' | undefined {
     return env.webgl.textureCacheMode;
   }
-  set textureCacheMode(value: 'initializerOnly'|'full'|undefined) {
+  set textureCacheMode(value: 'initializerOnly' | 'full' | undefined) {
     env.webgl.textureCacheMode = value;
   }
 
-  get pack(): boolean|undefined {
+  get pack(): boolean | undefined {
     return env.webgl.pack;
   }
-  set pack(value: boolean|undefined) {
+  set pack(value: boolean | undefined) {
     env.webgl.pack = value;
   }
 
-  get async(): boolean|undefined {
+  get async(): boolean | undefined {
     return env.webgl.async;
   }
-  set async(value: boolean|undefined) {
+  set async(value: boolean | undefined) {
     env.webgl.async = value;
   }
 
@@ -73,14 +73,15 @@ export class WebGLBackend implements Backend {
       Logger.setWithEnv(env);
 
       if (!env.webgl.context) {
-        Object.defineProperty(env.webgl, 'context', {value: this.glContext.gl});
+        Object.defineProperty(env.webgl, 'context', { value: this.glContext.gl });
       }
 
       Logger.verbose(
-          'WebGLBackend',
-          `Created WebGLContext: ${typeof this.glContext} with matmulMaxBatchSize: ${
-              this.matmulMaxBatchSize}; textureCacheMode: ${this.textureCacheMode}; pack: ${this.pack}; async: ${
-              this.async}.`);
+        'WebGLBackend',
+        `Created WebGLContext: ${typeof this.glContext} with matmulMaxBatchSize: ${
+          this.matmulMaxBatchSize
+        }; textureCacheMode: ${this.textureCacheMode}; pack: ${this.pack}; async: ${this.async}.`,
+      );
       return true;
     } catch (e) {
       Logger.warning('WebGLBackend', `Unable to initialize WebGLBackend. ${e}`);

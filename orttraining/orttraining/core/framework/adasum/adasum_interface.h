@@ -138,7 +138,7 @@ class AdasumInterface {
   //              first n-1 levels are skipped. This is useful when the
   //              communication inside the node is implemented using another
   //              reduce-scatter algorithm, e.g. the one in NCCL, which may be
-  //              desireable on some hardware configurations. When
+  //              desirable on some hardware configurations. When
   //              start_level>1, tensor_counts must be set according to the
   //              slices owned by this rank.
   // communicator: the communicator to reduce with.

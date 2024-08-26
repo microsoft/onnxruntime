@@ -442,7 +442,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
     // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
     // memory lingers while the tensor is used downstream after the export.
     ctx.RecycleNodeInputs(idx);

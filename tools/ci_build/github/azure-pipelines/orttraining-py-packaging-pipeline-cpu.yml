@@ -22,3 +22,5 @@ stages:
     enable_windows_gpu: false
     enable_mac_cpu: true
     enable_linux_arm: false
+    enable_windows_arm64_qnn: false
+    enable_windows_x64_qnn: false

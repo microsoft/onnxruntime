@@ -2,9 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
+
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
 
 enum AttentionMaskType {
   MASK_NONE,                  // No mask
@@ -24,10 +31,12 @@ enum AttentionQkvFormat {
   UNKNOWN,               // enum value not set, or depends on qkv projection implementation details
   Q_K_V_BNSH,            // for non-packed qkv, permuted
   Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
-  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  Q_K_V_BSNH_BNSH_BNSH,  // for cross attention, k and v are permuted
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
-  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
   Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
+  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
+  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  QKV_BS3NH,             // for DecoderMaskedMultiHeadAttention, qkv are packed
   QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
 };
 
@@ -38,6 +47,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
   AttentionKernel_Default
 };
 
@@ -60,8 +70,8 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  bool broadcast_res_pos_bias;
-  bool pass_past_in_kv;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   float mask_filter_value;
   float scale;
   bool use_tf32;
@@ -81,8 +91,8 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  bool has_relative_position_bias;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   bool use_tf32;
 };
 

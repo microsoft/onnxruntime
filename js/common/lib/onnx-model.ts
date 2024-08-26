@@ -18,12 +18,12 @@ export type FileBlob = Blob;
  *
  * When it is an ArrayBuffer or SharedArrayBuffer, the whole buffer is assumed to be the file content.
  */
-export type FileData = Uint8Array|ArrayBufferLike;
+export type FileData = Uint8Array | ArrayBufferLike;
 
 /**
  * Represents a file that can be loaded by the ONNX Runtime JavaScript API.
  */
-export type FileType = FileUrlOrPath|FileBlob|FileData;
+export type FileType = FileUrlOrPath | FileBlob | FileData;
 
 /**
  * Represents an external data file.
@@ -44,7 +44,7 @@ export interface ExternalDataFileDescription {
  *
  * When using a string, it should be a file URL or path that in the same directory as the model file.
  */
-export type ExternalDataFileType = ExternalDataFileDescription|FileUrlOrPath;
+export type ExternalDataFileType = ExternalDataFileDescription | FileUrlOrPath;
 
 /**
  * Options for model loading.

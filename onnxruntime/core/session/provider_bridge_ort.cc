@@ -496,6 +496,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) override { return p->add_tensors(); }
 
   // GraphProto (wrapped)
+  std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(); }
   void GraphProto__operator_delete(ONNX_NAMESPACE::GraphProto* p) override { delete p; }
 
   const ONNX_NAMESPACE::ValueInfoProto& GraphProto__input(const ONNX_NAMESPACE::GraphProto* p, int index) override { return p->input(index); }
@@ -1179,7 +1180,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
   void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) override { p->SetInputs(inputs); }
-
+  const std::unordered_map<std::string, int>& Graph__DomainToVersionMap(const Graph* p) const noexcept override { return p->DomainToVersionMap(); };
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
   void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { p->AddOuterScopeNodeArg(name); }
 
@@ -1781,6 +1782,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.cudnn_conv_use_max_workspace = 1;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.prefer_nhwc = 0;
+  cuda_options_converted.fuse_conv_bias = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
   cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
   cuda_options_converted.use_ep_level_unified_stream = 0;
@@ -1931,12 +1933,31 @@ void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
                                   kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
   if (disable_cpu_fallback)
     ov_options["disable_cpu_fallback"] = "true";
+
+  // values from session options will override the providerOptions Value
+  bool so_epctx_enable = session_options->config_options.GetConfigOrDefault(
+                             kOrtSessionOptionEpContextEnable, "0") == "1";
+  if (so_epctx_enable)
+    ov_options["so_export_ep_ctx_blob"] = "true";
+
+  std::string so_cache_path = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "").c_str();
+  ov_options["so_epctx_path"] = so_cache_path;
+
+  // Default embedMode is 1. Saving the compiled model contents as a Epctx node attribute
+  bool so_epctx_embed_mode = session_options->config_options.GetConfigOrDefault(
+                                 kOrtSessionOptionEpContextEmbedMode, "1") == "0";
+  if (so_epctx_embed_mode) {
+    // defaults to true
+    ov_options["so_epctx_embed_mode"] = "false";
+  }
 }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(ProviderOptions* provider_options_map,
                                                                                   const SessionOptions* session_options) {
-  if (session_options)
+  // Append session options applicable for EP to EP Provider options.
+  if (session_options) {
     onnxruntime::ORTSessionOptionsToOrtOpenVINOProviderOptions(*provider_options_map, session_options);
+  }
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
 }
 
