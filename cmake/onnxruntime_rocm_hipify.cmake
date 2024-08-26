@@ -5,6 +5,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # GLOB pattern of file to be excluded
 set(contrib_ops_excluded_files
+  "bert/cudnn_fmha/*"
   "bert/cutlass_fmha/*"
   "bert/fastertransformer_decoder_attention/*"
   "bert/flash_attention/*"

@@ -97,13 +97,14 @@ TEST_F(QnnHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
                                         true);  // Use 'com.microsoft' Q/DQ ops
 }
 
-// Tests that dynamic int64 indices are not supported on HTP backend.
+// Tests that dynamic int64 indices are supported on HTP backend if the indices are a graph input.
+// QNN SDK 2.23 added support for Cast from int64 to int32.
 TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt64_Axis0) {
   RunQDQGatherOpTest<uint8_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                                        13,
-                                       ExpectedEPNodeAssignment::None);
+                                       ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all

@@ -152,9 +152,12 @@ export const parseConvAttributes = (attributes: Record<string, unknown>): ConvAt
   };
 };
 
-const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvAttributes): void => {
-  const adjustedAttributes = getAdjustedConvAttributes(attributes, inputs);
-
+const conv2d = (
+  context: ComputeContext,
+  inputs: readonly TensorView[],
+  attributes: ConvAttributes,
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
+): void => {
   // check attributes
 
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
@@ -177,7 +180,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
         inputs[0].dims,
         inputs[1].dims,
         attributes.dilations,
-        adjustedAttributes.pads,
+        attributes.pads,
         attributes.strides,
         isChannelsLast,
       );
@@ -194,11 +197,12 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
       if (inputs.length === 3) {
         convInputs.push(inputs[2]);
       }
-      context.compute(createGroupedConvVectorizeProgramInfo(convInputs, adjustedAttributes, outputShape), {
-        inputs: convInputs,
-      });
+      context.compute(
+        createGroupedConvVectorizeProgramInfo(convInputs, attributes, outputShape, squeezeOutputShapeFunction),
+        { inputs: convInputs },
+      );
     } else {
-      context.compute(createGroupedConvProgramInfo(inputs, adjustedAttributes));
+      context.compute(createGroupedConvProgramInfo(inputs, attributes, squeezeOutputShapeFunction));
     }
     return;
   }
@@ -214,7 +218,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     inputs[0].dims,
     inputs[1].dims,
     attributes.dilations,
-    adjustedAttributes.pads,
+    attributes.pads,
     attributes.strides,
     isChannelsLast,
   );
@@ -280,12 +284,26 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     // Tune the threshold.
     if (N < 8 && K < 8) {
       context.compute(
-        createNaiveMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+        createNaiveMatmulProgramInfo(
+          matmulInputs,
+          attributes,
+          outputShape,
+          matmulOutputShape,
+          isChannelsLast,
+          squeezeOutputShapeFunction,
+        ),
         { inputs: matmulInputs },
       );
     } else {
       context.compute(
-        createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+        createMatmulProgramInfo(
+          matmulInputs,
+          attributes,
+          outputShape,
+          matmulOutputShape,
+          isChannelsLast,
+          squeezeOutputShapeFunction,
+        ),
         { inputs: matmulInputs },
       );
     }
@@ -320,13 +338,14 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   context.compute(
     createConv2DMatMulProgramInfo(
       convInputs,
-      adjustedAttributes,
+      attributes,
       outputShape,
       dimAOuter,
       dimBOuter,
       dimInner,
       hasBias,
       sequentialAccessByThreads,
+      squeezeOutputShapeFunction,
     ),
     { inputs: convInputs },
   );
@@ -357,10 +376,8 @@ const conv1d = (context: ComputeContext, attributes: ConvAttributes): void => {
     { ...attributes, pads, strides, dilations, kernelShape },
     inputs,
   );
-  context.compute(
-    createGroupedConvProgramInfo(inputs, adjustedAttributes, (outputShape) =>
-      isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : [],
-    ),
+  conv2d(context, inputs, adjustedAttributes, (outputShape) =>
+    isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : [outputShape[0], outputShape[1], outputShape[3]],
   );
 };
 
@@ -396,6 +413,7 @@ export const conv = (context: ComputeContext, attributes: ConvAttributes): void 
   } else if (context.inputs[0].dims.length === 5) {
     conv3d(context, context.inputs, attributes);
   } else {
-    conv2d(context, context.inputs, attributes);
+    const adjustedAttributes = getAdjustedConvAttributes(attributes, context.inputs);
+    conv2d(context, context.inputs, adjustedAttributes);
   }
 };
