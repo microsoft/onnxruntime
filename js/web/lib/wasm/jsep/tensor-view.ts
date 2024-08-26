@@ -29,6 +29,11 @@ export interface TensorView {
   readonly dims: readonly number[];
 
   /**
+   * get a Float16Array data view of the tensor data. tensor data must be on CPU.
+   */
+  getUint16Array(): Uint16Array;
+
+  /**
    * get a Float32Array data view of the tensor data. tensor data must be on CPU.
    */
   getFloat32Array(): Float32Array;
