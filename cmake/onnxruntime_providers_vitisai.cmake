@@ -8,18 +8,6 @@
     GIT_SHALLOW TRUE
     OVERRIDE_FIND_PACKAGE
   )
-  set(WITH_XCOMPILER ON CACHE BOOL "enable XCOMPILER")
-  set(WITH_OPENSSL OFF CACHE BOOL "enable open ssl")
-  set(WITH_CPURUNNER ON CACHE BOOL "enable cpu runner")
-  set(BUILD_PYTHON_EXT OFF CACHE BOOL "enable python ext")
-  set(EN_LLM_DOD_OPS OFF CACHE BOOL "enable dd flow")
-  set(EN_VAIML OFF CACHE BOOL "enable vaiml flow")
-  set(TRIM_CONFIG OFF CACHE BOOL "enable config trimming")
-  set(ENABLE_VITIS_AI_CUSTOM_OP OFF "enable vitis ai custom op")
-  set(PACK_XCLBIN_PATH "" CACHE STRING "list of xclbin files")
-  set(ENABLE_BUILD_VOE_WHEEL OFF CACHE BOOL "internal used only" FORCE)
-  set(INSTALL_USER ON CACHE BOOL "internal used only" FORCE)
-  set(ENABLE_XRT_SHARED_CONTEXT ON CACHE BOOL "internal used only" FORCE)
   find_package(vaip)
 
   if ("${GIT_COMMIT_ID}" STREQUAL "")
