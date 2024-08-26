@@ -231,6 +231,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_runner =
       kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_self_attention_ &&
+      !is_unidirectional_ &&
       nullptr == attention_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
       nullptr == past_key && nullptr == present_key &&
@@ -242,9 +243,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
-      constexpr bool is_unidirectional = false;
       std::call_once(fused_fp16_runner_created_, [&]() {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional,
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
                                                           enable_trt_flash_attention_, parameters.scale);
       });
     }
