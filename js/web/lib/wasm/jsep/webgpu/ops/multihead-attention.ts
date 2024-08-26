@@ -18,7 +18,7 @@ import { inputVariable, outputVariable, ShaderHelper, UniformsArrayType } from '
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
 
 const getInput = (inputs: readonly TensorView[], i: number) =>
-  inputs.length > i && inputs[i].dims.length > 0 && ShapeUtil.size(inputs[i].dims) > 0 ? inputs[i] : undefined;
+  inputs.length > i && inputs[i].dims.length > 0 ? inputs[i] : undefined;
 
 const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttrs): AttentionParameters => {
   const query = inputs[0];

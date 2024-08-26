@@ -25,7 +25,6 @@ namespace Dml
     class ReadbackHeap;
     class ExecutionContext;
     class BucketizedBufferAllocator;
-    class CPUAllocator;
     class ExecutionProvider;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -213,7 +212,7 @@ namespace Dml
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
