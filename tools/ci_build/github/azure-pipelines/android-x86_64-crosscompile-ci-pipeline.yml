@@ -123,7 +123,6 @@ stages:
     timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
-    condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
     steps:
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
@@ -150,6 +149,7 @@ stages:
 
     - script: |
         python3 tools/ci_build/build.py \
+        --enable_lto \
         --android \
         --build_dir build_nnapi \
         --android_sdk_path $ANDROID_HOME \
@@ -159,6 +159,7 @@ stages:
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
+        --build_shared_lib \
         --cmake_generator=Ninja \
         --build_java
       displayName: NNAPI EP, Build, Test on Android Emulator
@@ -208,6 +209,7 @@ stages:
 
       - script: |
           python3 tools/ci_build/build.py \
+          --enable_lto \
           --android \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME \
