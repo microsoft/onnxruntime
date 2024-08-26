@@ -295,13 +295,18 @@ static std::optional<std::vector<int64_t>> GetQOrDQScaleShape(const api::GraphRe
 // Returns std::nullopt if unable to get the quantization info or if the axis attribute is invalid.
 static std::optional<QuantInfo> GetQuantInfo(const api::GraphRef& graph, const api::NodeRef& q_or_dq_node) {
   const std::vector<std::string_view> inputs = q_or_dq_node.Inputs();
+
+  // Need to use the scale input's shape to determine the quantization mode. Can't just use the presence of the axis
+  // attribute because even per-tensor Q/DQ have a default axis of 1.
   std::optional<std::vector<int64_t>> scale_shape = GetQOrDQScaleShape(graph, q_or_dq_node);
   if (!scale_shape) {
     return std::nullopt;  // Need scale's shape to determine the quantization mode (per-tensor, per-axis).
   }
 
   QuantInfo qinfo = {};
+
   if (IsScalarOr1Element1DTensor(*scale_shape)) {
+    // A scalar or tensor scale with shape (1,) indicates per-tensor quantization.
     qinfo.mode = QuantizationMode::kPerTensor;
     qinfo.norm_axis = 1;  // 1 is the default 'axis' even for per-tensor quantization (axis is ignored).
   } else {
@@ -314,9 +319,11 @@ static std::optional<QuantInfo> GetQuantInfo(const api::GraphRef& graph, const a
 
     int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
     if (block_size != 0) {
+      // A block size indicates blocked quantization.
       qinfo.mode = QuantizationMode::kBlocked;
       qinfo.norm_axis = axis;
     } else {
+      // A block size of 0 indicates per-axis quantization.
       qinfo.mode = QuantizationMode::kPerAxis;
       qinfo.norm_axis = axis;
     }
@@ -402,14 +409,14 @@ class DQToLookPast {
   /// The std::optional DQToLookPast is set to std::nullopt to prevent accidental reuse.
   /// </summary>
   /// <param name="dq_to_look_past">The DQToLookPast to steal the node from</param>
-  /// <returns>The stolen unique_ptr&lt;NodeRef&gt;, which could be nullptr</returns>
-  static std::unique_ptr<api::NodeRef> StealDQNode(std::optional<DQToLookPast>& dq_to_look_past) {
-    if (!dq_to_look_past) {
-      return nullptr;
-    }
+  /// <returns>The dq_node unique_ptr moved from dq_to_look_past</returns>
+  static std::unique_ptr<api::NodeRef> TakeDQNode(std::optional<DQToLookPast>& dq_to_look_past) {
+    std::unique_ptr<api::NodeRef> node;
 
-    std::unique_ptr<api::NodeRef> node = std::move(dq_to_look_past->dq_node_);
-    dq_to_look_past = std::nullopt;
+    if (dq_to_look_past) {
+      node = std::move(dq_to_look_past->dq_node_);
+      dq_to_look_past = std::nullopt;
+    }
 
     return node;
   }
@@ -505,14 +512,14 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     zp_input = dq_inputs[2];
   }
 
-  // Have to update the axis for newly inserted Q/DQ after a Transpose or Unsqueeze iff using per-channel quantization.
   auto dq_quant_info = GetQuantInfo(graph, dq_node);
   if (!dq_quant_info.has_value() || !IsSupportedQuantizationMode(dq_quant_info->mode)) {
-    return false;
+    return false;  // Can't get the quantization mode/axis or is a quantization mode that is not supported.
   }
 
   int64_t axis = dq_quant_info->norm_axis;
 
+  // Have to update the axis for newly inserted Q/DQ after a Transpose or Unsqueeze if using per-axis quantization.
   if (dq_quant_info->mode == QuantizationMode::kPerAxis) {
     if (is_transpose) {
       auto perm = GetPermAttrIfValid(next_node);
@@ -1090,7 +1097,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
 
   // any DQ node special casing doesn't apply anymore, so go back to the original inp_node
   if (dq_to_look_past) {
-    inp_node = DQToLookPast::StealDQNode(dq_to_look_past);
+    inp_node = DQToLookPast::TakeDQNode(dq_to_look_past);
   }
 
   // Case 3: Add an Unsqueeze node.
@@ -1207,7 +1214,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // there are no other consumers.
     // TODO(adrianlizarraga): Examine this use-case more carefully for per-axis quantization
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
-      std::unique_ptr<api::NodeRef> dq_node = DQToLookPast::StealDQNode(dq_to_look_past);
+      std::unique_ptr<api::NodeRef> dq_node = DQToLookPast::TakeDQNode(dq_to_look_past);
       auto& node_to_update = dq_node ? *dq_node : node;
       Permute1DConstant(graph, node_to_update, *constant, i, constant_to_modify, perm);
 
@@ -1305,7 +1312,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
   // any DQ node special casing doesn't apply anymore, so go back to the original inp_node
   if (dq_to_look_past) {
-    inp_node = DQToLookPast::StealDQNode(dq_to_look_past);
+    inp_node = DQToLookPast::TakeDQNode(dq_to_look_past);
     consumers = graph.GetValueConsumers(input);
   }
 
@@ -1537,7 +1544,7 @@ static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_vi
       if (dq_input_node != nullptr) {
         if (dq_input_node->OpType() == "Squeeze") {
           auto squeeze_input_node = graph.GetNodeProducingOutput(dq_input_node->Inputs()[0]);
-          if (squeeze_input_node->OpType() == "Transpose") {
+          if (squeeze_input_node != nullptr && squeeze_input_node->OpType() == "Transpose") {
             // we only want to set this if it is a Transpose as otherwise we're invalidating the cost given it is
             // rank based and the Squeeze will change that.
             producer_node = std::move(squeeze_input_node);
@@ -2915,13 +2922,13 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
 
   auto q_quant_info = GetQuantInfo(ctx.graph, q_node);
   if (!q_quant_info.has_value() || !IsSupportedQuantizationMode(q_quant_info->mode)) {
-    return false;  // Can't determine quantization mode (e.g., per-tensor) or is one we don't yet support.
+    return false;  // Can't get quantization mode/axis or is a quantization mode that is not supported.
   }
 
   int64_t axis = q_quant_info->norm_axis;
 
   if (q_quant_info->mode == QuantizationMode::kPerAxis) {
-    // Have to update the axis for newly inserted Q/DQ before a Transpose iff using per-channel quantization.
+    // Have to update the axis for newly inserted Q/DQ before a Transpose if using per-channel quantization.
     auto perm = GetPermAttrIfValid(transpose_node);
     assert(perm.has_value());                        // onnx shape inferencing checks that `perm` is valid
     axis = (*perm)[gsl::narrow_cast<size_t>(axis)];  // Note: do not invert permutation.
