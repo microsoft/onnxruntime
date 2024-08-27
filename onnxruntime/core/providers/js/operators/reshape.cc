@@ -10,7 +10,19 @@ namespace js {
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    14,
+    19,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    14, 18,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes())
