@@ -181,7 +181,7 @@ If you have an NVIDIA GPU, that will give the best performance right now.
 
    For example: `What does the sign say?`
 
-   ![coffee](../../../images/nashville.png)
+   ![coffee](../../../images/nashville.jpg)
 
    ```
    The sign says 'DO NOT ENTER'.
