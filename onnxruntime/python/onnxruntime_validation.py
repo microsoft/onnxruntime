@@ -57,6 +57,7 @@ def check_distro_info():
             )
     elif __my_system__ == "aix":
         import subprocess
+
         returned_output = subprocess.check_output("oslevel")
         __my_distro_ver__str = returned_output.decode("utf-8")
         __my_distro_ver = __my_distro_ver__str[:3]
