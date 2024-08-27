@@ -1,8 +1,4 @@
 {
-  "[cpp]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
-  },
   "[json]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode"
@@ -17,14 +13,13 @@
   },
   "[javascript]": {
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[typescript]": {
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "clang-format.executable": "${workspaceRoot}/node_modules/.bin/clang-format",
-  "clang-format.style": "file",
+  "prettier.prettierPath": "./node_modules/prettier",
   "editor.detectIndentation": false,
   "editor.insertSpaces": true,
   "editor.rulers": [120],

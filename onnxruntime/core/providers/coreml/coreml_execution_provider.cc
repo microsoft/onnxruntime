@@ -27,6 +27,7 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
       coreml_flags_(coreml_flags),
       coreml_version_(coreml::util::CoreMLVersion()) {
+  LOGS_DEFAULT(VERBOSE) << "CoreML version: " << coreml_version_;
   if (coreml_version_ < MINIMUM_COREML_VERSION) {
     LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
   }
@@ -82,7 +83,9 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, COREML, kCoreMLExecutionProvider);
+                                            gen_metadef_name, COREML, kCoreMLExecutionProvider,
+                                            nullptr,
+                                            /*drop_constant_initializers*/ true);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(

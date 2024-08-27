@@ -43,7 +43,6 @@ class WebNNExecutionProvider : public IExecutionProvider {
 
  private:
   emscripten::val wnn_context_ = emscripten::val::undefined();
-  mutable emscripten::val wnn_builder_ = emscripten::val::undefined();
 
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;

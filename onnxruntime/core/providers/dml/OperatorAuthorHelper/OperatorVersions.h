@@ -434,6 +434,18 @@ namespace OperatorHelper
         static const int sc_sinceVer_IsNaN = 20;
         static const int sc_sinceVer_IsInf = 20;
         static const int sc_sinceVer_ReduceMax = 20;
+        static const int sc_sinceVer_ReduceMin = 20;
+    }
+
+    namespace OnnxOperatorSet21
+    {
+        static const int sc_sinceVer_QuantizeLinear = 21;
+        static const int sc_sinceVer_DequantizeLinear = 21;
+        static const int sc_sinceVer_Squeeze = 21;
+        static const int sc_sinceVer_Unsqueeze = 21;
+        static const int sc_sinceVer_Reshape = 21;
+        static const int sc_sinceVer_Cast = 21;
+        static const int sc_sinceVer_Shape = 21;
     }
 
     namespace MsftOperatorSet1
