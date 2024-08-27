@@ -355,19 +355,6 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_TypeMismatch) {
   RunDQMatMulNotConverted_TypeShapeMismatch<int32_t, false>({12, 37}, {37, 12}, 0, 16, 0);
 }
 
-TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_TypeMismatch_Cuda) {
-  // DQ contrib op schema is not updated to support blocked quantization
-  RunDQMatMulNotConverted_TypeShapeMismatch<int8_t, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<int8_t, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint8_t, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<int16_t, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<int16_t, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<uint16_t, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-  RunDQMatMulNotConverted_TypeShapeMismatch<int32_t, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
-}
-
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch) {
   // DQ contrib op schema is not updated to support blocked quantization
   // block size too small

@@ -9,6 +9,7 @@
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
+#include "cuda_fp16.h"
 #endif
 
 namespace onnxruntime {
@@ -168,8 +169,12 @@ struct RoundStdInt4<half, int8_t> {
                                                half scale1,
                                                int zp0,
                                                int zp1) const {
-    int value0 = __half2int_rn(v0 / scale0) + zp0;
-    int value1 = __half2int_rn(v1 / scale1) + zp1;
+    half2 v = __halves2half2(v0, v1);
+    half2 scale = __halves2half2(scale0, scale1);
+    half2 scaled_v = __h2div(v, scale);
+
+    int value0 = __half2int_rn(__low2half(scaled_v)) + zp0;
+    int value1 = __half2int_rn(__high2half(scaled_v)) + zp1;
     int value0_clip = max(-8, min(7, value0));
     int value1_clip = max(-8, min(7, value1));
     return static_cast<int8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
@@ -192,8 +197,12 @@ struct RoundStdInt4<half, uint8_t> {
                                                 half scale1,
                                                 int zp0,
                                                 int zp1) const {
-    int value0 = __half2int_rn(v0 / scale0) + zp0;
-    int value1 = __half2int_rn(v1 / scale1) + zp1;
+    half2 v = __halves2half2(v0, v1);
+    half2 scale = __halves2half2(scale0, scale1);
+    half2 scaled_v = __h2div(v, scale);
+
+    int value0 = __half2int_rn(__low2half(scaled_v)) + zp0;
+    int value1 = __half2int_rn(__high2half(scaled_v)) + zp1;
     int value0_clip = max(0, min(15, value0));
     int value1_clip = max(0, min(15, value1));
     return static_cast<uint8_t>((value0_clip & 0x0f) | ((value1_clip & 0x0f) << 4));
@@ -360,7 +369,7 @@ Status CudaQuantizeLinearBlockStdInt4(cudaStream_t stream, const InT* input, Out
   if (num_of_element <= 0)
     return Status::OK();
 
-  CUDA_KERNEL_ASSERT((GridDim::maxElementsPerThread & 1) == 0);
+  static_assert((GridDim::maxElementsPerThread & 1) == 0);
 
   size_t KN = K * N;
   size_t num_block = (K + block_size - 1) / block_size;
@@ -644,7 +653,7 @@ Status CudaDequantizeLinearBlockStdInt4(cudaStream_t stream, const T* input, U* 
   if (num_of_element <= 0)
     return Status::OK();
 
-  CUDA_KERNEL_ASSERT((GridDim::maxElementsPerThread & 1) == 0);
+  static_assert((GridDim::maxElementsPerThread & 1) == 0);
 
   size_t KN = K * N;
   size_t num_block = (K + block_size - 1) / block_size;

@@ -46,7 +46,6 @@ Status CudaQuantizeLinear(cudaStream_t stream, const U* input, T* output, const 
 template <class T, class U>
 Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point,
                               size_t num_of_element, size_t batch_size, size_t n_scales, bool /*saturate*/) {
-                                ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(input);
   ORT_UNUSED_PARAMETER(output);
@@ -422,36 +421,30 @@ REGISTER_Q_KERNEL_TYPED_10_12(uint8_t)
 REGISTER_Q_KERNEL_TYPED_13_18(int8_t)
 REGISTER_Q_KERNEL_TYPED_13_18(uint8_t)
 
-#define REGISTER_Q_KERNEL_TYPED_19_20(T)                                  \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                            \
-      QuantizeLinear,                                                     \
-      kOnnxDomain,                                                        \
-      19, 20,                                                             \
-      T, float,                                                           \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())     \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),        \
-      QuantizeLinear<T, float>);                                          \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                            \
-      QuantizeLinear,                                                     \
-      kOnnxDomain,                                                        \
-      19, 20,                                                             \
-      T, MLFloat16,                                                       \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>()) \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),        \
-      QuantizeLinear<T, MLFloat16>);
+#define REGISTER_Q_KERNEL_TWO_TYPED_19_20(T, U)                    \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                     \
+      QuantizeLinear,                                              \
+      kOnnxDomain,                                                 \
+      19, 20,                                                      \
+      T, U,                                                        \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
+      QuantizeLinear<T, U>);
 
-REGISTER_Q_KERNEL_TYPED_19_20(int8_t)
-REGISTER_Q_KERNEL_TYPED_19_20(uint8_t)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(int8_t, float)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(uint8_t, float)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(int8_t, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(uint8_t, MLFloat16)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_Q_KERNEL_TYPED_19_20(Float8E4M3FN)
-REGISTER_Q_KERNEL_TYPED_19_20(Float8E5M2)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(Float8E4M3FN, float)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(Float8E5M2, float)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(Float8E4M3FN, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_19_20(Float8E5M2, MLFloat16)
 #endif
 
-#define REGISTER_Q_KERNEL_TYPED_21(T, U)                           \
+#define REGISTER_Q_KERNEL_TWO_TYPED_21(T, U)                       \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                               \
       QuantizeLinear,                                              \
       kOnnxDomain,                                                 \
@@ -463,19 +456,19 @@ REGISTER_Q_KERNEL_TYPED_19_20(Float8E5M2)
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       QuantizeLinear<T, U>);
 
-REGISTER_Q_KERNEL_TYPED_21(uint8_t, float)
-REGISTER_Q_KERNEL_TYPED_21(int8_t, float)
-REGISTER_Q_KERNEL_TYPED_21(uint8_t, MLFloat16)
-REGISTER_Q_KERNEL_TYPED_21(int8_t, MLFloat16)
-REGISTER_Q_KERNEL_TYPED_21(UInt4x2, float)
-REGISTER_Q_KERNEL_TYPED_21(Int4x2, float)
-REGISTER_Q_KERNEL_TYPED_21(UInt4x2, MLFloat16)
-REGISTER_Q_KERNEL_TYPED_21(Int4x2, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(uint8_t, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(int8_t, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(uint8_t, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(int8_t, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(UInt4x2, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Int4x2, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(UInt4x2, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Int4x2, MLFloat16)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_Q_KERNEL_TYPED_21(Float8E4M3FN, float)
-REGISTER_Q_KERNEL_TYPED_21(Float8E5M2, float)
-REGISTER_Q_KERNEL_TYPED_21(Float8E4M3FN, MLFloat16)
-REGISTER_Q_KERNEL_TYPED_21(Float8E5M2, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Float8E4M3FN, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Float8E5M2, float)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Float8E4M3FN, MLFloat16)
+REGISTER_Q_KERNEL_TWO_TYPED_21(Float8E5M2, MLFloat16)
 #endif
 
 // register DequantizeLinear kernels
@@ -506,36 +499,30 @@ REGISTER_DQ_KERNEL_TYPED_10_12(uint8_t)
 REGISTER_DQ_KERNEL_TYPED_13_18(int8_t)
 REGISTER_DQ_KERNEL_TYPED_13_18(uint8_t)
 
-#define REGISTER_DQ_KERNEL_TYPED_19_20(T)                                  \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                             \
-      DequantizeLinear,                                                    \
-      kOnnxDomain,                                                         \
-      19, 20,                                                              \
-      T, float,                                                            \
-      kCudaExecutionProvider,                                              \
-      (*KernelDefBuilder::Create())                                        \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),     \
-      DequantizeLinear<T, float>);                                         \
-  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                             \
-      DequantizeLinear,                                                    \
-      kOnnxDomain,                                                         \
-      19, 20,                                                              \
-      T, MLFloat16,                                                        \
-      kCudaExecutionProvider,                                              \
-      (*KernelDefBuilder::Create())                                        \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<MLFloat16>()), \
-      DequantizeLinear<T, MLFloat16>);
+#define REGISTER_DQ_KERNEL_TWO_TYPED_19_20(T, U)                   \
+  ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_EX(                     \
+      DequantizeLinear,                                            \
+      kOnnxDomain,                                                 \
+      19, 20,                                                      \
+      T, U,                                                        \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<U>()), \
+      DequantizeLinear<T, U>);
 
-REGISTER_DQ_KERNEL_TYPED_19_20(int8_t)
-REGISTER_DQ_KERNEL_TYPED_19_20(uint8_t)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(int8_t, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(uint8_t, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(int8_t, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(uint8_t, MLFloat16)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_DQ_KERNEL_TYPED_19_20(Float8E4M3FN)
-REGISTER_DQ_KERNEL_TYPED_19_20(Float8E5M2)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E4M3FN, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E5M2, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E4M3FN, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_19_20(Float8E5M2, MLFloat16)
 #endif
 
-#define REGISTER_DQ_KERNEL_TYPED_21(T, U)                          \
+#define REGISTER_DQ_KERNEL_TWO_TYPED_21(T, U)                      \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                               \
       DequantizeLinear,                                            \
       kOnnxDomain,                                                 \
@@ -547,19 +534,19 @@ REGISTER_DQ_KERNEL_TYPED_19_20(Float8E5M2)
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<U>()), \
       DequantizeLinear<T, U>);
 
-REGISTER_DQ_KERNEL_TYPED_21(uint8_t, float)
-REGISTER_DQ_KERNEL_TYPED_21(int8_t, float)
-REGISTER_DQ_KERNEL_TYPED_21(uint8_t, MLFloat16)
-REGISTER_DQ_KERNEL_TYPED_21(int8_t, MLFloat16)
-REGISTER_DQ_KERNEL_TYPED_21(UInt4x2, float)
-REGISTER_DQ_KERNEL_TYPED_21(Int4x2, float)
-REGISTER_DQ_KERNEL_TYPED_21(UInt4x2, MLFloat16)
-REGISTER_DQ_KERNEL_TYPED_21(Int4x2, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(uint8_t, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(int8_t, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(uint8_t, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(int8_t, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(UInt4x2, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Int4x2, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(UInt4x2, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Int4x2, MLFloat16)
 #if !defined(DISABLE_FLOAT8_TYPES)
-REGISTER_DQ_KERNEL_TYPED_21(Float8E4M3FN, float)
-REGISTER_DQ_KERNEL_TYPED_21(Float8E5M2, float)
-REGISTER_DQ_KERNEL_TYPED_21(Float8E4M3FN, MLFloat16)
-REGISTER_DQ_KERNEL_TYPED_21(Float8E5M2, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Float8E4M3FN, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Float8E5M2, float)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Float8E4M3FN, MLFloat16)
+REGISTER_DQ_KERNEL_TWO_TYPED_21(Float8E5M2, MLFloat16)
 #endif
 
 // specialize QuantizeLinear::ComputeInternal and DequantizeLinear::ComputeInternal
