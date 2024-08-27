@@ -2,13 +2,18 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <list>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <filesystem>
 #include "core/session/onnxruntime_c_api.h"
 #include "nv_includes.h"
 
 namespace onnxruntime {
+
+using HashValue = uint64_t;
+
 static const std::string EPCONTEXT_OP = "EPContext";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
@@ -20,6 +25,7 @@ static const std::string EPCONTEXT_WARNING =
                                               make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
                                               for the best model loading time";
 
+HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer);
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,

@@ -100,6 +100,8 @@ using onnxruntime::common::Status;
 
 using namespace onnxruntime;
 
+typedef std::unordered_map<std::string, std::string> ModelMetaData;
+
 #ifndef ORT_STATUS_PTR
 #ifdef _WIN32
 #define ORT_STATUS_PTR _Check_return_ _Ret_maybenull_ OrtStatusPtr
@@ -2419,11 +2421,50 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsConstantInitializer, const OrtGraphViewe
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order) {
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder();
+  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder(static_cast<ExecutionOrder>(execution_order));
   *len = nodes.size();
   *nodes_index_in_topological_order = nodes.data();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret) {
+  const ::onnxruntime::Graph* graph_ptr = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
+  *ret = graph_ptr->IsSubgraph();
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph) {
+  const ::onnxruntime::Graph* graph_ptr = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
+  *parent_graph = reinterpret_cast<const OrtGraph*>(graph_ptr->ParentGraph());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *parent_node = reinterpret_cast<const OrtNode*>(graph_viewer->ParentNode());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** path) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *path = reinterpret_cast<const void*>(&graph_viewer->ModelPath());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph) {
+  const ::onnxruntime::GraphViewer* graph_viewer_ptr = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph_viewer);
+  *graph = reinterpret_cast<const OrtGraph*>(&graph_viewer_ptr->GetGraph());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Out_ size_t* num_inputs, _Outptr_ const char*** input_names) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  const auto& inputs = graph_viewer->GetInputsIncludingInitializers();
+  *num_inputs = inputs.size();
+  *input_names = new const char*[*num_inputs];
+  for (size_t i = 0; i < *num_inputs; i++) (*input_names)[i] = inputs[i]->Name().c_str();
   return nullptr;
 }
 
@@ -2563,7 +2604,11 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetOutputSize, const OrtNode* node, _Out_ s
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   assert(i < n->OutputDefs().size());
-  *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  if (n->OutputDefs()[i]->Exists()){
+    *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  } else {
+    *ith_output_name = nullptr;
+  }
   return nullptr;
 }
 
@@ -3052,6 +3097,12 @@ static constexpr OrtApi ort_api_1_to_19 = {
 
     &OrtApis::OrtGraph_IsConstantInitializer,
     &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
+    &OrtApis::OrtGraph_IsSubgraph,
+    &OrtApis::OrtGraph_GetParentGraph,
+    &OrtApis::OrtGraph_GetParenNode,
+    &OrtApis::OrtGraph_GetModelPath,
+    &OrtApis::OrtGraph_GetOrtGraph,
+    &OrtApis::OrtGraph_GetInputsIncludingInitializers,
     &OrtApis::OrtGraph_GetOrtNode,
     &OrtApis::OrtGraph_GetNodesConsumingInput,
     &OrtApis::OrtGraph_GetNodeProducingOutput,

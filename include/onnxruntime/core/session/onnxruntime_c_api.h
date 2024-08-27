@@ -307,6 +307,8 @@ ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(ExecutionProviderFactory);
 ORT_RUNTIME_CLASS(Node);
+ORT_RUNTIME_CLASS(Model);
+ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);
 ORT_RUNTIME_CLASS(TypeConstraints);
@@ -4757,7 +4759,19 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret);
 
-  ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
+  ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
+
+  ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret);
+
+  ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
+
+  ORT_API2_STATUS(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node);
+
+  ORT_API2_STATUS(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** path);
+
+  ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
+
+  ORT_API2_STATUS(OrtGraph_GetInputsIncludingInitializers, const OrtGraphViewer* graph, _Out_ size_t* num_inputs, _Outptr_ const char*** input_names);
 
   ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_index, _Outptr_ const OrtNode** node);
 
