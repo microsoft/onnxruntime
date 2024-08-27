@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/bert/paged/paged_attention/paged_attention.h"
+#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -86,7 +87,10 @@ Status PagedAttention::ComputeInternal(OpKernelContext* ctx) const {
 
   auto dev_props = &GetDeviceProp();
 
-  if (kv_onnx_type == DataTypeImpl::GetType<float>()) {
+  bool use_lbp = float(num_seqs * num_kv_heads_) / dev_props->multiProcessorCount < 2;
+  using kScheduler = paged::DataParallelOutOfPlace;
+
+  if (kv_onnx_type == DataTypeImpl::GetType<float>()) {  // float kernel does not have lbp instances
     const void* scalebias = nullptr;
     paged::launch_paged_attention_kernel(
         cuda_stream, dev_props,
@@ -103,34 +107,76 @@ Status PagedAttention::ComputeInternal(OpKernelContext* ctx) const {
         max_num_pages_per_seq, q_stride, max_context_len);
   } else if (kv_onnx_type == DataTypeImpl::GetType<MLFloat16>()) {
     const void* scalebias = nullptr;
-    paged::launch_paged_attention_kernel(
-        cuda_stream, dev_props,
-        reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
-        reinterpret_cast<const half*>(query->Data<MLFloat16>()),
-        reinterpret_cast<const half*>(key_cache->Data<MLFloat16>()),
-        reinterpret_cast<const half*>(value_cache->Data<MLFloat16>()),
-        scalebias,
-        page_table->Data<int32_t>(),
-        context_lens->Data<int32_t>(),
-        alibi == nullptr ? nullptr : alibi->Data<float>(),
-        scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
-        num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
-        max_num_pages_per_seq, q_stride, max_context_len);
+    if (!use_lbp) {
+      paged::launch_paged_attention_kernel(
+          cuda_stream, dev_props,
+          reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
+          reinterpret_cast<const half*>(query->Data<MLFloat16>()),
+          reinterpret_cast<const half*>(key_cache->Data<MLFloat16>()),
+          reinterpret_cast<const half*>(value_cache->Data<MLFloat16>()),
+          scalebias,
+          page_table->Data<int32_t>(),
+          context_lens->Data<int32_t>(),
+          alibi == nullptr ? nullptr : alibi->Data<float>(),
+          scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
+          num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
+          max_num_pages_per_seq, q_stride, max_context_len);
+    } else {
+      using Kernel = paged::LBPAttentionKernel<half, half, void, kScheduler>;
+      void* workspace;
+      Kernel::create_workspace(cuda_stream, &workspace, nullptr, num_seqs, num_heads_, num_kv_heads_, head_size, max_context_len);
+      Kernel::launch(
+          cuda_stream, dev_props,
+          workspace,
+          reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
+          reinterpret_cast<const half*>(query->Data<MLFloat16>()),
+          reinterpret_cast<const half*>(key_cache->Data<MLFloat16>()),
+          reinterpret_cast<const half*>(value_cache->Data<MLFloat16>()),
+          scalebias,
+          page_table->Data<int32_t>(),
+          context_lens->Data<int32_t>(),
+          alibi == nullptr ? nullptr : alibi->Data<float>(),
+          scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
+          num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
+          max_num_pages_per_seq, q_stride, max_context_len);
+      Kernel::destroy_workspace(cuda_stream, workspace, num_seqs, num_heads_, num_kv_heads_, head_size, max_context_len);
+    }
   } else if (kv_onnx_type == DataTypeImpl::GetType<Float8E4M3FN>()) {
     using TKV = cute::float_e4m3_t;
-    paged::launch_paged_attention_kernel(
-        cuda_stream, dev_props,
-        reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
-        reinterpret_cast<const half*>(query->Data<MLFloat16>()),
-        reinterpret_cast<const TKV*>(key_cache->Data<Float8E4M3FN>()),
-        reinterpret_cast<const TKV*>(value_cache->Data<Float8E4M3FN>()),
-        reinterpret_cast<const half*>(kv_quant_param->Data<MLFloat16>()),
-        page_table->Data<int32_t>(),
-        context_lens->Data<int32_t>(),
-        alibi == nullptr ? nullptr : alibi->Data<float>(),
-        scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
-        num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
-        max_num_pages_per_seq, q_stride, max_context_len);
+    if (!use_lbp) {
+      paged::launch_paged_attention_kernel(
+          cuda_stream, dev_props,
+          reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
+          reinterpret_cast<const half*>(query->Data<MLFloat16>()),
+          reinterpret_cast<const TKV*>(key_cache->Data<Float8E4M3FN>()),
+          reinterpret_cast<const TKV*>(value_cache->Data<Float8E4M3FN>()),
+          reinterpret_cast<const half*>(kv_quant_param->Data<MLFloat16>()),
+          page_table->Data<int32_t>(),
+          context_lens->Data<int32_t>(),
+          alibi == nullptr ? nullptr : alibi->Data<float>(),
+          scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
+          num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
+          max_num_pages_per_seq, q_stride, max_context_len);
+    } else {
+      using Kernel = paged::LBPAttentionKernel<half, cute::float_e4m3_t, half, kScheduler>;
+      void* workspace;
+      Kernel::create_workspace(cuda_stream, &workspace, nullptr, num_seqs, num_heads_, num_kv_heads_, head_size, max_context_len);
+      Kernel::launch(
+          cuda_stream, dev_props,
+          workspace,
+          reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
+          reinterpret_cast<const half*>(query->Data<MLFloat16>()),
+          reinterpret_cast<const TKV*>(key_cache->Data<Float8E4M3FN>()),
+          reinterpret_cast<const TKV*>(value_cache->Data<Float8E4M3FN>()),
+          reinterpret_cast<const half*>(kv_quant_param->Data<MLFloat16>()),
+          page_table->Data<int32_t>(),
+          context_lens->Data<int32_t>(),
+          alibi == nullptr ? nullptr : alibi->Data<float>(),
+          scale_ == 0.0f ? 1.0f / sqrt(head_size) : scale_,
+          num_seqs, num_heads_, num_kv_heads_, head_size, page_size_,
+          max_num_pages_per_seq, q_stride, max_context_len);
+      Kernel::destroy_workspace(cuda_stream, workspace, num_seqs, num_heads_, num_kv_heads_, head_size, max_context_len);
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "kv cache datatype not implemented.");
   }
