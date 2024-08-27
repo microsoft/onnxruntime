@@ -271,33 +271,103 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   return Status::OK();
 }
 
+template <bool Signed>
+static Status TransposeInt4Initializer(const QnnModelWrapper& qnn_model_wrapper,
+                                       const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                       gsl::span<const size_t> perm,
+                                       /*out*/ std::vector<uint8_t>& transposed_data) {
+  auto onnx_type = tensor_proto.data_type();
+
+  if constexpr (Signed) {
+    ORT_RETURN_IF_NOT(onnx_type == ONNX_NAMESPACE::TensorProto_DataType_INT4,
+                      "Expected to tranpose INT4 TensorProto");
+  } else {
+    ORT_RETURN_IF_NOT(onnx_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4,
+                      "Expected to tranpose UINT4 TensorProto");
+  }
+
+  using UnpackedType = typename Int4x2Base<Signed>::UnpackedType;
+
+  // Step 1: Unpack TensorProto of packed 4-bit values to Tensor<int8>
+  const TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(tensor_proto);
+  const size_t num_elems = shape.Size();
+  std::vector<UnpackedType> int8_data(num_elems);
+
+  const auto* elem_type_i8 = DataTypeImpl::GetTensorType<UnpackedType>()->AsTensorType()->GetElementType();
+  Tensor tensor_i8(elem_type_i8, shape, int8_data.data(), OrtMemoryInfo{});  // Tensor does not own data.
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoInt4ToTensorInt8(
+      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), tensor_proto, tensor_i8));
+
+  // Step 2: Transpose Tensor<int8>
+  const size_t rank = shape.NumDimensions();
+  std::vector<int64_t> new_shape_dims;
+  new_shape_dims.reserve(rank);
+
+  for (auto p : perm) {
+    new_shape_dims.push_back(shape[p]);
+  }
+
+  transposed_data.resize(num_elems * sizeof(UnpackedType));
+  Tensor transposed_tensor_i8(elem_type_i8, TensorShape::FromExistingBuffer(new_shape_dims),
+                              transposed_data.data(), OrtMemoryInfo{});  // Tensor does not own data.
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(perm, tensor_i8, transposed_tensor_i8));
+
+  // Step 3: Mask off top 4 bits to workaround a QNN INT4 accuracy bug.
+  // Docs explicitly state that masking off top 4 bits should not be required.
+  if constexpr (Signed) {
+    auto dst = gsl::make_span(reinterpret_cast<UnpackedType*>(transposed_data.data()), num_elems);
+    for (size_t i = 0; i < dst.size(); i++) {
+      dst[i] &= 0x0F;  // -3 (0b1111_1101) becomes 13 (0b0000_1101)
+    }
+  }
+
+  return Status::OK();
+}
+
 Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
                                            const onnx::TensorProto& initializer,
                                            const std::vector<size_t>& perm,
                                            std::vector<uint8_t>& transposed_data) const {
+  int32_t onnx_type = initializer.data_type();
+
+  // Handle transposing of INT4 initializers separately for memory efficiency.
+  if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
+    return TransposeInt4Initializer<true>(qnn_model_wrapper, initializer, perm, transposed_data);
+  }
+
+  if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
+    return TransposeInt4Initializer<false>(qnn_model_wrapper, initializer, perm, transposed_data);
+  }
+
+  // Copy initializer's (TensorProto) data to an ORT Tensor.
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer.data_type())->GetElementType();
   const auto tensor_shape_dims = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
   TensorShape tensor_shape{tensor_shape_dims};
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   Tensor in_tensor = Tensor(tensor_dtype, tensor_shape, cpu_allocator);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
+      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), initializer, in_tensor));
 
+  // Determine the new transposed shape.
   auto rank = perm.size();
   std::vector<int64_t> new_tensor_shape_dims;
-  std::vector<size_t> permutations;
   new_tensor_shape_dims.reserve(rank);
-  permutations.reserve(rank);
-  for (int64_t p : perm) {
-    permutations.push_back(p);
+  for (size_t p : perm) {
     new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
   }
 
-  TensorShape new_tensor_shape(new_tensor_shape_dims);
-  Tensor out_tensor = Tensor(tensor_dtype, new_tensor_shape, cpu_allocator);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
-      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), initializer, in_tensor));
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
-  onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
+  // Resize the output `transposed_data` buffer to hold the result of the transpose.
+  const ONNXTensorElementDataType ort_type = onnxruntime::utils::CApiElementTypeFromProtoType(onnx_type);
+  const size_t elem_byte_size = utils::GetElementSizeByType(ort_type);
+  const size_t num_elems = tensor_shape_dims.Size();
+  transposed_data.resize(num_elems * elem_byte_size);
+
+  // Create an output tensor that does not own the pre-allocated `transposed_data` buffer.
+  // DoTranspose() will write the new transposed elements directly into the `transposed_data` buffer.
+  // We do this to eliminate unnecessary weight copies.
+  Tensor out_tensor(tensor_dtype, TensorShape::FromExistingBuffer(new_tensor_shape_dims),
+                    transposed_data.data(), OrtMemoryInfo{});  // Tensor does not own data.
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(perm, in_tensor, out_tensor));
 
   return Status::OK();
 }

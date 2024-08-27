@@ -864,8 +864,8 @@ TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
 TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
   std::vector<int64_t> input_shape = {1, 3072, 1, 512};
   std::vector<int64_t> weight_shape = {9216, 3072, 1, 1};
-  std::vector<float> input_data(TensorShape(input_shape).Size(), 0.1f);
-  input_data[0] = 0.2f;
+  std::vector<float> input_data(TensorShape(input_shape).Size(), 1.1f);
+  input_data[0] = 2.2f;
   std::vector<float> weight_data(TensorShape(weight_shape).Size(), -0.1f);
   for (size_t c = 0; c < static_cast<size_t>(weight_shape[0]); c++) {
     size_t i = c * 3072;
@@ -875,6 +875,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
   TestInputDef<float> input_def(input_shape, false, input_data);
   TestInputDef<float> weight_def(weight_shape, true, weight_data);
 
+#if 0
   RunHTPConvOpPerChannelTest<uint16_t, Int4x2>("Conv",
                                                input_def,
                                                weight_def,
@@ -888,6 +889,52 @@ TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
                                                ExpectedEPNodeAssignment::All,
                                                false,  // use_qdq_contrib_ops
                                                21);    // opset
+#else
+  // This test code is here to more directly test ONLY session initialization time with large INT4 weights.
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto qdq_model_fn = BuildQDQPerChannelConvTestCase<uint16_t, Int4x2>("Conv",
+                                                                       input_def,
+                                                                       weight_def,
+                                                                       TestInputDef<float>(),
+                                                                       0,             // weight quant axis
+                                                                       {1, 1},        // Strides
+                                                                       {0, 0, 0, 0},  // Pads
+                                                                       {1, 1},        // Dilations
+                                                                       1,             // default group
+                                                                       "NOTSET",
+                                                                       false);  // use_qdq_contrib_ops
+
+  // Create QDQ model and serialize it to a string.
+  auto& logging_manager = DefaultLoggingManager();
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 21}, {kMSDomain, 1}};
+  onnxruntime::Model qdq_model("qdq_model", false, ModelMetaData(), PathString(),
+                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                               logging_manager.DefaultLogger());
+
+  std::vector<QuantParams<uint16_t>> output_qparams(1);
+  output_qparams[0].scale = 0.0051529f;
+  output_qparams[0].zero_point = 65535;
+  ModelTestBuilder qdq_helper(qdq_model.MainGraph());
+  std::string qdq_model_data;
+  qdq_model_fn(qdq_helper, output_qparams);
+  qdq_helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
+  qdq_model.ToProto().SerializeToString(&qdq_model_data);
+
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  auto qnn_ep = QnnExecutionProviderWithOptions(provider_options, &so);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(qnn_ep)));
+  ASSERT_STATUS_OK(session_object.Load(qdq_model_data.data(), static_cast<int>(qdq_model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+#endif
 }
 
 // Test fusion of DQs -> Conv -> Relu/Clip -> Q.
