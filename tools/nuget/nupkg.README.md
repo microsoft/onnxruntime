@@ -14,7 +14,7 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
 ### ONNX Runtime Native packages
 
 #### Microsoft.ML.OnnxRuntime
-  - Native libraries for all supported platforms.
+  - Native libraries for all supported platforms
   - CPU Execution Provider
   - CoreML Execution Provider on macOS/iOS
     - https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
@@ -23,6 +23,8 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
 
 #### Microsoft.ML.OnnxRuntime.Gpu
   - Windows and Linux
+  - TensorRT Execution Provider
+    - https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html
   - CUDA Execution Provider
     - https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html
   - CPU Execution Provider
@@ -34,7 +36,7 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
   - CPU Execution Provider
 
 #### Microsoft.ML.OnnxRuntime.QNN
-  - Linux
+  - 64-bit Windows
   - QNN Execution Provider
     - https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html
   - CPU Execution Provider
