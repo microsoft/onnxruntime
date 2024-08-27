@@ -1236,7 +1236,9 @@ static Status TensorProtoInt4ToTensorInt8Impl(const Env& env, const std::filesys
   const bool has_ext_data = utils::HasExternalData(tensor_proto);
   const bool has_raw_data = utils::HasRawData(tensor_proto);
 
-  gsl::span<Int4x2Base<Signed>::UnpackedType> dst = tensor.MutableDataAsSpan<Int4x2Base<Signed>::UnpackedType>();
+  using UnpackedType = typename Int4x2Base<Signed>::UnpackedType;
+
+  gsl::span<UnpackedType> dst = tensor.MutableDataAsSpan<UnpackedType>();
   size_t dst_index = 0;
 
   if (!has_ext_data && !has_raw_data) {  // Data stored in TensorProto's int32_data()
