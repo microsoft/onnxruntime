@@ -51,6 +51,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -98,6 +99,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
+  parameters.use_smooth_softmax = use_smooth_softmax_;
   parameters.zeros_count = kZerosCount;
   parameters.zero_ptr = zeros_.get();
   // parameters.left_padding = left_padding_;
@@ -151,6 +153,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;
   bool use_memory_efficient_attention =
+      !use_smooth_softmax_ &&
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&
