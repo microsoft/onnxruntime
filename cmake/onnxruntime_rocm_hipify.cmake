@@ -5,6 +5,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # GLOB pattern of file to be excluded
 set(contrib_ops_excluded_files
+  "bert/cudnn_fmha/*"
   "bert/cutlass_fmha/*"
   "bert/fastertransformer_decoder_attention/*"
   "bert/flash_attention/*"
@@ -145,6 +146,7 @@ set(provider_excluded_files
   "rnn/rnn_impl.cu"
   "rnn/rnn_impl.h"
   "shared_inc/cuda_call.h"
+  "shared_inc/cudnn_fe_call.h"
   "shared_inc/fpgeneric.h"
   "cuda_allocator.cc"
   "cuda_allocator.h"
@@ -171,6 +173,7 @@ set(provider_excluded_files
   "cuda_utils.cu"
   "cudnn_common.cc"
   "cudnn_common.h"
+  "cudnn_fe_call.cc"
   "cupti_manager.cc"
   "cupti_manager.h"
   "fpgeneric.cu"

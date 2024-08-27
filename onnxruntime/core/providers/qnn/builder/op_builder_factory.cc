@@ -110,6 +110,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateGatherOpBuilder("Gather", *this);
+    CreateGatherOpBuilder("GatherElements", *this);
   }
 
   {

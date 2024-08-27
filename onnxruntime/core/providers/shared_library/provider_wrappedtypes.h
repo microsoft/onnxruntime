@@ -451,6 +451,15 @@ struct FunctionProto final {
   FunctionProto(const FunctionProto&) = delete;
   void operator=(const FunctionProto&) = delete;
 };
+
+struct OpSchema final {
+  const TypeConstraintMap& typeConstraintMap() const { return g_host->OpSchema__typeConstraintMap(this); }
+  const std::string& inputs__GetName(const size_t i) const { return g_host->OpSchema__inputs__GetName(this, i); };
+  const std::string& inputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__inputs__GetTypeStr(this, i); };
+  const std::string& outputs__GetName(const size_t i) const { return g_host->OpSchema__outputs__GetName(this, i); };
+  const std::string& outputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__outputs__GetTypeStr(this, i); };
+  PROVIDER_DISALLOW_ALL(OpSchema)
+};
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -702,6 +711,7 @@ class DataTypeImpl final {
 #endif
 
   static MLDataType GetTypeFromOnnxType(int);
+  static MLDataType GetTensorTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
@@ -943,7 +953,7 @@ struct Graph final {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
   void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
   void SetInputs(gsl::span<const NodeArg* const> inputs) { g_host->Graph__SetInputs(this, inputs); }
-
+  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Graph__DomainToVersionMap(this); }
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }

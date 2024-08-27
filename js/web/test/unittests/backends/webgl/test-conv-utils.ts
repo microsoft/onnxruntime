@@ -1,15 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../../lib/onnxjs/tensor';
+import { Tensor } from '../../../../lib/onnxjs/tensor';
 
 /* eslint-disable no-bitwise */
 
 // eslint-disable-next-line no-underscore-dangle
 function matMul2d_(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
-  let offsetA = 0, offsetB = 0, offsetC = 0;
+  A: Float32Array | Float64Array,
+  B: Float32Array | Float64Array,
+  C: Float32Array | Float64Array,
+  alpha: number,
+  beta: number,
+  M: number,
+  N: number,
+  K: number,
+) {
+  let offsetA = 0,
+    offsetB = 0,
+    offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
       let sum = 0;
@@ -30,9 +39,18 @@ function matMul2d_(
 }
 
 function matMul2d_tA(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
-  let offsetA = 0, offsetB = 0, offsetC = 0;
+  A: Float32Array | Float64Array,
+  B: Float32Array | Float64Array,
+  C: Float32Array | Float64Array,
+  alpha: number,
+  beta: number,
+  M: number,
+  N: number,
+  K: number,
+) {
+  let offsetA = 0,
+    offsetB = 0,
+    offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
       let sum = 0;
@@ -53,9 +71,18 @@ function matMul2d_tA(
 }
 
 function matMul2d_tB(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
-  let offsetA = 0, offsetB = 0, offsetC = 0;
+  A: Float32Array | Float64Array,
+  B: Float32Array | Float64Array,
+  C: Float32Array | Float64Array,
+  alpha: number,
+  beta: number,
+  M: number,
+  N: number,
+  K: number,
+) {
+  let offsetA = 0,
+    offsetB = 0,
+    offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
       let sum = 0;
@@ -76,9 +103,18 @@ function matMul2d_tB(
 }
 
 function matMul2d_tAtB(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, alpha: number,
-    beta: number, M: number, N: number, K: number) {
-  let offsetA = 0, offsetB = 0, offsetC = 0;
+  A: Float32Array | Float64Array,
+  B: Float32Array | Float64Array,
+  C: Float32Array | Float64Array,
+  alpha: number,
+  beta: number,
+  M: number,
+  N: number,
+  K: number,
+) {
+  let offsetA = 0,
+    offsetB = 0,
+    offsetC = 0;
   for (let mm = 0; mm < M; mm++) {
     for (let nn = 0; nn < N; nn++) {
       let sum = 0;
@@ -105,8 +141,17 @@ function matMul2d_tAtB(
  * @param C data of tensor C, whose shape is [M,N]
  */
 export function matMul2d(
-    A: Float32Array|Float64Array, B: Float32Array|Float64Array, C: Float32Array|Float64Array, transA: boolean,
-    transB: boolean, alpha: number, beta: number, M: number, N: number, K: number): void {
+  A: Float32Array | Float64Array,
+  B: Float32Array | Float64Array,
+  C: Float32Array | Float64Array,
+  transA: boolean,
+  transB: boolean,
+  alpha: number,
+  beta: number,
+  M: number,
+  N: number,
+  K: number,
+): void {
   if (transA && transB) {
     matMul2d_tAtB(A, B, C, alpha, beta, M, N, K);
   } else if (transA) {
@@ -119,9 +164,22 @@ export function matMul2d(
 }
 
 function im2col(
-    data_im: Float32Array|Float64Array, data_col: Float32Array|Float64Array, channels: number, height: number,
-    width: number, kernel_h: number, kernel_w: number, dilation_h: number, dilation_w: number, pad_t: number,
-    pad_l: number, pad_b: number, pad_r: number, stride_h: number, stride_w: number) {
+  data_im: Float32Array | Float64Array,
+  data_col: Float32Array | Float64Array,
+  channels: number,
+  height: number,
+  width: number,
+  kernel_h: number,
+  kernel_w: number,
+  dilation_h: number,
+  dilation_w: number,
+  pad_t: number,
+  pad_l: number,
+  pad_b: number,
+  pad_r: number,
+  stride_h: number,
+  stride_w: number,
+) {
   const output_h = ~~((height + pad_b + pad_t - (dilation_h * (kernel_h - 1) + 1)) / stride_h) + 1;
   const output_w = ~~((width + pad_l + pad_r - (dilation_w * (kernel_w - 1) + 1)) / stride_w) + 1;
 
@@ -133,16 +191,19 @@ function im2col(
       const rest = k % (kernel_h * kernel_w);
       const kh = ~~(rest / kernel_w);
       const kw = rest % kernel_w;
-      const dst_offset = nip * (kernel_h * kernel_w * output_h * output_w) + kh * (kernel_w * output_h * output_w) +
-          kw * (output_h * output_w);
+      const dst_offset =
+        nip * (kernel_h * kernel_w * output_h * output_w) +
+        kh * (kernel_w * output_h * output_w) +
+        kw * (output_h * output_w);
       const src_offset = nip * (height * width);
       for (let y = 0; y < output_h; y++) {
         const iy = y * stride_h + kh;
         const ix = kw;
         if (stride_w === 1) {
           data_col.set(
-              data_im.subarray(src_offset + iy * width + ix, src_offset + iy * width + ix + output_w),
-              dst_offset + y * output_w);
+            data_im.subarray(src_offset + iy * width + ix, src_offset + iy * width + ix + output_w),
+            dst_offset + y * output_w,
+          );
         } else {
           for (let x = 0; x < output_w; x++) {
             data_col[dst_offset + (y * output_w + x)] = data_im[src_offset + (iy * width + ix + x * stride_w)];
@@ -180,8 +241,15 @@ function im2col(
 }
 
 export function conv2d(
-    Y: Tensor, X: Tensor, W: Tensor, B: Tensor|undefined, dilations: readonly number[], group: number,
-    pads: readonly number[], strides: readonly number[]): void {
+  Y: Tensor,
+  X: Tensor,
+  W: Tensor,
+  B: Tensor | undefined,
+  dilations: readonly number[],
+  group: number,
+  pads: readonly number[],
+  strides: readonly number[],
+): void {
   const input_num = X.dims[0];
   const input_channels = X.dims[1];
   const input_height = X.dims[2];
@@ -203,10 +271,10 @@ export function conv2d(
   const input_image_size = input_height * input_width;
   const output_image_size = output_height * output_width;
   const kernel_size = kernel_shape[0] * kernel_shape[1];
-  const X_offset = input_channels / group * input_image_size;
+  const X_offset = (input_channels / group) * input_image_size;
   const Y_offset = output_size / output_num / group;
   const W_offset = filter_size / group;
-  const kernel_dim = input_channels / group * kernel_size;
+  const kernel_dim = (input_channels / group) * kernel_size;
   const col_buffer_size = kernel_dim * output_image_size;
 
   const col_buffer_data = new Float32Array(col_buffer_size);
@@ -216,14 +284,35 @@ export function conv2d(
     let Y_image_offset = 0;
     for (let group_id = 0; group_id < group; ++group_id) {
       im2col(
-          X.floatData.subarray(X_image_offset + group_id * X_offset), col_buffer_data, input_channels / group,
-          input_height, input_width, kernel_shape[0], kernel_shape[1], dilations[0], dilations[1], pads[0], pads[1],
-          pads[2], pads[3], strides[0], strides[1]);
+        X.floatData.subarray(X_image_offset + group_id * X_offset),
+        col_buffer_data,
+        input_channels / group,
+        input_height,
+        input_width,
+        kernel_shape[0],
+        kernel_shape[1],
+        dilations[0],
+        dilations[1],
+        pads[0],
+        pads[1],
+        pads[2],
+        pads[3],
+        strides[0],
+        strides[1],
+      );
 
       matMul2d(
-          W.floatData.subarray(group_id * W_offset), col_buffer_data,
-          Y.floatData.subarray(Y_image_offset + group_id * Y_offset), false, false, 1, 0, filter_num / group,
-          output_image_size, kernel_dim);
+        W.floatData.subarray(group_id * W_offset),
+        col_buffer_data,
+        Y.floatData.subarray(Y_image_offset + group_id * Y_offset),
+        false,
+        false,
+        1,
+        0,
+        filter_num / group,
+        output_image_size,
+        kernel_dim,
+      );
     }
 
     X_image_offset += X_offset * group;

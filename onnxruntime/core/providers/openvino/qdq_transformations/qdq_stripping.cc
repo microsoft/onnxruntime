@@ -583,22 +583,23 @@ static void AddQDQNodeUnit(onnxruntime::Graph& dst_graph,
 
   // Handle Qs in the NodeUnit
   if (!node_unit.GetQNodes().empty()) {
-    ORT_ENFORCE(node_unit.GetQNodes().size() == 1);
-    const auto& q_node = node_unit.GetQNodes().at(0);
+    for (size_t i = 0; i < node_unit.GetQNodes().size(); i++) {
+      const auto& q_node = node_unit.GetQNodes().at(i);
 
-    SkipReason reason;
+      SkipReason reason;
 
-    bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
+      bool keep_q = CheckQRuleSet(node_unit, q_node, src_graph, reason);
 
-    if (keep_q) {
-      AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
-      // if keep_q, then output defs of the target node doesn't change
-      output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(0)->Name(),
-                                                          target_node.OutputDefs().at(0)->TypeAsProto()));
-    } else {
-      // convert this Q to float
-      output_args.push_back(&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
-                                               node_unit_outputs.at(0)));
+      if (keep_q) {
+        AddNode(initializers_to_keep, src_graph, dst_graph, *q_node);
+        // if keep_q, then output defs of the target node doesn't change
+        output_args.push_back(&dst_graph.GetOrCreateNodeArg(target_node.OutputDefs().at(i)->Name(),
+                                                            target_node.OutputDefs().at(i)->TypeAsProto()));
+      } else {
+        // convert this Q to float
+        output_args.push_back(&ProcessNodeUnitIO(dst_graph, src_graph, initializers_to_keep,
+                                                 node_unit_outputs.at(i)));
+      }
     }
   } else {
     for (const auto& node_unit_output : node_unit_outputs) {

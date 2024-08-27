@@ -11,9 +11,6 @@ parameters:
 - name: CudaVersion
   type: string
 
-- name: docker_base_image
-  type: string
-
 - name: win_trt_home
   type: string
 
@@ -42,7 +39,6 @@ stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
-    docker_base_image: ${{ parameters.docker_base_image }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 

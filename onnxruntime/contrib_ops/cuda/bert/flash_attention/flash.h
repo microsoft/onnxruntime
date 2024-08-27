@@ -121,6 +121,8 @@ struct Flash_fwd_params : public Qkv_params {
 
   bool is_rotary_interleaved = false;
 
+  bool smooth_softmax = false;
+
   int num_splits = 0;  // For split-KV version
 
   void* __restrict__ alibi_slopes_ptr = nullptr;

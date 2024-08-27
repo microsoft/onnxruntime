@@ -1583,10 +1583,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_min_subgraph_size must be a positive integer value. Set it to 1";
     min_subgraph_size_ = 1;
   }
-  if (max_workspace_size_ <= 0) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_workspace_size must be a positive integer value. Set it to 1073741824 (1GB)";
-    max_workspace_size_ = 1 << 30;
-  }
   if (dla_core_ < 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_dla_core must be a non-negative integer value. Set it to 0";
     dla_core_ = 0;
@@ -2756,7 +2752,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
-  trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+  if (max_workspace_size_ > 0) {
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+  }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
   if (fp16_enable_ && layer_norm_fp32_fallback_) {
@@ -3363,7 +3361,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-          dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision,
+          dla_enable_, dla_core_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
           context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
@@ -3538,7 +3536,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       trt_state->context->reset();
       trt_state->engine->reset();
       auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-      trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, *(trt_state->max_workspace_size_ptr));
+      if (max_workspace_size_ > 0) {
+        trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+      }
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
       }
@@ -3750,6 +3750,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
       }
       trt_context = trt_state->context->get();
+    }
+
+    // Check before using trt_engine
+    if (trt_engine == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
     }
 
     // Get input and output binding names
@@ -4074,6 +4079,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    // Check before using trt_engine
+    if (trt_engine == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "No engine is found.");
+    }
 
     // Get input and output binding names
     int total_bindings = trt_engine->getNbIOTensors();

@@ -123,6 +123,7 @@ struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
 struct FunctionProto;
 struct InferenceContext;
+struct OpSchema;
 class GraphInferencer;
 using InferenceFunction = std::function<void(InferenceContext&)>;
 }  // namespace ONNX_NAMESPACE

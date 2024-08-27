@@ -5,6 +5,7 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
+#include "core/framework/int4.h"
 #include <gsl/gsl>
 #include <optional>
 
@@ -20,6 +21,8 @@ namespace onnxruntime
 }
 
 using MLFloat16 = onnxruntime::MLFloat16;
+using MLUInt4x2 = onnxruntime::Int4x2Base<false>;
+using MLInt4x2 = onnxruntime::Int4x2Base<true>;
 
 //
 // Traits for numeric attribute types
@@ -41,6 +44,18 @@ template <>
 struct MLTypeTraits<int32_t>
 {
     static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Int32;
+};
+
+template <>
+struct MLTypeTraits<onnxruntime::Int4x2Base<false>>
+{
+    static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::UInt4;
+};
+
+template <>
+struct MLTypeTraits<onnxruntime::Int4x2Base<true>>
+{
+    static const MLOperatorTensorDataType TensorType = MLOperatorTensorDataType::Int4;
 };
 
 template <>
