@@ -28,7 +28,7 @@ enum NODE_MODE : uint8_t {
   BRANCH_GT = 8,
   BRANCH_EQ = 10,
   BRANCH_NEQ = 12,
-  BRANCH_SM = 14
+  BRANCH_MEMBER = 14
 };
 
 static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
@@ -50,8 +50,8 @@ static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_EQ") {
     return NODE_MODE::BRANCH_EQ;
   }
-  if (input == "BRANCH_SM") {
-    return NODE_MODE::BRANCH_SM;
+  if (input == "BRANCH_MEMBER") {
+    return NODE_MODE::BRANCH_MEMBER;
   }
   return NODE_MODE::BRANCH_NEQ;
 }

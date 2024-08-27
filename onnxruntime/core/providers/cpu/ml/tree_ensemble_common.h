@@ -443,7 +443,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
   const auto node_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[i]) : nodes_values_as_tensor[i];
   if (node.flags == NODE_MODE::BRANCH_EQ && CANMASK(node_threshold, ThresholdType)) {
     UpdateThreshold(node_threshold, node.value_or_unique_weight);
-    node.flags = NODE_MODE::BRANCH_SM;
+    node.flags = NODE_MODE::BRANCH_MEMBER;
   } else {
     node.value_or_unique_weight = node_threshold;
   }
@@ -456,12 +456,12 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     auto falsenode_id = falsenode_ids[i];
 
     // Categoricals are represented as a chain of `EQ` nodes where the subtree for the true child is identical for all nodes in the chain
-    // Below we are folding together these nodes into one of mode `BRANCH_SM`
+    // Below we are folding together these nodes into one of mode `BRANCH_MEMBER`
     // The threshold of this node should be interpreted as a bitmask showing which categoricals values were found in the chain
     // Afterwards, when looking whether a feature is included we can do an `and` with the mask of the node
     // and the one of the feature (the mask has only one bit set on the place for its value)
     // Beware that if a category is bigger than the threshold type, the node stays as `EQ` and no combination is done
-    if (nodes_[node_pos].flags == NODE_MODE::BRANCH_SM) {
+    if (nodes_[node_pos].flags == NODE_MODE::BRANCH_MEMBER) {
       auto falsenode_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[falsenode_id]) : nodes_values_as_tensor[falsenode_id];
 
       while (cmodes[falsenode_id] == NODE_MODE::BRANCH_EQ && nodes_[node_pos].feature_id == nodes_featureids[falsenode_id] &&
@@ -837,7 +837,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
       case NODE_MODE::BRANCH_NEQ:
         TREE_FIND_VALUE(!=)
         break;
-      case NODE_MODE::BRANCH_SM:
+      case NODE_MODE::BRANCH_MEMBER:
         if (has_missing_tracks_) {
           while (root->is_not_leaf()) {
             val = x_data[root->feature_id];
@@ -884,7 +884,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           root = val != threshold || (root->is_missing_track_true() && _isnan_(val)) ? root->truenode_or_weight.ptr
                                                                                      : root + 1;
           break;
-        case NODE_MODE::BRANCH_SM:
+        case NODE_MODE::BRANCH_MEMBER:
           root = (SetMembershipCheck(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
                      ? root->truenode_or_weight.ptr
                      : root + 1;
