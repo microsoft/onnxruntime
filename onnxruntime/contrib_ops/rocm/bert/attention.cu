@@ -53,7 +53,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
@@ -63,7 +63,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &attn,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -190,8 +190,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.v_buffer = v_buffer;
     params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
 
-    if (relative_position_bias != nullptr) {
-      params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
+    if (attention_bias != nullptr) {
+      params.bias_buffer = reinterpret_cast<const HipT*>(attention_bias->DataRaw());
     }
 
     if (mask_index != nullptr) {

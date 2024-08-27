@@ -20,6 +20,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 // std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char*);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VSINPU();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
@@ -50,6 +51,7 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const OrtOpenVINOProviderOptions* params);
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);

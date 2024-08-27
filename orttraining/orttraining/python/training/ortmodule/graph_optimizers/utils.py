@@ -41,13 +41,13 @@ class GraphMatcher:
         * Second bool indicates it's producer node or consumer node for source node.
         * There is a list to describe the edge infos of this node to other nodes, each edge is a tuple with 3 integers,
           first integer is the index of the target node in the list, second integer is the output index of the edge,
-          and thrid integer is the input index of the edge.
+          and third integer is the input index of the edge.
 
     For each entry, GraphMatcher used the first edge to lookup target node, and try to use make sure the sug-graph also
     matches rest edge infos.
 
     Note that when lookup target node, it will only take the first matched node as target node. For example, if a source
-    node has multiple "MatMul" consumers nodes comsuming same output, only the first "MatMul" node will be returned.
+    node has multiple "MatMul" consumers nodes consuming same output, only the first "MatMul" node will be returned.
     You need to avoid using such confusing edge info as the first edge info for node lookup. Try to use other edge to
     avoid such confusion if possible.
     """

@@ -635,16 +635,18 @@ function Install-ONNX {
     if ($lastExitCode -ne 0) {
       exit $lastExitCode
     }
-
+    $temp_dir = Get-TempDirectory
+    $new_requirements_text_file = Join-Path $temp_dir "new_requirements.txt"
     Write-Host "Installing python packages..."
-    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+    Get-Content "$src_root\tools\ci_build\github\linux\docker\inference\x86_64\python\cpu\scripts\requirements.txt" | Select-String -pattern 'onnx' -notmatch | Out-File $new_requirements_text_file
+
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "-r", $new_requirements_text_file
     &"python.exe" $pip_args
     if ($lastExitCode -ne 0) {
       exit $lastExitCode
     }
 
     $url=Get-DownloadURL -name onnx -src_root $src_root
-    $temp_dir = Get-TempDirectory
     $onnx_src_dir = Join-Path $temp_dir "onnx"
     $download_finished = DownloadAndExtract -Uri $url -InstallDirectory $onnx_src_dir -Force
     if(-Not $download_finished){

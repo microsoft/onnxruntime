@@ -80,7 +80,8 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       1,
       "./compiled_model.mxr",
       1,
-      "./compiled_model.mxr"};
+      "./compiled_model.mxr",
+      1};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -109,7 +110,8 @@ std::unique_ptr<IExecutionProvider> OpenVINOExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
+  SessionOptions session_options;
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map, &session_options)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -184,6 +186,14 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
 #if defined(USE_NNAPI) && defined(__ANDROID__)
   return NnapiProviderFactoryCreator::Create(0, {})->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider() {
+#if defined(USE_VSINPU)
+  return VSINPUProviderFactoryCreator::Create()->CreateProvider();
 #else
   return nullptr;
 #endif

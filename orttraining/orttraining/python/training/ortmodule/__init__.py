@@ -194,7 +194,7 @@ if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and "-m" not i
         ),
     )
 
-# Initalized ORT's random seed with pytorch's initial seed
+# Initialized ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule
 set_seed(torch.initial_seed() % sys.maxsize)
 

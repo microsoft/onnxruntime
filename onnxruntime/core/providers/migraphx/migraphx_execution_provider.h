@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include <miopen/miopen.h>
-#include <rocblas/rocblas.h>
-
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
@@ -14,8 +11,7 @@
 
 #include <map>
 #include <unordered_map>
-// TODO: find a better way to share this
-// #include "core/providers/cuda/rocm_stream_handle.h"
+#include <filesystem>
 
 namespace onnxruntime {
 
@@ -30,6 +26,7 @@ static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
 static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILE_PATH";
 static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
 static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILE_PATH";
+static const char kExhaustiveTune[] = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
 
 };  // namespace migraphx_env_vars
 
@@ -54,6 +51,7 @@ struct MIGraphXFuncState {
   bool load_compiled_mode = false;
   std::string load_compiled_path;
   bool dump_model_ops = false;
+  bool exhaustive_tune = false;
 };
 
 // Logical device representation.
@@ -62,13 +60,11 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider();
 
-#ifdef MIGRAPHX_STREAM_SYNC
   Status Sync() const override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
-#endif
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -85,23 +81,30 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  int GetDeviceId() const override { return info_.device_id; }
+  ProviderOptions GetProviderOptions() const override {
+    return MIGraphXExecutionProviderInfo::ToProviderOptions(info_);
+  }
+
  private:
+  MIGraphXExecutionProviderInfo info_;
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
   std::string int8_calibration_cache_name_;
   bool int8_calibration_cache_available_ = false;
   bool int8_use_native_migraphx_calibration_table_ = false;
   std::string calibration_cache_path_;
-  std::unordered_map<std::string, float> dynamic_range_map;
+  std::unordered_map<std::string, float> dynamic_range_map_;
   bool save_compiled_model_ = false;
   std::string save_compiled_path_;
   bool load_compiled_model_ = false;
   std::string load_compiled_path_;
   bool dump_model_ops_ = false;
-  int device_id_;
   migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  bool exhaustive_tune_ = false;
+  mutable std::filesystem::path model_path_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;
   std::unordered_map<std::string, std::string> map_onnx_string_;
@@ -109,8 +112,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, bool> map_no_input_shape_;
 
   AllocatorPtr allocator_;
-  miopenHandle_t external_miopen_handle_ = nullptr;
-  rocblas_handle external_rocblas_handle_ = nullptr;
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 

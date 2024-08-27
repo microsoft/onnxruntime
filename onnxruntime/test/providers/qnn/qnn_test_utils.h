@@ -34,6 +34,15 @@ struct QuantParams {
   QType zero_point;
 
   static QuantParams<QType> Compute(float rmin, float rmax, bool symmetric = false) {
+    return Compute(
+        rmin,
+        rmax,
+        static_cast<float>(std::numeric_limits<QType>::min()),
+        static_cast<float>(std::numeric_limits<QType>::max()),
+        symmetric);
+  }
+
+  static QuantParams<QType> Compute(float rmin, float rmax, float qmin, float qmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -41,27 +50,27 @@ struct QuantParams {
     rmin = std::min(rmin, 0.0f);
     rmax = std::max(rmax, 0.0f);
 
-    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
-    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
-
     if (symmetric) {
       const float abs_max = std::max(std::abs(rmin), std::abs(rmax));
       rmax = abs_max;
       rmin = -abs_max;
     }
 
-    const float scale = (rmax - rmin) / (qmax - qmin);
+    float qmin_flt = qmin;
+    float qmax_flt = qmax;
+    const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
     float initial_zero_point = 0.0f;
 
     if (symmetric) {
       // Symmetric uses same formula for zero-point as asymmetric, but we can cancel out terms for
       // increased numerical accuracy.
-      initial_zero_point = (qmin + qmax) / 2.0f;
+      initial_zero_point = (qmin_flt + qmax_flt) / 2.0f;
     } else {
-      initial_zero_point = qmin - (rmin / scale);
+      initial_zero_point = qmin_flt - (rmin / scale);
     }
 
-    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin, std::min(qmax, initial_zero_point))));
+    const QType zero_point = static_cast<QType>(RoundHalfToEven(std::max(qmin_flt,
+                                                                         std::min(qmax_flt, initial_zero_point))));
 
     return QuantParams<QType>{scale, zero_point};
   }
@@ -238,7 +247,7 @@ struct TestInputDef {
     assert(which_type == 0);
 
     const std::vector<T>& raw_data = std::get<RawData>(data_info_).data;
-    std::pair<T, T> init_range(std::numeric_limits<T>::max(), std::numeric_limits<T>::min());
+    std::pair<T, T> init_range(std::numeric_limits<T>::max(), std::numeric_limits<T>::lowest());
     std::vector<std::pair<T, T>> per_axis_ranges(num_ranges, init_range);
     TensorShape shape(shape_);
     size_t num_blocks = shape.SizeToDimension(axis);
@@ -292,6 +301,37 @@ static void GetTestInputQuantParamsPerChannel(const TestInputDef<float>& input_d
   }
 }
 
+// Define functions to get the quantization parameters (i.e., scale/zp) for input data that will be quantized
+// as int4 per-channel.
+#define DEF_GET_INPUT_QPARAMS_PER_CHAN_INT4_FUNC(INT4x2_TYPE)                                                 \
+  template <>                                                                                                 \
+  inline void GetTestInputQuantParamsPerChannel<INT4x2_TYPE>(const TestInputDef<float>& input_def,            \
+                                                             std::vector<float>& scales,                      \
+                                                             std::vector<INT4x2_TYPE>& zero_points,           \
+                                                             size_t axis, bool symmetric) {                   \
+    using UnpackedType = typename INT4x2_TYPE::UnpackedType;                                                  \
+    const auto f32_ranges = input_def.GetRangePerChannel(axis);                                               \
+    const size_t num_ranges = f32_ranges.size();                                                              \
+                                                                                                              \
+    scales.resize(num_ranges);                                                                                \
+    zero_points.resize(INT4x2_TYPE::CalcNumInt4Pairs(num_ranges));                                            \
+                                                                                                              \
+    for (size_t i = 0; i < num_ranges; i++) {                                                                 \
+      const auto& range = f32_ranges[i];                                                                      \
+      QuantParams<UnpackedType> params = QuantParams<UnpackedType>::Compute(range.first, range.second,        \
+                                                                            INT4x2_TYPE::min_val,             \
+                                                                            INT4x2_TYPE::max_val, symmetric); \
+      scales[i] = params.scale;                                                                               \
+                                                                                                              \
+      size_t r = i >> 1;                                                                                      \
+      size_t c = i & 0x1;                                                                                     \
+      zero_points[r].SetElem(c, params.zero_point);                                                           \
+    }                                                                                                         \
+  }
+
+DEF_GET_INPUT_QPARAMS_PER_CHAN_INT4_FUNC(Int4x2)
+DEF_GET_INPUT_QPARAMS_PER_CHAN_INT4_FUNC(UInt4x2)
+
 template <typename FloatType, typename QuantType>
 static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType> output, const TensorShape& shape,
                            gsl::span<const FloatType> scales, gsl::span<const QuantType> zero_points,
@@ -331,6 +371,52 @@ static void QuantizeValues(gsl::span<const FloatType> input, gsl::span<QuantType
     }
   }
 }
+
+// Define functions to quantize input data to 4-bits. Quantization can be done per-tensor or per-channel.
+#define DEF_QUANTIZE_VALUES_INT4_FUNC(INT4x2_TYPE, QUANT_FUNC)                                               \
+  template <>                                                                                                \
+  inline void QuantizeValues<float, INT4x2_TYPE>(gsl::span<const float> input,                               \
+                                                 gsl::span<INT4x2_TYPE> output,                              \
+                                                 const TensorShape& shape,                                   \
+                                                 gsl::span<const float> scales,                              \
+                                                 gsl::span<const INT4x2_TYPE> zero_points,                   \
+                                                 std::optional<int64_t> axis) {                              \
+    using UnpackedType = typename INT4x2_TYPE::UnpackedType;                                                 \
+    const size_t input_rank = shape.NumDimensions();                                                         \
+    const size_t num_int4_elems = static_cast<size_t>(shape.Size());                                         \
+    ORT_ENFORCE(input.size() == num_int4_elems);                                                             \
+    ORT_ENFORCE(output.size() == INT4x2_TYPE::CalcNumInt4Pairs(num_int4_elems));                             \
+                                                                                                             \
+    size_t block_count = 1;                                                                                  \
+    size_t broadcast_dim = 1;                                                                                \
+    size_t block_size = num_int4_elems;                                                                      \
+                                                                                                             \
+    if (axis.has_value()) {                                                                                  \
+      size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + input_rank : static_cast<size_t>(*axis); \
+      block_count = shape.SizeToDimension(axis_no_neg);                                                      \
+      broadcast_dim = shape[axis_no_neg];                                                                    \
+      block_size = shape.SizeFromDimension(axis_no_neg + 1);                                                 \
+    }                                                                                                        \
+                                                                                                             \
+    ORT_ENFORCE(scales.size() == broadcast_dim);                                                             \
+    ORT_ENFORCE(zero_points.empty() || zero_points.size() == INT4x2_TYPE::CalcNumInt4Pairs(broadcast_dim));  \
+                                                                                                             \
+    size_t i = 0;                                                                                            \
+                                                                                                             \
+    for (size_t n = 0; n < block_count; n++) {                                                               \
+      for (size_t bd = 0; bd < broadcast_dim; bd++) {                                                        \
+        size_t bd_i = bd >> 1;  /* bd / 2 */                                                                 \
+        size_t bd_j = bd & 0x1; /* bd % 2 */                                                                 \
+        UnpackedType zp = !zero_points.empty() ? zero_points[bd_i].GetElem(bd_j) : 0;                        \
+        QUANT_FUNC(&input[i], output.data(), i, i + block_size, scales[bd], INT4x2_TYPE(zp, 0), nullptr);    \
+        i += block_size;                                                                                     \
+      }                                                                                                      \
+    }                                                                                                        \
+    assert(i == (block_count * broadcast_dim * block_size));                                                 \
+  }
+
+DEF_QUANTIZE_VALUES_INT4_FUNC(Int4x2, ParQuantizeLinearStdS4)
+DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
 
 /**
  * Inferences a given serialized model. Returns output values via an out-param.
@@ -414,6 +500,10 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
+
+  // Uncomment to dump LOGGER() output to stdout.
+  // logging_manager.RemoveSink(logging::SinkType::EtwSink);
+
   logging_manager.SetDefaultLoggerSeverity(log_severity);
 
   // Create float model and serialize it to a string.
@@ -426,6 +516,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   f32_helper.SetGraphOutputs();
   ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
   f32_model.ToProto().SerializeToString(&f32_model_data);
+
+  // Uncomment to save f32 model to disk for debugging.
+  // ASSERT_STATUS_OK(onnxruntime::Model::Save(f32_model, ToPathString("cmp_accuracy.f32.onnx")));
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
@@ -465,6 +558,9 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   qdq_helper.SetGraphOutputs();
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
+
+  // Uncomment to save QDQ model to disk for debugging.
+  // ASSERT_STATUS_OK(onnxruntime::Model::Save(qdq_model, ToPathString("cmp_accuracy.qdq.onnx")));
 
   bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);

@@ -18,7 +18,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      void* parameters,
                      const int max_threads_per_block,  // for CUDA
                      const Tensor* past_seq_len = nullptr) const;
@@ -63,12 +63,11 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      void* parameters,
                      const Tensor* past_seq_len = nullptr) const;
 
   int num_heads_;                          // number of attention heads
-  int kv_num_heads_;                       // different for k and v for group query attention
   bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.

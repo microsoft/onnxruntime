@@ -35,6 +35,7 @@ Do not modify directly.*
 | Cosh | ai.onnx(9+) |  |
 | CumSum | ai.onnx(11-13,14+) |  |
 | DepthToSpace | ai.onnx(11-12,13+); com.ms.internal.nhwc(11-12,13+) |  |
+| DequantizeLinear | ai.onnx(10-12,13-18,19-20,21+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
@@ -47,8 +48,9 @@ Do not modify directly.*
 | Floor | ai.onnx(6-12,13+) |  |
 | FusedConv | com.microsoft(1+) |  |
 | Gather | ai.onnx(1-10,11-12,13+) |  |
+| GatherBlockQuantized | com.microsoft(1+) |  |
 | GatherElements | ai.onnx(11-12,13+) |  |
-| Gelu | com.microsoft(1+) |  |
+| Gelu | ai.onnx(20+); com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
@@ -58,7 +60,7 @@ Do not modify directly.*
 | HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19+) |  |
 | InstanceNormalization | ai.onnx(6+); com.ms.internal.nhwc(6+) |  |
-| LayerNormalization | ai.onnx(17+) |  |
+| LayerNormalization | ai.onnx(1-16,17+) |  |
 | LeakyRelu | ai.onnx(6-15,16+) |  |
 | Less | ai.onnx(7-8,9-12,13+) |  |
 | LessOrEqual | ai.onnx(12-15,16+) |  |

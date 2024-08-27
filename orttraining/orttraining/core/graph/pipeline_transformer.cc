@@ -446,7 +446,7 @@ void FindPipelineLandmarks(
 //
 // The input graph is a pipeline's stage, which contains some Send's and Recv's.
 //
-// For diferent pipeline stages, they have different communication patterns as
+// For different pipeline stages, they have different communication patterns as
 // shown below.
 //
 //  1. First stage:
@@ -887,7 +887,7 @@ struct PipelineStageNodeGroup {
   // the consumer nodes of a particular initializer can be more than one, so we need a vector to store those
   // nodes.
   std::vector<Node*> nodes;
-  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)){};
+  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)) {};
 };
 
 // This function passes through the given initializer across stages specified in node_groups[i].stage_id.
@@ -1615,7 +1615,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
                                                        send_nodes, recv_nodes,
                                                        stage_to_rank));
 
-  // Take care of weights that are shared accross stages.
+  // Take care of weights that are shared across stages.
   ORT_RETURN_IF_ERROR(HandleSharedInitializer(graph, send_nodes, recv_nodes));
 
   std::set<const NodeArg*> visited_outputs;

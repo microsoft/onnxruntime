@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {GlslContext, GlslLib, GlslLibRoutineNode, TopologicalSortGlslRoutines} from './glsl-definitions';
-import {replaceInlines} from './glsl-function-inliner';
-import {glslRegistry} from './glsl-registered-libs';
-import {getDefaultFragShaderMain, getFragShaderPreamble} from './glsl-source';
-import {ProgramInfo, TextureLayout, VariableInfo} from './types';
-import {WebGLContext} from './webgl-context';
+import { GlslContext, GlslLib, GlslLibRoutineNode, TopologicalSortGlslRoutines } from './glsl-definitions';
+import { replaceInlines } from './glsl-function-inliner';
+import { glslRegistry } from './glsl-registered-libs';
+import { getDefaultFragShaderMain, getFragShaderPreamble } from './glsl-source';
+import { ProgramInfo, TextureLayout, VariableInfo } from './types';
+import { WebGLContext } from './webgl-context';
 
 /**
  * Preprocessor for the additions to the GLSL language
@@ -18,12 +18,15 @@ import {WebGLContext} from './webgl-context';
  */
 export class GlslPreprocessor {
   readonly context: GlslContext;
-  readonly libs: {[name: string]: GlslLib} = {};
-  readonly glslLibRoutineDependencyGraph: {[routineName: string]: GlslLibRoutineNode} = {};
+  readonly libs: { [name: string]: GlslLib } = {};
+  readonly glslLibRoutineDependencyGraph: { [routineName: string]: GlslLibRoutineNode } = {};
 
   constructor(
-      glContext: WebGLContext, programInfo: ProgramInfo, inputTextureLayouts: TextureLayout[],
-      outputTextureLayout: TextureLayout) {
+    glContext: WebGLContext,
+    programInfo: ProgramInfo,
+    inputTextureLayouts: TextureLayout[],
+    outputTextureLayout: TextureLayout,
+  ) {
     this.context = new GlslContext(glContext, programInfo, inputTextureLayouts, outputTextureLayout);
 
     // construct GlslLibs
@@ -103,7 +106,7 @@ export class GlslPreprocessor {
   private selectGlslLibRoutinesToBeIncluded(script: string): GlslLibRoutineNode[] {
     const nodes: GlslLibRoutineNode[] = [];
 
-    Object.keys(this.glslLibRoutineDependencyGraph).forEach(classAndRoutine => {
+    Object.keys(this.glslLibRoutineDependencyGraph).forEach((classAndRoutine) => {
       const routine = classAndRoutine.split('.')[1];
       if (script.indexOf(routine) !== -1) {
         nodes.push(this.glslLibRoutineDependencyGraph[classAndRoutine]);
@@ -123,7 +126,8 @@ export class GlslPreprocessor {
     if (variables) {
       for (const variable of variables) {
         uniformLines.push(
-            `uniform ${variable.type} ${variable.name}${variable.arrayLength ? `[${variable.arrayLength}]` : ''};`);
+          `uniform ${variable.type} ${variable.name}${variable.arrayLength ? `[${variable.arrayLength}]` : ''};`,
+        );
       }
     }
     return uniformLines.join('\n');

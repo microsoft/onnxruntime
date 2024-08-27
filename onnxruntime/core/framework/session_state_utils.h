@@ -3,6 +3,9 @@
 
 #pragma once
 #include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
@@ -44,7 +47,29 @@ common::Status SaveInitializedTensors(
     const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
-    const MemoryProfileFunction& memory_profile_func);
+    const MemoryProfileFunction& memory_profile_func,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
+
+common::Status AllocateTensor(
+    const onnxruntime::MemBuffer* m,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    const onnxruntime::DataTypeImpl* const& type,
+    onnxruntime::TensorShape& tensor_shape,
+    bool use_device_allocator_for_initializers,
+    const onnxruntime::AllocatorPtr& alloc);
+
+common::Status AllocateTensorOnDeviceOrMemory(
+    bool use_device_allocator_for_initializers,
+    onnxruntime::TensorShape& tensor_shape,
+    const onnxruntime::DataTypeImpl* const& type,
+    const onnxruntime::AllocatorPtr& alloc,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor);
+
+common::Status CopyTensorFromCPUToDevice(
+    const onnxruntime::DataTransferManager& data_transfer_mgr,
+    std::unique_ptr<onnxruntime::Tensor>& p_deserialize_tensor,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    OrtValue& ort_value);
 
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,

@@ -127,8 +127,8 @@ template <
     ComplexTransform TransformA = ComplexTransform::kNone,
     /// per-element transformation for elements of B
     ComplexTransform TransformB = ComplexTransform::kNone,
-    bool IsComplex = false // (is_complex<ElementA>::value || is_complex<ElementB>::value)
->
+    bool IsComplex = false  // (is_complex<ElementA>::value || is_complex<ElementB>::value)
+    >
 struct DefaultQuantBMmaCore;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -173,10 +173,10 @@ template <
     /// Cache operation of operand B
     cutlass::arch::CacheOperation::Kind CacheOpB>
 struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
-                      layout::RowMajor, ElementB_, layout::ColumnMajor,
-                      ElementQScale_, ElementQOffset_, LayoutQMeta_, QuantBlocking_,
-                      ElementC_, LayoutC_, arch::OpClassTensorOp, Stages,
-                      Operator_, false, CacheOpA, CacheOpB> {
+                            layout::RowMajor, ElementB_, layout::ColumnMajor,
+                            ElementQScale_, ElementQOffset_, LayoutQMeta_, QuantBlocking_,
+                            ElementC_, LayoutC_, arch::OpClassTensorOp, Stages,
+                            Operator_, false, CacheOpA, CacheOpB> {
   using Shape = Shape_;
   using WarpShape = WarpShape_;
   using InstructionShape = InstructionShape_;
@@ -239,7 +239,7 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
       sizeof_bits<ElementA>::value, Shape::kK>;
 
   using SmemLayoutB = layout::ColumnMajorTensorOpMultiplicandCrosswise<
-      sizeof_bits<ElementB>::value, Shape::kK/2>;
+      sizeof_bits<ElementB>::value, Shape::kK / 2>;
 
   //
   // Iterators to write to shared memory
@@ -259,14 +259,14 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
 
   /// ThreadMap of iterator B
   using IteratorThreadMapB = transform::PitchLinearWarpRakedThreadMap<
-      layout::PitchLinearShape<Shape::kK/2, Shape::kN/2>, kThreads,
+      layout::PitchLinearShape<Shape::kK / 2, Shape::kN / 2>, kThreads,
       layout::PitchLinearShape<kWarpThreadArrangementContiguousB,
                                kWarpThreadArrangementStridedB>,
       kAccessSizeInBits / sizeof_bits<ElementB>::value>;
 
   /// Shared memory iterator to B operand
   using SmemIteratorB = transform::threadblock::RegularTileAccessIterator<
-      MatrixShape<Shape::kK/2, Shape::kN/2>, ElementB, SmemLayoutB, 1,
+      MatrixShape<Shape::kK / 2, Shape::kN / 2>, ElementB, SmemLayoutB, 1,
       IteratorThreadMapB>;
 
   using SmemLayoutQScale = LayoutQMeta;
@@ -278,9 +278,9 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
   static_assert(Shape::kN % QuantBlocking::kColumn == 0, "N must be multiple of QuantBlocking::kColumn");
   static_assert(ThreadblockQShape::kCount > 0, "QuantBlocking too big to fit in a thread block!");
   static_assert(QuantBlocking::kRow == 1 || QuantBlocking::kColumn == 1,
-        "Only support single column or row quantize blocking!");
+                "Only support single column or row quantize blocking!");
   static_assert(QuantBlocking::kColumn != 1 || std::is_same<LayoutQMeta, layout::RowMajor>::value,
-        "Quant scale matrix's major dimension must have more elements, to facilitate fast loading!");
+                "Quant scale matrix's major dimension must have more elements, to facilitate fast loading!");
 
   /// Threadblock-level quantization meta data shape in pitch-linear layout
   using TBQPitchLinearShape = typename std::conditional<
@@ -303,7 +303,7 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
       TBQPitchLinearShape, kThreadsQScale, kElementsPerAccessQScale>;
 
   using SmemIteratorQScale = transform::threadblock::RegularTileAccessIterator<
-        ThreadblockQShape, ElementQScale, SmemLayoutQScale, 1, IteratorThreadMapQScale>;
+      ThreadblockQShape, ElementQScale, SmemLayoutQScale, 1, IteratorThreadMapQScale>;
 
   static int const kElementsPerAccessQOffset =
       (kAccessSizeInBits / sizeof_bits<ElementQOffset>::value) > TBQPitchLinearShape::kContiguous
@@ -316,7 +316,7 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
       TBQPitchLinearShape, kThreadsQOffset, kElementsPerAccessQOffset>;
 
   using SmemIteratorQOffset = transform::threadblock::OptionalRegularTileAccessIterator<
-        ThreadblockQShape, ElementQOffset, SmemLayoutQOffset, 1, IteratorThreadMapQOffset, kThreads>;
+      ThreadblockQShape, ElementQOffset, SmemLayoutQOffset, 1, IteratorThreadMapQOffset, kThreads>;
 
   //
   // Warp-level matrix multiply operator
@@ -330,7 +330,7 @@ struct DefaultQuantBMmaCore<Shape_, WarpShape_, InstructionShape_, ElementA_,
 
   /// Policy used to define MmaPipelined
   using MmaPolicy = MmaPolicy<MmaTensorOp, MatrixShape<0, 0>,
-                                        MatrixShape<0, 0>, WarpCount::kK>;
+                              MatrixShape<0, 0>, WarpCount::kK>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

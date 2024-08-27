@@ -35,8 +35,10 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   excluded_providers.insert(excluded_providers_input.cbegin(), excluded_providers_input.cend());
 
   // NNAPI EP does not support empty output
+  // VSINPU EP does not support empty output
   if (std::any_of(output_dims.cbegin(), output_dims.cend(), [](int64_t i) { return i == 0; })) {
     excluded_providers.insert(kNnapiExecutionProvider);
+    excluded_providers.insert(kVSINPUExecutionProvider);
   }
 
   // TODO: ORT behavior when step < 0 and end = INT_MAX is wrong. Fix it and
@@ -88,7 +90,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   run_test(false);
 
-  // NNAPI EP requires the starts/ends/axes/steps be initializers
+  // EPs like NNAPI and CoreML require the starts/ends/axes/steps be initializers
   run_test(true);
 }
 
@@ -514,6 +516,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{0,0}] for output";
+  }
+  if (DefaultVSINPUExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
   }
 
   RunSliceTest<float>({4},

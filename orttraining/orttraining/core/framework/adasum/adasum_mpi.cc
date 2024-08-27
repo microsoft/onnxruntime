@@ -35,8 +35,7 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
   int nearest_power_2 = 1;
   int log_size;
   for (nearest_power_2 = 1, log_size = 0; (nearest_power_2 << 1) <= size;
-       nearest_power_2 = (nearest_power_2 << 1), log_size++)
-    ;
+       nearest_power_2 = (nearest_power_2 << 1), log_size++);
   int shift_val;
   int level;
   reduction_comms_ = std::make_unique<std::vector<MPI_Comm>>();

@@ -191,9 +191,9 @@ stages:
       displayName: 'Create models link'
 
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.1
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.1
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install mobile workloads
@@ -317,3 +317,4 @@ stages:
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'
     NativePackagePrefix: 'onnxruntime-training'
+    CustomOpArtifactName: 'onnxruntime-training-linux-x64'

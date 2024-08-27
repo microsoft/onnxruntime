@@ -796,7 +796,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       auto test_case_dir = model_info->GetDir();
       auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir.native();
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN) && !defined(USE_VSINPU)
       // to skip some models like *-int8 or *-qdq
       if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
           (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
@@ -1035,6 +1035,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   // std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "cuda") {
+#ifdef ENABLE_TRAINING_CORE
+    // cudnn frontend exception in orttraining-linux-gpu-ci-pipeline.
+    broken_tests->insert({"keras_lotus_resnet3D", "Temporarily disabled pending investigation", {}});
+#endif
 #ifdef _WIN32
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests->insert({"bidaf", "this test fails with new image since Aug 25."});

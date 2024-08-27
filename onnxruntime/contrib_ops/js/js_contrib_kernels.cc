@@ -14,6 +14,8 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, FastGe
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, FusedConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Gelu);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, GroupQueryAttention);
+// LayerNormalization used to be a contrib op that (incorrectly) used kOnnxDomain so we need to version it
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 16, LayerNormalization);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, MatMulNBits);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, MultiHeadAttention);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, QuickGelu);
@@ -22,7 +24,13 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, SkipLa
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, SimplifiedLayerNormalization);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, SkipSimplifiedLayerNormalization);
 
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int32_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int64_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int32_t, GatherBlockQuantized);
+class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int64_t, GatherBlockQuantized);
+
 template <>
+
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   KernelCreateInfo info;
   return info;
@@ -37,6 +45,8 @@ Status RegisterJsContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, FusedConv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Gelu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, GroupQueryAttention)>,
+      // LayerNormalization used to be a contrib op that (incorrectly) used kOnnxDomain so we need to version it
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 16, LayerNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, MatMulNBits)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, MultiHeadAttention)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, QuickGelu)>,
@@ -46,8 +56,12 @@ Status RegisterJsContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1,
                                                             SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1,
-                                                            SkipSimplifiedLayerNormalization)>};
-
+                                                            SkipSimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, UInt4x2, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSDomain, 1, Int4x2, int64_t, GatherBlockQuantized)>,
+  };
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void

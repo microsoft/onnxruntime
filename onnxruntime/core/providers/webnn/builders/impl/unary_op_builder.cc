@@ -30,35 +30,37 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   if (op_type == "Abs") {
-    output = model_builder.GetBuilder().call<emscripten::val>("abs", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("abs", input, options);
   } else if (op_type == "Ceil") {
-    output = model_builder.GetBuilder().call<emscripten::val>("ceil", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("ceil", input, options);
   } else if (op_type == "Cos") {
-    output = model_builder.GetBuilder().call<emscripten::val>("cos", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("cos", input, options);
   } else if (op_type == "Erf") {
-    output = model_builder.GetBuilder().call<emscripten::val>("erf", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("erf", input, options);
   } else if (op_type == "Exp") {
-    output = model_builder.GetBuilder().call<emscripten::val>("exp", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("exp", input, options);
   } else if (op_type == "Floor") {
-    output = model_builder.GetBuilder().call<emscripten::val>("floor", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("floor", input, options);
   } else if (op_type == "Identity") {
-    output = model_builder.GetBuilder().call<emscripten::val>("identity", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("identity", input, options);
   } else if (op_type == "Log") {
-    output = model_builder.GetBuilder().call<emscripten::val>("log", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("log", input, options);
   } else if (op_type == "Neg") {
-    output = model_builder.GetBuilder().call<emscripten::val>("neg", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("neg", input, options);
   } else if (op_type == "Not") {
-    output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input, options);
   } else if (op_type == "Reciprocal") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input, options);
   } else if (op_type == "Sin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sin", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("sin", input, options);
   } else if (op_type == "Sqrt") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sqrt", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("sqrt", input, options);
   } else if (op_type == "Tan") {
-    output = model_builder.GetBuilder().call<emscripten::val>("tan", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("tan", input, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
