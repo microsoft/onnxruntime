@@ -53,7 +53,7 @@ class QnnBackendManager {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
   ~QnnBackendManager();
-  char* DlError() {
+  const char* DlError() {
 #ifdef _WIN32
     return nullptr;
 #else
