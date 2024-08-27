@@ -72,6 +72,11 @@
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     include(${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/paged/paged_attention/paged_attention.cmake)
+    file(GLOB_RECURSE paged_attention_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/paged/*.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/paged/*.cu"
+    )
+    set_property(SOURCE ${paged_attention_srcs} ${paged_attention_generated_srcs} PROPERTY COMPILE_DEFINITIONS PAGED_SPLIT_COMPILATION=1)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs} ${paged_attention_generated_srcs})
   endif()
 
