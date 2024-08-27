@@ -90,10 +90,10 @@ Do not modify directly.*
 | ReduceSum | ai.onnx(1-10,11-12,13+) |  |
 | ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
-| Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
+| Reshape | ai.onnx(5-12,13,14-18,19-20,21+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | RotaryEmbedding | com.microsoft(1+) |  |
-| Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
+| Shape | ai.onnx(1-12,13-14,15-18,19-20,21+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | SimplifiedLayerNormalization | ai.onnx(1+) |  |
 | Sin | ai.onnx(7+) |  |
