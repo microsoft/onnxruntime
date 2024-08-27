@@ -12,6 +12,7 @@ using namespace cute;
 
 void launch_reshape_and_cache_fp8(
     stream_t stream,
+    dev_props_ptr dev_props,
     float_e4m3_t* k_cache_out,    // [num_pages,    num_heads, head_size/x, page_size, x]
     float_e4m3_t* v_cache_out,    // [num_pages,    num_heads, head_size,   page_size]
     half* kv_scalebias_out,       // [num_pages, 2, num_heads, 2, num_chunks,  page_size]

@@ -6,6 +6,28 @@
 namespace onnxruntime::contrib::paged {
 namespace warp {
 
+template <typename T>
+__forceinline__ __device__ T
+shfl_xor_sync(const T& val, unsigned int mask) {
+  if constexpr (sizeof(T) < 4) {
+    return SHFL_XOR_SYNC(val, mask);
+  } else if constexpr (sizeof(T) % 4 == 0) {
+    union {
+      T out;
+      uint32_t arr[sizeof(T) / 4];
+    };
+    out = val;
+    CUTE_UNROLL
+    for (int i = 0; i < sizeof(T) / 4; i++) {
+      arr[i] = SHFL_XOR_SYNC(arr[i], mask);
+    }
+    return out;
+  } else {
+    static_assert(always_false<T>);
+    return val;
+  }
+}
+
 // Perform (sub-)warp reduction. The resulting value will be available at leading thread in the group.
 template <int GroupSize, bool Strided, typename T, typename Func>
 __forceinline__ __device__ T
@@ -20,7 +42,7 @@ reduce(const T& in, Func&& elementwise_reduce_operator) {
     T val = in;
     CUTE_UNROLL
     for (int mask = (GroupSize * Stride) / 2; mask >= Stride; mask /= 2) {
-      val = std::forward<Func&&>(elementwise_reduce_operator)(val, SHFL_XOR_SYNC(val, mask));
+      val = std::forward<Func&&>(elementwise_reduce_operator)(val, shfl_xor_sync(val, mask));
     }
     return val;
   } else {
@@ -35,7 +57,7 @@ reduce(const T& in, Func&& elementwise_reduce_operator) {
     for (int mask = (GroupSize * Stride) / 2; mask >= Stride; mask /= 2) {
       CUTE_UNROLL
       for (int i = 0; i < size(in); i++) {
-        vec(i) = std::forward<Func&&>(elementwise_reduce_operator)(vec(i), SHFL_XOR_SYNC(vec(i), mask));
+        vec(i) = std::forward<Func&&>(elementwise_reduce_operator)(vec(i), shfl_xor_sync(vec(i), mask));
       }
     }
     return vec;
@@ -58,9 +80,9 @@ broadcast(const T& in) {
   );
 
 #if !defined(__HIPCC__)
-  __shfl_sync(uint32_t(-1), in, 0, GroupSize);
+  return __shfl_sync(uint32_t(-1), in, 0, GroupSize);
 #else
-  __shfl(in, 0, GroupSize);
+  return __shfl(in, 0, GroupSize);
 #endif
 }
 

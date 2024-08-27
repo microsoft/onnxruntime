@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cuda/bert/paged/cuda_common.cuh"
 #include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_dp.cuh"
+#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_dpo_reduction.cuh"
 #include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_ws.cuh"
 
 namespace onnxruntime::contrib::paged {
@@ -15,29 +16,11 @@ struct WorkStealing {};
 
 namespace detail {
 
-template <typename Sch>
-struct IsGroupQuerySupported {
-  static constexpr bool value = false;
-};
-
-template <>
-struct IsGroupQuerySupported<DataParallelOutOfPlace> {
-  static constexpr bool value = true;
-};
-
-template <>
-struct IsGroupQuerySupported<DataParallelInPlace> {
-  static constexpr bool value = true;
-};
-
-template <typename Sch>
-inline constexpr bool is_group_query_supported_v = IsGroupQuerySupported<Sch>::value;
-
 template <typename TIO, typename TKV, typename TSB, typename Sch, int NumQueriesPerCta>
 struct LBPAttentionKernel {
   static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,
@@ -66,7 +49,7 @@ template <typename TIO, typename TKV, typename TSB, int NumQueriesPerCta>
 struct LBPAttentionKernel<TIO, TKV, TSB, WorkStealing, NumQueriesPerCta> {
   static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,
@@ -88,7 +71,7 @@ struct LBPAttentionKernel<TIO, TKV, TSB, WorkStealing, NumQueriesPerCta> {
   ) {
     constexpr int NumThreads = 128;
     constexpr int NumCtaPerProcessor = 2;
-    dim3 grid(NumCtaPerProcessor * num_processors);
+    dim3 grid(NumCtaPerProcessor * dev_props->multiProcessorCount);
     dim3 block(NumThreads);
 #define LAUNCH_LBP_ATTENTION_WORK_STEALING_KERNEL_AND_BREAK(HEAD_SIZE, PAGE_SIZE)     \
   lbp_attention_work_stealing_kernel<NumThreads, HEAD_SIZE, PAGE_SIZE, TIO, TKV, TSB> \
@@ -193,11 +176,12 @@ struct LBPAttentionKernel<TIO, TKV, TSB, WorkStealing, NumQueriesPerCta> {
 template <typename TIO, typename TKV, typename TSB, int NumQueriesPerCta>
 struct LBPAttentionKernel<TIO, TKV, TSB, DataParallelOutOfPlace, NumQueriesPerCta> {
   using Config = DataParallelConfig<false, false, NumQueriesPerCta>;
+  using Config1 = DataParallelConfig<false, false, 1>;
   using Workspace = DataParallelWorkspace<Config>;
 
   static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,
@@ -250,15 +234,15 @@ struct LBPAttentionKernel<TIO, TKV, TSB, DataParallelOutOfPlace, NumQueriesPerCt
           q_stride,                                                                           \
           max_context_len                                                                     \
       );                                                                                      \
-  lbp_attention_reduction_kernel<NumThreads, HEAD_SIZE, PAGE_SIZE, TIO, TKV, Config>          \
-      <<<num_heads * num_seqs, block, 0, stream>>>(                                           \
-          workspace,                                                                          \
-          out_ptr,                                                                            \
-          context_lens_ptr,                                                                   \
-          num_seqs,                                                                           \
-          num_heads,                                                                          \
-          max_context_len                                                                     \
-      );                                                                                      \
+  launch_lbp_attention_reduction_kernel<NumThreads, HEAD_SIZE, TIO, Config1>(                 \
+      stream, dev_props,                                                                      \
+      workspace,                                                                              \
+      out_ptr,                                                                                \
+      context_lens_ptr,                                                                       \
+      num_seqs,                                                                               \
+      num_heads,                                                                              \
+      max_context_len                                                                         \
+  );                                                                                          \
   break;
 
     do {
@@ -337,7 +321,7 @@ struct LBPAttentionKernel<TIO, TKV, TSB, DataParallelInPlace, NumQueriesPerCta> 
 
   static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,
@@ -465,15 +449,23 @@ struct LBPAttentionKernel<TIO, TKV, TSB, DataParallelInPlace, NumQueriesPerCta> 
 
 template <typename TIO, typename TKV, typename TSB, typename Sch>
 struct LBPAttentionKernel {
-  using LBPAttentionKernelImpl = detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 1>;
-  using LBPAttentionKernelImpl4 = std::conditional_t<
-      detail::is_group_query_supported_v<Sch>,
-      detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 4>,
-      detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 1>>;  // otherwise, we fallback to non-gqa optimized version
+  using LBPAttentionKernelImpl1 = detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 1>;
+  using LBPAttentionKernelImpl4 = detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 4>;
+  using LBPAttentionKernelImpl8 = detail::LBPAttentionKernel<TIO, TKV, TSB, Sch, 8>;
+
+  inline static bool is_gqa8_supported(int num_heads, int num_kv_heads) {
+    int max_num_queries_per_kv = num_heads / num_kv_heads;
+    return max_num_queries_per_kv % 8 == 0 && !std::is_same_v<TKV, float>;
+  }
+
+  inline static bool is_gqa4_supported(int num_heads, int num_kv_heads) {
+    int max_num_queries_per_kv = num_heads / num_kv_heads;
+    return max_num_queries_per_kv % 4 == 0;
+  }
 
   inline static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,
@@ -493,43 +485,60 @@ struct LBPAttentionKernel {
       const int q_stride,
       const int max_context_len
   ) {
-    if ((num_heads / num_kv_heads) % 4 == 0) {
-      return LBPAttentionKernelImpl4::launch(
-          stream, num_processors, workspace,
-          out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr, page_table_ptr, context_lens_ptr, alibi_slopes_ptr, scale,
-          num_seqs, num_heads, num_kv_heads, head_size, page_size, max_num_pages_per_seq, q_stride, max_context_len
-      );
-    } else {
-      return LBPAttentionKernelImpl::launch(
-          stream, num_processors, workspace,
-          out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr, page_table_ptr, context_lens_ptr, alibi_slopes_ptr, scale,
-          num_seqs, num_heads, num_kv_heads, head_size, page_size, max_num_pages_per_seq, q_stride, max_context_len
-      );
+#define LAUNCH_AND_RETURN(NUM_QUERIES_PER_KV)                         \
+  LBPAttentionKernelImpl##NUM_QUERIES_PER_KV::launch(                 \
+      stream, dev_props, workspace,                                   \
+      out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr,        \
+      page_table_ptr, context_lens_ptr, alibi_slopes_ptr,             \
+      scale, num_seqs, num_heads, num_kv_heads, head_size, page_size, \
+      max_num_pages_per_seq, q_stride, max_context_len                \
+  );                                                                  \
+  return;
+
+    if (is_gqa8_supported(num_heads, num_kv_heads)) {
+      LAUNCH_AND_RETURN(8);
     }
+    if (is_gqa4_supported(num_heads, num_kv_heads)) {
+      LAUNCH_AND_RETURN(4);
+    }
+    LAUNCH_AND_RETURN(1);
+#undef LAUNCH_AND_RETURN
   }
 
   inline static void create_workspace(stream_t stream, void** workspace, size_t* size, int num_seqs, int num_heads, int num_kv_heads, int head_size, int max_context_len) {
-    if ((num_heads / num_kv_heads) % 4 == 0) {
-      return LBPAttentionKernelImpl4::create_workspace(stream, workspace, size, num_seqs, num_heads, head_size, max_context_len);
-    } else {
-      return LBPAttentionKernelImpl::create_workspace(stream, workspace, size, num_seqs, num_heads, head_size, max_context_len);
+    if (is_gqa8_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl8::create_workspace(stream, workspace, size, num_seqs, num_heads, head_size, max_context_len);
+      return;
     }
+    if (is_gqa4_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl4::create_workspace(stream, workspace, size, num_seqs, num_heads, head_size, max_context_len);
+      return;
+    }
+    return LBPAttentionKernelImpl1::create_workspace(stream, workspace, size, num_seqs, num_heads, head_size, max_context_len);
   }
 
   inline static void destroy_workspace(stream_t stream, void* workspace, int num_seqs, int num_heads, int num_kv_heads, int head_size, int max_context_len) {
-    if ((num_heads / num_kv_heads) % 4 == 0) {
-      return LBPAttentionKernelImpl4::destroy_workspace(stream, workspace);
-    } else {
-      return LBPAttentionKernelImpl::destroy_workspace(stream, workspace);
+    if (is_gqa8_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl8::destroy_workspace(stream, workspace);
+      return;
     }
+    if (is_gqa4_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl4::destroy_workspace(stream, workspace);
+      return;
+    }
+    return LBPAttentionKernelImpl1::destroy_workspace(stream, workspace);
   }
 
   inline static void init_workspace(stream_t stream, void* workspace, int num_seqs, int num_heads, int num_kv_heads, int head_size, int max_context_len) {
-    if ((num_heads / num_kv_heads) % 4 == 0) {
-      return LBPAttentionKernelImpl4::init_workspace(stream, workspace, num_seqs, num_heads, head_size, max_context_len);
-    } else {
-      return LBPAttentionKernelImpl::init_workspace(stream, workspace, num_seqs, num_heads, head_size, max_context_len);
+    if (is_gqa8_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl8::init_workspace(stream, workspace, num_seqs, num_heads, head_size, max_context_len);
+      return;
     }
+    if (is_gqa4_supported(num_heads, num_kv_heads)) {
+      LBPAttentionKernelImpl4::init_workspace(stream, workspace, num_seqs, num_heads, head_size, max_context_len);
+      return;
+    }
+    return LBPAttentionKernelImpl1::init_workspace(stream, workspace, num_seqs, num_heads, head_size, max_context_len);
   }
 };
 

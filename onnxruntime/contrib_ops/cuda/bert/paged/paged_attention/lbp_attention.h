@@ -15,7 +15,7 @@ template <typename TIO, typename TKV, typename TSB, typename Sch>
 struct LBPAttentionKernel {
   static void launch(
       stream_t stream,
-      int num_processors,
+      dev_props_ptr dev_props,
       void* workspace,
       TIO* out_ptr,
       const TIO* q_ptr,

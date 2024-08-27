@@ -7,8 +7,7 @@
 
 #include "contrib_ops/cuda/bert/paged/cuda_common.cuh"
 #include "contrib_ops/cuda/bert/paged/paged_attention/paged_attention.cuh"
-#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_task.cuh"
-#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_gqa_task.cuh"
+#include "contrib_ops/cuda/bert/paged/paged_attention/lbp_attention_task_selector.cuh"
 
 namespace onnxruntime::contrib::paged {
 
@@ -30,9 +29,13 @@ struct NaiveWorker : public IWorker<NaiveWorker> {
   __forceinline__ __device__ void broadcast_work(void*, int&, int&) { /* do nothing */ };
 };
 
+#if !defined(PAGED_ATTENTION_MAXNREG)
+#define PAGED_ATTENTION_MAXNREG 128
+#endif
+
 template <int NumThreads, int HeadSize, int PageSize, int ChunkSize, int NumQueriesPerCta, typename TIO, typename TKV, typename TSB>
 __global__ void
-__launch_bounds__(NumThreads, NumThreads / constant::WarpSize) paged_attention_kernel(
+PAGED_LAUNCH_BOUNDS(NumThreads, PAGED_ATTENTION_MAXNREG) paged_attention_kernel(
     TIO* __restrict__ out,                   // [num_seqs, num_heads, head_size]
     const TIO* __restrict__ q,               // [num_seqs, num_heads, head_size]
     const TKV* __restrict__ k_cache,         // [num_pages, num_kv_heads, head_size/x, page_size, x]
@@ -72,10 +75,8 @@ __launch_bounds__(NumThreads, NumThreads / constant::WarpSize) paged_attention_k
   constexpr int TaskChunkSeqLen = NaiveConfig::TaskChunkSeqLen;
   w.num_task_chunks = ceil_div(context_lens[seq_idx], TaskChunkSeqLen);
 
-  using Task = std::conditional_t<
-      NumQueriesPerCta == 1,
-      PagedAttentionTask<NumThreads, HeadSize, PageSize, TIO, TIO, TKV, NaiveWorker, NaiveConfig, KVConfig<TSB, ChunkSize>>,
-      PagedGroupQueryAttentionTask<NumThreads, HeadSize, PageSize, TIO, TIO, TKV, NaiveWorker, NaiveConfig, KVConfig<TSB, ChunkSize>>>;
+  using Task = typename PagedAttentionTaskSelector<
+      NumThreads, HeadSize, PageSize, TIO, TIO, TKV, NaiveWorker, NaiveConfig, KVConfig<TSB, ChunkSize>>::Task;
   Task::attention(
       broadcast_buffer, &w, seq_idx, head_idx, kv_head_idx, out, nullptr,
       q, k_cache, v_cache, scalebias, page_table, context_lens, alibi_slopes,

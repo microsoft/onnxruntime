@@ -20,6 +20,24 @@ namespace onnxruntime::contrib::paged {
 
 using namespace cute;
 
+template <int R, typename Tensor>
+__forceinline__ __host__ __device__ constexpr auto
+append_tensor(Tensor&& t) {
+  return make_tensor(std::forward<Tensor>(t).data(), append<R>(t.layout()));
+}
+
+template <int... Is, typename Tensor>
+__forceinline__ __host__ __device__ constexpr auto
+select_tensor(Tensor&& t) {
+  return make_tensor(std::forward<Tensor>(t).data(), select<Is...>(t.layout()));
+}
+
+template <int B, int E, typename Tensor>
+__forceinline__ __host__ __device__ constexpr auto
+group_tensor(Tensor&& t) {
+  return make_tensor(std::forward<Tensor>(t).data(), group<B, E>(t.layout()));
+}
+
 // workaround https://github.com/NVIDIA/cutlass/issues/1612
 template <typename Tensor>
 __host__ __device__ constexpr auto
@@ -74,6 +92,13 @@ is_inf_or_nan(const half& v) {
 #else
   return __hisinf(v) || __hisnan(v);
 #endif
+}
+
+template <>
+__forceinline__ __device__ bool
+is_inf_or_nan(const cutlass::half_t& v) {
+  auto y = reinterpret_cast<const half&>(v);
+  return is_inf_or_nan(y);
 }
 
 template <typename T>
@@ -207,6 +232,31 @@ inner_product(const Tensor<TensorAEngine, TensorALayout>& a, const Tensor<Tensor
     acc += detail::small_vec_inner_product<SmallVec, float>(av(_, i), bv(_, i));
   }
   return acc;
+}
+
+template <typename TensorEngine, typename TensorLayout>
+__forceinline__ __device__ void
+filter_inf_nan(Tensor<TensorEngine, TensorLayout>& tensor) {
+  static_assert(
+      std::is_same_v<typename TensorEngine::element_type, half> ||
+      std::is_same_v<typename TensorEngine::element_type, cutlass::half_t>
+  );
+  auto tensor2 = recast<half2>(tensor);
+  CUTE_UNROLL
+  for (int i = 0; i < size(tensor2); i += 1) {
+    union {
+      half2 h2;
+      unsigned u32;
+    };
+    h2 = reinterpret_cast<half2&>(tensor2(i));
+
+    constexpr unsigned mask = 0x7C007C00;
+    auto infinf = reinterpret_cast<const half2&>(mask);
+    auto probe_u32 = u32 & mask;
+    auto probe_h2 = reinterpret_cast<const half2&>(probe_u32);
+    u32 ^= __heq2_mask(probe_h2, infinf);
+    tensor2(i) = h2;
+  }
 }
 
 }  // namespace onnxruntime::contrib::paged

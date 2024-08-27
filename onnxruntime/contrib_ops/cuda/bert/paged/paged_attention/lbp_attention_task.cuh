@@ -22,18 +22,6 @@ namespace onnxruntime::contrib::paged {
 
 using namespace cute;
 
-#define BROADCAST0_BUFFER_SIZE_IN_BYTES 128
-
-template <typename T, typename Func>
-__forceinline__ __device__ T
-broadcast0(void* buffer, Func&& value_producer) {
-  if (threadIdx.x == 0) {
-    *static_cast<T*>(buffer) = value_producer();
-  }
-  __syncthreads();
-  return *static_cast<T*>(buffer);
-}
-
 __forceinline__ __device__ void
 init_max_sum(float2* max_sum) {
   *max_sum = float2{std::numeric_limits<float>::lowest(), 0.0f};
@@ -48,6 +36,81 @@ atomic_init_max_sum(float2* max_sum) {
   f32x2 = float2{std::numeric_limits<float>::lowest(), 0.0f};
   atomicExch(reinterpret_cast<unsigned long long*>(max_sum), packed);
 }
+
+template <int TaskChunkSeqLen_, int PageSize_>
+struct TaskChunk {
+  static constexpr int SeqLen = TaskChunkSeqLen_;
+  static constexpr int PageSize = PageSize_;
+  static_assert(SeqLen % PageSize == 0);
+  static constexpr int NumPages = ceil_div(SeqLen, PageSize);
+
+  // start and end of the chunk id
+  int start;
+  int end;
+
+  __forceinline__ __device__ int
+  start_tok_idx(int global_start_tok_idx) const {
+    return max(start * SeqLen, global_start_tok_idx);
+  }
+
+  __forceinline__ __device__ int
+  end_tok_idx(int global_end_tok_idx) const {
+    return min(end * SeqLen, global_end_tok_idx);
+  }
+
+  __forceinline__ __device__ int
+  start_logical_page_id(int global_start_tok_idx) const {
+    constexpr int PageSize = TaskChunk::PageSize;
+    return start_tok_idx(global_start_tok_idx) / PageSize;
+  }
+
+  __forceinline__ __device__ int
+  end_logical_page_id(int global_end_tok_idx) const {
+    constexpr int PageSize = TaskChunk::PageSize;
+    return ceil_div(end_tok_idx(global_end_tok_idx), PageSize);
+  }
+
+  __forceinline__ __device__ bool
+  is_valid() const {
+    return start < end;
+  }
+
+  template <int Offset, typename StagingTensor>
+  __forceinline__ __device__ void
+  preload_page_table_for_chunk(
+      const int* page_table,
+      StagingTensor& staging,
+      int global_start_tok_idx,
+      int global_end_tok_idx
+  ) {
+    constexpr int NumElemPerThread = size(typename StagingTensor::layout_type{});
+    constexpr int PageSize = TaskChunk::PageSize;
+    const int lpid_in_chunk = NumElemPerThread * threadIdx.x;
+    const int global_end_lpid = ceil_div(global_end_tok_idx, PageSize);
+
+    if (lpid_in_chunk < TaskChunk::NumPages) {
+      CUTE_UNROLL
+      for (int i = 0; i < NumElemPerThread; i++) {
+        const int lpid_to_load = start_logical_page_id(global_start_tok_idx) + lpid_in_chunk + Offset + i;
+        staging(i) = lpid_to_load < global_end_lpid ? page_table[lpid_to_load] : -1;
+      }
+    }
+  }
+
+  template <typename StagingTensor>
+  __forceinline__ __device__ void
+  commit_preloaded_page_table(const StagingTensor& staging, int* chunk_page_table) {
+    constexpr int NumElemPerThread = size(typename StagingTensor::layout_type{});
+    const int lpid_in_chunk = NumElemPerThread * threadIdx.x;
+
+    if (lpid_in_chunk < TaskChunk::NumPages) {
+      CUTE_UNROLL
+      for (int i = 0; i < NumElemPerThread; i++) {
+        chunk_page_table[lpid_in_chunk + i] = staging[i];
+      }
+    }
+  }
+};
 
 template <typename WorkerImpl>
 struct IWorker {
@@ -121,134 +184,8 @@ struct PagedAttentionTask {
   static constexpr bool HasSB = !std::is_same_v<typename KVConfig::TSB, void>;
   using TSB = std::conditional_t<HasSB, typename KVConfig::TSB, Unused>;
 
-  __forceinline__ __device__ static void
-  flash_acc(
-      float* acc, float2* acc_max_sum,             // accumulative part
-      const float* inc, const float2* inc_max_sum  // incremental part
-  ) {
-    float prev_max = acc_max_sum->x;
-    float prev_sum = acc_max_sum->y;
-
-    float curr_max = inc_max_sum->x;
-    float curr_sum = inc_max_sum->y;
-
-    float new_max = max(prev_max, curr_max);
-
-    float prev_factor = __expf(prev_max - new_max);
-    float curr_factor = __expf(curr_max - new_max);
-
-    float new_sum = prev_factor * prev_sum + curr_factor * curr_sum;
-    float new_sum_inv = 1.0f / new_sum;
-    __syncthreads();  // ensure prev_max, prev_sum loaded
-    if (threadIdx.x == 0) {
-      *acc_max_sum = float2{new_max, new_sum};
-    }
-
-    bool load_prev_acc = prev_sum != 0.0f;
-    for (int i = threadIdx.x; i < HeadSize; i += NumThreads) {
-      // NOTE: In flash attention paper, curr_sum is not included, because it does not apply the denominator.
-      // curr_sum cancels out the denominator for our implementation
-      float old_val = load_prev_acc ? acc[i] : 0.0f;
-      float new_val = prev_factor * (prev_sum * new_sum_inv) * old_val +
-                      curr_factor * (curr_sum * new_sum_inv) * inc[i];
-      // if (new_val != new_val) {
-      //   printf(
-      //       "acc[%d] new_val:%f new_sum:%f prev_factor:%f prev_sum:%f curr_factor:%f curr_sum:%f %f %f\n",
-      //       i, new_val, new_sum, prev_factor, prev_sum, curr_factor, curr_sum, acc[i], inc[i]
-      //   );
-      // }
-      acc[i] = new_val;
-    }
-  }
-
-  __forceinline__ __device__ static void
-  atomic_flash_acc(
-      void* broadcast_buffer,
-      volatile TO* acc, float2* acc_max_sum,
-      float* inc, float2* inc_max_sum
-  ) {
-    float2 old = broadcast0<float2>(broadcast_buffer, [&]() {
-      auto acc_max_sum_ull = reinterpret_cast<unsigned long long*>(acc_max_sum);
-      constexpr uint64_t lock_bits = 0xFFFF'F000'FFF0'0000;  // float2{NaN, NaN};
-      uint64_t old, assumed = lock_bits;
-      bool locked = false;
-      do {
-        if (assumed == lock_bits) {
-          // assumed = volatile_load(gmem_max_sum_ull);
-          // __threadfence();
-          assumed = atomicAdd(acc_max_sum_ull, 0);
-          locked = false;
-          continue;
-        }
-        old = atomicCAS(acc_max_sum_ull, assumed, lock_bits);
-        locked = old == assumed;
-        if (!locked) {
-          assumed = old;
-          backoff();
-        }
-      } while (!locked);
-      union {
-        float2 f32x2;
-        uint64_t packed;
-      };
-      packed = old;
-      return f32x2;
-    });
-    __syncthreads();
-    __threadfence();
-
-    float prev_max = old.x;
-    float prev_sum = old.y;
-
-    float curr_max = inc_max_sum->x;
-    float curr_sum = inc_max_sum->y;
-
-    float new_max = max(prev_max, curr_max);
-
-    float prev_factor = __expf(prev_max - new_max);
-    float curr_factor = __expf(curr_max - new_max);
-
-    float new_sum = prev_factor * prev_sum + curr_factor * curr_sum;
-    float new_sum_inv = 1.0f / new_sum;
-
-    bool load_prev_acc = prev_sum != 0.0f;
-    for (int i = threadIdx.x; i < HeadSize; i += NumThreads) {
-      float old_val = load_prev_acc ? type_convert<float>(volatile_load(acc + i)) : 0.0f;
-      float new_val = prev_factor * (prev_sum * new_sum_inv) * old_val +
-                      curr_factor * (curr_sum * new_sum_inv) * inc[i];
-      // if (new_val != new_val) {
-      //   printf(
-      //       "acc[%d] new_val:%f new_sum:%f prev_factor:%f prev_sum:%f curr_factor:%f curr_sum:%f %f %f\n",
-      //       i, new_val, new_sum, prev_factor, prev_sum, curr_factor, curr_sum, old_val, inc[i]
-      //   );
-      // }
-      acc[i] = type_convert<TO>(new_val);
-    }
-
-    __syncthreads();
-    __threadfence();
-    if (threadIdx.x == 0) {
-      union {
-        float2 f32x2;
-        uint64_t packed;
-      };
-      f32x2 = float2{new_max, new_sum};
-      atomicExch(reinterpret_cast<unsigned long long*>(acc_max_sum), packed);
-    }
-  }
-
-  __forceinline__ __device__ static void
-  write_flash_inc(
-      TO* gmem, float2* gmem_max_sum,
-      float* inc, float2* inc_max_sum
-  ) {
-    if (gmem_max_sum != nullptr && threadIdx.x == 0) {
-      *gmem_max_sum = *inc_max_sum;
-    }
-    for (int i = threadIdx.x; i < HeadSize; i += NumThreads) {
-      gmem[i] = type_convert<TO>(inc[i]);
-    }
-  }
+  using TaskChunk = onnxruntime::contrib::paged::TaskChunk<Config::TaskChunkSeqLen, PageSize>;
+  using FlashAccCta = onnxruntime::contrib::paged::FlashAccCta<NumThreads, HeadSize>;
 
   __forceinline__ __device__ static void
   attention(
@@ -274,7 +211,6 @@ struct PagedAttentionTask {
       const int q_stride
   ) {
     // static_assert(Config::NumQueriesPerCta == 1);
-    constexpr int NumPagesPerTaskChunk = ceil_div(Config::TaskChunkSeqLen, PageSize);
     __shared__ int chunk_page_table[ceil_div(Config::TaskChunkSeqLen, PageSize)];
     __shared__ float attn_scores[Config::TaskChunkSeqLen];
     __shared__ float smem_out[HeadSize];
@@ -345,9 +281,7 @@ struct PagedAttentionTask {
         Layout<Shape<Int<PageSize>, Shape<Int<KVConfig::ChunkSize>, Int<ScaleBiasNumChunks>>, _2>, Stride<_1, Stride<_0, Int<PageSize>>, Int<PageSize * ScaleBiasNumChunks>>>{}
     );
 
-    const auto gPageTable = make_tensor(make_gmem_ptr(page_table), make_layout(make_shape(num_seqs, max_num_pages_per_seq), LayoutRight{}));
-    const auto ctaSeqPageTable = gPageTable(seq_idx, _);
-
+    const auto seq_page_table = &(make_tensor(make_gmem_ptr(page_table), make_layout(make_shape(num_seqs, max_num_pages_per_seq), LayoutRight{}))(seq_idx, _0{}));
     const float alibi_slope = alibi_slopes == nullptr ? 0.f : alibi_slopes[head_idx];
 
     // cooperative load q to sA (sQ)
@@ -394,8 +328,8 @@ struct PagedAttentionTask {
     }();
 
     // gemv2 A
-    const auto gemv2_sA = make_tensor(make_smem_ptr(attn_scores), make_layout(make_shape(_1{}, Int<PageSize>{}, Int<NumPagesPerTaskChunk>{})));  // [1,k,lid_in_chunk], m=1
-    const auto gemv2_tA_view = gemv2_thr_copy.partition_S(gemv2_sA);                                                                             // (val,i,p,lid_in_chunk), p is token_idx_in page
+    const auto gemv2_sA = make_tensor(make_smem_ptr(attn_scores), make_layout(make_shape(_1{}, Int<PageSize>{}, Int<TaskChunk::NumPages>{})));  // [1,k,lid_in_chunk], m=1
+    const auto gemv2_tA_view = gemv2_thr_copy.partition_S(gemv2_sA);                                                                            // (val,i,p,lid_in_chunk), p is token_idx_in page
     // gemv2 B
     const auto gemv2_page_coord = make_identity_tensor(make_shape(Int<HeadSize>{}, Int<PageSize>{}));                  // (n,k)
     const auto gemv2_tB_view = coalesce(gemv2_thr_copy.partition_S(gV), make_shape(_1{}, _1{}, _1{}, _1{}));           // (val,j,p,physical_page_id) -> idx
@@ -411,51 +345,25 @@ struct PagedAttentionTask {
     static_assert(rank(gemv2_tB_view) == 4 && size<2>(gemv2_tB_view) == 1, "iter mode p is assumed to be 1");
     static_assert(rank(gemv2_tB_coord) == 3 && size<2>(gemv2_tB_coord) == 1, "iter mode p is assumed to be 1");
 
-    bool is_first_iter = true;
-    constexpr int NumLpidPreloadPerThread = ceil_div(NumPagesPerTaskChunk, NumThreads);
-    auto next_lpids = make_tensor<int>(Int<NumLpidPreloadPerThread>{});
-    auto next_chunk = int2{-1, -1};
-    worker->take_work(next_chunk.x, next_chunk.y);
+    constexpr int NumPidsPreloadPerThread = ceil_div(TaskChunk::NumPages, NumThreads);
+    static_assert(TaskChunk::NumPages <= NumPidsPreloadPerThread * NumThreads);
+    auto preload_pids = make_tensor<int>(Int<NumPidsPreloadPerThread>{});
 
-    while (true) {
-      worker->broadcast_work(broadcast_buffer, next_chunk.x, next_chunk.y);
-      int2 chunk = next_chunk;
-      if (chunk.x >= chunk.y) {
-        break;
-      }
+    TaskChunk chunk{-1, -1};
+    worker->take_work(chunk.start, chunk.end);
+    worker->broadcast_work(broadcast_buffer, chunk.start, chunk.end);
+    chunk.preload_page_table_for_chunk<0>(seq_page_table, preload_pids, 0, num_tokens);
+
+    while (chunk.is_valid()) {
+      TASK_DPRINTF1(
+          "  worker[%d]: work on tok[%d,%d) of seq:%d, head:%d, kv_head:%d\n",
+          worker->worker_id(), chunk.start_tok_idx(0), chunk.end_tok_idx(num_tokens), seq_idx, head_idx, kv_head_idx
+      );
+
       if (threadIdx.x == 0) {
         *chunk_max_sum = float2{std::numeric_limits<float>::lowest(), 0.0f};
       }
-
-      int chunk_start_tok_idx = max(chunk.x * Config::TaskChunkSeqLen, 0);
-      int chunk_end_tok_idx = min(chunk.y * Config::TaskChunkSeqLen, num_tokens);
-      int chunk_start_logical_page_id = chunk_start_tok_idx / PageSize;
-      int chunk_end_logical_page_id = ceil_div(chunk_end_tok_idx, PageSize);
-
-      TASK_DPRINTF1(
-          "  worker[%d]: work on tok[%d,%d) of seq:%d, head:%d, kv_head:%d\n",
-          worker->worker_id(), chunk_start_tok_idx, chunk_end_tok_idx, seq_idx, head_idx, kv_head_idx
-      );
-
-      static_assert(NumPagesPerTaskChunk <= NumLpidPreloadPerThread * NumThreads);
-      if (const int lid_in_chunk = NumLpidPreloadPerThread * threadIdx.x; lid_in_chunk < NumPagesPerTaskChunk) {
-        if (!is_first_iter) {
-          CUTE_UNROLL
-          for (int i = 0; i < NumLpidPreloadPerThread; i++) {
-            chunk_page_table[lid_in_chunk + i] = next_lpids(i);
-          }
-        } else {
-          // if is first chunk, load current page table
-          CUTE_UNROLL
-          for (int i = 0; i < NumLpidPreloadPerThread; i++) {
-            chunk_page_table[lid_in_chunk + i] =
-                chunk_start_logical_page_id + lid_in_chunk + i < chunk_end_logical_page_id
-                    ? ctaSeqPageTable(chunk_start_logical_page_id + lid_in_chunk + i)
-                    : -1;
-          }
-        }
-      }
-      is_first_iter = false;
+      chunk.commit_preloaded_page_table(preload_pids, chunk_page_table);
       __syncthreads();
 
       load_sb_to_reg<0>(tSB_copy_src, tSB_should_copy, chunk_page_table[warp_id()], tSB_copy_staging);
@@ -463,9 +371,9 @@ struct PagedAttentionTask {
       float* logits = attn_scores;
       float qk_max = std::numeric_limits<float>::lowest();
 #pragma unroll 1
-      for (int lid_in_chunk = warp_id(); lid_in_chunk < NumPagesPerTaskChunk; lid_in_chunk += NumWarps) {
+      for (int lid_in_chunk = warp_id(); lid_in_chunk < TaskChunk::NumPages; lid_in_chunk += NumWarps) {
         const int64_t physical_page_id = chunk_page_table[lid_in_chunk];
-        const int64_t next_physical_page_id = lid_in_chunk + NumWarps < NumPagesPerTaskChunk ? chunk_page_table[lid_in_chunk + NumWarps] : -1;
+        const int64_t next_physical_page_id = lid_in_chunk + NumWarps < TaskChunk::NumPages ? chunk_page_table[lid_in_chunk + NumWarps] : -1;
         store_sb_to_smem(tSB_copy_staging, tSB_should_copy, physical_page_id, tSB_copy_dst);        // if curr is valid, store
         load_sb_to_reg<0>(tSB_copy_src, tSB_should_copy, next_physical_page_id, tSB_copy_staging);  // if next is valid, load
         if (physical_page_id == -1) {
@@ -495,7 +403,7 @@ struct PagedAttentionTask {
         qk = warp::reduce<Gemv1ThrK, /*Strided=*/Gemv1TransThrLayout>(qk, [](float a, float b) { return a + b; });
         auto tid_in_group = get<1>(Gemv1ThrLayout{}.get_hier_coord(int(threadIdx.x)));
         auto tok_idx_in_page = get<0>(gemv1_tB_coord(_0{}, _0{}, _0{}));
-        const int token_idx = (chunk_start_logical_page_id + lid_in_chunk) * PageSize + tok_idx_in_page;
+        const int token_idx = (chunk.start_logical_page_id(0) + lid_in_chunk) * PageSize + tok_idx_in_page;
         qk += (alibi_slope != 0) ? alibi_slope * (token_idx - num_tokens + 1) : 0;
         if (tid_in_group == 0) {
           logits[token_idx % Config::TaskChunkSeqLen] = token_idx < num_tokens ? qk : 0.f;  // TODO: start boundary
@@ -504,41 +412,32 @@ struct PagedAttentionTask {
       }
 
       if constexpr (!Config::SingleChunk) {
-        if (const int lid_in_chunk = NumLpidPreloadPerThread * threadIdx.x; lid_in_chunk < NumPagesPerTaskChunk) {
-          // proactively load next page table for next chunk, even though maybe wasted due to stealing, or out of bound
-          CUTE_UNROLL
-          for (int i = 0; i < NumLpidPreloadPerThread; i++) {
-            next_lpids(i) = chunk_start_logical_page_id + NumPagesPerTaskChunk + lid_in_chunk + i < ceil_div(num_tokens, PageSize)
-                                ? ctaSeqPageTable(chunk_start_logical_page_id + NumPagesPerTaskChunk + lid_in_chunk + i)
-                                : -1;
-          }
-        }
+        chunk.preload_page_table_for_chunk<TaskChunk::NumPages>(seq_page_table, preload_pids, 0, num_tokens);
       }
 
       // reuse broadcast buffer for reduction
       static_assert(2 * NumWarps <= (BROADCAST0_BUFFER_SIZE_IN_BYTES / sizeof(float)));
-      int prefix = chunk_start_tok_idx - (chunk_start_tok_idx % Config::TaskChunkSeqLen);
-      softmax_cta<NumThreads, Gemv1ThrK, NumWarps>(
+      int prefix = chunk.start_tok_idx(0) - (chunk.start_tok_idx(0) % Config::TaskChunkSeqLen);
+      softmax_cta<NumThreads, Gemv1ThrK, NumWarps, Config::TaskChunkSeqLen>(
           static_cast<float*>(broadcast_buffer), qk_max, logits,
-          Config::TaskChunkSeqLen,
-          chunk_start_tok_idx - prefix,
-          chunk_end_tok_idx - prefix,
+          chunk.start_tok_idx(0) - prefix,
+          chunk.end_tok_idx(num_tokens) - prefix,
           chunk_max_sum
       );
 
+      TaskChunk next_chunk{-1, -1};
       if constexpr (!Config::SingleChunk) {
-        next_chunk = {-1, -1};
-        worker->take_work(next_chunk.x, next_chunk.y);
+        worker->take_work(next_chunk.start, next_chunk.end);
       }
 
       load_sb_to_reg<1>(tSB_copy_src, tSB_should_copy, chunk_page_table[warp_id()], tSB_copy_staging);
       auto acc = make_tensor<float>(Int<size<1>(gemv2_tB_view)>{});
       clear(acc);
-      int num_pages_in_chunk = chunk_end_logical_page_id - chunk_start_logical_page_id;
+      int num_pages_in_chunk = chunk.end_logical_page_id(num_tokens) - chunk.start_logical_page_id(0);
 #pragma unroll 1
       for (int lid_in_chunk = warp_id(); lid_in_chunk < num_pages_in_chunk; lid_in_chunk += NumWarps) {
         const int64_t physical_page_id = chunk_page_table[lid_in_chunk];
-        const int64_t next_physical_page_id = lid_in_chunk + NumWarps < NumPagesPerTaskChunk ? chunk_page_table[lid_in_chunk + NumWarps] : -1;
+        const int64_t next_physical_page_id = lid_in_chunk + NumWarps < TaskChunk::NumPages ? chunk_page_table[lid_in_chunk + NumWarps] : -1;
         store_sb_to_smem(tSB_copy_staging, tSB_should_copy, physical_page_id, tSB_copy_dst);        // if curr is valid, store
         load_sb_to_reg<1>(tSB_copy_src, tSB_should_copy, next_physical_page_id, tSB_copy_staging);  // if next is valid, load
 
@@ -560,7 +459,7 @@ struct PagedAttentionTask {
         auto tA = make_fragment_like(tA_view);
         auto tB = make_fragment_like<TQ>(tB_view(_, _0{}));
 
-        bool is_full_chunk = chunk_end_tok_idx - chunk_start_tok_idx == Config::TaskChunkSeqLen;
+        bool is_full_chunk = chunk.end_tok_idx(num_tokens) - chunk.start_tok_idx(0) == Config::TaskChunkSeqLen;
         bool is_full_page = lid_in_chunk != 0 && lid_in_chunk != num_pages_in_chunk - 1;
         if (is_full_chunk || is_full_page) {
           copy(AutoVectorizingCopyWithAssumedAlignment<cute::min(8 * sizeof(float) * Gemv2ValK, 128)>{}, tA_view, tA);
@@ -575,7 +474,7 @@ struct PagedAttentionTask {
         } else {
           enforce_uniform();
           auto token_idx_in_page = get<1>(tB_coord(_0{}, _0{}));
-          auto logical_page_id = chunk_start_logical_page_id + lid_in_chunk;
+          auto logical_page_id = chunk.start_logical_page_id(0) + lid_in_chunk;
           int valid_tokens = num_tokens - (logical_page_id * PageSize + token_idx_in_page);
 
           auto pred = make_tensor_like<bool>(tA);
@@ -633,9 +532,12 @@ struct PagedAttentionTask {
         __syncthreads();
       }
 
-      flash_acc(smem_out, smem_max_sum, chunk_out, chunk_max_sum);
+      FlashAccCta::acc(smem_out, smem_max_sum, chunk_out, chunk_max_sum);
       if constexpr (Config::SingleChunk) {
         break;
+      } else {
+        worker->broadcast_work(broadcast_buffer, next_chunk.start, next_chunk.end);
+        chunk = next_chunk;
       }
     }
 
@@ -649,9 +551,9 @@ struct PagedAttentionTask {
     }();
     TO* gmem_out = &gO(seq_idx, 0);
     if constexpr (Config::InplaceFlashAcc) {
-      atomic_flash_acc(broadcast_buffer, gmem_out, &out_max_sum[max_sum_idx], smem_out, smem_max_sum);
+      FlashAccCta::atomic_acc(broadcast_buffer, gmem_out, &out_max_sum[max_sum_idx], smem_out, smem_max_sum);
     } else {
-      write_flash_inc(gmem_out, out_max_sum ? &out_max_sum[max_sum_idx] : nullptr, smem_out, smem_max_sum);
+      FlashAccCta::write_inc(gmem_out, out_max_sum ? &out_max_sum[max_sum_idx] : nullptr, smem_out, smem_max_sum);
     }
   }
 

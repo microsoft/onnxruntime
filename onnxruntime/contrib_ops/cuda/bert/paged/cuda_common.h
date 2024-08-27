@@ -55,4 +55,11 @@ using stream_t = cudaStream_t;
 using stream_t = hipStream_t;
 #endif
 
+#if !defined(__HIP_PLATFORM_AMD__)
+using dev_props_ptr = const cudaDeviceProp*;
+#else
+using dev_props_ptr = const hipDeviceProp*;
+#endif
+
+
 }  // namespace onnxruntime::contrib::paged

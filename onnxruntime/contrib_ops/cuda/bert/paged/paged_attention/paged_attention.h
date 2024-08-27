@@ -10,6 +10,7 @@ namespace onnxruntime::contrib::paged {
 template <typename TIO, typename TKV, typename TSB = void>
 void launch_paged_attention_kernel(
     stream_t stream,
+    dev_props_ptr dev_props,
     TIO* out,
     const TIO* q,
     const TKV* k_cache,

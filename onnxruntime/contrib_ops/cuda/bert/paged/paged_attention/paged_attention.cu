@@ -11,6 +11,7 @@ namespace onnxruntime::contrib::paged {
 template <typename TIO, typename TKV, typename TSB, int NumQueriesPerCta>
 void launch_paged_attention_kernel(
     stream_t stream,
+    dev_props_ptr dev_props,
     TIO* out_ptr,
     const TIO* q_ptr,
     const TKV* k_cache_ptr,
@@ -33,7 +34,7 @@ void launch_paged_attention_kernel(
   constexpr int NumThreads = 128;
   constexpr int ChunkSize = 32;  // only useful for fp8
 
-  if constexpr(std::is_same_v<TSB, void>) {
+  if constexpr (std::is_same_v<TSB, void>) {
     if (scalebias_ptr != nullptr) {
       throw std::runtime_error("scalebias is not supported by this kernel");
     }
@@ -125,6 +126,7 @@ void launch_paged_attention_kernel(
 template <typename TIO, typename TKV, typename TSB>
 void launch_paged_attention_kernel(
     stream_t stream,
+    dev_props_ptr dev_props,
     TIO* out_ptr,
     const TIO* q_ptr,
     const TKV* k_cache_ptr,
@@ -143,25 +145,31 @@ void launch_paged_attention_kernel(
     const int q_stride,
     const int max_context_len
 ) {
-  int num_queries_per_kv = num_heads / num_kv_heads;
+  int max_num_queries_per_kv = num_heads / num_kv_heads;
 
-  if (num_queries_per_kv % 4 == 0) {
-    launch_paged_attention_kernel<TIO, TKV, TSB, 4>(
-        stream, out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr, page_table_ptr, context_lens_ptr, alibi_slopes_ptr,
-        scale, num_seqs, num_heads, num_kv_heads, head_size, page_size, max_num_pages_per_seq, q_stride, max_context_len,
-        num_queries_per_kv
-    );
-  } else {
-    launch_paged_attention_kernel<TIO, TKV, TSB, 1>(
-        stream, out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr, page_table_ptr, context_lens_ptr, alibi_slopes_ptr,
-        scale, num_seqs, num_heads, num_kv_heads, head_size, page_size, max_num_pages_per_seq, q_stride, max_context_len,
-        num_queries_per_kv
-    );
+#define LAUNCH_AND_RETURN(NUM_QUERIES_PER_KV)                              \
+  launch_paged_attention_kernel<TIO, TKV, TSB, NUM_QUERIES_PER_KV>(        \
+      stream, dev_props,                                                   \
+      out_ptr, q_ptr, k_cache_ptr, v_cache_ptr, scalebias_ptr,             \
+      page_table_ptr, context_lens_ptr, alibi_slopes_ptr,                  \
+      scale, num_seqs, num_heads, num_kv_heads, head_size, page_size,      \
+      max_num_pages_per_seq, q_stride, max_context_len, NUM_QUERIES_PER_KV \
+  );                                                                       \
+  return;
+
+  if (max_num_queries_per_kv % 8 == 0 && !std::is_same_v<TKV, float>) {
+    LAUNCH_AND_RETURN(8);
   }
+  if (max_num_queries_per_kv % 4 == 0) {
+    LAUNCH_AND_RETURN(4);
+  }
+  LAUNCH_AND_RETURN(1);
+#undef LAUNCH_AND_RETURN
 }
 
 template void launch_paged_attention_kernel<float, float, void>(
     stream_t stream,
+    dev_props_ptr dev_props,
     float* out_ptr,
     const float* q_ptr,
     const float* k_cache_ptr,
@@ -183,6 +191,7 @@ template void launch_paged_attention_kernel<float, float, void>(
 
 template void launch_paged_attention_kernel<half, half, void>(
     stream_t stream,
+    dev_props_ptr dev_props,
     half* out_ptr,
     const half* q_ptr,
     const half* k_cache_ptr,
@@ -204,6 +213,7 @@ template void launch_paged_attention_kernel<half, half, void>(
 
 template void launch_paged_attention_kernel<half, cute::float_e4m3_t, half>(
     stream_t stream,
+    dev_props_ptr dev_props,
     half* out_ptr,
     const half* q_ptr,
     const cute::float_e4m3_t* k_cache_ptr,
