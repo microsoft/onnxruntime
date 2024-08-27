@@ -18,7 +18,7 @@ class TreeEnsemble final : public OpKernel {
  private:
   // Pointer on one instance of
   // detail::TreeEnsembleCommonV5<T, ThresholdType>
-  // where TH is defined after accessing the attributes.
+  // where ThresholdType is defined after accessing the attributes.
   std::unique_ptr<detail::TreeEnsembleCommonAttributes> p_tree_ensemble_;
 };
 }  // namespace ml
