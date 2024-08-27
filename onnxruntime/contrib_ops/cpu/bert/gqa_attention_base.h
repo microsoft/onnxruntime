@@ -123,10 +123,10 @@ class GQAAttentionBase {
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
     const size_t kv_num_heads_factor = num_heads_ / kv_num_heads_;
-    const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                      // S x H
-    const size_t kv_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;                     // L x H
-    const size_t past_buff_chunk_length = static_cast<size_t>(past_buffer_sequence_length) * head_size;        // L x H
-    const size_t present_buff_chunk_length = static_cast<size_t>(present_buffer_sequence_length) * head_size;  // T x H
+    const size_t q_input_chunk_length = sequence_length * head_size;                      // S x H
+    const size_t kv_input_chunk_length = sequence_length * head_size;                     // L x H
+    const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
+    const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
     if (!past_present_share_buffer) {
       memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
@@ -189,8 +189,8 @@ class GQAAttentionBase {
         }
 
         math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
-                                    head_size, k, head_size, 0.0f /*bata*/, output, present_buffer_sequence_length,
-                                    nullptr);
+                                    static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/, output,
+                                    static_cast<int>(present_buffer_sequence_length), nullptr);
 
         // compute Softmax
         T* output_softmax = output;
@@ -209,9 +209,9 @@ class GQAAttentionBase {
             }
           } else {
             if (use_smooth_softmax_) {
-              ComputeSmoothSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+              ComputeSmoothSoftmaxInplace(output_softmax, 1, static_cast<int>(seq_causal_length), nullptr);
             } else {
-              ComputeAttentionSoftmaxInplace(output_softmax, 1, seq_causal_length, nullptr);
+              ComputeAttentionSoftmaxInplace(output_softmax, 1, static_cast<int>(seq_causal_length), nullptr);
             }
           }
 
@@ -255,7 +255,7 @@ class GQAAttentionBase {
       memset(present_value, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
-    const int loop_len = batch_size * num_heads_;
+    const size_t loop_len = batch_size * num_heads_;
 
     // The cost of Gemm
     TensorOpCost unit_cost;
@@ -300,8 +300,9 @@ class GQAAttentionBase {
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * i;
 
         math::GemmEx<T, ThreadPool>(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen, 1.f, /*alpha*/
-                                    attention_probs + attention_probs_offset, present_buffer_sequence_length, v,
-                                    head_size, 0.0f /*beta*/, output_current, hidden_size, nullptr);
+                                    attention_probs + attention_probs_offset,
+                                    static_cast<int>(present_buffer_sequence_length), v, static_cast<int>(head_size),
+                                    0.0f /*beta*/, output_current, static_cast<int>(hidden_size), nullptr);
       }
     });
   }
