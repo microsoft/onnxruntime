@@ -452,6 +452,15 @@ struct FunctionProto final {
   FunctionProto(const FunctionProto&) = delete;
   void operator=(const FunctionProto&) = delete;
 };
+
+struct OpSchema final {
+  const TypeConstraintMap& typeConstraintMap() const { return g_host->OpSchema__typeConstraintMap(this); }
+  const std::string& inputs__GetName(const size_t i) const { return g_host->OpSchema__inputs__GetName(this, i); };
+  const std::string& inputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__inputs__GetTypeStr(this, i); };
+  const std::string& outputs__GetName(const size_t i) const { return g_host->OpSchema__outputs__GetName(this, i); };
+  const std::string& outputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__outputs__GetTypeStr(this, i); };
+  PROVIDER_DISALLOW_ALL(OpSchema)
+};
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -703,6 +712,7 @@ class DataTypeImpl final {
 #endif
 
   static MLDataType GetTypeFromOnnxType(int);
+  static MLDataType GetTensorTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }

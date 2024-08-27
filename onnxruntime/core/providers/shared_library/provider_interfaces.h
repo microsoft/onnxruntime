@@ -27,6 +27,8 @@ enum OperatorStatus : int;
 
 // String pointer as unique TypeProto identifier.
 using DataType = const std::string*;
+using DataTypeSet = std::unordered_set<DataType>;
+using TypeConstraintMap = std::unordered_map<std::string, std::pair<DataTypeSet, std::string>>;
 
 }  // namespace ONNX_NAMESPACE
 
@@ -567,6 +569,12 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::StringStringEntryProto* FunctionProto__add_metadata_props(ONNX_NAMESPACE::FunctionProto* p) = 0;
 
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
+  virtual const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) = 0;
+  virtual const std::string& OpSchema__inputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__inputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetName(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const std::string& OpSchema__outputs__GetTypeStr(const ONNX_NAMESPACE::OpSchema* p, const size_t i) = 0;
+  virtual const ONNX_NAMESPACE::TypeConstraintMap& OpSchema__typeConstraintMap(const ONNX_NAMESPACE::OpSchema* p) const = 0;
 
   // ConfigOptions
   virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
@@ -695,6 +703,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_Int4x2() = 0;
   virtual MLDataType DataTypeImpl__GetType_UInt4x2() = 0;
 
+  virtual MLDataType DataTypeImpl__GetTensorTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
