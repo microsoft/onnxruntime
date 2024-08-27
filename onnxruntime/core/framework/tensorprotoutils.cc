@@ -1230,7 +1230,7 @@ static Status TensorProtoInt4ToTensorInt8Impl(const Env& env, const std::filesys
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
   }
 
-  const size_t num_4bit_pairs = Int4x2Base<Signed>::CalcNumInt4Pairs(num_4bit_elems);
+  const size_t num_4bit_pairs = Int4x2Base<Signed>::CalcNumInt4Pairs(static_cast<size_t>(num_4bit_elems));
   const bool odd_elems = (num_4bit_elems & 0x1) == 1;
   const size_t num_full_pairs = odd_elems ? num_4bit_pairs - 1 : num_4bit_pairs;
   const bool has_ext_data = utils::HasExternalData(tensor_proto);
