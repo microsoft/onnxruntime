@@ -84,10 +84,12 @@ Status PagedAttention::ComputeInternal(OpKernelContext* ctx) const {
 
   auto kv_onnx_type = key_cache->DataType();
 
+  auto dev_props = &GetDeviceProp();
+
   if (kv_onnx_type == DataTypeImpl::GetType<float>()) {
     const void* scalebias = nullptr;
     paged::launch_paged_attention_kernel(
-        cuda_stream,
+        cuda_stream, dev_props,
         output->MutableData<float>(),
         query->Data<float>(),
         key_cache->Data<float>(),
@@ -102,7 +104,7 @@ Status PagedAttention::ComputeInternal(OpKernelContext* ctx) const {
   } else if (kv_onnx_type == DataTypeImpl::GetType<MLFloat16>()) {
     const void* scalebias = nullptr;
     paged::launch_paged_attention_kernel(
-        cuda_stream,
+        cuda_stream, dev_props,
         reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
         reinterpret_cast<const half*>(query->Data<MLFloat16>()),
         reinterpret_cast<const half*>(key_cache->Data<MLFloat16>()),
@@ -117,7 +119,7 @@ Status PagedAttention::ComputeInternal(OpKernelContext* ctx) const {
   } else if (kv_onnx_type == DataTypeImpl::GetType<Float8E4M3FN>()) {
     using TKV = cute::float_e4m3_t;
     paged::launch_paged_attention_kernel(
-        cuda_stream,
+        cuda_stream, dev_props,
         reinterpret_cast<half*>(output->MutableData<MLFloat16>()),
         reinterpret_cast<const half*>(query->Data<MLFloat16>()),
         reinterpret_cast<const TKV*>(key_cache->Data<Float8E4M3FN>()),
