@@ -16,7 +16,7 @@ class TreeEnsemble final : public OpKernel {
   Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const override;
 
  private:
-  // Following pointer holds a pointer on one instance of
+  // Pointer on one instance of
   // detail::TreeEnsembleCommonV5<T, ThresholdType>
   // where TH is defined after accessing the attributes.
   std::unique_ptr<detail::TreeEnsembleCommonAttributes> p_tree_ensemble_;
