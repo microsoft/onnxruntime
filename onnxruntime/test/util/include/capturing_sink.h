@@ -3,10 +3,7 @@
 
 #pragma once
 
-#include "core/common/logging/logging.h"
 #include "core/common/logging/isink.h"
-
-#include "date/date.h"
 
 namespace onnxruntime {
 namespace test {

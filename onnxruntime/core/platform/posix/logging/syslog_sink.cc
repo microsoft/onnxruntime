@@ -4,7 +4,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/capture.h"
 #include "syslog_sink.h"
-#include "date/date.h"
 
 namespace onnxruntime {
 namespace logging {
