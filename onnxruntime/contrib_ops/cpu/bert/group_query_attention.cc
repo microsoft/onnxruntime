@@ -45,7 +45,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(3);
   const Tensor* past_value = context->Input<Tensor>(4);
   const Tensor* seqlens_k = context->Input<Tensor>(5);
-  const Tensor* total_seqlen = context->Input<Tensor>(6);
+  const Tensor* total_seqlen_tensor = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
 
@@ -62,7 +62,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 num_heads_,
                                                                 kv_num_heads_,
                                                                 seqlens_k,
-                                                                total_seqlen,
+                                                                total_seqlen_tensor,
                                                                 scale));
 
   const int batch_size = parameters.batch_size;

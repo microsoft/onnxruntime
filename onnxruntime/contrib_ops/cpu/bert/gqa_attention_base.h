@@ -57,7 +57,6 @@ class GQAAttentionBase {
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
-    const bool is_interactive = parameters.is_interactive;
     const bool is_prompt = parameters.is_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -88,14 +87,14 @@ class GQAAttentionBase {
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
                              sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
-                             present_key_data, past_present_share_buffer, packed_qkv, is_interactive, is_prompt, tp);
+                             present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp);
 
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(attention_probs), v, seqlens_k->Data<int32_t>(),
                             batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                             hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
-                            is_interactive, is_prompt, tp);
+                            is_prompt, tp);
 
     return Status::OK();
   }
@@ -118,7 +117,6 @@ class GQAAttentionBase {
                              T* present_key,                               // present key only
                              const bool past_present_share_buffer,         // whether present key and value share the same buffer
                              const bool packed_qkv,                        // whether Q, K, V are packed
-                             const bool is_interactive,                    // whether it is interactive
                              const bool is_prompt,                         // whether it is prompt
                              ThreadPool* tp) const {                       // thread pool
     const ptrdiff_t packed_batch_stride =
@@ -134,7 +132,7 @@ class GQAAttentionBase {
       memset(present_key, 0, batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
     }
 
-    const int loop_len = batch_size * num_heads_;
+    const size_t loop_len = batch_size * num_heads_;
     const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
     TensorOpCost unit_cost;
@@ -243,7 +241,6 @@ class GQAAttentionBase {
                                T* present_value,                             // present value only
                                const bool past_present_share_buffer,         // whether present key and value share the same buffer
                                const bool packed_qkv,                        // whether Q, K, V are packed
-                               const bool is_interactive,                    // whether it is interactive
                                const bool is_prompt,                         // whether it is prompt
                                ThreadPool* tp) const {
     const ptrdiff_t packed_batch_stride =
