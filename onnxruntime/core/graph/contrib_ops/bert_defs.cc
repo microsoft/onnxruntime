@@ -1075,6 +1075,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("smooth_softmax",
+              "Use a smooth factor in softmax.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"

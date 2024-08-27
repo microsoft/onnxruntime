@@ -2482,6 +2482,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>smooth_softmax</tt> : int</dt>
+<dd>Use a smooth factor in softmax.</dd>
 </dl>
 
 #### Inputs (7 - 9)

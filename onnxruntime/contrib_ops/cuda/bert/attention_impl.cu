@@ -297,7 +297,7 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
+      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16, false,
       parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
       data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
 

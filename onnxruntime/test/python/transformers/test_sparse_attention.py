@@ -14,6 +14,7 @@ import torch
 from benchmark_mha import InputFormats
 from onnx import TensorProto, helper
 from parameterized import parameterized
+from test_gqa_cpu import smooth_softmax_ref
 from torch import Tensor
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers
@@ -43,6 +44,7 @@ class AttentionConfig:
         is_packed_qkv: bool = False,
         max_cache_sequence_length=None,
         max_rotary_sequence_length=None,
+        use_smooth_softmax: bool = False,
     ):
         self.operator = operator
         self.batch_size = batch_size
@@ -72,6 +74,8 @@ class AttentionConfig:
 
         self.share_buffer = share_buffer
         self.is_packed_qkv = is_packed_qkv
+
+        self.use_smooth_softmax = use_smooth_softmax
 
     def shape_dict(self):
         shapes = {
@@ -166,6 +170,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
         is_packed_qkv=False,
         max_cache_sequence_length=None,
         max_rotary_sequence_length=None,
+        use_smooth_softmax: bool = False,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -185,6 +190,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
             is_packed_qkv=is_packed_qkv,
             max_cache_sequence_length=max_cache_sequence_length,
             max_rotary_sequence_length=max_rotary_sequence_length,
+            use_smooth_softmax=use_smooth_softmax,
         )
         # local_window_size is for ORT only, not for Torch implementation.
         self.local_window_size = local_window_size
@@ -529,6 +535,7 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
             local_window_size=config.local_window_size,
             do_rotary=1 if config.do_rotary else 0,
             rotary_interleaved=config.rotary_interleaved,
+            smooth_softmax=1 if config.use_smooth_softmax else 0,
             domain="com.microsoft",
         ),
     ]
@@ -612,7 +619,12 @@ def group_query_attention_reference(
     attn = torch.einsum("bhmd,bhnd->bhmn", query, key).float() * scale
     if mask is not None:
         attn = attn.masked_fill((1 - mask).bool(), float("-inf"))
-    attn = attn.softmax(-1)
+
+    if config.use_smooth_softmax:
+        attn = smooth_softmax_ref(attn)
+    else:
+        attn = attn.softmax(-1)
+
     attn_output = torch.einsum("bhmn,bhnd->bhmd", attn.type_as(value), value)
 
     result = attn_output.transpose(1, 2).contiguous()
