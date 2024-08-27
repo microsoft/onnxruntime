@@ -519,7 +519,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("operator_pow"),
   };
 
-  static const ORTCHAR_T* cuda_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
+  static const ORTCHAR_T* cuda_rocm_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
                                                 ORT_TSTR("fp16_shufflenet"),
                                                 ORT_TSTR("fp16_tiny_yolov2"),
                                                 ORT_TSTR("candy"),
@@ -535,6 +535,8 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+  // For ROCm EP, also disable the following tests due to flakiness,
+  // mainly with precision issue and random memory access fault.
   static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
                                                    ORT_TSTR("bvlc_reference_caffenet"),
                                                    ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
@@ -682,7 +684,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
     }
     if (provider_cuda_or_rocm) {
-      all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
+      all_disabled_tests.insert(std::begin(cuda_rocm_flaky_tests), std::end(cuda_rocm_flaky_tests));
     } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     } else if (provider_name == provider_name_dnnl) {
