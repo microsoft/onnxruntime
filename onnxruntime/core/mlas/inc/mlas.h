@@ -1013,6 +1013,7 @@ MlasComputeSoftmax(
     size_t N,
     size_t D,
     bool LogSoftmax,
+    bool SmoothSoftmax,
     MLAS_THREADPOOL* ThreadPool
     );
 

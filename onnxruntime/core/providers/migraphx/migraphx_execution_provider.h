@@ -26,6 +26,7 @@ static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
 static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILE_PATH";
 static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
 static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILE_PATH";
+static const char kExhaustiveTune[] = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
 
 };  // namespace migraphx_env_vars
 
@@ -50,6 +51,7 @@ struct MIGraphXFuncState {
   bool load_compiled_mode = false;
   std::string load_compiled_path;
   bool dump_model_ops = false;
+  bool exhaustive_tune = false;
 };
 
 // Logical device representation.
@@ -101,6 +103,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
+  bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_;
 
   std::unordered_map<std::string, migraphx::program> map_progs_;

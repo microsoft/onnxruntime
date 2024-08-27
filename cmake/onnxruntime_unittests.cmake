@@ -887,9 +887,12 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
-  # Avoid this compile error in graph_transform_test.cc:
+  # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
   set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
+                      "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
+               APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
+  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
                APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")

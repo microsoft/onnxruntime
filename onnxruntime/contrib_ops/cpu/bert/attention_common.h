@@ -47,6 +47,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
   AttentionKernel_Default
 };
 
@@ -115,6 +116,7 @@ struct GroupQueryAttentionParameters {
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
   bool do_rotary;
   bool rotary_interleaved;
+  bool use_smooth_softmax;
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;

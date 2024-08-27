@@ -593,7 +593,6 @@ export class WebGpuBackend {
         } else if (v.type === DataType.uint32) {
           new Uint32Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float16) {
-          // TODO: use Float16Array.
           new Uint16Array(arrayBuffer, offset, data.length).set(data);
         } else if (v.type === DataType.float) {
           new Float32Array(arrayBuffer, offset, data.length).set(data);

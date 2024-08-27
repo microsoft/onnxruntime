@@ -10,7 +10,6 @@ import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging import version
 from packaging.version import Version
-from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
 
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
@@ -70,6 +69,8 @@ class CustomOpSymbolicRegistry:
 
     @classmethod
     def register_all(cls, onnx_opset_version):
+        from torch.onnx import register_custom_op_symbolic
+
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             register_custom_op_symbolic(
