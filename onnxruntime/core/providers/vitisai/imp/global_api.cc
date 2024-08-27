@@ -133,17 +133,46 @@ void create_kernel_registry(std::vector<OrtCustomOpDomain*> domains) {
   s_kernel_registry_vitisaiep = KernelRegistry::Create();
   for (const auto& domain : domains) {
     for (const auto* op : domain->custom_ops_) {
+      const size_t input_count = op->GetInputTypeCount(op);
+      const size_t output_count = op->GetOutputTypeCount(op);
       auto def_builder = KernelDefBuilder::Create();
       def_builder->SetName(op->GetName(op));
       def_builder->SetDomain(domain->domain_.c_str());
       def_builder->SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
       if (op->version > 12) {
-        auto input_count = op->GetInputTypeCount(op);
         for (auto i = 0u; i < input_count; i++) {
           def_builder->InputMemoryType(op->GetInputMemoryType(op, i), i);
         }
       }
-      def_builder->Provider(onnxruntime::kVitisAIExecutionProvider);
+      def_builder->Provider(op->GetExecutionProviderType(op));
+
+      auto schema = Provider_GetHost()->GetSchema(op->GetName(op), op->GetStartVersion(op), domain->domain_);
+      for (size_t i = 0; i < input_count; i++) {
+        const auto input_type = op->GetInputType(op, i);
+        auto input_name = schema->inputs__GetName(i);
+        if (schema->typeConstraintMap().count(schema->inputs__GetTypeStr(i))) {
+          input_name = schema->inputs__GetTypeStr(i);
+        }
+        if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+          def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::AllTensorTypes());
+        } else {
+          def_builder->TypeConstraint(input_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(input_type));
+        }
+      }
+      for (size_t i = 0; i < output_count; i++) {
+        const auto output_type = op->GetOutputType(op, i);
+        auto output_name = schema->outputs__GetName(i);
+        if (schema != nullptr) {
+          if (schema->typeConstraintMap().count(schema->outputs__GetTypeStr(i))) {
+            output_name = schema->outputs__GetTypeStr(i);
+          }
+        }
+        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::AllTensorTypes());
+        } else {
+          def_builder->TypeConstraint(output_name.c_str(), DataTypeImpl::GetTensorTypeFromOnnxType(output_type));
+        }
+      }
       KernelCreateFn kernel_create_fn =
           [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
         out = std::make_unique<MyCustomOpKernel>(info, *op);

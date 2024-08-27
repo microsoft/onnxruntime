@@ -17,6 +17,47 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
+void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
+  ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    for (std::ptrdiff_t j = begin; j != end; ++j) {
+      float* x = reinterpret_cast<T*>(score) + j * D;
+      float* y = x;
+
+      float max = -std::numeric_limits<float>::infinity();
+      for (int i = 0; i < D; i++) {
+        if (max < x[i])
+          max = x[i];
+      }
+
+      if (max < 0.0f) {
+        max = 0.0f;
+      }
+
+      for (int i = 0; i < D; i++) {
+        y[i] = expf(x[i] - max);
+      }
+
+      double sum = 0.0;
+
+      for (int i = 0; i < D; i++) {
+        sum += x[i];
+      }
+
+      sum += exp(static_cast<double>(-max));
+
+      for (int i = 0; i < D; i++) {
+        y[i] = x[i] / (float)sum;
+      }
+    }
+  });
+}
+
+template <>
+inline void ComputeSmoothSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+}
+
+template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t j = begin; j != end; ++j) {
@@ -58,7 +99,7 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, false, tp);
 }
 
 template <typename T>
