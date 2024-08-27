@@ -127,7 +127,7 @@ __launch_bounds__(TPB) __global__
     const int block_row = blockIdx.x;
 
     const bool should_process_row = finished ? !finished[block_row] : true;
-    const int thread_read_offset = blockIdx.x * num_experts;
+    const int thread_row_offset = blockIdx.x * num_experts;
     float output_row_sum = 0.f;
     for (int k_idx = 0; k_idx < k; ++k_idx) {
         thread_kvp.key = 0;
@@ -135,7 +135,7 @@ __launch_bounds__(TPB) __global__
 
         cub_kvp inp_kvp;
         for (int expert = threadIdx.x; expert < num_experts; expert += TPB) {
-            const int idx = thread_read_offset + expert;
+            const int idx = thread_row_offset + expert;
             inp_kvp.key = expert;
             inp_kvp.value = inputs_after_softmax[idx];
 
@@ -165,6 +165,107 @@ __launch_bounds__(TPB) __global__
             }
         }
         __syncthreads();
+    }
+}
+#endif
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+template <typename T, int TPB, int NUM_EXPERTS>
+__launch_bounds__(TPB) __global__ void sparse_mixer_top2(const T *, T *, int *, int *, const float) {
+    // Does not support pre-Kepler architectures
+    ;
+}
+#else
+
+template <typename T, int TPB, int NUM_EXPERTS>
+__launch_bounds__(TPB) __global__
+    void sparse_mixer_top2(const T *inputs, T *output, int *indices, int *source_rows, const float jitter_eps) {
+    static constexpr int K = 2;
+
+    using cub_kvp = cub::KeyValuePair<int, T>;
+    using KVBlockReduce = cub::BlockReduce<cub_kvp, TPB>;
+
+    __shared__ float result_kvp_value[K];
+    __shared__ typename KVBlockReduce::TempStorage kvTmpStorage;
+
+    cub_kvp thread_kvp;
+    cub::ArgMax arg_max;
+
+    int num_rows = gridDim.x;
+    const int block_row = blockIdx.x;
+
+    const int thread_row_offset = blockIdx.x * NUM_EXPERTS;
+
+    float factor[K];
+    bool logits_mask[K];
+
+#pragma unroll
+    for (int k_idx = 0; k_idx < K; ++k_idx) {
+        thread_kvp.key = 0;
+        thread_kvp.value = T(-1.f);
+
+        cub_kvp inp_kvp;
+#pragma unroll
+        for (int expert = threadIdx.x; expert < NUM_EXPERTS; expert += TPB) {
+            const int idx = thread_row_offset + expert;
+            inp_kvp.key = expert;
+            inp_kvp.value = inputs[idx];
+
+            for (int prior_k = 0; prior_k < k_idx; ++prior_k) {
+                const int prior_winning_expert = indices[K * block_row + prior_k];
+
+                if (prior_winning_expert == expert) {
+                    inp_kvp = thread_kvp;
+                }
+            }
+
+            thread_kvp = arg_max(inp_kvp, thread_kvp);
+        }
+
+        const cub_kvp result_kvp = KVBlockReduce(kvTmpStorage).Reduce(thread_kvp, arg_max);
+        if (threadIdx.x == 0) {
+            const int idx = K * block_row + k_idx;
+            result_kvp_value[k_idx] = (float)result_kvp.value;
+            indices[idx] = result_kvp.key;
+            source_rows[idx] = k_idx * num_rows + block_row;
+        }
+        __syncthreads();
+
+#pragma unroll
+        for (int expert = threadIdx.x; expert < NUM_EXPERTS; expert += TPB) {
+            const int idx = thread_row_offset + expert;
+            factor[k_idx] = max(abs((float)inputs[idx]), result_kvp_value[k_idx]);
+            logits_mask[k_idx] = (result_kvp_value[k_idx] - (float)inputs[idx]) > (2 * jitter_eps * factor[k_idx]);
+            if (k_idx == 1 && expert == indices[K * block_row]) {
+                logits_mask[1] = true;
+            }
+        }
+    }
+
+#pragma unroll
+    for (int k_idx = 0; k_idx < K; ++k_idx) {
+        float row_sum(0);
+
+#pragma unroll
+        for (int ii = threadIdx.x; ii < NUM_EXPERTS; ii += TPB) {
+            const int idx = thread_row_offset + ii;
+            row_sum += logits_mask[k_idx] ? 0 : exp((static_cast<float>(inputs[idx]) - result_kvp_value[k_idx]));
+        }
+
+#pragma unroll
+        for (int mask = NUM_EXPERTS / 2; mask > 0; mask /= 2) {
+            row_sum += __shfl_xor_sync(0xFFFFFFFF, row_sum, mask, NUM_EXPERTS);
+        }
+
+        const float normalizing_factor = 1.f / row_sum;
+
+        const int idx = K * block_row + k_idx;
+        if (threadIdx.x == indices[idx]) {
+            const int input_idx = thread_row_offset + threadIdx.x;
+            output[idx] = logits_mask[k_idx] ? 0
+                                             : exp((static_cast<float>(inputs[input_idx]) - result_kvp_value[k_idx])) *
+                                                   normalizing_factor;
+        }
     }
 }
 #endif
@@ -406,8 +507,29 @@ void topk_gating_softmax_launcher_helper(const T *input, const bool *finished, T
 template <typename T>
 void topk_gating_softmax_kernelLauncher(const T *input, const bool *finished, T *output, T *softmax_temp_output,
                                         int *indices, int *source_row, int num_rows, int num_experts, int k,
-                                        bool normalize_routing_weights, cudaStream_t stream) {
+                                        bool normalize_routing_weights, bool use_sparse_mixer, cudaStream_t stream) {
     static constexpr int WARPS_PER_TB = 4;
+
+    if (use_sparse_mixer) {
+        static constexpr int TPB = WARP_SIZE * WARPS_PER_TB;
+        static constexpr float jitter_eps = 0.01f;
+
+        switch (num_experts) {
+        case 8: {
+            sparse_mixer_top2<T, TPB, 8><<<num_rows, TPB, 0, stream>>>(input, output, indices, source_row, jitter_eps);
+            break;
+        }
+        case 16: {
+            sparse_mixer_top2<T, TPB, 16><<<num_rows, TPB, 0, stream>>>(input, output, indices, source_row, jitter_eps);
+            break;
+        }
+
+        default: {
+            ORT_THROW("Sparse mixer only supports 8 and 16 experts");
+        }
+        }
+        return;
+    }
 
     switch (num_experts) {
     case 2: {
@@ -542,9 +664,9 @@ __global__ void dispatch_activations_kernel(int64_t *total_rows_before_expert, i
 
 template <typename T, typename WeightType, typename Enable>
 CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, bool has_fc3,
-                                                              bool normalize_routing_weights)
+                                                              bool normalize_routing_weights, bool use_sparse_mixer)
     : has_fc3_(has_fc3), total_past_rows_(0), total_covered_rows_(0),
-      normalize_routing_weights_(normalize_routing_weights) {
+      normalize_routing_weights_(normalize_routing_weights), use_sparse_mixer_(use_sparse_mixer) {
     moe_gemm_runner_.initialize(sm_version);
 }
 
@@ -729,7 +851,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     configure_ws_ptrs(workspace_ptr, static_cast<size_t>(num_rows), static_cast<size_t>(hidden_size),
                       static_cast<size_t>(inter_size), static_cast<size_t>(num_experts), static_cast<size_t>(k));
     topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
-                                          source_rows_, num_rows, num_experts, k, normalize_routing_weights_, stream);
+                                          source_rows_, num_rows, num_experts, k, normalize_routing_weights_,
+                                          use_sparse_mixer_, stream);
 
     const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
     sorter_.run(reinterpret_cast<void *>(fc1_result_), sorter_ws_size_bytes, expert_for_source_row, permuted_experts_,
@@ -748,7 +871,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                              stream);
     }
 
-    // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size, expanded_active_expert_rows);
+    // moe_gemm_runner_.try_find_best_config(local_num_experts, hidden_size, inter_size,
+    // expanded_active_expert_rows);
     moe_gemm_runner_.moe_gemm_bias_act(
         permuted_data_ + total_past_rows_ * hidden_size, fc1_expert_weights, fc1_scales, fc1_expert_biases,
         fc1_result_ + total_past_rows_ * inter_size, total_rows_before_expert_ + local_experts_start_index,
@@ -868,9 +992,9 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::get_total_rows_info(int64_t expe
 // experts in the end.
 
 // Note that the expanded_dest_row_to_expanded_source_row map referred to here has indices in the range (0,
-// k*rows_in_input - 1). However, it is set up so that index 0, rows_in_input, 2*rows_in_input ... (k-1)*rows_in_input
-// all map to row 0 in the original matrix. Thus, to know where to read in the source matrix, we simply take the modulus
-// of the expanded index.
+// k*rows_in_input - 1). However, it is set up so that index 0, rows_in_input, 2*rows_in_input ...
+// (k-1)*rows_in_input all map to row 0 in the original matrix. Thus, to know where to read in the source matrix, we
+// simply take the modulus of the expanded index.
 
 template <typename T>
 __global__ void initialize_moe_routing_kernel(const T *unpermuted_input, T *permuted_output,
@@ -878,9 +1002,9 @@ __global__ void initialize_moe_routing_kernel(const T *unpermuted_input, T *perm
                                               int *expanded_source_row_to_expanded_dest_row, int num_rows,
                                               int active_rows, int cols) {
     // Reverse permutation map.
-    // I do this so that later, we can use the source -> dest map to do the k-way reduction and unpermuting. I need the
-    // reverse map for that reduction to allow each threadblock to do 1 k-way reduce without atomics later in MoE. 1
-    // thread block will be responsible for all k summations.
+    // I do this so that later, we can use the source -> dest map to do the k-way reduction and unpermuting. I need
+    // the reverse map for that reduction to allow each threadblock to do 1 k-way reduce without atomics later in
+    // MoE. 1 thread block will be responsible for all k summations.
     const int expanded_dest_row = blockIdx.x;
     const int expanded_source_row = expanded_dest_row_to_expanded_source_row[expanded_dest_row];
     if (threadIdx.x == 0) {
@@ -1014,14 +1138,15 @@ void finalize_moe_routing_kernelLauncher(const T *expanded_permuted_rows, T *red
 
 // ========================= TopK Softmax specializations ===========================
 template void topk_gating_softmax_kernelLauncher(const float *, const bool *, float *, float *, int *, int *, int, int,
-                                                 int, bool, cudaStream_t);
+                                                 int, bool, bool, cudaStream_t);
 template void topk_gating_softmax_kernelLauncher(const half *, const bool *, half *, half *, int *, int *, int, int,
-                                                 int, bool, cudaStream_t);
+                                                 int, bool, bool, cudaStream_t);
 
 // ==================== Variable batched GEMM specializations ==================================
 template class CutlassMoeFCRunner<float, float>;
 template class CutlassMoeFCRunner<half, half>;
 template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
+template class CutlassMoeFCRunner<half, uint8_t>;
 
 // ===================== Specializations for init routing =========================
 template void initialize_moe_routing_kernelLauncher(const float *, float *, const int *, int *, int, int, int, int,
