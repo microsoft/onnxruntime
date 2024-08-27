@@ -7,7 +7,7 @@ parameters:
 steps:
 - ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
   - powershell: |
-      Remove-Item $(Build.BinariesDirectory)/* -Recurse -Force
+      Remove-Item $(Build.BinariesDirectory)\* -Recurse -Force
     displayName: 'Clean up build directory'
 
   - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
@@ -28,12 +28,12 @@ steps:
       # ignore onnxruntime-inference-examples directory. onnxruntime-inference-examples directory is used for inference examples, not for onnxruntime package
       # ignore BinariesDirectory. BinariesDirectory is used for build output, not for onnxruntime package
       ignoreDirectories:
-        '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,
-        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,
-        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,
-        $(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,
-        $(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,
-        $(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,
-        $(Build.Repository.LocalPath)/js/node_modules,
-        $(Build.SourcesDirectory)/onnxruntime-inference-examples,
+        '$(Build.Repository.LocalPath)\cmake\external\emsdk\upstream\emscripten\tests,
+        $(Build.Repository.LocalPath)\cmake\external\onnx\third_party\benchmark,
+        $(Build.Repository.LocalPath)\cmake\external\onnx\third_party\pybind11,
+        $(Build.Repository.LocalPath)\cmake\external\onnx\third_party\pybind11\tests,
+        $(Build.Repository.LocalPath)\cmake\external\onnxruntime-extensions,
+        $(Build.Repository.LocalPath)\js\react_native\e2e\node_modules,
+        $(Build.Repository.LocalPath)\js\node_modules,
+        $(Build.SourcesDirectory)\onnxruntime-inference-examples,
         $(Build.BinariesDirectory)'
