@@ -23,8 +23,12 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions
 
 DTYPES = ["float16", "float32", "float8_e4m3fn"]
 NUM_GEN_SEQS = [1, 7]
-NUM_HEADS = [(32, 2), (32, 4), (19, 19)]
-HEAD_SIZES = [64, 80, 96, 112, 128]
+NUM_HEADS = [
+  (19, 19),  # mha
+  (16, 4),   # gqa4
+  (32, 2),   # gqa8 with 2x broadcasting
+]
+HEAD_SIZES = [64, 80, 96, 112, 128, 256]
 PAGE_SIZES = [8, 16, 32]
 
 
