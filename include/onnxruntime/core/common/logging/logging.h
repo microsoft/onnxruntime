@@ -18,6 +18,7 @@
 #include "core/common/logging/severity.h"
 #include "core/common/logging/sink_types.h"
 #include "core/platform/ort_mutex.h"
+#include "date/date.h"
 
 /*
 
@@ -63,7 +64,6 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock>;
 #if __cplusplus >= 202002L && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L || _WIN32)
 namespace timestamp_ns = std::chrono;
 #else
-#include "date/date.h"
 namespace timestamp_ns = ::date;
 #endif
 
