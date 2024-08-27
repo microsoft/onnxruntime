@@ -2501,20 +2501,6 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph,
   return nullptr;
 }
 
-// ORT_API_STATUS_IMPL(OrtApis::OrtGraph_CreateModel, const OrtGraphViewer* graph, _Outptr_ OrtModel** model) {
-//   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-//   auto original_model = std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
-// #if !defined(ORT_MINIMAL_BUILD)
-//                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
-// #else
-//                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
-// #endif  // ORT_MINIMAL_BUILD
-//                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-
-//   *model = reinterpret_cast<OrtModel*>(original_model);
-//   return nullptr;
-// }
-
 ORT_API(size_t, OrtApis::OrtGraph_GetOutputSize, const OrtGraphViewer* graph) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   return graph_viewer->GetOutputs().size();
@@ -3122,7 +3108,6 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetNodeProducingOutput,
     &OrtApis::OrtGraph_NumberOfNodes,
     &OrtApis::OrtGraph_MaxNodeIndex,
-    // &OrtApis::OrtGraph_CreateModel,
     &OrtApis::OrtGraph_GetOutputSize,
     &OrtApis::OrtGraph_GetIthOutputName,
     &OrtApis::OrtGraph_GetIthOutputElemType,

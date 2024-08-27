@@ -565,8 +565,6 @@ ORT_API(int, OrtGraph_NumberOfNodes, const OrtGraphViewer*) ORT_ALL_ARGS_NONNULL
 
 ORT_API_STATUS_IMPL(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out);
 
-// ORT_API_STATUS_IMPL(OrtGraph_CreateModel, const OrtGraphViewer* graph, _Outptr_ OrtModel** out);
-
 ORT_API(size_t, OrtGraph_GetOutputSize, const OrtGraphViewer*) ORT_ALL_ARGS_NONNULL;
 
 ORT_API(const char*, OrtGraph_GetIthOutputName, const OrtGraphViewer*, size_t i) ORT_ALL_ARGS_NONNULL;

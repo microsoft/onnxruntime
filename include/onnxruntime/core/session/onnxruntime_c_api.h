@@ -4783,8 +4783,6 @@ struct OrtApi {
 
   ORT_API2_STATUS(OrtGraph_MaxNodeIndex, const OrtGraphViewer* graph, _Out_ int* out);
 
-  // ORT_API2_STATUS(OrtGraph_CreateModel, const OrtGraphViewer* graph, _Outptr_ OrtModel** out);
-
   size_t(ORT_API_CALL* OrtGraph_GetOutputSize)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
   const char*(ORT_API_CALL* OrtGraph_GetIthOutputName)(const OrtGraphViewer*, size_t i)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
