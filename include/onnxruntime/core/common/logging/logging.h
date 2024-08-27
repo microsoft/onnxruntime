@@ -18,8 +18,11 @@
 #include "core/common/logging/severity.h"
 #include "core/common/logging/sink_types.h"
 #include "core/platform/ort_mutex.h"
-#include "date/date.h"
 
+// date.h is from abseil-cpp, which is no longer supporing C++20. So we need replace it with std::chrono::operator<<
+#if !(__cplusplus >= 202002L && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 140400L || _WIN32))
+#include "date/date.h"
+#endif
 /*
 
   Logging overview and expected usage:
