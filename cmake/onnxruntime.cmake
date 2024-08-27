@@ -337,3 +337,10 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # link the static library
   add_custom_command(TARGET onnxruntime POST_BUILD COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime *.a WORKING_DIRECTORY ${STATIC_LIB_DIR})
 endif()
+
+
+if (ANDROID)
+ # Build shared libraries with 16 KB ELF alignment
+ # https://source.android.com/docs/core/architecture/16kb-page-size/16kb
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+endif()
