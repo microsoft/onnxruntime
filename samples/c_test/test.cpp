@@ -7,21 +7,21 @@ inline void THROW_ON_ERROR(OrtStatus* status) {
 }
 
 void TestCompileBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
-    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
+    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp/build/liboutTreeEp.so", env, "outTreeEp"));
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "outTreeEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestKernelBasedEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
-    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
+    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/outTreeEp_kernel/build/libkernelEp.so", env, "kernelEp"));
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "kernelEp", env, keys.data(), values.data(), keys.size()));
 }
 
 void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
-    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/yangu/work/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorRTEp"));
+    THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
-    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorRTEp", env, keys.data(), values.data(), keys.size()));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 }
 
 int main() {
@@ -37,7 +37,7 @@ int main() {
     TestTensorRTEp(g_ort, p_env, so);
 
     OrtSession* session = nullptr;
-    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/yangu/work/onnxruntime/samples/c_test/Relu.onnx", so, &session));
+    THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));
 
     OrtMemoryInfo* memory_info = nullptr;
     THROW_ON_ERROR(g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
