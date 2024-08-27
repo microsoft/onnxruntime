@@ -325,7 +325,7 @@ elif platform.system() == "Windows":
 dl_libs = []
 libs = []
 
-if platform.system() == "Linux":
+if platform.system() == "Linux" or platform.system() == 'AIX':
     libs = [
         "onnxruntime_pybind11_state.so",
         "libdnnl.so.2",
