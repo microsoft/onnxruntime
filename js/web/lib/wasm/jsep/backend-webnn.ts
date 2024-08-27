@@ -134,8 +134,8 @@ export class WebNNBackend {
     this.bufferManager.upload(bufferId, data);
   }
 
-  public async downloadBuffer(bufferId: BufferId): Promise<ArrayBuffer> {
-    return this.bufferManager.download(bufferId);
+  public async downloadBuffer(bufferId: BufferId, dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined> {
+    return this.bufferManager.download(bufferId, dstBuffer);
   }
 
   public createMLBufferDownloader(bufferId: BufferId, type: Tensor.MLBufferDataTypes): () => Promise<Tensor.DataType> {

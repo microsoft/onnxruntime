@@ -37,7 +37,7 @@ export declare namespace JSEP {
     copyOld: boolean,
   ) => Promise<MLBuffer>;
   type UploadBufferFunction = (bufferId: number, data: Uint8Array) => void;
-  type DownloadBufferFunction = (bufferId: number) => Promise<ArrayBuffer>;
+  type DownloadBufferFunction = (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
@@ -206,7 +206,12 @@ export declare namespace JSEP {
      * @param bufferId - specify the MLBuffer ID.
      * @returns the downloaded data.
      */
-    jsepDownloadBuffer: (bufferId: number) => Promise<ArrayBuffer>;
+    jsepDownloadBuffer: (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+    /**
+     * [exported from pre-jsep.js] Download data from MLBuffer.
+     * @param bufferId - specify the MLBuffer ID.
+     * @returns the downloaded data.
+     */
     /**
      * [exported from pre-jsep.js] Create a downloader function to download data from MLBuffer.
      * @param bufferId - specify the MLBuffer ID.

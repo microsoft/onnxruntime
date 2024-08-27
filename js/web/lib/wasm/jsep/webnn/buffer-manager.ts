@@ -40,6 +40,7 @@ export interface BufferManager {
    * Download data from a MLBuffer.
    */
   download(bufferId: BufferId): Promise<ArrayBuffer>;
+  download(bufferId: BufferId, dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined>;
   /**
    * Release all buffers for a MLContext.
    */
@@ -168,12 +169,25 @@ class BufferTracker {
     this.mlContext?.writeBuffer(this.bufferEntry[0], data);
   }
 
-  public async download(): Promise<ArrayBuffer> {
+  public async download(dstBuffer?: ArrayBufferView | ArrayBuffer): Promise<ArrayBuffer | undefined> {
     if (this.activeUpload) {
-      return this.activeUpload.buffer;
+      if (dstBuffer) {
+        if (dstBuffer instanceof ArrayBuffer) {
+          new Uint8Array(dstBuffer).set(this.activeUpload);
+        } else {
+          new Uint8Array(dstBuffer.buffer, dstBuffer.byteOffset, dstBuffer.byteLength).set(this.activeUpload);
+        }
+
+        return;
+      } else {
+        return this.activeUpload.buffer;
+      }
     }
     if (!this.bufferEntry) {
       throw new Error('Buffer has not been created.');
+    }
+    if (dstBuffer) {
+      return this.context.readBuffer(this.bufferEntry[0], dstBuffer);
     }
     return this.context.readBuffer(this.bufferEntry[0]);
   }
@@ -238,8 +252,11 @@ class BufferManagerImpl implements BufferManager {
     this.buffersById.get(bufferId)!.upload(data);
   }
 
-  public async download(bufferId: BufferId): Promise<ArrayBuffer> {
-    return this.buffersById.get(bufferId)!.download();
+  public async download(bufferId: BufferId): Promise<ArrayBuffer>;
+  public async download(bufferId: BufferId, dstBuffer: ArrayBufferView | ArrayBuffer): Promise<undefined>;
+  async download(bufferId: BufferId, dstBuffer?: ArrayBufferView | ArrayBuffer): Promise<ArrayBuffer | undefined> {
+    LOG_DEBUG('verbose', () => `[WebNN] BufferManager.download {bufferId: ${bufferId}, dstBuffer: ${dstBuffer}}`);
+    return this.buffersById.get(bufferId)!.download(dstBuffer);
   }
 
   public releaseBuffersForContext(mlContext: MLContext): void {

@@ -32,11 +32,8 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
       EM_ASM({ Module.jsepUploadBuffer($0, HEAPU8.subarray($1, $1 + $2)); }, dst_data, reinterpret_cast<intptr_t>(src_data), bytes);
     } else {
       auto jsepDownloadBuffer = emscripten::val::module_property("jsepDownloadBuffer");
-      auto buffer = jsepDownloadBuffer(reinterpret_cast<intptr_t>(src_data)).await();
-      EM_ASM({
-        const buffer = Emval.toValue($0);
-        const src_array = new Uint8Array(buffer, 0, $2);
-        HEAPU8.set(src_array, $1); }, buffer.as_handle(), reinterpret_cast<intptr_t>(dst_data), bytes);
+      auto subarray = emscripten::typed_memory_view(bytes, static_cast<char*>(dst_data));
+      jsepDownloadBuffer(reinterpret_cast<intptr_t>(src_data), subarray).await();
     }
   }
 

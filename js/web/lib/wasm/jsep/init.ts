@@ -273,7 +273,7 @@ export const init = async (
         backend.uploadBuffer(bufferId, data);
       },
       // jsepDownloadBuffer
-      async (bufferId: number) => backend.downloadBuffer(bufferId),
+      async (bufferId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadBuffer(bufferId, dstBuffer),
     ]);
   }
 };

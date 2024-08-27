@@ -407,6 +407,6 @@ interface MLContext {
       dstBuffer: MLBuffer, srcData: ArrayBufferView|ArrayBuffer, srcElementOffset?: number,
       srcElementSize?: number): void;
   readBuffer(srcBuffer: MLBuffer): Promise<ArrayBuffer>;
-  readBuffer(srcBuffer: MLBuffer, dstBuffer: ArrayBuffer): Promise<undefined>;
+  readBuffer(srcBuffer: MLBuffer, dstBuffer: ArrayBufferView|ArrayBuffer): Promise<undefined>;
   dispatch(graph: MLGraph, inputs: MLNamedBuffers, outputs: MLNamedBuffers): void;
 }
