@@ -3,6 +3,7 @@
 
 // EtwSink.h must come before the windows includes
 #include "core/platform/windows/logging/etw_sink.h"
+#include <assert.h>
 
 #ifdef ETW_TRACE_LOGGING_SUPPORTED
 
