@@ -2421,9 +2421,9 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsConstantInitializer, const OrtGraphViewe
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order) {
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder();
+  const std::vector<size_t>& nodes = graph_viewer->GetNodesInTopologicalOrder(static_cast<ExecutionOrder>(execution_order));
   *len = nodes.size();
   *nodes_index_in_topological_order = nodes.data();
   return nullptr;
@@ -2438,6 +2438,12 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ b
 ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph) {
   const ::onnxruntime::Graph* graph_ptr = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
   *parent_graph = reinterpret_cast<const OrtGraph*>(graph_ptr->ParentGraph());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *parent_node = reinterpret_cast<const OrtNode*>(graph_viewer->ParentNode());
   return nullptr;
 }
 
@@ -2612,7 +2618,11 @@ ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetOutputSize, const OrtNode* node, _Out_ s
 ORT_API_STATUS_IMPL(OrtApis::OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Out_ const char** ith_output_name) {
   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node);
   assert(i < n->OutputDefs().size());
-  *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  if (n->OutputDefs()[i]->Exists()){
+    *ith_output_name = n->OutputDefs()[i]->Name().c_str();
+  } else {
+    *ith_output_name = nullptr;
+  }
   return nullptr;
 }
 
@@ -3103,6 +3113,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtApis::OrtGraph_IsSubgraph,
     &OrtApis::OrtGraph_GetParentGraph,
+    &OrtApis::OrtGraph_GetParenNode,
     &OrtApis::OrtGraph_GetModelPath,
     &OrtApis::OrtGraph_GetOrtGraph,
     &OrtApis::OrtGraph_GetInputsIncludingInitializers,

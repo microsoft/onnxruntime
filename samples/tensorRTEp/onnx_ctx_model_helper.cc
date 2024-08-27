@@ -11,17 +11,18 @@ namespace onnxruntime {
 HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   HashValue model_hash = 0;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  const OrtGraph* graph = nullptr;
-  api->OrtGraph_GetOrtGraph(graph_viewer, &graph);
+  const OrtGraph* cur_graph = nullptr;
+  api->OrtGraph_GetOrtGraph(graph_viewer, &cur_graph);
   bool is_subgraph = false;
-  api->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   while (is_subgraph) {
     const OrtGraph* parent_graph = nullptr;
-    api->OrtGraph_GetParentGraph(graph, &parent_graph);
-    graph = parent_graph;
-    api->OrtGraph_IsSubgraph(graph, &is_subgraph);
+    api->OrtGraph_GetParentGraph(cur_graph, &parent_graph);
+    cur_graph = parent_graph;
+    api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
   }
 
+  const OrtGraph* main_graph = cur_graph;
   uint32_t hash[4] = {0, 0, 0, 0};
 
   auto hash_str = [&hash](const std::string& str) {
@@ -54,12 +55,53 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   size_t input_count = 0;
   api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_count, &input_names);
   for (size_t i = 0; i < input_count; ++i) {
-    std::cout<<"input_names["<<i<<"] = "<<input_names[i]<<std::endl;
     hash_str(input_names[i]);
   }
-  // for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
-  //   hash_str(node_arg->Name());
-  // }
+
+  // hashing output of each node
+  const int number_of_ort_nodes = api->OrtGraph_NumberOfNodes(graph_viewer);
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  size_t nodes_count = 0;
+  const size_t* nodes_index = nullptr;
+  api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 0, &nodes_count, &nodes_index);
+  for (const auto& index : nodes_vector) {
+    const OrtNode* node = nullptr;
+    api->OrtGraph_GetOrtNode(graph_viewer, nodes_index[index], &node);
+    size_t output_size = 0;
+    api->OrtNode_GetOutputSize(node, &output_size);
+    for (size_t i = 0; i < output_size; ++i) {
+      const char* output_name = nullptr;
+      api->OrtNode_GetIthOutputName(node, i, &output_name);
+      if (output_name != nullptr) {
+        hash_str(output_name);
+      }
+    }
+  }
+
+#ifdef __linux__
+  hash_str("LINUX");
+#elif defined(_WIN32)
+  hash_str("WINDOWS");
+#endif
+
+#ifdef ORT_VERSION
+  hash_str(ORT_VERSION);
+#endif
+
+#ifdef CUDA_VERSION
+  hash_str(std::to_string(CUDA_VERSION));
+#endif
+
+#if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
+  std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  hash_str(TRT_VERSION);
+#endif
+
+  model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+
+  // return the current unique id
+  return model_hash;
 }
 
 bool GraphHasCtxNode(const OrtGraphViewer* graph_viewer) {

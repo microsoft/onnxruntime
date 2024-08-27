@@ -11,7 +11,7 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
         std::vector<OrtIndexedSubGraph*> cache;
         size_t nodes_count = 0;
         const size_t* nodes_index = nullptr;
-        api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, &nodes_count, &nodes_index);
+        api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 0, &nodes_count, &nodes_index);
         for (size_t i = 0; i < nodes_count; i++) {
             const OrtNode* node = nullptr;
             api->OrtGraph_GetOrtNode(graph, nodes_index[i], &node);

@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <list>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <filesystem>
 #include "core/session/onnxruntime_c_api.h"

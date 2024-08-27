@@ -4,7 +4,9 @@
 #include <unordered_set>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
+#include "core/graph/constants.h"
 #include "nv_includes.h"
+#include "onnx_ctx_model_helper.h"
 
 #ifdef _WIN32
 #define EXPORT_API __declspec(dllexport)
@@ -180,6 +182,18 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
                                       bool detailed_build_log);
     SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                           const OrtGraphViewer& graph, bool* early_termination) const;
+
+    bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const OrtGraphViewer* graph, const HashValue& model_hash, bool remove_cycles = true) const;
+
+    /**Check the graph is the subgraph of control flow op*/
+    bool IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const;
+
+    /**Check whether all the nodes of the graph are assigned to specific ep*/
+    bool AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const;
+
+    /**Check whether all the nodes of subgraph are supported*/
+    bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
     static const OrtApi* api_;
     std::string trt_node_name_with_precision_;
     std::unordered_map<std::string, float> dynamic_range_map_;

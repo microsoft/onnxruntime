@@ -5,7 +5,6 @@
 #include "core/session/onnxruntime_cxx_api.h"   // TODO(leca): we should be able to use cxx APIs which are built upon C API
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
-#include "onnx_ctx_model_helper.h"
 
 void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
 
@@ -14,6 +13,25 @@ namespace onnxruntime {
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 const OrtApi* TensorrtExecutionProvider::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+// Check if cycle exists in the graph after partitioning
+bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
+  if (!visited[i]) {
+    visited[i] = true;
+    st[i] = true;
+    for (auto iter = adjacency_map[i].begin(); iter != adjacency_map[i].end(); ++iter) {
+      if (!visited[*iter] && FindCycleHelper(*iter, adjacency_map, visited, st, cycles)) {
+        cycles.push_back(*iter);
+        return true;
+      } else if (st[*iter]) {
+        cycles.push_back(*iter);
+        return true;
+      }
+    }
+  }
+  st[i] = false;
+  return false;
+}
 
 bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {
     size_t alloc_size = size;
@@ -799,9 +817,9 @@ OrtStatusPtr BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_DDS || known_DDS) {
     if (!known_DDS) {
-      // auto allocatorPtr = std::make_unique<OutputAllocator>();
-      // trt_context->setOutputAllocator(output_name, allocatorPtr.get());
-      // dds_output_allocator_map[output_name] = std::move(allocatorPtr);
+      auto allocatorPtr = std::make_unique<OutputAllocator>();
+      trt_context->setOutputAllocator(output_name, allocatorPtr.get());
+      dds_output_allocator_map[output_name] = std::move(allocatorPtr);
     }
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
@@ -889,16 +907,335 @@ OrtStatusPtr BindKernelOutput(Ort::KernelContext& ctx,
   return nullptr;
 }
 
+// Detect and remove cycles from supported node list
+bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const OrtGraphViewer* graph, const HashValue& model_hash, bool remove_cycles) const {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  size_t node_count = 0;
+  const size_t* nodes_index = nullptr;
+  api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &node_count, &nodes_index);
+  bool trt_cycle = true, cycle_detected = false;
+  while (trt_cycle) {
+    trt_cycle = false;
+    std::unordered_map<std::string, size_t> node_to_index_map;
+    std::unordered_map<size_t, std::string> index_to_node_map;
+    std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
+    std::unordered_set<size_t> non_trt_node_index;
+    for (size_t i = 0; i < node_count; ++i) {
+      non_trt_node_index.insert(nodes_index[i]);
+    }
+    size_t id = 0;
+    int subgraph_index = 0;
+    for (const auto& group : supported_nodes_vector) {
+      if (!group.first.empty()) {
+        // Construct subgraph from node list
+        // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
+        OrtIndexedSubGraph* subgraph = new OrtIndexedSubGraph();
+
+        // Create node to inputs/outputs/index maps
+        const std::string node_name = subgraph->meta_def->name;
+        if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
+          index_to_node_map[id] = node_name;
+          node_to_index_map[node_name] = id++;
+        }
+
+        if (subgraph->meta_def != nullptr) {
+          for (size_t j = 0; j < subgraph->meta_def->input_len; j++) {
+            input_to_nodes_map[std::string(subgraph->meta_def->inputs[j])].insert(node_name);
+          }
+          for (size_t j = 0; j < subgraph->meta_def->output_len; j++) {
+            node_to_outputs_map[node_name].insert(std::string(subgraph->meta_def->outputs[j]));
+          }
+        }
+
+        // Remove TensorRT nodes from node index list
+        for (const auto& index : group.first) {
+          non_trt_node_index.erase(nodes_index[index]);
+        }
+        subgraph_index++;
+      }
+    }
+
+    // Add non TensorRT nodes to the maps
+    for (const auto& index : non_trt_node_index) {
+      const OrtNode* node = nullptr;
+      api->OrtGraph_GetOrtNode(graph, index, &node);
+      const char* node_name_char = nullptr;
+      api->OrtNode_GetName(node, &node_name_char);
+      const std::string node_name(node_name_char);
+      if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
+        index_to_node_map[id] = node_name;
+        node_to_index_map[node_name] = id++;
+      }
+
+      size_t input_count = 0;
+      api->OrtNode_GetInputSize(node, &input_count);
+      for (size_t i = 0; i < input_count; ++i) {
+        const char* input_name_char = nullptr;
+        api->OrtNode_GetIthInputName(node, i, &input_name_char);
+        input_to_nodes_map[std::string(input_name_char)].insert(node_name);
+      }
+
+      size_t implicit_input_count = 0;
+      api->OrtNode_GetImplicitInputSize(node, &implicit_input_count);
+      for (size_t i = 0; i < implicit_input_count; ++i) {
+        const char* input_name_char = nullptr;
+        api->OrtNode_GetIthImplicitInputName(node, i, &input_name_char);
+        input_to_nodes_map[std::string(input_name_char)].insert(node_name);
+      }
+
+      size_t output_count = 0;
+      api->OrtNode_GetOutputSize(node, &output_count);
+      for (size_t i = 0; i < output_count; ++i) {
+        const char* output_name_char = nullptr;
+        api->OrtNode_GetIthOutputName(node, i, &output_name_char);
+        node_to_outputs_map[node_name].insert(std::string(output_name_char));
+      }
+    }
+
+    // Create adjacency list
+    size_t graph_size = node_to_index_map.size();
+    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
+    for (const auto& node : node_to_outputs_map) {
+      for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
+        const auto& loc = input_to_nodes_map.find(*iter);
+        if (loc != input_to_nodes_map.end()) {
+          size_t parent_node_index = node_to_index_map.find(node.first)->second;
+          for (auto child_node : loc->second) {
+            size_t child_node_index = node_to_index_map.find(child_node)->second;
+            adjacency_map[parent_node_index].push_back(child_node_index);
+          }
+        }
+      }
+    }
+
+    // Check cycle in the graph
+    bool* visited = new bool[graph_size];
+    bool* st = new bool[graph_size];
+    for (size_t i = 0; i < graph_size; ++i) {
+      visited[i] = false;
+      st[i] = false;
+    }
+
+    std::vector<size_t> cycles;
+    bool has_cycle = false;
+    for (size_t i = 0; i < graph_size; ++i) {
+      if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
+        has_cycle = true;
+        cycle_detected = true;
+        break;
+      }
+    }
+
+    // Remove TensorRT subgraph from the supported node list if it's part of the cycle
+    if (has_cycle && remove_cycles) {
+      for (size_t i = 0; i < cycles.size(); ++i) {
+        auto loc = index_to_node_map.find(cycles[i]);
+        if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
+          supported_nodes_vector.erase(supported_nodes_vector.begin() + cycles[i]);
+          trt_cycle = true;
+          break;
+        }
+      }
+    }
+
+    delete[] adjacency_map;
+    delete[] visited;
+    delete[] st;
+  }
+  return cycle_detected;
+}
+
+// Check the graph is the subgraph of control flow op
+bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtGraph* cur_graph = nullptr;
+  api->OrtGraph_GetOrtGraph(graph, &cur_graph);
+  bool is_subgraph = false;
+  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  if (is_subgraph) {
+    const OrtNode* node = nullptr;
+    api->OrtGraph_GetParenNode(graph, &node);
+    const char* node_op_type;
+    api->OrtNode_GetOpType(node, &node_op_type);
+    if (control_flow_op_set_.find(std::string(node_op_type)) != control_flow_op_set_.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check whether all the nodes of the graph are assigned to specific ep
+bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  std::vector<size_t> nodes_vector(api->OrtGraph_NumberOfNodes(graph));
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  size_t node_count = 0;
+  const size_t* nodes_index = nullptr;
+  api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &node_count, &nodes_index);
+  for (const auto& index : nodes_vector) {
+    const OrtNode* node = nullptr;
+    api->OrtGraph_GetOrtNode(graph, nodes_index[index], &node);
+    const char* node_ep_type;
+    api->OrtNode_GetExecutionProviderType(node, &node_ep_type);
+    if (!strcmp(node_ep_type, provider_type.c_str())) {
+      return false;
+    }
+  }
+  return true;
+
+}
+
+// Check whether all the nodes of subgraph are supported
+bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
+  int number_of_trt_nodes = 0;
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      number_of_trt_nodes += static_cast<int>(group.first.size());
+    }
+  }
+
+  return number_of_trt_nodes == number_of_ort_nodes;
+}
+
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& ep_info) : OrtExecutionProvider() {
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+        const TensorrtExecutionProvider* p = static_cast<const TensorrtExecutionProvider*>(this_);
+        // Get ModelPath
+        const std::filesystem::path* model_path = nullptr;
+        api->OrtGraph_GetModelPath(graph, (const void**)&model_path);
+        const auto& path_string = model_path->string();
+#ifdef _WIN32
+        std::strncpy_s(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
+#else
+        std::strncpy(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
+#endif
+        p->model_path_[sizeof(p->model_path_) - 1] = '\0';
+
         if (api->OrtGraph_NumberOfNodes(graph) == 1 && GraphHasCtxNode(graph)) {
             SubGraph_t supported_node_vector = {{0}, true};
-          // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
-         // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-         // return result;
+            // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+            // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+            // return result;
         }
-        TRTGenerateId(graph);
+
+        // Generate unique kernel name for TRT graph
+        HashValue model_hash = TRTGenerateId(graph);
+
+        // Get supported node list from TensorRT parser
+        const int number_of_ort_nodes = api->OrtGraph_NumberOfNodes(graph);
+        std::vector<size_t> nodes_vector(number_of_ort_nodes);
+        std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+
+        std::vector<size_t> filtered_nodes_vector;
+        size_t nodes_count = 0;
+        const size_t* nodes_index = nullptr;
+        api->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &nodes_count, &nodes_index);
+        for (const auto& index : nodes_vector) {
+            const OrtNode* node = nullptr;
+            api->OrtGraph_GetOrtNode(graph, nodes_index[index], &node);
+            const char* node_op_type;
+            api->OrtNode_GetOpType(node, &node_op_type);
+
+            /* If current node is control flow op, we take different approach based on following four cases:
+             *
+             * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
+             * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
+             * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
+             * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
+             *
+             * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
+             */
+            if (p->control_flow_op_set_.find(std::string(node_op_type)) != p->control_flow_op_set_.end()) {
+                size_t subgraph_count = 0;
+                const OrtGraphViewer** subgraphs = nullptr;
+                api->OrtNode_GetSubgraphs(node, &subgraph_count, &subgraphs);
+                if (subgraph_count == 0) {
+                    bool all_subgraphs_are_supported = true;
+                    for (size_t i = 0; i < subgraph_count; i++) {
+                        // TRT EP should consider the empty subgraph is fully supported by TRT.
+                        if (api->OrtGraph_NumberOfNodes(subgraphs[i]) == 0) {
+                            continue;
+                        }
+                        if (!p->AllNodesAssignedToSpecificEP(subgraphs[i], kTensorrtExecutionProvider)) {
+                            all_subgraphs_are_supported = false;
+                            break;
+                        }
+                    }
+                    if (!all_subgraphs_are_supported) {
+                        // if not all its subgraphs are supported, we need to exclude this control flow op
+                        continue;
+                    }
+                }
+            }
+            filtered_nodes_vector.push_back(index);
+        }
+
+        SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
+        bool early_termination = false;
+        // supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+        if (early_termination) {
+            supported_nodes_vector.clear();
+        }
+
+        // Remove subgraphs if its size is less than the predefined minimal size
+        for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+            const size_t subgraph_size = it->first.size();
+            if (subgraph_size < p->min_subgraph_size_) {
+                supported_nodes_vector.erase(it--);
+            }
+        }
+
+        // Detect and remove cycles from supported node list
+        p->DetectTensorRTGraphCycles(supported_nodes_vector, graph, model_hash);
+
+        // Consolidate supported node list
+        if (supported_nodes_vector.size() > 1) {
+            nodes_vector.clear();
+            for (const auto& group : supported_nodes_vector) {
+                if (!group.first.empty()) {
+                    nodes_vector.insert(nodes_vector.end(), group.first.begin(), group.first.end());
+                }
+            }
+            SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
+            if (p->DetectTensorRTGraphCycles(consolidated_supported_nodes_vector, graph, model_hash, false)) {
+                // LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
+            } else {
+                // LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are consolidated into one subgraph";
+                supported_nodes_vector = consolidated_supported_nodes_vector;
+            }
+        }
+
+        // Handle the case where the graph is subgraph of control flow op.
+        // The purpose is to make control flow op as well as its subgraphs run on TRT.
+        // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
+        if (p->IsSubGraphOfControlFlowOp(graph) && p->IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
+        }
+
+        int number_of_trt_nodes = 0, subgraph_index = 0;
+        for (const auto& group : supported_nodes_vector) {
+            if (!group.first.empty()) {
+                // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
+                // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+                number_of_trt_nodes += static_cast<int>(group.first.size());
+                subgraph_index++;
+            }
+        }
+
+        const size_t number_of_subgraphs = supported_nodes_vector.size();
+        if (number_of_trt_nodes == 0) {
+            // LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT execution provider";
+        } else if (number_of_trt_nodes == number_of_ort_nodes) {
+            // LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+        } else {
+            // LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
+        }
+
+        // The context map is only used during EP compile time, release it to save memory space.
+        // subgraph_context_map_.clear();
+        // return result;
+
     };
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
@@ -921,7 +1258,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
             for (size_t i = 0; i < output_size; i++) {
                 const char* ith_output_name = nullptr;
                 api->OrtNode_GetIthOutputName(node[j], i, &ith_output_name);
-                output_map[ith_output_name] = i;
+                if (ith_output_name != nullptr) {
+                  output_map[ith_output_name] = i;
+                }
             }
 
             OrtStatusPtr ret = nullptr;
