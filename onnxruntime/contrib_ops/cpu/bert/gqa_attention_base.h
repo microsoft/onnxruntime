@@ -155,7 +155,7 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = seqlens_k[batch_index] + 1;
+        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
         const size_t past_chunk_length = past_seqlen * head_size;
 
@@ -270,7 +270,7 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = seqlens_k[batch_index] + 1;
+        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
         const size_t past_chunk_length = past_seqlen * head_size;
 

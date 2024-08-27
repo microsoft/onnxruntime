@@ -130,7 +130,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
           const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
           const int past_seqlen = total_seqlen - sequence_length;
           if (past_seqlen + s < total_seqlen) {
-            pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen + s);
+            pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
           } else {
             pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
           }
