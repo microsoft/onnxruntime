@@ -1,6 +1,7 @@
 apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
 
+def jniLibsDir = System.properties['jniLibsDir']
 def buildDir = System.properties['buildDir']
 def headersDir = System.properties['headersDir']
 def publishDir = System.properties['publishDir']
@@ -87,6 +88,7 @@ android {
 
 	sourceSets {
 		main {
+			jniLibs.srcDirs = [jniLibsDir]
 			java {
 				srcDirs = ['src/main/java', 'src/main/android']
 			}
