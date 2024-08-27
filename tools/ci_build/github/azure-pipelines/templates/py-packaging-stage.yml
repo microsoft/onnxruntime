@@ -512,11 +512,21 @@ stages:
           PYTHON_VERSION: '3.11'
           BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
 
+  - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
+    - stage: Python_Packaging_Windows_arm64ec_QNN
+      dependsOn: []
+      jobs:
+        - template: py-win-arm64ec-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
+            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
   - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
     - stage: Python_Packaging_Windows_x64_QNN
       dependsOn: []
       jobs:
-        - template: py-win-arm64ec-qnn.yml
+        - template: py-win-x64-qnn.yml
           parameters:
             MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
             QNN_SDK: ${{ parameters.qnn_sdk_version }}
