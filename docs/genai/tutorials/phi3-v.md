@@ -50,6 +50,59 @@ If you have an NVIDIA GPU, that will give the best performance right now.
 **Note: Only one package and model is required based on your hardware. That is, only execute the steps for one of the following sections**
 
 
+## Run with NVIDIA CUDA
+
+1. Download the model
+
+   ```bash
+   huggingface-cli download microsoft/Phi-3-vision-128k-instruct-onnx-cuda --include cuda-int4-rtn-block-32/* --local-dir .
+   ```
+   
+   This command downloads the model into a folder called `cuda-int4-rtn-block-32`.
+
+2. Setup your CUDA environment
+
+   Install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive).
+
+   Ensure that the `CUDA_PATH` environment variable is set to the location of your CUDA installation.
+
+
+3. Install the generate() API
+
+   * CUDA 11
+
+   ```bash
+   pip install numpy
+   pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+   ```
+
+   * CUDA 12
+
+   ```bash
+   pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+   ```
+
+4. Run the model
+
+   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
+
+   ```bash
+   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
+   pip install pyreadline3
+   python phi3v.py -m cuda-int4-rtn-block-32 
+   ```
+
+   Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
+
+   For example: `Describe the image`
+
+   ![coffee](../../../images/coffee.png)
+
+   ```
+   The image shows a cup of coffee with a latte art design on top. The coffee is a light brown color,
+   and the art is white with a leaf-like pattern. The cup is white and has a handle on one side.</s>
+   ```
+
 ## Run on CPU
 
 1. Download the model
@@ -135,56 +188,4 @@ If you have an NVIDIA GPU, that will give the best performance right now.
    ```
 
       
-## Run with NVIDIA CUDA
-
-1. Download the model
-
-   ```bash
-   huggingface-cli download microsoft/Phi-3-vision-128k-instruct-onnx-cuda --include cuda-int4-rtn-block-32/* --local-dir .
-   ```
-   
-   This command downloads the model into a folder called `cuda-int4-rtn-block-32`.
-
-2. Setup your CUDA environment
-
-   Install the [CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive).
-
-   Ensure that the `CUDA_PATH` environment variable is set to the location of your CUDA installation.
-
-
-3. Install the generate() API
-
-   * CUDA 11
-
-   ```bash
-   pip install numpy
-   pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
-   ```
-
-   * CUDA 12
-
-   ```bash
-   pip install onnxruntime-genai-cuda --pre --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
-   ```
-
-4. Run the model
-
-   Run the model with [phi3v.py](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3v.py).
-
-   ```bash
-   curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3v.py -o phi3v.py
-   pip install pyreadline3
-   python phi3v.py -m cuda-int4-rtn-block-32 
-   ```
-
-   Enter the path to an image file and a prompt, and the model uses the image and prompt to give you an answer.
-
-   For example: `Describe the image`
-
-   ![coffee](../../../images/coffee.png)
-
-   ```
-   The image shows a cup of coffee with a latte art design on top. The coffee is a light brown color,
-   and the art is white with a leaf-like pattern. The cup is white and has a handle on one side.</s>
-   ```
 
