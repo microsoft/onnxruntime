@@ -47,7 +47,7 @@ class ImageTests : public ::testing::Test {
     WINML_EXPECT_NO_THROW(m_model = LearningModel::LoadFromFilePath(full_path));
   }
 
-  void ImageTests::PrepareModelSessionBinding(
+  void PrepareModelSessionBinding(
     const std::wstring& model_file_name,
     LearningModelDeviceKind device_kind,
     std::optional<uint32_t> optimized_batch_size
@@ -834,7 +834,7 @@ TEST_F(ImageTests, ImageBindingInputAndOutput_BindInputTensorAsInspectable) {
 }
 
 static void TestImageBindingStyleTransfer(
-  const wchar_t* model_file_name, const wchar_t* input_data_image_filename, wchar_t* output_data_image_filename
+  const wchar_t* model_file_name, const wchar_t* input_data_image_filename, const wchar_t* output_data_image_filename
 ) {
   GPUTEST;
 
