@@ -3,7 +3,7 @@
 
 #include "iengine.h"
 #include "UniqueOrtPtr.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include <memory>
 #include <mutex>

@@ -3,9 +3,13 @@
 
 #pragma once
 #include <ctime>
+#ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
-#include <cublas_v2.h>
-
+#else
+typedef void* cudnnHandle_t;
+typedef void* cublasHandle_t;
+typedef void* cudnnStatus_t;
+#endif
 #include "core/providers/tensorrt/nv_includes.h"
 
 #include "core/platform/ort_mutex.h"
@@ -116,8 +120,11 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
+#if NV_TENSORRT_MAJOR >= 10
+  void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
+#else
   void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-
+#endif
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {
@@ -168,7 +175,6 @@ struct TensorrtFuncState {
   bool int8_calibration_cache_available = false;
   bool dla_enable = false;
   int dla_core = 0;
-  size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
@@ -267,13 +273,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
 
-  /**
-   * Refit the weight-stripped engine
-   */
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
                                     std::string& weight_stripped_engine_cath_path,
                                     bool path_check,
+                                    const void* onnx_model_bytestream,
+                                    size_t onnx_model_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
@@ -284,7 +289,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
-  size_t max_workspace_size_ = 1 << 30;  // 1GB
+  size_t max_workspace_size_ = 0;
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
   bool dla_enable_ = false;
@@ -298,6 +303,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool weight_stripped_engine_enable_ = false;
   bool weight_stripped_engine_refit_ = false;
   std::string onnx_model_folder_path_;
+  const void* onnx_model_bytestream_;
+  size_t onnx_model_bytestream_size_;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
   int builder_optimization_level_ = 3;

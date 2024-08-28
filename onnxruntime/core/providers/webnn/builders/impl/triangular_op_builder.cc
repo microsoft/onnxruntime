@@ -46,13 +46,15 @@ Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val output = emscripten::val::object();
   NodeAttrHelper helper(node);
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   const bool upper = helper.Get("upper", 1);
   options.set("upper", upper);
 
-  if (!GetTensorName(input_defs, 1).empty()) {
+  const std::string diagonal_name = GetTensorName(input_defs, 1);
+  if (!diagonal_name.empty()) {
     // Optional input diagonal is provided, use diagonal initializer data.
-    const auto diagonal_tensor = *initializers.at(input_defs[1]->Name());
+    const auto diagonal_tensor = *initializers.at(diagonal_name);
 
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(diagonal_tensor, unpacked_tensor));
@@ -77,13 +79,12 @@ bool TriangularOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initiali
     return false;
   const auto input_size = input_shape.size();
   if (input_size < 2) {
-    LOGS(logger, VERBOSE) << "Triangular only support input size >= 2d shape, input is "
+    LOGS(logger, VERBOSE) << "Triangular only supports input size >= 2D shape, input is "
                           << input_size << "d shape";
     return false;
   }
 
   const std::string diagonal_name = GetTensorName(input_defs, 1);
-  emscripten::val diagonal = emscripten::val::object();
   // Inputs contain optional 'diagonal' input.
   if (!diagonal_name.empty()) {
     if (!Contains(initializers, diagonal_name)) {

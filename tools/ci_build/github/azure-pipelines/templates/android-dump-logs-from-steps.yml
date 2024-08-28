@@ -8,9 +8,20 @@ steps:
 - task: CmdLine@2
   inputs:
     script: |
+      if [ -f $(Build.BinariesDirectory)/emulator.pid ]; then
+        echo "Emulator is running."
+        echo "##vso[task.setvariable variable=isEmulatorRunning]True"
+      else
+        echo "Emulator is not running."
+      fi
+  displayName: "Determine if emulator is running"
+
+- task: CmdLine@2
+  inputs:
+    script: |
       python3 tools/python/run_adb.py logcat --clear
   displayName: "Clear Android logs"
-  condition: succeededOrFailed()
+  condition: eq(variables['isEmulatorRunning'], 'True')
 
 - ${{ parameters.steps }}
 
@@ -19,4 +30,4 @@ steps:
     script: |
       python3 tools/python/run_adb.py logcat -d
   displayName: "Dump Android logs"
-  condition: succeededOrFailed()
+  condition: eq(variables['isEmulatorRunning'], 'True')

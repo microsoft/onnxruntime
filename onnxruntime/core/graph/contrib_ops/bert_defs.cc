@@ -421,8 +421,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(5,
-               "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "attention_bias",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(6,
@@ -482,7 +482,7 @@ The operator only supports BERT like model with padding on right now.
 // Input 'bias':                       (hidden_size + hidden_size + v_hidden_size)
 // Input 'token_offset':               (batch_size, sequence_length)
 // Input 'cumulative_sequence_length': (batch_size + 1)
-// Input 'relative_position_bias':     (batch_size, num_heads, sequence_length, sequence_length)
+// Input 'attention_bias':     (batch_size or 1, num_heads or 1, sequence_length, sequence_length)
 // Output 'output':                    (token_count, v_hidden_size)
 void PackedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
@@ -560,9 +560,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
                "M")
         .Input(5,
-               "relative_position_bias",
-               "A tensor with shape (batch_size, num_heads, sequence_length, sequence_length)"
-               "or (1, num_heads, sequence_length, sequence_length)."
+               "attention_bias",
+               "A tensor with shape (batch_size or 1, num_heads or 1, sequence_length, sequence_length)."
                "It specifies the additional bias to QxK'",
                "T",
                OpSchema::Optional)
@@ -616,7 +615,7 @@ The operator only supports BERT like model with padding on right now.
 // Input 'bias':                         (hidden_size + hidden_size + v_hidden_size)
 // Input 'token_offset':                 (batch_size, sequence_length)
 // Input 'cumulative_sequence_length':   (batch_size + 1)
-// Input 'relative_position_bias':       (batch_size or 1, num_heads, sequence_length, sequence_length) or None
+// Input 'attention_bias':       (batch_size or 1, num_heads or 1, sequence_length, sequence_length) or None
 // Output 'output':                      (token_count, v_hidden_size)
 void PackedMultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
@@ -694,9 +693,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
                "M")
         .Input(6,
-               "relative_position_bias",
-               "It specifies the additional bias to QxK'. The shape is (batch_size, num_heads, sequence_length, sequence_length)"
-               " or (1, num_heads, sequence_length, sequence_length)",
+               "attention_bias",
+               "It specifies the additional bias to QxK'. "
+               "The shape is (batch_size or 1, num_heads or 1, sequence_length, sequence_length)",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -778,8 +777,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
                "T")
         .Input(5,
-               "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "attention_bias",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(6,
@@ -871,7 +870,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M",
                OpSchema::Optional)
         .Input(4,
-               "relative_position_bias",
+               "attention_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
@@ -1006,9 +1005,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M",
                OpSchema::Optional)
         .Input(5,
-               "relative_position_bias",
-               "relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
-               " or (1, num_heads, sequence_length, total_sequence_length)",
+               "attention_bias",
+               "bias added to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(6,
@@ -1075,6 +1073,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("smooth_softmax",
+              "Use a smooth factor in softmax.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1254,7 +1256,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present_value",
                 "Updated value cache with shape (batch_size, kv_num_heads, max_cache_sequence_length, head_size).",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionTypeAndShapeInference(ctx, 3);
@@ -1346,6 +1348,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Attr("num_heads",
               "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("is_packed_batching",
+              "ragged batch inputs or not. Default value is 0",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Input(0,

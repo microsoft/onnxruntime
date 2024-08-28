@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramMetadata, TextureType} from '../types';
+import { Tensor } from '../../../tensor';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramMetadata, TextureType } from '../types';
 
 export const sum = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
@@ -12,32 +12,37 @@ export const sum = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): 
   const sumProgramMetadata = {
     name: 'Sum',
     inputNames: inputs.map((_v, i) => `X${i}`),
-    inputTypes: new Array(inputs.length).fill(TextureType.unpacked)
+    inputTypes: new Array(inputs.length).fill(TextureType.unpacked),
   };
 
   const output = inferenceHandler.run(
-      {...sumProgramMetadata, get: () => createSumProgramInfo(inferenceHandler, inputs, sumProgramMetadata)}, inputs);
+    { ...sumProgramMetadata, get: () => createSumProgramInfo(inferenceHandler, inputs, sumProgramMetadata) },
+    inputs,
+  );
   return [output];
 };
 
-const createSumProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], sumProgramMetadata: ProgramMetadata): ProgramInfo => {
-      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const outputShape = inputs[0].dims.slice();
-      const sumLine = inputs.map((_v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
-      const shaderSource = `
+const createSumProgramInfo = (
+  inferenceHandler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  sumProgramMetadata: ProgramMetadata,
+): ProgramInfo => {
+  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+  const outputShape = inputs[0].dims.slice();
+  const sumLine = inputs.map((_v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
+  const shaderSource = `
       void main() {
         vec4 result = ${sumLine};
         ${glsl.output} = result;
       }
     `;
-      return {
-        ...sumProgramMetadata,
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-        hasMain: true,
-        shaderSource
-      };
-    };
+  return {
+    ...sumProgramMetadata,
+    output: { dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked },
+    hasMain: true,
+    shaderSource,
+  };
+};
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length === 0) {

@@ -14,7 +14,6 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 JAVA_ROOT = os.path.join(REPO_DIR, "java")
-DEFAULT_BUILD_VARIANT = "Full"
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 from util import is_windows  # noqa: E402
@@ -72,7 +71,6 @@ def _parse_build_settings(args):
         )
 
     build_settings["build_params"] = build_params
-    build_settings["build_variant"] = build_settings_data.get("build_variant", DEFAULT_BUILD_VARIANT)
 
     return build_settings
 
@@ -120,11 +118,16 @@ def _build_aar(args):
             os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
 
         # copy executables for each abi, in case we want to publish those as well
+        # some of them might not exist, e.g., if we skip building the tests
         abi_exe_dir = os.path.join(exe_dir, abi)
         for exe_name in ["libonnxruntime.so", "onnxruntime_perf_test", "onnx_test_runner"]:
+            src_exe_path = os.path.join(abi_build_dir, build_config, exe_name)
+            if not os.path.exists(src_exe_path):
+                continue
+
             os.makedirs(abi_exe_dir, exist_ok=True)
-            target_exe_name = os.path.join(abi_exe_dir, exe_name)
-            shutil.copyfile(os.path.join(abi_build_dir, build_config, exe_name), target_exe_name)
+            dest_exe_path = os.path.join(abi_exe_dir, exe_name)
+            shutil.copyfile(src_exe_path, dest_exe_path)
 
         # we only need to define the header files path once
         if not header_files_path:
@@ -148,7 +151,6 @@ def _build_aar(args):
         "-DpublishDir=" + aar_publish_dir,
         "-DminSdkVer=" + str(build_settings["android_min_sdk_version"]),
         "-DtargetSdkVer=" + str(build_settings["android_target_sdk_version"]),
-        "-DbuildVariant=" + str(build_settings["build_variant"]),
         (
             "-DENABLE_TRAINING_APIS=1"
             if "--enable_training_apis" in build_settings["build_params"]
@@ -167,7 +169,7 @@ def parse_args():
         os.path.basename(__file__),
         description="""Create Android Archive (AAR) package for one or more Android ABI(s)
         and building properties specified in the given build config file, see
-        tools/ci_build/github/android/default_mobile_aar_build_settings.json for details.
+        tools/ci_build/github/android/default_full_aar_build_settings.json for details.
         The output of the final AAR package can be found under [build_dir]/aar_out
         """,
     )

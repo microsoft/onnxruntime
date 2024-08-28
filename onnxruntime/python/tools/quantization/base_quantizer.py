@@ -25,6 +25,7 @@ from .quant_utils import (
     find_by_name,
     model_has_infer_metadata,
     normalize_axis,
+    pack_bytes_to_4bit,
     quantize_data,
     quantize_nparray,
     save_and_reload_model_with_shape_infer,
@@ -340,13 +341,17 @@ class BaseQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             elif qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
-                # within int32_data is fixed.
-                # q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, q_weight_data)
-                packed_data = onnx.helper.pack_float32_to_4bit(q_weight_data.flatten(), qType == onnx.TensorProto.INT4)
-                q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, qType, weight.dims, packed_data.tobytes(), raw=True
-                )
+                if q_weight_data.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(q_weight_data.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
+                q_weight_initializer = onnx.helper.make_tensor(q_weight_name, qType, weight.dims, packed_data, raw=True)
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.helper.tensor_dtype_to_np_dtype(qType)).reshape(
                     weight.dims
@@ -413,6 +418,9 @@ class BaseQuantizer:
         zero_point_list = []
         scale_list = []
         quantized_per_channel_data_list = []
+        weights_shape = list(weights.shape)
+        reshape_dims = list(weights_shape)  # deep copy
+        reshape_dims[channel_axis] = 1  # only one per channel for reshape
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             channel_override_index = i if i < num_channel_overrides else 0
@@ -455,17 +463,10 @@ class BaseQuantizer:
 
             zero_point_list.append(zero_point)
             scale_list.append(scale)
-            quantized_per_channel_data_list.append(quantized_per_channel_data)
+            quantized_per_channel_data_list.append(np.asarray(quantized_per_channel_data).reshape(reshape_dims))
 
         # combine per_channel_data into one
-        weights_shape = list(weights.shape)
-        reshape_dims = list(weights_shape)  # deep copy
-        reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
-            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
+        quantized_weights = np.concatenate(quantized_per_channel_data_list, channel_axis)
         q_weight_name = weight_name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight_name + "_zero_point"
         scale_name = weight_name + "_scale"
@@ -483,22 +484,24 @@ class BaseQuantizer:
 
         if not keep_float_weight:
             if weight_qType in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
-                # TODO: Use simpler make_tensor call when ONNX bug that does not store negative weights packed
-                # within int32_data is fixed.
-                # q_weight_initializer = onnx.helper.make_tensor(
-                #     q_weight_name, weight_qType, weights_shape, quantized_weights
-                # )
-                packed_data = onnx.helper.pack_float32_to_4bit(
-                    quantized_weights.flatten(), weight_qType == onnx.TensorProto.INT4
-                )
+                if quantized_weights.dtype not in (np.int8, np.uint8):
+                    raise RuntimeError(
+                        f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values."
+                    )
+
+                # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+                # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+                packed_data = bytes(pack_bytes_to_4bit(quantized_weights.tobytes()))
+
+                # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
                 q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, weight_qType, weights_shape, packed_data.tobytes(), raw=True
+                    q_weight_name, weight_qType, weights_shape, packed_data, raw=True
                 )
                 self.model.initializer_extend([q_weight_initializer])
             else:
                 quantized_weights = np.asarray(
                     quantized_weights,
-                    dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
+                    dtype=onnx.helper.tensor_dtype_to_np_dtype(weight_qType),
                 ).reshape(initializer.dims)
                 q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
                 self.model.initializer_extend([q_weight_initializer])
@@ -512,8 +515,6 @@ class BaseQuantizer:
         for node in self.model.nodes():
             # adjust tensor_ranges for input of Clip and Relu node
             if node.op_type in ["Clip", "Relu"]:
-                if self.is_activation_symmetric:
-                    continue
                 if not self.should_quantize_node(node):
                     continue
                 if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:

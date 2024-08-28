@@ -32,14 +32,14 @@ class TrainingAgent {
                          int local_rank = 0);
   ~TrainingAgent();
   // For ORTModule.forward()
-  [[nodiscard]] common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunForward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state, const OrtValueCachePtr& cache);
 
   // For ORTModule.backward()
-  [[nodiscard]] common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunBackward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                            PartialGraphExecutionState& state);
 
-  [[nodiscard]] common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunCore(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                        PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                        const OrtValueCachePtr& cache, int32_t partial_graph_index);
 

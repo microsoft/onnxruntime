@@ -6,9 +6,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -143,6 +143,8 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
 
   // Past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads).
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
+  ORT_RETURN_IF(past_shape == nullptr,
+                "subgraph past state cannot be nullptr");
   ORT_RETURN_IF(past_shape->dim_size() != 5,
                 "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());
 

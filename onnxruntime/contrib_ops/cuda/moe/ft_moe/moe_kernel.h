@@ -109,7 +109,7 @@ template <typename T,          /*The type used for activations/scales/compute*/
           typename Enable = void>
 class CutlassMoeFCRunner {
  public:
-  CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights);
+  CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights, bool use_sparse_mixer);
 
   size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k);
 
@@ -161,6 +161,7 @@ class CutlassMoeFCRunner {
 
   bool has_fc3_;
   bool normalize_routing_weights_;
+  bool use_sparse_mixer_;
 
   // Cuda events
   contrib::cuda::AutoDestoryCudaEvent cuda_event_;
@@ -175,7 +176,7 @@ class CutlassMoeFCRunner {
 template <typename WeightType>
 class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_same<float, WeightType>::value>> {
  public:
-  CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights);
+  CutlassMoeFCRunner(int sm_version, bool has_fc3, bool normalize_routing_weights, bool use_sparse_mixer);
 
   size_t getWorkspaceSize(size_t num_rows, size_t hidden_size, size_t inter_size, size_t num_experts, size_t k) {
     return 0;

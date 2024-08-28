@@ -42,7 +42,7 @@ enum ORT_DataType : int {
  */
 class DnnlNodeCapability {
  public:
-  virtual ~DnnlNodeCapability(){};
+  virtual ~DnnlNodeCapability() {};
   /**
    * virtual function expected to be implemented for different node
    * types.

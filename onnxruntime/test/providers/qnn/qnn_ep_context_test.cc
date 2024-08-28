@@ -24,13 +24,13 @@ namespace test {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Create a model with Case + Add (quantized)
+// Create a model with FusedMatMul + Add (quantized)
 // input1 -> Add -> Q -> DQ \
 //                           FusedMatMul -> Q -> DQ -> output
 //        input2 -> Q -> DQ /
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
-    // Creat non-quantized Add node1
+    // Creat non-quantized FusedMatMul node1
     NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 2}, false, {0, 1, 0, 1}));
     NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
 
@@ -147,15 +147,15 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
-// Test that models with 1 non-quantized Add node and 1 quantized Add node can still generate the context binary
-// The generated Onnx model has 1 Add node and 1 EPContext node
+// Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
+// The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {
   bool single_ep_node = true;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-// Test that models with 2 non-quantized Add nodes and 2 quantized Add nodes can still generate the context binary
-// The generated Onnx model has 2 Add nodes and 1 EPContext nodes
+// Test that models with 2 non-quantized FusedMatMul nodes and 2 quantized Add nodes can still generate the context binary
+// The generated Onnx model has 2 FusedMatMul nodes and 1 EPContext nodes
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   bool single_ep_node = false;
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
@@ -274,6 +274,45 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
   EXPECT_TRUE(inputs.size() == 2);
   EXPECT_TRUE(inputs[0]->Name() == "attention_mask");
   EXPECT_TRUE(inputs[1]->Name() == "Add_input_0");
+
+  // clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+}
+
+TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  std::string node_name_prefix = "node_name_prefix_test";
+
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  const std::string context_binary_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
+  so.AddConfigEntry(kOrtSessionOptionEpContextNodeNamePrefix, node_name_prefix.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ToPathString(context_binary_file), model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  for (auto& node : model->MainGraph().Nodes()) {
+    if (node.OpType() == "EPContext") {
+      EXPECT_TRUE(node.Name().find(node_name_prefix) != std::string::npos);
+    }
+  }
 
   // clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
@@ -654,7 +693,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 // Context binary only contains a single QNN graph, generated context cache model (detached mode) only has 1 EPContext node
 // Create another Onnx model which also reference to the bin file,
 // but the node name is not same with the QNN graph name inside the bin file.
-// This is to support backward compitable for the models generated before the PR that
+// This is to support backward compatible for the models generated before the PR that
 // make context generation support multi-partition
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphNameInCtx) {
   ProviderOptions provider_options;
@@ -730,6 +769,36 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
   // Clean up
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
   ASSERT_EQ(std::remove(context_bin.string().c_str()), 0);
+}
+
+// Model has 2 EPContext nodes, both with main_context=1 and embedded context binary
+TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
+}
+
+// Model has 2 EPContext nodes, both with main_context=1 and external context binary
+TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

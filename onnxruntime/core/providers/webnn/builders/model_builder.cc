@@ -20,14 +20,18 @@ namespace onnxruntime {
 namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           const emscripten::val& context, const emscripten::val& builder,
-                           const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type)
+                           const emscripten::val& context, const WebnnDeviceType wnn_device_type)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
-      wnn_builder_(builder),
-      preferred_layout_(preferred_layout),
-      wnn_device_type_(wnn_device_type) {}
+      wnn_device_type_(wnn_device_type) {
+  // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
+  // is only allowed to be called once.
+  wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(context);
+  if (!wnn_builder_.as<bool>()) {
+    ORT_THROW("Failed to create WebNN builder.");
+  }
+}
 
 Status ModelBuilder::Initialize() {
   PreprocessInitializers();
@@ -98,12 +102,13 @@ Status ModelBuilder::RegisterInitializers() {
     emscripten::val operand = emscripten::val::object();
     if (IsSupportedDataType(data_type, webnn_supported_data_types)) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
-      auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
+      auto num_elements = SafeInt<size_t>(Product(shape));
       emscripten::val view = emscripten::val::undefined();
       std::byte* tensor_ptr = nullptr;
       if (tensor.has_raw_data()) {
         tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
       } else {
+        // Store temporary unpacked_tensor.
         unpacked_tensors_.push_back({});
         std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
         ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
@@ -182,16 +187,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     ORT_RETURN_IF(shape_proto == nullptr,
                   "shape_proto cannot be null for ", input_output_type, ": ", name);
     const auto& shape = shape_proto->dim();
-    if (shape.empty()) {
-      // If we have an empty shape, this is a scalar input.
-      dims.push_back(1);
-
-      // We need to change the shapes of these scalar outputs back to {}
-      // when WebNN EP returns these values to ORT.
-      if (!is_input) {
-        AddScalarOutput(name);
-      }
-    } else {
+    if (!shape.empty()) {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
         // dim_param free dimensions should have already been excluded by IsInputSupported().
@@ -256,64 +252,6 @@ Status ModelBuilder::AddOperations() {
   return Status::OK();
 }
 
-Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
-    const std::string& name, const void* buffer, const size_t size,
-    const std::vector<uint32_t> shape, const int32_t data_type) {
-  auto persist_buffer = std::make_unique<uint8_t[]>(size);
-  uint8_t* dest = persist_buffer.get();
-  memcpy(dest, buffer, size);
-  emscripten::val view = emscripten::val::undefined();
-  emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
-                                                           reinterpret_cast<const uint8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int8_t),
-                                                           reinterpret_cast<const int8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
-                                                           reinterpret_cast<const uint16_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
-                                                           reinterpret_cast<const float*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int32_t),
-                                                           reinterpret_cast<const int32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int64_t),
-                                                           reinterpret_cast<const int64_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint32_t),
-                                                           reinterpret_cast<const uint32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint64_t),
-                                                           reinterpret_cast<const uint64_t*>(dest))};
-      break;
-    default:
-      break;
-  }
-
-  desc.set("dimensions", emscripten::val::array(shape));
-  emscripten::val operand = emscripten::val::object();
-  // Wasm memory grow will cause all array buffers reallocation, which will be treated as detached
-  // buffers in JS side. Simply create a copy to fix it.
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view.call<emscripten::val>("slice"));
-
-  AddOperand(name, operand);
-  mem_persist_buffers_.push_back(std::move(persist_buffer));
-  return Status::OK();
-}
-
 Status ModelBuilder::RegisterModelOutputs() {
   for (const auto* node_arg : graph_viewer_.GetOutputs()) {
     ORT_RETURN_IF_ERROR(RegisterModelInputOutput(*node_arg, false /* is_input */));
@@ -333,20 +271,17 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
+  // Explicitly release the WebNN builder to free memory.
+  wnn_builder_ = emscripten::val::undefined();
   model.reset(new Model(std::move(wnn_context_), std::move(wnn_graph), logger_));
   model->SetInputs(std::move(input_names_));
   model->SetOutputs(std::move(output_names_));
-  model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
   // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
   // for inputs and outputs because they will be transferred after compute() done.
   // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
   model->AllocateInputOutputBuffers();
   return Status::OK();
-}
-
-void ModelBuilder::AddScalarOutput(const std::string& output_name) {
-  scalar_outputs_.insert(output_name);
 }
 
 void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& operand) {

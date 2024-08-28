@@ -88,7 +88,7 @@ std::tuple<bool, const Node*, const Node*> IsResidualNodeArg(const GraphViewer& 
       ----------------------|
       |                     |
       |                     |
-      |        SimplifiedLayerNormalization (layer boudary node)
+      |        SimplifiedLayerNormalization (layer boundary node)
       |                     |
       |                     |
       |               MistralAttention

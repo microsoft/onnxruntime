@@ -95,6 +95,14 @@ class BaseOpBuilder : public IOpBuilder {
                       const logging::Logger& logger,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
+  Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
+                          const QnnQuantParamsWrapper& input0_qparams,
+                          const QnnQuantParamsWrapper& input1_qparams,
+                          std::vector<uint32_t>&& bias_shape,
+                          const std::string& bias_name,
+                          const logging::Logger& logger,
+                          std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const logging::Logger& logger,
@@ -122,6 +130,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Exp", QNN_OP_ELEMENT_WISE_EXP},
         {"Floor", QNN_OP_ELEMENT_WISE_FLOOR},
         {"Gather", QNN_OP_GATHER},
+        {"GatherElements", QNN_OP_GATHER_ELEMENTS},
         {"Greater", QNN_OP_ELEMENT_WISE_GREATER},
         {"GreaterOrEqual", QNN_OP_ELEMENT_WISE_GREATER_EQUAL},
         {"Less", QNN_OP_ELEMENT_WISE_LESS},
@@ -163,6 +172,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Relu", QNN_OP_RELU},
         {"Gelu", QNN_OP_GELU},
 
+        {"HardSigmoid", QNN_OP_ELEMENT_WISE_NEURON},
         {"HardSwish", QNN_OP_HARD_SWISH},
         {"DepthToSpace", QNN_OP_DEPTH_TO_SPACE},
         {"SpaceToDepth", QNN_OP_SPACE_TO_DEPTH},
@@ -206,7 +216,7 @@ class BaseOpBuilder : public IOpBuilder {
 
   // NCHW shape to channel last
   Status NchwShapeToNhwc(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& nhwc_shape) const {
-    ORT_ENFORCE(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
+    ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
     nhwc_shape[0] = nchw_shape[0];
     nhwc_shape[1] = nchw_shape[2];
     nhwc_shape[2] = nchw_shape[3];

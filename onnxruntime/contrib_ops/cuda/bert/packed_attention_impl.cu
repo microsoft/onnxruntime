@@ -13,7 +13,7 @@
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -297,7 +297,7 @@ struct T2<half> {
 };
 
 template <typename T>
-void LaunchAddBiasTranspose(
+void AddBiasTransposePacked(
     const T* input, const T* biases, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
@@ -452,17 +452,16 @@ Status FusedScaledDotProductAttention(
   void* fused_runner = data.fused_runner;
   ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
 
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::QKV_BSN3H, data.token_offset,
                          parameters.token_count, stream);
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-  fused_fp16_runner->setup(S, batch_size);
-
-  fused_fp16_runner->run(data.workspace, data.cumulative_sequence_length, data.output, stream);
+  const int normalized_seq_len = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  fused_fp16_runner->Run(batch_size, normalized_seq_len,
+                         data.workspace, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
@@ -478,7 +477,7 @@ Status FusedScaledDotProductAttentionCutlass(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::Q_K_V_BSNH, data.token_offset,
@@ -516,6 +515,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = false;
+  p.use_smooth_softmax = false;
   p.scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                      : parameters.scale;
   p.seqlen_k_ptr = nullptr;
@@ -524,8 +524,11 @@ Status FusedScaledDotProductAttentionCutlass(
   p.query = query;
   p.key = key;
   p.value = value;
-  p.attn_bias = data.relative_position_bias;
-  p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
+
+  p.attn_bias = data.attention_bias;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
@@ -565,7 +568,7 @@ Status UnfusedScaledDotProductAttention(
   T* k = q + elements_q;
   T* v = k + elements_k;
 
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+  AddBiasTransposePacked(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length,
                          num_heads, qk_head_size, v_head_size,
                          AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
@@ -604,14 +607,19 @@ Status UnfusedScaledDotProductAttention(
                                                sequence_length);
   T* attention_score = scaled_qk + (bytes / element_size);
 
+  const bool broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  const bool broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
+
   // Apply softmax and store result R to attention_score: BxNxSxS
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scaled_qk,
-      data.relative_position_bias,
-      parameters.broadcast_res_pos_bias,
+      data.attention_bias,
+      broadcast_attn_bias_dim_0,
+      broadcast_attn_bias_dim_1,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,
+      sequence_length,  // total sequence length
       num_heads,
       attention_score, stream));
 
@@ -657,6 +665,20 @@ Status QkvToContext(
 
   return UnfusedScaledDotProductAttention<T>(device_prop, cublas, stream, parameters, data);
 }
+
+template void AddBiasTransposePacked<float>(
+    const float* input, const float* biases, float* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
+template void AddBiasTransposePacked<half>(
+    const half* input, const half* biases, half* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
 
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 
@@ -71,13 +72,13 @@ constexpr uint32_t kMinimumSizeForExternalData = 64;
 /// if the initializer contains kMinimumSizeForExternalData bytes or more, and not string data.</param>
 Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    const Path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
+    const std::filesystem::path& model_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor,
     const ExternalDataWriter& external_writer = nullptr);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::SparseTensorProto& initializer,
-    const Path& model_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
+    const std::filesystem::path& model_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Convert a given AttributeProto into fbs::Attribute
@@ -86,7 +87,7 @@ Status SaveSparseInitializerOrtFormat(
 //       instead of the GraphProto in attr_proto
 Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
-    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
+    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const std::filesystem::path& model_path,
     const onnxruntime::Graph* subgraph);
 
 /// <summary>

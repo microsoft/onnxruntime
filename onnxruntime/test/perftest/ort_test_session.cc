@@ -5,6 +5,7 @@
 #include "ort_test_session.h"
 #include <algorithm>
 #include <limits>
+#include <fstream>
 #include <set>
 #include <list>
 #include <type_traits>
@@ -47,6 +48,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
+
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -221,150 +223,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
-#ifdef USE_OPENVINO
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    std::unordered_map<std::string, std::string> ov_options;
-    std::istringstream ss(ov_string);
-    std::string token;
-    while (ss >> token) {
-      if (token == "") {
-        continue;
-      }
-      auto pos = token.find("|");
-      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
-      }
-
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
-
-      if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
-                                                           "GPU.0", "GPU.1", "NPU"};
-        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
-                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                         "GPU.0_FP16", "GPU.1_FP16"};
-        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
-          ov_options[key] = value;
-        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
-          ov_options[key] = value;
-        } else if (value.find("HETERO:") == 0) {
-          ov_options[key] = value;
-        } else if (value.find("MULTI:") == 0) {
-          ov_options[key] = value;
-        } else if (value.find("AUTO:") == 0) {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
-              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
-              " HETERO/MULTI/AUTO options available. \n");
-        }
-      } else if (key == "device_id") {
-        if (value == "CPU" || value == "GPU" || value == "NPU") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
-        }
-      } else if (key == "precision") {
-        auto device_type = ov_options["device_type"];
-        if (device_type.find("GPU") != std::string::npos) {
-          if (value == "") {
-            ov_options[key] = "FP16";
-            continue;
-          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
-            ov_options[key] = value;
-            continue;
-          } else {
-            ORT_THROW(
-                "[ERROR] [OpenVINO] Unsupported inference precision is selected. "
-                "GPU only supported FP32 / FP16. \n");
-          }
-        } else if (device_type.find("NPU") != std::string::npos) {
-          if (value == "" || value == "ACCURACY" || value == "FP16") {
-            ov_options[key] = "FP16";
-            continue;
-          } else {
-            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
-          }
-        } else if (device_type.find("CPU") != std::string::npos) {
-          if (value == "" || value == "ACCURACY" || value == "FP32") {
-            ov_options[key] = "FP32";
-            continue;
-          } else {
-            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
-          }
-        }
-      } else if (key == "enable_npu_fast_compile") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_opencl_throttling") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_qdq_optimizer") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "disable_dynamic_shapes") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
-              "should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "num_of_threads") {
-        if (std::stoi(value) <= 0) {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
-        } else {
-          ov_options[key] = value;
-        }
-      } else if (key == "model_priority") {
-        ov_options[key] = value;
-      } else if (key == "cache_dir") {
-        ov_options[key] = value;
-      } else if (key == "context") {
-        ov_options[key] = value;
-      } else if (key == "num_streams") {
-        if (std::stoi(value) <= 0 && std::stoi(value) > 8) {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
-        } else {
-          ov_options[key] = value;
-        }
-      } else if (key == "export_ep_ctx_blob") {
-        if (value == "true" || value == "True" ||
-            value == "false" || value == "False") {
-          ov_options[key] = value;
-        } else {
-          ORT_THROW(
-              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
-              "should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
-      }
-    }
-    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
-#else
-    ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
@@ -541,6 +399,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kVSINPUExecutionProvider) {
+#ifdef USE_VSINPU
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(session_options));
+#else
+    ORT_THROW("VSINPU is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef __APPLE__
 #ifdef USE_COREML
@@ -716,7 +580,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif
-  } else if (!provider_name_.empty() && provider_name_ != onnxruntime::kCpuExecutionProvider) {
+  } else if (!provider_name_.empty() &&
+             provider_name_ != onnxruntime::kCpuExecutionProvider &&
+             provider_name_ != onnxruntime::kOpenVINOExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 
@@ -805,9 +671,171 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       }
     }
   }
+  if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
+#ifdef USE_OPENVINO
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::unordered_map<std::string, std::string> ov_options;
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
 
-  session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
 
+      if (key == "device_type") {
+        std::set<std::string> ov_supported_device_types = {"CPU", "GPU",
+                                                           "GPU.0", "GPU.1", "NPU"};
+        std::set<std::string> deprecated_device_types = {"CPU_FP32", "GPU_FP32",
+                                                         "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                         "GPU.0_FP16", "GPU.1_FP16"};
+        size_t num_gpus = 10;
+        for (size_t i = 0; i <= num_gpus; i++) {
+          ov_supported_device_types.emplace("GPU." + std::to_string(i));
+        }
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          ov_options[key] = value;
+        } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
+          ov_options[key] = value;
+        } else if (value.find("HETERO:") == 0) {
+          ov_options[key] = value;
+        } else if (value.find("MULTI:") == 0) {
+          ov_options[key] = value;
+        } else if (value.find("AUTO:") == 0) {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "Select from 'CPU', 'GPU', 'GPU.0', 'GPU.1', 'NPU' or from"
+              " HETERO/MULTI/AUTO options available. \n");
+        }
+      } else if (key == "device_id") {
+        if (value == "CPU" || value == "GPU" || value == "NPU") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] Unsupported device_id is selected. Select from available options.");
+        }
+      } else if (key == "precision") {
+        auto device_type = ov_options["device_type"];
+        if (device_type.find("GPU") != std::string::npos) {
+          if (value == "") {
+            ov_options[key] = "FP16";
+            continue;
+          } else if (value == "ACCURACY" || value == "FP16" || value == "FP32") {
+            ov_options[key] = value;
+            continue;
+          } else {
+            ORT_THROW(
+                "[ERROR] [OpenVINO] Unsupported inference precision is selected. "
+                "GPU only supported FP32 / FP16. \n");
+          }
+        } else if (device_type.find("NPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP16") {
+            ov_options[key] = "FP16";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. NPU only supported FP16. \n");
+          }
+        } else if (device_type.find("CPU") != std::string::npos) {
+          if (value == "" || value == "ACCURACY" || value == "FP32") {
+            ov_options[key] = "FP32";
+            continue;
+          } else {
+            ORT_THROW("[ERROR] [OpenVINO] Unsupported inference precision is selected. CPU only supports FP32 . \n");
+          }
+        }
+      } else if (key == "enable_npu_fast_compile") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "enable_opencl_throttling") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "enable_qdq_optimizer") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "disable_dynamic_shapes") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_dynamic_shapes' "
+              "should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "num_of_threads") {
+        if (std::stoi(value) <= 0) {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
+        } else {
+          ov_options[key] = value;
+        }
+      } else if (key == "model_priority") {
+        ov_options[key] = value;
+      } else if (key == "cache_dir") {
+        ov_options[key] = value;
+      } else if (key == "context") {
+        ov_options[key] = value;
+      } else if (key == "num_streams") {
+        if (std::stoi(value) <= 0 && std::stoi(value) > 8) {
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_streams' should be in the range of 1-8 \n");
+        } else {
+          ov_options[key] = value;
+        }
+      } else if (key == "export_ep_ctx_blob") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'export_ep_ctx_blob' "
+              "should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else {
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
+      }
+    }
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+#else
+    ORT_THROW("OpenVINO is not supported in this build\n");
+#endif
+  }
+
+  if (!performance_test_config.model_info.load_via_path) {
+    session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+  } else {
+    std::ifstream file(performance_test_config.model_info.model_file_path.c_str(),
+                       std::ios::binary | std::ios::in | std::ios::ate);
+    if (file.is_open()) {
+      const std::streampos fsize = file.tellg();
+      file.seekg(0, std::ios_base::beg);
+      std::vector<char> model_bytes(narrow<size_t>(fsize));
+      file.read(model_bytes.data(), narrow<std::streamsize>(fsize));
+      session_ = Ort::Session(env, model_bytes.data(), model_bytes.size(), session_options);
+    } else {
+      ORT_THROW("Model file could not be opened.\n");
+    }
+  }
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
@@ -917,7 +945,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
       std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-      // free dimensions are treated as 1 if not overriden
+      // free dimensions are treated as 1 if not overridden
       for (int64_t& dim : input_node_dim) {
         if (dim == -1) {
           dim = 1;

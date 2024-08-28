@@ -42,6 +42,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   const auto rank = input_shape.size();
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
   std::vector<int64_t> scale_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
@@ -78,20 +79,14 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(input_defs.size() == 5, "BatchNormalization requires five inputs.");
     emscripten::val mean = model_builder.GetOperand(input_defs[3]->Name());
     emscripten::val variance = model_builder.GetOperand(input_defs[4]->Name());
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-      options.set("axis", rank - 1);
-    }
 
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
   } else if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
     std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC && axis > 1) {
-      std::iota(axes.begin(), axes.end(), axis - 1);
-    } else {
-      std::iota(axes.begin(), axes.end(), axis);
-    }
+    std::iota(axes.begin(), axes.end(), axis);
+
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
   } else if (op_type == "InstanceNormalization") {
@@ -106,9 +101,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
                      std::back_inserter(new_shape),
                      [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
 
-      size_t insertion_offset = (model_builder.GetPreferredLayout() == DataLayout::NHWC) ? 2 : 3;
       ptrdiff_t excess_rank = new_shape.size() - webnn_shape_rank;
-      auto insertion_point = new_shape.begin() + insertion_offset;
+      auto insertion_point = new_shape.begin() + 3;
       if (input_shape.size() < webnn_shape_rank) {
         // Pad the shape with extra 1's to satisfy WebNN v1's rank requirements.
         new_shape.insert(insertion_point, -excess_rank, 1);
@@ -119,18 +113,24 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
         new_shape.erase(insertion_point, insertion_point + excess_rank);
         *insertion_point = sum;
       }
-      input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+      emscripten::val reshape_input_options = emscripten::val::object();
+      reshape_input_options.set("label", node.Name() + "_reshape_input");
+      input = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                               input,
+                                                               emscripten::val::array(new_shape),
+                                                               reshape_input_options);
     }
 
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-      options.set("layout", emscripten::val("nhwc"));
-    }
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
     if (input_shape.size() != 4) {
       std::vector<uint32_t> output_shape = GetVecUint32FromVecInt64(input_shape);
-      output = model_builder.GetBuilder().call<emscripten::val>(
-          "reshape", output, emscripten::val::array(output_shape));
+      emscripten::val reshape_output_options = emscripten::val::object();
+      reshape_output_options.set("label", node.Name() + "reshape_output");
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(output_shape),
+                                                                reshape_output_options);
     }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);

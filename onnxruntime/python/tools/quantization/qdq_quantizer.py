@@ -480,8 +480,9 @@ class QDQQuantizer(BaseQuantizer):
         if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
-            qtype = self.activation_qType
-            if self.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
+
+            qtype = self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType
+            if qtype == onnx.onnx_pb.TensorProto.UINT8:
                 qtype = onnx_proto.TensorProto.INT8
 
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
@@ -988,8 +989,7 @@ class QDQQuantizer(BaseQuantizer):
             per_chan_overrides = self.tensor_quant_overrides.get_per_channel_overrides(tensor_name)
             axis = per_chan_overrides[0]["axis"]  # Prefer axis from user-specified tensor-level overrides if available
 
-        weight_nparray = tensor_proto_to_array(weight_initializer)
-        weight_rank = len(weight_nparray.shape)
+        weight_rank = len(weight_initializer.dims)
         axis_valid, axis = normalize_axis(axis, weight_rank)
         if not axis_valid:
             logging.warning(f"Axis {axis} is out-of-range for weight '{tensor_name}' with rank {weight_rank}")

@@ -84,7 +84,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 }
 
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder_,
+                                                      const emscripten::val& wnn_builder,
                                                       const WebnnDeviceType device_type,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
@@ -103,7 +103,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
     const auto* node(graph_viewer.GetNode(node_idx));
     bool supported = false;
     // Firstly check if platform supports the WebNN op.
-    if (CheckSingleOp(node->OpType(), wnn_builder_, device_type)) {
+    if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
       LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType() << "] is supported by browser";
       supported = IsNodeSupported(*node, graph_viewer, device_type, logger);
     }
@@ -136,21 +136,33 @@ bool IsSupportedDataType(const int32_t data_type,
          supported_data_types.end();
 }
 
-bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
-                                      std::vector<int64_t>& shape_b,
-                                      const logging::Logger& logger) {
+bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
+                                    std::vector<int64_t>& shape_b,
+                                    std::vector<int64_t>& output_shape) {
   size_t size_a = shape_a.size();
   size_t size_b = shape_b.size();
   size_t smaller_size = std::min(size_a, size_b);
-  for (size_t i = 0; i < smaller_size; i++) {
+  size_t larger_size = std::max(size_a, size_b);
+
+  output_shape.resize(larger_size);
+
+  for (size_t i = 0; i < larger_size; i++) {
     // right alignment
     size_t axis_a = size_a - i - 1;
     size_t axis_b = size_b - i - 1;
-    // Broadcastable tensors must either have each dimension the same size or equal to one.
-    if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
-      return false;
+
+    if (i < smaller_size) {
+      // Broadcastable tensors must either have each dimension the same size or equal to one.
+      if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
+        return false;
+      }
+      output_shape[larger_size - i - 1] = std::max(shape_a[axis_a], shape_b[axis_b]);
+    } else {
+      // For the remaining dimensions in the larger tensor, copy the dimension size directly to the output shape.
+      output_shape[larger_size - i - 1] = (size_a > size_b) ? shape_a[axis_a] : shape_b[axis_b];
     }
   }
+
   return true;
 }
 

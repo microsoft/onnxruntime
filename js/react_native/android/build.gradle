@@ -3,7 +3,7 @@ import java.nio.file.Paths
 buildscript {
   repositories {
     google()
-    jcenter()
+    mavenCentral()
   }
 
   dependencies {
@@ -145,7 +145,6 @@ android {
 
 repositories {
   mavenCentral()
-  jcenter()
   google()
 
   def found = false
@@ -229,8 +228,6 @@ dependencies {
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
-  // Mobile build:
-  // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   // By default it will just include onnxruntime full aar package

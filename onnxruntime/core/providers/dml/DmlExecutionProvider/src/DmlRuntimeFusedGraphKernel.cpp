@@ -20,7 +20,7 @@ namespace Dml
         DmlRuntimeFusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-            const onnxruntime::Path& modelPath,
+            const std::filesystem::path& modelPath,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
             std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -170,11 +170,11 @@ namespace Dml
                 const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
                 std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
                 std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
-                auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
+                const ExecutionProviderImpl* cProviderImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
 
                 // Convert partitionONNXGraph into DML EP GraphDesc
                 ComPtr<IDMLDevice> device;
-                ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+                ORT_THROW_IF_FAILED(cProviderImpl->GetDmlDevice(device.GetAddressOf()));
                 // This map will be used to transfer the initializer to D3D12 system heap memory.
                 // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
                 // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
@@ -192,7 +192,7 @@ namespace Dml
                     isInputsUploadedByDmlEP.size(),
                     m_isInitializerTransferable,
                     m_partitionNodePropsMap,
-                    providerImpl,
+                    cProviderImpl,
                     m_modelPath,
                     m_subgraphNodePointers,
                     m_subgraphInputs,
@@ -220,7 +220,7 @@ namespace Dml
                 m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
                     *m_indexedSubGraph,
-                    providerImpl,
+                    cProviderImpl,
                     &serializedGraphInputIndexToSubgraphInputIndex,
                     &serializedGraphLargeConstantNameToSubgraphInputIndex);
 
@@ -314,7 +314,7 @@ namespace Dml
 
         mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
-        const onnxruntime::Path& m_modelPath;
+        const std::filesystem::path& m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
@@ -341,7 +341,7 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-        const onnxruntime::Path& modelPath,
+        const std::filesystem::path& modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,

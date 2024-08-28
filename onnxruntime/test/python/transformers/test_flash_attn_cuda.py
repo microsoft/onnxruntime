@@ -20,13 +20,11 @@ import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
-from rotary_flash import apply_rotary_emb
+from packaging import version
+from parameterized import parameterized
+from test_gqa_cpu import smooth_softmax_ref
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
-
-RED = "\033[31m"
-GREEN = "\033[32m"
-RESET = "\033[0m"
 
 torch.manual_seed(0)
 
@@ -46,15 +44,26 @@ class Config:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
-    def __init__(self, b, s, s2, sp, n, n2, h):
-        self.batch_size = b
-        self.sequence_length = s
-        self.kv_sequence_length = s2
-        self.past_sequence_length = sp
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    def __init__(
+        self, batch_size, sequence_length, kv_sequence_length, past_sequence_length, num_heads, kv_num_heads, head_size
+    ):
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.kv_sequence_length = kv_sequence_length
+        self.past_sequence_length = past_sequence_length
+        self.num_heads = num_heads
+        self.kv_num_heads = kv_num_heads
+        self.head_size = head_size
+
+    def __repr__(self):
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
+        return (
+            f"Config(batch_size={self.batch_size}, sequence_length={self.sequence_length}, "
+            f"kv_sequence_length={self.kv_sequence_length}, past_sequence_length={self.past_sequence_length}, "
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
+        )
 
 
 class PromptConfig:
@@ -65,15 +74,33 @@ class PromptConfig:
     num_heads = 0
     kv_num_heads = 0
     head_size = 0
+    ep = "CUDAExecutionProvider"
 
-    def __init__(self, b, sq, skv, sb, n, n2, h):
-        self.batch_size = b
-        self.q_sequence_length = sq
-        self.kv_sequence_length = skv
-        self.buffer_sequence_length = sb
-        self.num_heads = n
-        self.kv_num_heads = n2
-        self.head_size = h
+    def __init__(
+        self,
+        batch_size,
+        q_sequence_length,
+        kv_sequence_length,
+        buffer_sequence_length,
+        num_heads,
+        kv_num_heads,
+        head_size,
+    ):
+        self.batch_size = batch_size
+        self.q_sequence_length = q_sequence_length
+        self.kv_sequence_length = kv_sequence_length
+        self.buffer_sequence_length = buffer_sequence_length
+        self.num_heads = num_heads
+        self.kv_num_heads = kv_num_heads
+        self.head_size = head_size
+
+    def __repr__(self):
+        short_ep = self.ep[: -len("ExecutionProvider")].lower()
+        return (
+            f"PromptConfig(batch_size={self.batch_size}, q_sequence_length={self.q_sequence_length}, "
+            f"kv_sequence_length={self.kv_sequence_length}, buffer_sequence_length={self.buffer_sequence_length}, "
+            f"num_heads={self.num_heads}, kv_num_heads={self.kv_num_heads}, head_size={self.head_size}, ep={short_ep})"
+        )
 
 
 def create_packed_multihead_attention_graph(config):
@@ -196,6 +223,7 @@ def create_group_query_attention_graph_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
@@ -220,6 +248,7 @@ def create_group_query_attention_graph_prompt(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
@@ -382,6 +411,7 @@ def create_group_query_attention_graph_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -408,6 +438,7 @@ def create_group_query_attention_graph_past(
             local_window_size=local_window_size,
             do_rotary=rotary,
             rotary_interleaved=rotary_interleaved,
+            smooth_softmax=1 if use_smooth_softmax else 0,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
             # kv_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
@@ -713,7 +744,7 @@ def flash_attn_varlen_qkvpacked_func(qkv_unpad, cu_seqlens, token_offset, config
         "cumulative_sequence_length": cu_seqlens.cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     output = torch.tensor(ort_output)
     return output
@@ -730,11 +761,17 @@ def mha_func(q, k, v, config):
         "value": v.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
     ort_output = ort_session.run(None, ort_inputs)
     ort_output = numpy.array(ort_output)
     output = torch.tensor(ort_output)
     return output
+
+
+def rotary_options_for_current_os():
+    # Reference implementation of rotary uses triton, which is not available in Windows.
+    # So we only test rotary in Linux right now.
+    return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
 
 
 def gqa_prompt_func(
@@ -751,6 +788,7 @@ def gqa_prompt_func(
     past_kv_format=Formats.BSNH,
     share_buffer=True,
     rotary_interleaved=False,
+    use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
         config,
@@ -760,6 +798,7 @@ def gqa_prompt_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
@@ -776,7 +815,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -817,7 +856,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -856,6 +895,7 @@ def gqa_past_func(
     share_buffer=True,
     window_size=-1,
     rotary_interleaved=False,
+    use_smooth_softmax=False,
 ):
     onnx_model_str = create_group_query_attention_graph_past(
         config,
@@ -865,6 +905,7 @@ def gqa_past_func(
         rotary=cos is not None,
         rotary_interleaved=rotary_interleaved,
         packed=new_k is None,
+        use_smooth_softmax=use_smooth_softmax,
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
@@ -884,7 +925,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -932,7 +973,7 @@ def gqa_past_func(
             .numpy(),
         }
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
         io_binding = ort_session.io_binding()
         if new_k is not None:
             ort_inputs["key"] = new_k.detach().cpu().numpy()
@@ -1001,6 +1042,7 @@ def attention_ref(
     window_size=(-1, -1),  # -1 means infinite window size
     upcast=True,
     reorder_ops=False,
+    use_smooth_softmax=False,
 ):
     """
     Arguments:
@@ -1047,7 +1089,12 @@ def attention_ref(
             q.device,
         )
         scores.masked_fill_(local_mask, float("-inf"))
-    attention = torch.softmax(scores, dim=-1)
+
+    if use_smooth_softmax:
+        attention = smooth_softmax_ref(scores)
+    else:
+        attention = torch.softmax(scores, dim=-1)
+
     # Some rows might be completely masked out so we fill them with zero instead of NaN
     if window_size[0] >= 0 or window_size[1] >= 0:
         attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)
@@ -1067,7 +1114,14 @@ def attention_ref(
 
 
 def attention_qkvpacked_ref(
-    qkv, key_padding_mask=None, dropout_p=0.0, dropout_mask=None, causal=False, upcast=True, reorder_ops=False
+    qkv,
+    key_padding_mask=None,
+    dropout_p=0.0,
+    dropout_mask=None,
+    causal=False,
+    upcast=True,
+    reorder_ops=False,
+    use_smooth_softmax=False,
 ):
     return attention_ref(
         qkv[:, :, 0],
@@ -1080,6 +1134,7 @@ def attention_qkvpacked_ref(
         upcast=upcast,
         causal=causal,
         reorder_ops=reorder_ops,
+        use_smooth_softmax=use_smooth_softmax,
     )
 
 
@@ -1140,25 +1195,16 @@ def parity_check_mha(
         out_ref, _ = attention_ref(q, k, v, None, None, 0.0, None, causal=False)
         out_ref = out_ref.detach().cpu().numpy()
 
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " N:",
-        config.num_heads,
-        " kvN:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    numpy.testing.assert_allclose(
+        out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=f" with {config} packed={packed}"
     )
-    return all_close
+
+
+def rotary_embedding(*args, **kwargs):
+    # Use local import since triton is not available in Windows.
+    from rotary_flash import apply_rotary_emb
+
+    return apply_rotary_emb(*args, **kwargs)
 
 
 def parity_check_gqa_prompt(
@@ -1169,6 +1215,7 @@ def parity_check_gqa_prompt(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1250,11 +1297,12 @@ def parity_check_gqa_prompt(
         angle = torch.rand(config.buffer_sequence_length, rotary_dim // 2, device="cuda") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
+
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1265,7 +1313,7 @@ def parity_check_gqa_prompt(
                 s=config.q_sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1282,7 +1330,16 @@ def parity_check_gqa_prompt(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1306,6 +1363,7 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1322,65 +1380,25 @@ def parity_check_gqa_prompt(
             past_format,
             True,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
+    )
     # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "KV-buffer",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.q_sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
     )
 
-    if not all_close:
-        close_mask = numpy.isclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-        not_close_mask = numpy.logical_not(close_mask)
-
-        # Values that are not close
-        out_not_close = out[not_close_mask]
-        out_ref_not_close = out_ref[not_close_mask]
-
-        # Indices that are not close
-        not_close_indices = numpy.argwhere(not_close_mask)
-
-        print("Values in 'out' that are not close:", out_not_close)
-        print("Corresponding values in 'out_ref':", out_ref_not_close)
-        print("Indices of values that are not close:", not_close_indices)
-
-    return all_close
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_prompt_no_buff(
@@ -1391,6 +1409,7 @@ def parity_check_gqa_prompt_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1454,11 +1473,12 @@ def parity_check_gqa_prompt_no_buff(
         angle = torch.rand(config.kv_sequence_length, rotary_dim // 2, device="cuda") * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
+
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1469,7 +1489,7 @@ def parity_check_gqa_prompt_no_buff(
                 s=config.q_sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(k_cache_ref, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(k_cache_ref, cos, sin, seqlen_offsets=rotary_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, k_cache_ref
@@ -1481,7 +1501,16 @@ def parity_check_gqa_prompt_no_buff(
     k_cache_rep = repeat(k_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, new_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        new_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1505,6 +1534,7 @@ def parity_check_gqa_prompt_no_buff(
             past_format,
             False,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_prompt_func(
@@ -1521,49 +1551,26 @@ def parity_check_gqa_prompt_no_buff(
             past_format,
             False,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "No buff",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.q_sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed},"
+        f" use_smooth_softmax={use_smooth_softmax}"
     )
-    return all_close
+    # Make sure past-present buffer updating correctly
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past(
@@ -1574,6 +1581,7 @@ def parity_check_gqa_past(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1654,10 +1662,10 @@ def parity_check_gqa_past(
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1668,7 +1676,7 @@ def parity_check_gqa_past(
                 s=config.sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1684,7 +1692,16 @@ def parity_check_gqa_past(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1708,6 +1725,7 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1724,49 +1742,25 @@ def parity_check_gqa_past(
             True,
             left_window_size,
             rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Make sure past-present buffer updating correctly
-    assert numpy.allclose(present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-    assert numpy.allclose(present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True)
-
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "KV-buffer",
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
-    return all_close
+    # Make sure past-present buffer updating correctly
+    numpy.testing.assert_allclose(
+        present_k, k_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+    numpy.testing.assert_allclose(
+        present_v, v_cache_ref.detach().cpu().numpy(), rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg
+    )
+
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
 def parity_check_gqa_past_no_buff(
@@ -1777,6 +1771,7 @@ def parity_check_gqa_past_no_buff(
     rotary=False,
     rotary_interleaved=False,
     packed=False,
+    use_smooth_softmax=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1863,10 +1858,10 @@ def parity_check_gqa_past_no_buff(
         cos = torch.cos(angle).to(dtype=torch.float16)
         sin = torch.sin(angle).to(dtype=torch.float16)
         if causal or local:
-            q_ro = apply_rotary_emb(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+            q_ro = rotary_embedding(q, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
         else:
             q_ro = rearrange(
-                apply_rotary_emb(
+                rotary_embedding(
                     rearrange(q, "b s h d -> b 1 (s h) d"),
                     cos,
                     sin,
@@ -1877,7 +1872,7 @@ def parity_check_gqa_past_no_buff(
                 s=config.sequence_length,
             )
         # q_ro = q
-        k_ro = apply_rotary_emb(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
+        k_ro = rotary_embedding(new_k, cos, sin, seqlen_offsets=cache_seqlens, interleaved=rotary_interleaved)
     else:
         cos, sin = None, None
         q_ro, k_ro = q, new_k
@@ -1893,7 +1888,16 @@ def parity_check_gqa_past_no_buff(
     v_cache_rep = repeat(v_cache_ref, "b s h d -> b s (h g) d", g=config.num_heads // config.kv_num_heads)
     key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
     out_ref, _ = attention_ref(
-        q_ro, k_cache_rep, v_cache_rep, None, key_padding_mask, 0.0, None, causal=True, window_size=window_size
+        q_ro,
+        k_cache_rep,
+        v_cache_rep,
+        None,
+        key_padding_mask,
+        0.0,
+        None,
+        causal=True,
+        window_size=window_size,
+        use_smooth_softmax=use_smooth_softmax,
     )
     out_ref = out_ref.detach().cpu().numpy()
     if past_format == Formats.BNSH:
@@ -1917,6 +1921,7 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     else:
         out, present_k, present_v = gqa_past_func(
@@ -1933,334 +1938,373 @@ def parity_check_gqa_past_no_buff(
             False,
             window_size=left_window_size,
             rotary_interleaved=rotary_interleaved,
+            use_smooth_softmax=use_smooth_softmax,
         )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
-    # Compare results
-    all_close = numpy.allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True)
-    correct = GREEN + "True" + RESET if all_close else RED + "False" + RESET
-    print(
-        "NO buff",
-        " packed:",
-        packed,
-        " causal:",
-        causal,
-        " local:",
-        local,
-        " rotary:",
-        rotary,
-        " rotary_interleaved:",
-        rotary_interleaved,
-        "past kv format:",
-        "BSNH" if past_format == Formats.BSNH else "BNSH",
-        " B:",
-        config.batch_size,
-        " S:",
-        config.sequence_length,
-        " kv S:",
-        config.kv_sequence_length,
-        " N:",
-        config.num_heads,
-        " kv N:",
-        config.kv_num_heads,
-        " h:",
-        config.head_size,
-        " Mean Error:",
-        numpy.mean(numpy.abs(out - out_ref)),
-        correct,
+    err_msg = (
+        f" with {config}, causal={causal}, local={local}, past_format={past_format},"
+        f" rotary={rotary}, rotary_interleaved={rotary_interleaved}, packed={packed}"
     )
-    return all_close
+    numpy.testing.assert_allclose(out, out_ref, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+
+
+def has_flash_attention():
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 8 and (
+        platform.system() == "Linux"
+        or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
+    )
+
+
+def has_memory_efficient():
+    if not torch.cuda.is_available():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    if major < 5 or (major == 5 and minor < 3):
+        return False
+    return True
+
+
+def packed_mha_test_cases():
+    batches = [2] if pipeline_mode else [1, 5]
+    seqs = [1024, 1025] if pipeline_mode else [1024, 1025, 2048]
+    num_h = [1, 3] if pipeline_mode else [1, 6, 16]
+    h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
+    for b in batches:
+        for s in seqs:
+            for n in num_h:
+                for h in h_sizes:
+                    config = Config(b, s, s, 0, n, n, h)
+                    yield str(config), config
+
+
+def mha_test_cases():
+    batches = [2] if pipeline_mode else [1, 5]
+    seqs = (
+        [(1, 128), (113, 211), (2048, 2048)]
+        if pipeline_mode
+        else [
+            (113, 203),
+            (128, 217),
+            (113, 211),
+            (108, 256),
+            (256, 512),
+            (512, 256),
+            (1024, 1024),
+            (1023, 1024),
+            (1024, 1023),
+            (2048, 2048),
+        ]
+    )
+    num_h = [1, 3] if pipeline_mode else [1, 6, 16]
+    h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+
+    for b in batches:
+        for s, s2 in seqs:
+            for n in num_h:
+                for h in h_sizes:
+                    config = Config(b, s, s2, 0, n, n, h)
+                    yield str(config), config
 
 
 class TestMHA(unittest.TestCase):
-    def test_packed_mha(self):
-        if not torch.cuda.is_available() or platform.system() != "Linux":
+    @parameterized.expand(packed_mha_test_cases())
+    def test_packed_mha(self, _, config):
+        if not has_flash_attention():
             return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8:
-            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST PACKED MHA ---------")
-        batches = [2] if pipeline_mode else [1, 5]
-        seqs = [8, 97, 256, 1024] if pipeline_mode else [97, 128, 200, 256, 257, 384, 512, 768, 1024, 1025, 2048]
-        num_h = [1, 3] if pipeline_mode else [1, 6, 16]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        for b in batches:
-            for s in seqs:
-                for n in num_h:
-                    for h in h_sizes:
-                        config = Config(b, s, s, 0, n, n, h)
-                        all_close = parity_check_mha(config, True)
-                        self.assertTrue(all_close)
+        parity_check_mha(config, True)
 
-    def test_mha(self):
-        if not torch.cuda.is_available() or platform.system() != "Linux":
+    @parameterized.expand(mha_test_cases())
+    def test_mha(self, _, config):
+        if not has_flash_attention():
             return
-        major, _ = torch.cuda.get_device_capability()
-        if major < 8:
-            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         print("-------- TEST MHA ---------")
-        batches = [2] if pipeline_mode else [1, 5]
-        seqs = (
-            [(1, 128), (113, 211), (2048, 2048)]
-            if pipeline_mode
-            else [
-                (113, 203),
-                (128, 217),
-                (113, 211),
-                (108, 256),
-                (256, 512),
-                (512, 256),
-                (1024, 1024),
-                (1023, 1024),
-                (1024, 1023),
-                (2048, 2048),
-            ]
-        )
-        num_h = [1, 3] if pipeline_mode else [1, 6, 16]
-        h_sizes = [16, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        for b in batches:
-            for s, s2 in seqs:
-                for n in num_h:
-                    for h in h_sizes:
-                        config = Config(b, s, s2, 0, n, n, h)
-                        all_close = parity_check_mha(config, False)
-                        self.assertTrue(all_close)
+        parity_check_mha(config, False)
 
 
-class TestGQA(unittest.TestCase):
-    def test_gqa_no_past_memory_efficient(self):
-        if not torch.cuda.is_available():
-            return
-        major, minor = torch.cuda.get_device_capability()
-        torch.manual_seed(69)
-        batches = [3] if pipeline_mode else [1, 3, 5]
-        seqs = (
-            [
-                (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
-                (240, 240),
-            ]
-            if pipeline_mode
-            else [
-                (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
-                (240, 240),
-            ]
-        )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        if major < 5 or (major == 5 and minor < 3):
-            return
-        print("------- MEMORY EFFICIENT ATTENTION (PROMPT CASE) ---------")
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        for b in batches:
-            for sq, skv in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+def gqa_no_past_memory_efficient_test_cases():
+    batches = [3] if pipeline_mode else [1, 3, 5]
+    seqs = (
+        [
+            (127, 127),
+            (35, 35),
+            (2000, 2000),
+            (200, 200),
+            (240, 240),
+        ]
+        if pipeline_mode
+        else [
+            (127, 127),
+            (35, 35),
+            (2000, 2000),
+            (200, 200),
+            (240, 240),
+        ]
+    )
+    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    torch.manual_seed(69)
+
+    for b in batches:
+        for sq, skv in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for rotary, rotary_interleaved in rotary_options_for_current_os():
+                        for packed in [False, True]:
+                            config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
+                            yield (
+                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+                                config,
+                                rotary,
+                                rotary_interleaved,
+                                packed,
+                            )
+
+
+def gqa_no_past_flash_attention_test_cases():
+    batches = [3] if pipeline_mode else [1, 3, 5]
+    seqs = (
+        [
+            (127, 127),
+            (35, 35),
+            (2000, 2000),
+            (200, 200),
+            (240, 240),
+        ]
+        if pipeline_mode
+        else [
+            (127, 127),
+            (35, 35),
+            (2000, 2000),
+            (200, 200),
+            (240, 240),
+        ]
+    )
+    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    torch.manual_seed(69)
+
+    for b in batches:
+        for sq, skv in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for local in [False, True]:
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                all_close = parity_check_gqa_prompt(
+                                yield (
+                                    str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
                                     config,
-                                    rtol=5e-3,
-                                    atol=5e-3,
-                                    past_format=Formats.BNSH,
-                                    rotary=rotary,
-                                    rotary_interleaved=rotary_interleaved,
-                                    packed=packed,
+                                    local,
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
                                 )
-                                self.assertTrue(all_close)
-                                all_close = parity_check_gqa_prompt_no_buff(
-                                    config,
-                                    rtol=5e-3,
-                                    atol=5e-3,
-                                    past_format=Formats.BNSH,
-                                    rotary=rotary,
-                                    rotary_interleaved=rotary_interleaved,
-                                    packed=packed,
-                                )
-                                self.assertTrue(all_close)
 
-    def test_gqa_no_past_flash_attention(self):
-        if not torch.cuda.is_available():
-            return
-        major, _ = torch.cuda.get_device_capability()
-        torch.manual_seed(69)
-        batches = [3] if pipeline_mode else [1, 3, 5]
-        seqs = (
-            [
-                (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
-                (240, 240),
-            ]
-            if pipeline_mode
-            else [
-                (127, 127),
-                (35, 35),
-                (2000, 2000),
-                (200, 200),
-                (240, 240),
-            ]
-        )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        if major < 8 or platform.system() != "Linux":
-            return
-        print("------- FLASH ATTENTION (PROMPT CASE) --------")
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        for b in batches:
-            for sq, skv in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for packed in [False, True]:
-                                    config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                    all_close = parity_check_gqa_prompt(
-                                        config,
-                                        local=local,
-                                        past_format=Formats.BNSH,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
-                                    all_close = parity_check_gqa_prompt_no_buff(
-                                        config,
-                                        local=local,
-                                        past_format=Formats.BNSH,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
 
-    def test_gqa_past_memory_efficient(self):
-        if not torch.cuda.is_available():
-            return
-        major, minor = torch.cuda.get_device_capability()
-        if major < 5 or (major == 5 and minor < 3):
-            return
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        batches = [5] if pipeline_mode else [1, 3, 5]
-        seqs = (
-            [(1, 128), (1, 1024), (1, 2048)]
-            if pipeline_mode
-            else [
-                (1, 128),
-                (1, 339),
-                (1, 1024),
-                (1, 5000),
-                (1, 800),
-                (1, 256),
-                (1, 799),
-                (1, 2048),
-                # (1, 128 * 512),
-                # (16, 128 * 512),
-                # (128, 128),
-            ]
-        )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        random.seed(69)
-        print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
-        for b in batches:
-            for s, s2 in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
+def gqa_past_memory_efficient_test_cases():
+    batches = [5] if pipeline_mode else [1, 3, 5]
+    seqs = (
+        [(1, 128), (1, 1024), (1, 2048)]
+        if pipeline_mode
+        else [
+            (1, 128),
+            (1, 339),
+            (1, 1024),
+            (1, 5000),
+            (1, 800),
+            (1, 256),
+            (1, 799),
+            (1, 2048),
+            # (1, 128 * 512),
+            # (16, 128 * 512),
+            # (128, 128),
+        ]
+    )
+    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    random.seed(69)
+
+    for b in batches:
+        for s, s2 in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for rotary, rotary_interleaved in rotary_options_for_current_os():
+                        for packed in [False, True]:
+                            sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                            config = Config(b, s, s2, sp, n, n2, h)
+                            yield (
+                                str(config) + f"{rotary}_{rotary_interleaved}_{packed}",
+                                config,
+                                rotary,
+                                rotary_interleaved,
+                                packed,
+                            )
+
+
+def gqa_past_flash_attention_test_cases():
+    batches = [5] if pipeline_mode else [1, 3, 5]
+    seqs = (
+        [(1, 128), (1, 1024), (1, 2048)]
+        if pipeline_mode
+        else [
+            (1, 128),
+            (1, 339),
+            (1, 1024),
+            (1, 5000),
+            (1, 800),
+            (1, 256),
+            (1, 799),
+            (1, 2048),
+            # (1, 128 * 512),
+            # (16, 128 * 512),
+            # (128, 128),
+        ]
+    )
+    num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+    h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    random.seed(69)
+
+    for b in batches:
+        for s, s2 in seqs:
+            for n, n2 in num_h:
+                for h in h_sizes:
+                    for local in [False, True]:
+                        for rotary, rotary_interleaved in rotary_options_for_current_os():
                             for packed in [False, True]:
                                 sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                 config = Config(b, s, s2, sp, n, n2, h)
-                                all_close = parity_check_gqa_past(
+                                yield (
+                                    str(config) + f"{local}_{rotary}_{rotary_interleaved}_{packed}",
                                     config,
-                                    past_format=Formats.BNSH,
-                                    rtol=1e-3,
-                                    atol=1e-3,
-                                    rotary=rotary,
-                                    rotary_interleaved=rotary_interleaved,
-                                    packed=packed,
+                                    local,
+                                    rotary,
+                                    rotary_interleaved,
+                                    packed,
                                 )
-                                self.assertTrue(all_close)
-                                all_close = parity_check_gqa_past_no_buff(
-                                    config,
-                                    past_format=Formats.BNSH,
-                                    rtol=1e-3,
-                                    atol=1e-3,
-                                    rotary=rotary,
-                                    rotary_interleaved=rotary_interleaved,
-                                    packed=packed,
-                                )
-                                self.assertTrue(all_close)
 
-    def test_gqa_past_flash_attention(self):
-        if not torch.cuda.is_available():
+
+class TestGQA(unittest.TestCase):
+    @parameterized.expand(gqa_no_past_memory_efficient_test_cases())
+    def test_gqa_no_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
+        if not has_memory_efficient():
             return
-        major, _ = torch.cuda.get_device_capability()
-        batches = [5] if pipeline_mode else [1, 3, 5]
-        seqs = (
-            [(1, 128), (1, 1024), (1, 2048)]
-            if pipeline_mode
-            else [
-                (1, 128),
-                (1, 339),
-                (1, 1024),
-                (1, 5000),
-                (1, 800),
-                (1, 256),
-                (1, 799),
-                (1, 2048),
-                # (1, 128 * 512),
-                # (16, 128 * 512),
-                # (128, 128),
-            ]
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        print("------- MEMORY EFFICIENT ATTENTION (PROMPT CASE) ---------")
+
+        parity_check_gqa_prompt(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            past_format=Formats.BNSH,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=False,
         )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        random.seed(69)
-        if major < 8 or platform.system() != "Linux":
+        parity_check_gqa_prompt_no_buff(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            past_format=Formats.BNSH,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=True,
+        )
+
+    @parameterized.expand(gqa_no_past_flash_attention_test_cases())
+    def test_gqa_no_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+        if not has_flash_attention():
+            return
+        print("------- FLASH ATTENTION (PROMPT CASE) --------")
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+
+        parity_check_gqa_prompt(
+            config,
+            local=local,
+            past_format=Formats.BNSH,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=True,
+        )
+        parity_check_gqa_prompt_no_buff(
+            config,
+            local=local,
+            past_format=Formats.BNSH,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=False,
+        )
+
+    @parameterized.expand(gqa_past_memory_efficient_test_cases())
+    def test_gqa_past_memory_efficient(self, _, config, rotary, rotary_interleaved, packed):
+        if not has_memory_efficient():
+            return
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
+
+        parity_check_gqa_past(
+            config,
+            past_format=Formats.BNSH,
+            rtol=1e-3,
+            atol=1e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=True,
+        )
+        parity_check_gqa_past_no_buff(
+            config,
+            past_format=Formats.BNSH,
+            rtol=1e-3,
+            atol=1e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=False,
+        )
+
+    @parameterized.expand(gqa_past_flash_attention_test_cases())
+    def test_gqa_past_flash_attention(self, _, config, local, rotary, rotary_interleaved, packed):
+        if not has_flash_attention():
             return
         print("------- FLASH ATTENTION (TOKEN GEN) -------")
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        for b in batches:
-            for s, s2 in seqs:
-                for n, n2 in num_h:
-                    for h in h_sizes:
-                        for local in [False, True]:
-                            for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for packed in [False, True]:
-                                    sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                    config = Config(b, s, s2, sp, n, n2, h)
-                                    all_close = parity_check_gqa_past(
-                                        config,
-                                        local=local,
-                                        past_format=Formats.BNSH,
-                                        rtol=1e-3,
-                                        atol=1e-3,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
-                                    all_close = parity_check_gqa_past_no_buff(
-                                        config,
-                                        local=local,
-                                        past_format=Formats.BNSH,
-                                        rtol=1e-3,
-                                        atol=1e-3,
-                                        rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved,
-                                        packed=packed,
-                                    )
-                                    self.assertTrue(all_close)
+
+        parity_check_gqa_past(
+            config,
+            local=local,
+            past_format=Formats.BNSH,
+            rtol=1e-3,
+            atol=1e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=False,
+        )
+        parity_check_gqa_past_no_buff(
+            config,
+            local=local,
+            past_format=Formats.BNSH,
+            rtol=1e-3,
+            atol=1e-3,
+            rotary=rotary,
+            rotary_interleaved=rotary_interleaved,
+            packed=packed,
+            use_smooth_softmax=True,
+        )
 
 
 if __name__ == "__main__":

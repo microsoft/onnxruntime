@@ -49,6 +49,7 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
     class Point:
         x: int
         y: int
+        device: str = "cpu"  # Otherwise, no device can be found from inputs, and the test will fail earlier.
 
     class UnsupportedInputModel(torch.nn.Module):
         def __init__(self):
@@ -78,11 +79,17 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
             else:
                 with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                     ort_model(inputs)
-                assert "ORTModule fails to extract schema from data" in str(type_error.value)
+                assert (
+                    "ORTModule does not support input type <class 'orttraining_test_ortmodule_fallback.test_ortmodule_fallback_forward.<locals>.Point'> for input point"
+                    in str(type_error.value)
+                )
         else:
             with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                 ort_model(inputs)
-            assert "ORTModule fails to extract schema from data" in str(type_error.value)
+            assert (
+                "ORTModule does not support input type <class 'orttraining_test_ortmodule_fallback.test_ortmodule_fallback_forward.<locals>.Point'> for input point"
+                in str(type_error.value)
+            )
 
 
 @pytest.mark.parametrize(
@@ -250,11 +257,17 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
             else:
                 with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                     ort_model(x, y, z)
-                assert "ORTModule does not support the following model output type" in str(runtime_error.value)
+                assert (
+                    "ORTModule fails to extract schema from data: Unsupported flatten data type: <class '_orttraining_ortmodule_models.NeuralNetCustomClassOutput.CustomClass'>"
+                    in str(runtime_error.value)
+                )
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
                 ort_model(x, y, z)
-            assert "ORTModule does not support the following model output type" in str(runtime_error.value)
+            assert (
+                "ORTModule fails to extract schema from data: Unsupported flatten data type: <class '_orttraining_ortmodule_models.NeuralNetCustomClassOutput.CustomClass'>"
+                in str(runtime_error.value)
+            )
 
 
 @pytest.mark.parametrize(
@@ -302,20 +315,18 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
                 with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                     _ = ort_model(torch.randn(1, 2), CustomClass(1))
                 assert (
-                    "ORTModule fails to extract schema from data: "
-                    "Unsupported flatten data type: "
-                    "<class 'orttraining_test_ortmodule_fallback."
-                    "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
+                    "ORTModule does not support input type "
+                    "<class 'orttraining_test_ortmodule_fallback.test_ortmodule_fallback_input.<locals>.CustomClass'> "
+                    "for input custom_class_obj" in str(ex_info.value)
                 )
         else:
             with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
                 _ = ort_model(torch.randn(1, 2), CustomClass(1))
-            assert (
-                "ORTModule fails to extract schema from data: "
-                "Unsupported flatten data type: "
-                "<class 'orttraining_test_ortmodule_fallback."
-                "test_ortmodule_fallback_input.<locals>.CustomClass'>" in str(ex_info.value)
-            )
+                assert (
+                    "ORTModule does not support input type "
+                    "<class 'orttraining_test_ortmodule_fallback.test_ortmodule_fallback_input.<locals>.CustomClass'> "
+                    "for input custom_class_obj" in str(ex_info.value)
+                )
 
 
 @pytest.mark.parametrize(

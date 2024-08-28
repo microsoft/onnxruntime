@@ -128,6 +128,9 @@ class TensorsData:
     def values(self):
         return self.data.values()
 
+    def items(self):
+        return self.data.items()
+
 
 class CalibrationMethod(Enum):
     MinMax = 0
@@ -154,6 +157,12 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         if result is None:
             raise StopIteration
         return result
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def set_range(self, start_index: int, end_index: int):
+        raise NotImplementedError
 
 
 class CalibraterBase:
@@ -409,13 +418,31 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items():
-            if self.moving_average:
-                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
-                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            # Handling for structured data types with TensorData
+            if isinstance(value, TensorData):
+                old_min = value.range_value[0]
+                old_max = value.range_value[1]
             else:
-                min_value = min(value[0], new_range[key][0])
-                max_value = max(value[1], new_range[key][1])
-            new_range[key] = (min_value, max_value)
+                old_min, old_max = value
+
+            if isinstance(new_range[key], TensorData):
+                new_min = new_range[key].range_value[0]
+                new_max = new_range[key].range_value[1]
+            else:
+                new_min, new_max = new_range[key]
+
+            if self.moving_average:
+                min_value = old_min + self.averaging_constant * (new_min - old_min)
+                max_value = old_max + self.averaging_constant * (new_max - old_max)
+            else:
+                min_value = min(old_min, new_min)
+                max_value = max(old_max, new_max)
+
+            # If structured as TensorData, wrap the result accordingly
+            if isinstance(value, TensorData) or isinstance(new_range[key], TensorData):
+                new_range[key] = TensorData(lowest=min_value, highest=max_value)
+            else:
+                new_range[key] = (min_value, max_value)
 
         return new_range
 
@@ -785,7 +812,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -807,7 +834,7 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[: len(old_hist)] += old_hist
                 assert (
                     data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicetly typed"
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
@@ -1049,7 +1076,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i
-            end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
+            end_index = min(zero_bin_index + i + 1, num_bins)
 
             thresholds[i - num_half_quantized_bin] = (hist_edges[start_index], hist_edges[end_index])
 
