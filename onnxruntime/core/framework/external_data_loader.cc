@@ -32,7 +32,7 @@ common::Status LoadWebAssemblyExternalData(const Env& env,
                                if (typeof Module == 'undefined' || !Module.MountedFiles) {
                                  return 1;  // "Module.MountedFiles" is not available.
                                }
-                               let fileName = UTF8ToString($0 >>> 0);
+                               let fileName = UTF8ToString(Number($0 >>> 0));
                                if (fileName.startsWith('./')) {
                                  fileName = fileName.substring(2);
                                }
