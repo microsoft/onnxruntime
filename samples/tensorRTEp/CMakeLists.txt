@@ -17,8 +17,8 @@ add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "/usr/local/cuda/include"
                                              "/home/leca/TensorRT-10.0.1.6/include"
-                                             "../../build/Linux/Debug/_deps/flatbuffers-src/include")
-#                                        "../../build/Linux/Debug/_deps/gsl-src/include"
+                                             "../../build/Linux/Debug/_deps/flatbuffers-src/include"
+                                             "../../build/Linux/Debug/_deps/gsl-src/include")
 #                                        "../../build/Linux/Debug/_deps/onnx-src"
 #                                        "../../build/Linux/Debug/_deps/onnx-build"
 #                                        "../../build/Linux/Debug/_deps/protobuf-src/src")
