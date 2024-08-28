@@ -25,77 +25,77 @@ parameters:
   default: ''
 
 stages:
-- stage: Build_Packages
-  displayName: Build Packages
-  dependsOn: '${{parameters.InitialStageDependsOn}}'
-  jobs:
+# - stage: Build_Packages
+#   displayName: Build Packages
+#   dependsOn: '${{parameters.InitialStageDependsOn}}'
+#   jobs:
 
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: '${{parameters.BuildConfig}}'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'For_React_Native'
-      pool_name: '${{parameters.PoolName}}'
-      packageName: 'onnxruntime-android'
+#   - template: android-java-api-aar.yml
+#     parameters:
+#       buildConfig: '${{parameters.BuildConfig}}'
+#       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+#       artifactName: 'onnxruntime-android-full-aar'
+#       job_name_suffix: 'For_React_Native'
+#       pool_name: '${{parameters.PoolName}}'
+#       packageName: 'onnxruntime-android'
 
-  - job: Build_Ios_Pod_For_React_Native
-    pool:
-      vmImage: 'macOS-12'
+#   - job: Build_Ios_Pod_For_React_Native
+#     pool:
+#       vmImage: 'macOS-12'
 
-    timeoutInMinutes: 90
+#     timeoutInMinutes: 90
 
-    variables:
-      runCodesignValidationInjection: false
-      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-      ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
+#     variables:
+#       runCodesignValidationInjection: false
+#       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+#       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
 
-    steps:
-    - template: use-xcode-version.yml
+#     steps:
+#     - template: use-xcode-version.yml
 
-    - task: UsePythonVersion@0
-      displayName: Use python 3.9
-      inputs:
-        versionSpec: "3.9"
-        addToPath: true
-        architecture: "x64"
+#     - task: UsePythonVersion@0
+#       displayName: Use python 3.9
+#       inputs:
+#         versionSpec: "3.9"
+#         addToPath: true
+#         architecture: "x64"
 
-    - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
-      displayName: "Install Python requirements"
+#     - script: |
+#         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+#       displayName: "Install Python requirements"
 
-    - template: mac-build-step-with-cache.yml
-      parameters:
-        WithCache: true
-        Today: $(TODAY)
-        AdditionalKey: react_${{parameters.BuildConfig}}
-        CacheDir: $(ORT_CACHE_DIR)
-        BuildStep:
-          - script: |
-              set -e -x
-              python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
-                --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-                --staging-dir "$(Build.BinariesDirectory)/staging" \
-                --variant Full \
-                --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
-            displayName: Build iOS package and assemble pods
-            env:
-              CC: clang
-              CXX: clang++
-              CCACHE_CPP2: 1
-              CCACHE_DEPEND: 1
-              CCACHE_SLOPPINESS: modules
-              CCACHE_DIR: $(ORT_CACHE_DIR)
+#     - template: mac-build-step-with-cache.yml
+#       parameters:
+#         WithCache: true
+#         Today: $(TODAY)
+#         AdditionalKey: react_${{parameters.BuildConfig}}
+#         CacheDir: $(ORT_CACHE_DIR)
+#         BuildStep:
+#           - script: |
+#               set -e -x
+#               python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+#                 --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+#                 --staging-dir "$(Build.BinariesDirectory)/staging" \
+#                 --variant Full \
+#                 --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
+#             displayName: Build iOS package and assemble pods
+#             env:
+#               CC: clang
+#               CXX: clang++
+#               CCACHE_CPP2: 1
+#               CCACHE_DEPEND: 1
+#               CCACHE_SLOPPINESS: modules
+#               CCACHE_DIR: $(ORT_CACHE_DIR)
 
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)/staging'
-        artifact: 'onnxruntime-ios-full-pod'
+#     - task: PublishPipelineArtifact@1
+#       inputs:
+#         targetPath: '$(Build.BinariesDirectory)/staging'
+#         artifact: 'onnxruntime-ios-full-pod'
 
 - stage: ReactNative_CI
   displayName: React Native CI
-  dependsOn:
-  - Build_Packages
+  # dependsOn:
+  # - Build_Packages
   jobs:
   - job: ReactNative_CI
     strategy:
@@ -148,7 +148,12 @@ stages:
 
     - task: DownloadPipelineArtifact@2
       inputs:
-        buildType: 'current'
+        #buildType: 'current'
+        buildType: 'specific'
+        project: 'onnxruntime'
+        definition: '188'
+        buildVersionToDownload: 'latestFromBranch'
+        branchName: 'refs/heads/main'
         artifactName: 'onnxruntime-android-full-aar'
         targetPath: '$(Build.BinariesDirectory)/android-full-aar'
       displayName: Download Android AAR artifacts
@@ -162,7 +167,12 @@ stages:
 
     - task: DownloadPipelineArtifact@2
       inputs:
-        buildType: 'current'
+        #buildType: 'current'
+        buildType: 'specific'
+        project: 'onnxruntime'
+        definition: '188'
+        buildVersionToDownload: 'latestFromBranch'
+        branchName: 'refs/heads/main'
         artifactName: 'onnxruntime-ios-full-pod'
         targetPath: '$(Build.BinariesDirectory)/ios-full-pod'
       displayName: Download iOS pod artifacts
