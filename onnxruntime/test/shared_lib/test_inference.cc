@@ -1221,7 +1221,7 @@ TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has input size 3 not in range [min=4"));
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node(VariadicNode0) with schema(test::VariadicNode:1) has input size 3 not in range [min=4,"));
   }
 }
 
@@ -1251,7 +1251,7 @@ TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has output size 3 not in range [min=4"));
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node(VariadicNode0) with schema(test::VariadicNode:1) has output size 3 not in range [min=4"));
   }
 }
 
