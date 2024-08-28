@@ -105,17 +105,15 @@ class MatMulNBits final : public OpKernel {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
-    has_zp_input_ = info.TryGetConstantInput(3, &tensor_zero_point);
+    has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
 #ifdef ORT_NEURAL_SPEED
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
-    const Tensor* tensor_zero_point = nullptr;
     bool B_constant = info.TryGetConstantInput(InputIndex::B, &tensor_B);
     bool scale_constant = info.TryGetConstantInput(InputIndex::scales, &tensor_scale);
-    bool zero_point_constant = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
     is_asym_ = zero_point_arg != nullptr;
     all_constant_ = B_constant && scale_constant;
-    all_constant_ = is_asym_ ? all_constant_ && zero_point_constant : all_constant_;
+    all_constant_ = is_asym_ ? all_constant_ && has_zp_input_ : all_constant_;
 #endif
   }
 

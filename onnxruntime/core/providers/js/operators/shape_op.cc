@@ -32,10 +32,34 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Shape,
+    kOnnxDomain,
+    15, 18,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        // properly force CPU/GPU synch inside the kernel
+        .OutputMemoryType(OrtMemTypeCPU, 0)
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Shape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Shape,
+    kOnnxDomain,
+    19, 20,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        // properly force CPU/GPU synch inside the kernel
+        .OutputMemoryType(OrtMemTypeCPU, 0)
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Shape);
+
 ONNX_OPERATOR_KERNEL_EX(
     Shape,
     kOnnxDomain,
-    15,
+    21,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         // properly force CPU/GPU synch inside the kernel

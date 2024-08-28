@@ -1029,7 +1029,7 @@ ORT_API_STATUS_IMPL(
   }
 
   // add identity ops to rename all of the first model outputs to secondmodel inputs with prefix for each linkage
-  for (int i = 0; i < num_linkages; i++) {
+  for (size_t i = 0; i < num_linkages; i++) {
     auto op_output_name = second_model_prefix + *(input_names + i);
     const char* const op_output_name_const_str = op_output_name.c_str();
     std::string name = "IdentityTo";

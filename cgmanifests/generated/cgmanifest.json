@@ -216,7 +216,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f161f95883b4ebd8cb789de5efc67b73c0a6e694",
+          "commitHash": "62bdde2a04fcd53c2409cb895ee18db445b7e755",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"

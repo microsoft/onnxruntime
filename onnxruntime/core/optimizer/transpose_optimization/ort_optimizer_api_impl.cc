@@ -33,6 +33,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
   explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg) {}
   std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
+  std::optional<size_t> ShapeRank() const override;
   api::DataType DType() const override;
 
   void SetShape(const std::vector<int64_t>* shape) override;
@@ -182,6 +183,15 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   result.reserve(dims.size());
   result.assign(dims.begin(), dims.end());
   return result;
+}
+
+std::optional<size_t> ApiValueInfo::ShapeRank() const {
+  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  if (shape_proto == nullptr) {
+    return std::nullopt;
+  }
+
+  return static_cast<size_t>(shape_proto->dim_size());
 }
 
 api::DataType ApiValueInfo::DType() const {

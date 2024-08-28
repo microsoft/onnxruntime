@@ -9,6 +9,15 @@ echo "Benchmark Scaled Dot Product Attention (SDPA) performance on GPU:"
 
 export CUDA_VISIBLE_DEVICES=0
 python benchmark_mha.py --use_gpu
+
+echo "Benchmark BERT-Large performance on GPU without attention bias"
+python benchmark_mha.py --use_gpu -b 16
+
+echo "Benchmark BERT-Large performance on GPU with attention bias"
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias --broadcast_attn_bias_dim_0
+python benchmark_mha.py --use_gpu -b 16 -r 1000 --has_attn_bias --broadcast_attn_bias_dim_0 --broadcast_attn_bias_dim_1
+
 python benchmark_mha.py --use_gpu --use_cuda_graph
 python benchmark_mha.py --use_gpu --torch
 
