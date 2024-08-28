@@ -36,6 +36,35 @@ Status MLFloat16ToFloat8E4M3FN(cudaStream_t stream, const Tensor* src, Tensor* d
 
 
 
+template <typename CudaFp8T>
+__global__ void TransposeKernel(const CudaFp8T* src_data, CudaFp8T* dest_data, int src_rows, int src_cols) {
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if (col < src_cols && row < src_rows) {
+      // Transpose element from src_data[row][col] to dest_data[col][row]
+      dest_data[col * src_rows + row] = src_data[row * src_cols + col];
+  }
+}
+
+Status TransposeMatrix(cudaStream_t stream, const Tensor* src, Tensor* dest, int src_rows, int src_cols) {
+  typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaFp8T;
+  const CudaFp8T* src_data = reinterpret_cast<const CudaFp8T*>(src->Data<Float8E4M3FN>());
+  CudaFp8T* dest_data = reinterpret_cast<CudaFp8T*>(dest->MutableData<Float8E4M3FN>());
+
+  int num_elems = src->SizeInBytes() / sizeof(CudaFp8T);
+  int blocks_per_grid = static_cast<int>((num_elems + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
+  int threads_per_block = min(num_elems, GridDim::maxThreadsPerBlock);
+  TransposeKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(src_data, dest_data, src_rows, src_cols);
+
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+
+  return Status::OK();
+}
+
+
+
 template <typename CudaT>
 __global__ void ComputeStdDevCoefficientsForScaleKernel(const CudaT* tensor_data, CudaT* d_scale_coef)
 {

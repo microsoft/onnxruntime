@@ -154,6 +154,7 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
   Tensor* Y = ctx->Output(0, helper.OutputShape());
+  std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), Y->Shape(), allocator);
 
   // onnxruntime is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
   const TensorShape& shape_A = right_X->Shape();
@@ -182,26 +183,34 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   auto status = MLFloat16ToFloat8E4M3FN(stream, left_X, left_X_fp8.get());
   if (! status.IsOK())
     return status;
+  // TODO if right_X is constant, do this conversion inside PrePack.
+  // if (!is_packed) {
   status = MLFloat16ToFloat8E4M3FN(stream, right_X, right_X_fp8.get());
   if (! status.IsOK())
     return status;
-
-
-  // TODO transpose A (in cublas, so right_X in ORT) if not constant (in which case it's transposed in PrePack)
+  // }
 
   // `cublasltmatmul` computes the following formula: D = alpha*(A*B) + beta*(C).
   // Our matrix multiplication doesn't use a beta * C bias, so we just set the beta to 0 when calling the API.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
 
-  // TODO should we create an fp8 tensor for Y as well?
-  // TODO should the C data type also be fp8?
-  std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), Y->Shape(), allocator);
+  std::unique_ptr<Tensor> right_X_fp8_transposed = Tensor::Create(fp8_type, shape_A, allocator);
+
+  // Transpose A (in cublas, so right_X in ORT) if not constant (in which case it's transposed in PrePack).
+  // TODO if (!is_packed) {
+  status = TransposeMatrix(stream, right_X_fp8.get(), right_X_fp8_transposed.get(), K, N);
+  if (! status.IsOK())
+    return status;
+  // }
+
+  const void* p_input_a = right_X->DataRaw();
+  const void* p_input_b = left_X->DataRaw();
+  const void* p_input_c = C->DataRaw();
+  void* p_output_y = Y->MutableDataRaw();
 
   // Create matrix descriptors. Not setting any extra attributes.
   // ORT is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
-  // TODO use fp8 versions of left_X and right_X.
-  // TODO after the conversion, will [a,b]_data_type = CUDA_R_8F_E4M3? same for [c,y]_cuda_type?
   int32_t dtype_A = right_X->GetElementType();
   int32_t dtype_B = left_X->GetElementType();
   int32_t dtype_C = C->GetElementType();
@@ -268,7 +277,7 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
 
   // // Get the weights of the model
   // float scale_a, scale_b;
-  // status = ComputeScale(stream, right_X_fp8.get(), std_quant, scale_a);
+  // status = ComputeScale(stream, right_X_fp8_transposed.get(), std_quant, scale_a);
   // if (! status.IsOK())
   //   return status;
   // status = ComputeScale(stream, left_X_fp8.get(), std_quant, scale_b);
@@ -349,10 +358,6 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
     CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
   }
 
-  const void* p_input_a = right_X->DataRaw();
-  const void* p_input_b = left_X->DataRaw();
-  void* p_output_y = Y->MutableDataRaw();
-
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   cuda_status = cublasLtMatmul(
       cublasLt,
@@ -363,7 +368,7 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
       p_input_b,                                /* B */
       Bdesc,
       static_cast<const void*>(&beta),          /* beta */
-      C.get(),                                  /* C */
+      p_input_c,                                /* C */
       Cdesc,
       p_output_y,                               /* Y */
       Ydesc,
