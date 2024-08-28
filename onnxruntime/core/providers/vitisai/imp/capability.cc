@@ -42,7 +42,7 @@ std::unique_ptr<ComputeCapability> XirSubgraphToComputeCapability1(const onnxrun
 std::vector<std::unique_ptr<ComputeCapability>>
 GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
                         vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>* eps,
-                        const std::set<std::string>& all_support_optypes_by_eps) {
+                        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) {
   std::set<NodeIndex> all_nodes_included_eps;
   for (auto& ep : **eps) {
     auto nodes = node_names_to_nodes(graph, *ep->get_meta_def_nodes());
@@ -52,11 +52,8 @@ GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
   std::vector<NodeIndex> node_indexs = graph.GetNodesInTopologicalOrder();
   node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_nodes_included_eps.count(index) > 0; }), node_indexs.end());
   node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(),
-                                   [&](NodeIndex index) {
-                                    auto node = graph.GetNode(index);
-                                    return all_support_optypes_by_eps.count(node->Domain() + ":" + node->OpType()) == 0; }),
+                                   [&](NodeIndex index) { return kernel_lookup.LookUpKernel(*graph.GetNode(index)) == nullptr; }),
                     node_indexs.end());
-
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& n : node_indexs) {
     auto indexed_subgraph = IndexedSubGraph::Create();

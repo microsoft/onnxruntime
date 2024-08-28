@@ -1,6 +1,6 @@
 [
   {
-    "name": "constant 2D float16",
+    "name": "constant 2D float16 v10",
     "operator": "Pad",
     "opset": { "domain": "", "version": 10 },
     "attributes": [
@@ -33,7 +33,7 @@
     ]
   },
   {
-    "name": "constant 2D float16",
+    "name": "constant 2D float16 v19",
     "operator": "Pad",
     "opset": { "domain": "", "version": 19 },
     "attributes": [{ "name": "mode", "data": "constant", "type": "string" }],
