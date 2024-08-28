@@ -267,7 +267,7 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all --configuration android.emu.release --loglevel trace
+        detox test --record-logs all --configuration android.emu.release --loglevel trace --headless
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
