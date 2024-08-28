@@ -158,14 +158,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WebGPU,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
                     [[maybe_unused]] _In_ OrtSessionOptions* options,
-                    [[maybe_unused]] _In_ const OrtWebGPUProviderOptions* webgpu_options,
+                    [[maybe_unused]] _In_ const OrtWGPUProviderOptions* wgpu_options,
                     [[maybe_unused]] _In_reads_(num_keys) const char* const* string_options_keys,
                     [[maybe_unused]] _In_reads_(num_keys) const char* const* string_options_values,
                     [[maybe_unused]] _In_ size_t num_keys) {
   API_IMPL_BEGIN
-  ORT_NOT_IMPLEMENTED("SessionOptionsAppendExecutionProvider_WebGPU is not implemented yet.");
+  ORT_NOT_IMPLEMENTED("SessionOptionsAppendExecutionProvider_WGPU is not implemented yet.");
   API_IMPL_END
 }
 
