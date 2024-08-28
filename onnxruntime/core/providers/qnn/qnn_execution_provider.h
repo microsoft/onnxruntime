@@ -105,18 +105,6 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
-  std::vector<EpSharedContextsPtr> GetEpSharedContexts() const override {
-    return qnn_ep_shared_contexts_;
-  }
-
-  void SetEpSharedContexts(std::vector<EpSharedContextsPtr> qnn_ep_shared_contexts) override {
-    for (auto qnn_ep_shared_context : qnn_ep_shared_contexts) {
-      if (qnn_ep_shared_context->Type() == kQnnExecutionProvider) {
-        qnn_ep_shared_contexts_.push_back(qnn_ep_shared_context);
-      }
-    }
-  }
-
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -156,7 +144,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = false;
   bool share_ep_contexts_ = false;
-  std::vector<EpSharedContextsPtr> qnn_ep_shared_contexts_;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif

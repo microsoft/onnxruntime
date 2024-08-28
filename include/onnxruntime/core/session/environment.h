@@ -88,21 +88,6 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
-  std::vector<EpSharedContextsPtr> GetEpSharedContexts() {
-    return ep_shared_contexts_;
-  }
-
-  void SetEpSharedContexts(std::vector<EpSharedContextsPtr> ep_shared_contexts) {
-    for (size_t i = 0; i < ep_shared_contexts.size(); ++i) {
-      const std::string& key = ep_shared_contexts[i]->Name();
-      auto it = find_if(ep_shared_contexts_.begin(), ep_shared_contexts_.end(),
-                        [&key](const EpSharedContextsPtr& obj) { return obj->Name() == key; });
-      if (it == ep_shared_contexts_.end()) {
-        ep_shared_contexts_.push_back(std::move(ep_shared_contexts[i]));
-      }
-    }
-  }
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -114,6 +99,5 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
-  std::vector<EpSharedContextsPtr> ep_shared_contexts_;
 };
 }  // namespace onnxruntime
