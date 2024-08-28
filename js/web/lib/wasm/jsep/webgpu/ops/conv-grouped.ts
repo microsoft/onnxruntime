@@ -15,7 +15,7 @@ import {
   tensorTypeToWsglStorageType,
   UniformsArrayType,
 } from './common';
-import { calculateOutputShape, ConvAttributes } from './conv';
+import { ConvAttributes } from './conv';
 import { appendActivationUniforms, appendActivationUniformsData, getActivationSnippet } from './fuse-utils';
 
 /**
@@ -25,23 +25,16 @@ import { appendActivationUniforms, appendActivationUniformsData, getActivationSn
 export const createGroupedConvProgramInfo = (
   inputs: readonly TensorView[],
   attributes: ConvAttributes,
+  outputShape: readonly number[],
   squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const hasBias = inputs.length > 2;
   const processBias = hasBias ? 'value += b[output_channel];' : '';
   const xShape = inputs[0].dims;
   const wShape = inputs[1].dims;
-  const outputChannelsPerGroup = wShape[0] / attributes.group;
 
   const isChannelLast = attributes.format === 'NHWC';
-  const outputShape = calculateOutputShape(
-    xShape,
-    wShape,
-    attributes.dilations,
-    attributes.pads,
-    attributes.strides,
-    isChannelLast,
-  );
+  const outputChannelsPerGroup = (isChannelLast? outputShape[3] : outputShape[1]) / attributes.group;
   const outputSize = ShapeUtil.size(outputShape);
 
   const programUniforms: ProgramUniform[] = [
@@ -79,6 +72,54 @@ export const createGroupedConvProgramInfo = (
       { name: 'output_channels_per_group', type: 'u32' },
     ];
     appendActivationUniforms(attributes, uniforms);
+
+    const calculateResult = isChannelLast
+      ? `
+      for (var wHeight: u32 = 0u; wHeight < uniforms.w_shape[0]; wHeight++) {
+        let xHeight = xRCCorner.x + wHeight * uniforms.dilations[0];
+
+        if (xHeight < 0u || xHeight >= uniforms.x_shape[1]) {
+          continue;
+        }
+
+        for (var wWidth: u32 = 0u; wWidth < uniforms.w_shape[1]; wWidth++) {
+          let xWidth = xRCCorner.y + wWidth * uniforms.dilations[1];
+          if (xWidth < 0u || xWidth >= uniforms.x_shape[2]) {
+            continue;
+          }
+
+          for (var wInChannel: u32 = 0u; wInChannel < uniforms.w_shape[2]; wInChannel++) {
+            let input_channel = in_channel_offset + wInChannel;
+            let xVal = ${x.get('batch', 'xHeight', 'xWidth', 'input_channel')};
+            let wVal = ${w.get('wHeight', 'wWidth', 'wInChannel', 'output_channel')};
+            value += xVal * wVal;
+          }
+        }
+      }
+      `
+      : `
+      for (var wInChannel: u32 = 0u; wInChannel < uniforms.w_shape[1]; wInChannel++) {
+        let input_channel = in_channel_offset + wInChannel;
+        for (var wHeight: u32 = 0u; wHeight < uniforms.w_shape[2]; wHeight++) {
+          let xHeight = xRCCorner.x + wHeight * uniforms.dilations[0];
+
+          if (xHeight < 0u || xHeight >= uniforms.x_shape[2]) {
+            continue;
+          }
+
+          for (var wWidth: u32 = 0u; wWidth < uniforms.w_shape[3]; wWidth++) {
+            let xWidth = xRCCorner.y + wWidth * uniforms.dilations[1];
+            if (xWidth < 0u || xWidth >= uniforms.x_shape[3]) {
+              continue;
+            }
+
+            let xVal = ${x.get('batch', 'input_channel', 'xHeight', 'xWidth')};
+            let wVal = ${w.get('output_channel', 'wInChannel', 'wHeight', 'wWidth')};
+            value += xVal * wVal;
+          }
+        }
+      }
+      `;
     return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
 
@@ -92,33 +133,10 @@ export const createGroupedConvProgramInfo = (
       isChannelLast ? 2 : 3
     }]) * uniforms.strides - uniforms.pads;
     let group_id: u32 = output_channel / uniforms.output_channels_per_group;
+    var in_channel_offset = group_id * uniforms.w_shape[${isChannelLast ? 2 : 1}];
 
     var value: ${output.type.value} = ${output.type.value}(0);
-    for (var wInChannel: u32 = 0u; wInChannel < uniforms.w_shape[1]; wInChannel++) {
-      let input_channel = group_id * uniforms.w_shape[1] + wInChannel;
-      for (var wHeight: u32 = 0u; wHeight < uniforms.w_shape[2]; wHeight++) {
-        let xHeight = xRCCorner.x + wHeight * uniforms.dilations[0];
-
-        if (xHeight < 0u || xHeight >= uniforms.x_shape[${isChannelLast ? 1 : 2}]) {
-          continue;
-        }
-
-        for (var wWidth: u32 = 0u; wWidth < uniforms.w_shape[3]; wWidth++) {
-          let xWidth = xRCCorner.y + wWidth * uniforms.dilations[1];
-          if (xWidth < 0u || xWidth >= uniforms.x_shape[${isChannelLast ? 2 : 3}]) {
-            continue;
-          }
-
-          let xVal = ${
-            isChannelLast
-              ? x.get('batch', 'xHeight', 'xWidth', 'input_channel')
-              : x.get('batch', 'input_channel', 'xHeight', 'xWidth')
-          };
-          let wVal = ${w.get('output_channel', 'wInChannel', 'wHeight', 'wWidth')};
-          value += xVal*wVal;
-        }
-      }
-    }
+    ${calculateResult}
     ${processBias}
     ${applyActivation}
     ${output.setByOffset('global_idx', 'value')}
