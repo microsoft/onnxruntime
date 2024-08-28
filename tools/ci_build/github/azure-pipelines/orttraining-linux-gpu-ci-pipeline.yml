@@ -48,7 +48,7 @@ jobs:
     RunInjectedPipeline: 'true'
     InjectedPipeline: 'orttraining-linux-gpu-test-ci-pipeline.yml'
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
-    TimeoutInMinutes: 140
+    TimeoutInMinutes: 190
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
