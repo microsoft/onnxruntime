@@ -32,7 +32,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   // Going with #2 as it should scale better at the cost of creating the message in memory first
   // before sending to the stream.
 
-  std::ostringstream msg;
+  std::wostringstream msg;
 
 #ifndef ORT_MINIMAL_BUILD
   if (message.Severity() == Severity::kWARNING) {
