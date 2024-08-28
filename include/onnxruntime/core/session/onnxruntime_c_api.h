@@ -754,6 +754,7 @@ typedef struct OrtExecutionProvider {
   void(ORT_API_CALL* RegisterKernels)(OrtKernelRegistry* kernel_registry);
   bool(ORT_API_CALL* CanCopy)(const OrtDevice* source, const OrtDevice* target);
   OrtStatusPtr(ORT_API_CALL* CopyTensor)(const void* src, OrtMemoryInfoDeviceType source_device_type, OrtMemoryType source_mem_type, void* dst, OrtMemoryInfoDeviceType target_device_type, size_t count, void* stream);
+  int(ORT_API_CALL* CreatePreferredAllocators)(OrtExecutionProvider* this_, OrtAllocator*** ort_allocators);
   const char* type;
   OrtCreateStream* create_stream;
   const OrtDevice* default_device;
