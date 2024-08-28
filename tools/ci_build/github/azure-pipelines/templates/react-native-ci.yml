@@ -98,6 +98,8 @@ stages:
   - Build_Packages
   jobs:
   - job: ReactNative_CI
+    strategy:
+      parallel: 10
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
@@ -374,15 +376,16 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)_$(System.JobPositionInPhase)
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
 
-    - task: PublishPipelineArtifact@0
-      inputs:
-        artifactName: '${{parameters.PackageName}}'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-      displayName: Publish Pipeline Artifact
+    - ${{ if eq(variables['System.JobPositionInPhase'], '1') }}:
+      - task: PublishPipelineArtifact@0
+        inputs:
+          artifactName: '${{parameters.PackageName}}'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+        displayName: Publish Pipeline Artifact
 
     - template: explicitly-defined-final-tasks.yml
