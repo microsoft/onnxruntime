@@ -98,6 +98,9 @@ stages:
   - Build_Packages
   jobs:
   - job: ReactNative_CI
+    strategy:
+      parallel: 15
+      maxParallel: 5
     pool:
       # We need macOS-12 to run the Android emulator for now.
       # https://github.com/actions/runner-images/issues/7671
