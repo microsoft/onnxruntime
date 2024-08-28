@@ -90,49 +90,14 @@ Status LstmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   if (helper.HasAttr("activations")) {
     const auto activations = helper.Get("activations", std::vector<std::string>{"Sigmoid", "Tanh", "Tanh"});
-    const auto activation_alpha = helper.Get("activation_alpha", std::vector<float>{});
-    const auto activation_beta = helper.Get("activation_beta", std::vector<float>{});
-
-    auto get_value_or_default = [](std::vector<float>::const_iterator& entry,
-                                   const std::vector<float>::const_iterator& end,
-                                   float def_val) -> float { return entry == end ? def_val : *entry++; };
-
-    auto alpha_iter = activation_alpha.begin();
-    auto beta_iter = activation_beta.begin();
-    const auto alpha_iter_end = activation_alpha.end();
-    const auto beta_iter_end = activation_beta.end();
 
     emscripten::val opt_activations = emscripten::val::array();
     for (size_t i = 0; i < 3; ++i) {
       const std::string& activation = activations[i];
-      if (activation == "Affine") {
-        emscripten::val affine_options = emscripten::val::object();
-        affine_options.set("alpha", get_value_or_default(alpha_iter, alpha_iter_end, 1.0));
-        affine_options.set("beta", get_value_or_default(beta_iter, beta_iter_end, 0));
-        opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("linear", affine_options));
-      } else if (activation == "Elu") {
-        emscripten::val elu_options = emscripten::val::object();
-        elu_options.set("alpha", get_value_or_default(alpha_iter, alpha_iter_end, 1.0));
-        opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("elu", elu_options));
-      } else if (activation == "HardSigmoid") {
-        emscripten::val hard_sigmoid_options = emscripten::val::object();
-        hard_sigmoid_options.set("alpha", get_value_or_default(alpha_iter, alpha_iter_end, 0.2));
-        hard_sigmoid_options.set("beta", get_value_or_default(beta_iter, beta_iter_end, 0.5));
-        opt_activations.call<void>(
-            "push", model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", hard_sigmoid_options));
-      } else if (activation == "LeakyRelu") {
-        emscripten::val leaky_relu_options = emscripten::val::object();
-        leaky_relu_options.set("alpha", get_value_or_default(alpha_iter, alpha_iter_end, 0.01));
-        opt_activations.call<void>("push",
-                                   model_builder.GetBuilder().call<emscripten::val>("leakyRelu", leaky_relu_options));
-      } else if (activation == "Relu") {
+      if (activation == "Relu") {
         opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("relu"));
       } else if (activation == "Sigmoid") {
         opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("sigmoid"));
-      } else if (activation == "Softplus") {
-        opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("softplus"));
-      } else if (activation == "Softsign") {
-        opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("softsign"));
       } else if (activation == "Tanh") {
         opt_activations.call<void>("push", model_builder.GetBuilder().call<emscripten::val>("tanh"));
       }
@@ -193,25 +158,17 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 
     if (activations.size() >= 6) {
       if (activations[0] != activations[3] || activations[1] != activations[4] || activations[2] != activations[5]) {
-        LOGS(logger, ERROR) << "LSTM: forward and reverse directions must have the same activations";
-        return false;
-      }
-      // TODO(shiyi9801): support activation_alpha and activation_beta when provided 6 activations.
-      if (helper.HasAttr("activation_alpha") || helper.HasAttr("activation_beta")) {
-        LOGS(logger, ERROR)
-            << "LSTM: activation_alpha and activation_beta are not supported when provided 6 activations";
+        LOGS(logger, ERROR) << "LSTM: forward and backward activations must be the same";
         return false;
       }
     }
 
-    const InlinedHashSet<std::string> supported_activations = {"Affine", "Relu", "LeakyRelu", "Tanh", "Sigmoid",
-                                                               "HardSigmoid", "Elu", "Softsign", "Softplus"};
-    if (!std::all_of(activations.begin(), activations.end(),
-                     [&supported_activations](const std::string& activation) -> bool {
-                       return supported_activations.contains(activation);
-                     })) {
-      LOGS(logger, ERROR) << "LSTM: activations must be one of Affine, Relu, LeakyRelu, Tanh, Sigmoid, HardSigmoid, "
-                             "Elu, Softsign, Softplus";
+    const InlinedHashSet<std::string> supported_activations = {"Relu", "Tanh", "Sigmoid"};
+    if (std::any_of(activations.begin(), activations.end(),
+                    [&supported_activations](const std::string& activation) -> bool {
+                      return !supported_activations.contains(activation);
+                    })) {
+      LOGS(logger, ERROR) << "LSTM: activations must be one of Relu, Tanh, Sigmoid";
       return false;
     }
   }
