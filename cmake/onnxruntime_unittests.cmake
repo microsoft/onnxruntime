@@ -557,6 +557,10 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
 endif()
 
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+endif()
+
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -598,6 +602,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -656,6 +661,13 @@ if(onnxruntime_USE_JSEP)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_js)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_js)
+endif()
+
+if(onnxruntime_USE_WEBGPU)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/webgpu/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
 endif()
 
 # QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
@@ -1088,6 +1100,11 @@ if (NOT IOS)
     endif()
     set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
+    add_custom_command(TARGET onnx_test_runner POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:onnx_test_runner> $<TARGET_FILE_DIR:onnx_test_runner>
+      COMMAND_EXPAND_LISTS
+    )
+
     if (onnxruntime_USE_TVM)
       if (WIN32)
         target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
@@ -1217,6 +1234,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         set(SYS_PATH_LIB shlwapi)
       endif()
     endif()
+
+    add_custom_command(TARGET onnxruntime_perf_test POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:onnxruntime_perf_test> $<TARGET_FILE_DIR:onnxruntime_perf_test>
+      COMMAND_EXPAND_LISTS
+    )
 
     if (onnxruntime_BUILD_SHARED_LIB)
       #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.

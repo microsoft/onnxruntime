@@ -59,3 +59,4 @@ extensions;https://github.com/microsoft/onnxruntime-extensions/archive/94142d839
 composable_kernel;https://github.com/ROCmSoftwarePlatform/composable_kernel/archive/204da9c522cebec5220bba52cd3542ebcaf99e7a.zip;1827348efd47831c13074245274d41b7cae8a557
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.5.2.zip;11071a47594b20f00af09aad83e0d5203ccf6029
+dawn;https://github.com/google/dawn/archive/9a912d8162d5a837950de14f8849230212e3f51c.zip;7f2cad3db905e2d846d8f2422623850a4463915f

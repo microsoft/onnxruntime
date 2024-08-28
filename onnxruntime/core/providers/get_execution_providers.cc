@@ -165,6 +165,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kWebGpuExecutionProvider,
+#ifdef USE_WEBGPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kXnnpackExecutionProvider,
 #ifdef USE_XNNPACK
             true,
