@@ -23,6 +23,59 @@ namespace onnxruntime {
 
 void RunOnUnload(std::function<void()> function);
 
+class SharedContext {
+ public:
+  static SharedContext& GetInstance() {
+    static SharedContext instance_;
+    return instance_;
+  }
+
+  bool HasSharedQnnModels() {
+    const std::lock_guard<OrtMutex> lock(mtx_);
+    return !shared_qnn_models_.empty();
+  }
+    
+  std::shared_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
+    const std::lock_guard<OrtMutex> lock(mtx_);
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::shared_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    if (it == shared_qnn_models_.end()) {
+      return nullptr;
+    }
+    return *it;
+  }
+
+  bool SetSharedQnnModel(std::vector<std::shared_ptr<qnn::QnnModel>>& shared_qnn_models,
+                         std::string& duplicate_graph_names) {
+    const std::lock_guard<OrtMutex> lock(mtx_);
+    bool graph_exist = false;
+    for (auto& shared_qnn_model : shared_qnn_models) {
+      auto& model_name = shared_qnn_model->Name();
+      auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                        [&model_name](const std::shared_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+      if (it == shared_qnn_models_.end()) {
+        shared_qnn_models_.push_back(shared_qnn_model);
+      } else {
+        duplicate_graph_names.append(model_name + " ");
+        graph_exist = true;
+      }
+    }
+
+    return graph_exist;
+  }
+
+ private:
+  SharedContext() = default;
+  ~SharedContext() = default;
+  SharedContext(const SharedContext&) = delete;
+  SharedContext& operator=(const SharedContext&) = delete;
+
+  std::vector<std::shared_ptr<qnn::QnnModel>> shared_qnn_models_;
+  // Producer sessions can be in parallel
+  // Consumer sessions have to be after producer sessions initialized
+  OrtMutex mtx_;
+};
+
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
