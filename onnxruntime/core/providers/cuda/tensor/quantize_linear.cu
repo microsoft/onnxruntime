@@ -171,7 +171,7 @@ struct RoundStdInt4<half, int8_t> {
                                                int zp1) const {
     half2 v = __halves2half2(v0, v1);
     half2 scale = __halves2half2(scale0, scale1);
-    half2 scaled_v = __h2div(v, scale);
+    half2 scaled_v = v / scale;
 
     int value0 = __half2int_rn(__low2half(scaled_v)) + zp0;
     int value1 = __half2int_rn(__high2half(scaled_v)) + zp1;
@@ -199,7 +199,7 @@ struct RoundStdInt4<half, uint8_t> {
                                                 int zp1) const {
     half2 v = __halves2half2(v0, v1);
     half2 scale = __halves2half2(scale0, scale1);
-    half2 scaled_v = __h2div(v, scale);
+    half2 scaled_v = v / scale;
 
     int value0 = __half2int_rn(__low2half(scaled_v)) + zp0;
     int value1 = __half2int_rn(__high2half(scaled_v)) + zp1;
