@@ -27,6 +27,7 @@ struct MemoryEfficientAttentionParams {
   bool causal;
   // The default shape of attn_bias is [1, N, S, S*]. Sometimes we need to use [B, N, S, S*] in custom models.
   bool is_attn_bias_batched;
+  bool use_smooth_softmax;
 
   float scale;
 
