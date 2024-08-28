@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
@@ -46,6 +47,7 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
   AttentionKernel_Default
 };
 
@@ -68,7 +70,8 @@ struct AttentionParameters {
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   float mask_filter_value;
   float scale;
   bool use_tf32;
@@ -88,8 +91,8 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  bool has_relative_position_bias;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   bool use_tf32;
 };
 
@@ -113,6 +116,7 @@ struct GroupQueryAttentionParameters {
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
   bool do_rotary;
   bool rotary_interleaved;
+  bool use_smooth_softmax;
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;

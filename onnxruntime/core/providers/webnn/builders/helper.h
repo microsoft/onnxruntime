@@ -177,7 +177,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", false}},
     {"Elu", {"elu", true}},
     {"Equal", {"equal", true}},
-    {"Erf", {"erf", false}},
+    {"Erf", {"erf", true}},
     {"Exp", {"exp", true}},
     {"Expand", {"expand", true}},
     {"Flatten", {"reshape", true}},
@@ -239,7 +239,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Tan", {"tan", true}},
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
-    {"Trilu", {"triangular", false}},
+    {"Trilu", {"triangular", true}},
     {"Unsqueeze", {"reshape", true}},
     {"Where", {"where", true}},
 };

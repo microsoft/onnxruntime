@@ -678,9 +678,9 @@ Status FlashAttention(
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache, /*block_table*/ nullptr,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
       parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.rotary_dim,
-      scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-      reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
-      parameters.is_packed_qkv));
+      scale, is_causal, is_bf16, parameters.use_smooth_softmax, past_bsnh, parameters.num_splits, 
+      reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum), 
+      parameters.local_window_size, parameters.rotary_interleaved, parameters.is_packed_qkv));
 
   // if (parameters.left_padding && parameters.is_prompt) {
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));
@@ -836,7 +836,6 @@ Status EfficientAttention(
   p.key = key;
   p.value = value;
   p.attn_bias = nullptr;
-  p.is_attn_bias_batched = false;
   p.is_kv_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(p.v_head_size, sizeof(T) == sizeof(float))
