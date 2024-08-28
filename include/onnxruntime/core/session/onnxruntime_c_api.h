@@ -307,7 +307,6 @@ ORT_RUNTIME_CLASS(ShapeInferContext);
 ORT_RUNTIME_CLASS(ExecutionProvider);
 ORT_RUNTIME_CLASS(ExecutionProviderFactory);
 ORT_RUNTIME_CLASS(Node);
-ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(GraphViewer);
 ORT_RUNTIME_CLASS(KernelRegistry);

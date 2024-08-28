@@ -22,6 +22,25 @@ void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
     THROW_ON_ERROR(g_ort->RegisterOrtExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
+
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
+
+    g_ort->ReleaseCUDAProviderOptions(cuda_options);
+}
+
+void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {
+    OrtTensorRTProviderOptionsV2* tensorrt_options = nullptr;
+    THROW_ON_ERROR(g_ort->CreateTensorRTProviderOptions(&tensorrt_options));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_TensorRT_V2(so, tensorrt_options));
+
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
+    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
+
+    g_ort->ReleaseCUDAProviderOptions(cuda_options);
+    g_ort->ReleaseTensorRTProviderOptions(tensorrt_options);
 }
 
 int main() {
@@ -35,6 +54,7 @@ int main() {
     //TestCompileBasedEp(g_ort, p_env, so);
     //TestKernelBasedEp(g_ort, p_env, so);
     TestTensorRTEp(g_ort, p_env, so);
+    //TestOriginalTensorRTEp(g_ort, so);
 
     OrtSession* session = nullptr;
     THROW_ON_ERROR(g_ort->CreateSession(p_env, "/home/leca/code/onnxruntime/samples/c_test/Relu.onnx", so, &session));

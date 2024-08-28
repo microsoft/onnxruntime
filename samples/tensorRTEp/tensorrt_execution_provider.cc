@@ -1,10 +1,12 @@
 #include <memory>
 #include <fstream>
+#include <list>
 #include <functional>
 #include <cuda_runtime.h>
 #include "core/session/onnxruntime_cxx_api.h"   // TODO(leca): we should be able to use cxx APIs which are built upon C API
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "onnx_ctx_model_helper.h"
 
 void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
 
@@ -1097,6 +1099,157 @@ bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t su
   return number_of_trt_nodes == number_of_ort_nodes;
 }
 
+std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const OrtGraphViewer* graph, const HashValue& model_hash, int subgraph_index) const {
+  size_t nodes_count = 0;
+  const size_t* node_index = nullptr;
+  api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &nodes_count, &node_index);
+  std::unordered_set<size_t> node_set;
+  node_set.reserve(graph_nodes_index.first.size());
+  for (const auto& index : graph_nodes_index.first) {
+    node_set.insert(node_index[index]);
+  }
+
+  // Get parent graph output names
+  std::unordered_set<std::string> graph_output_names;
+  size_t graph_output_size = api_->OrtGraph_GetOutputSize(graph);
+  for (size_t i = 0; i < graph_output_size; i++) {
+    graph_output_names.insert(api_->OrtGraph_GetIthOutputName(graph, i));
+  }
+
+  // Find inputs and outputs of the subgraph
+  std::unique_ptr<OrtIndexedSubGraph> sub_graph = std::make_unique<OrtIndexedSubGraph>();
+  sub_graph->meta_def = new OrtMetaDef();
+//  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+//  std::unordered_set<const NodeArg*> erased;
+//  int input_order = 0;
+//  int output_order = 0;
+//
+//  std::vector<std::string> initializers;
+//  for (const auto& index : graph_nodes_index.first) {
+//    sub_graph->Nodes().push_back(node_index[index]);
+//    const auto& node = graph.GetNode(node_index[index]);
+//    for (const auto& input : node->InputDefs()) {
+//      if (graph.IsConstantInitializer(input->Name(), true)) {
+//        initializers.push_back(input->Name());
+//        continue;
+//      }
+//      const auto& it = fused_outputs.find(input);
+//      if (it != fused_outputs.end()) {
+//        fused_outputs.erase(it);
+//        erased.insert(input);
+//      } else if (erased.find(input) == erased.end()) {
+//        // Only when input is neither in output list nor erased list, add the input to input list
+//        fused_inputs[input] = input_order++;
+//      }
+//    }
+//
+//    for (const auto& input : node->ImplicitInputDefs()) {
+//      if (graph.IsConstantInitializer(input->Name(), true)) {
+//        initializers.push_back(input->Name());
+//        continue;
+//      }
+//      const auto& it = fused_outputs.find(input);
+//      if (it != fused_outputs.end()) {
+//        fused_outputs.erase(it);
+//        erased.insert(input);
+//      } else if (erased.find(input) == erased.end()) {
+//        // Only when input is neither in output list nor erased list, add the input to input list
+//        fused_inputs[input] = input_order++;
+//      }
+//    }
+//
+//    // For output searching, there are two special cases,
+//    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
+//    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
+//    // to the output list
+//    // The other one is, if subgraph's node output is parent graph's output. the node output should
+//    // be also added to the subgraph's output list
+//    if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
+//      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+//        const auto& node_idx = it->GetNode().Index();
+//        const onnxruntime::NodeArg* output;
+//        // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
+//        // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
+//        if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
+//          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+//        } else {
+//          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
+//        }
+//        if (node_set.find(node_idx) != node_set.end()) {
+//          const auto& iter = fused_inputs.find(output);
+//          if (iter != fused_inputs.end()) {
+//            fused_inputs.erase(iter);
+//            erased.insert(output);
+//          } else if (erased.find(output) == erased.end()) {
+//            if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+//              graph_outputs_to_add[output] = output_order;
+//            }
+//            fused_outputs[output] = output_order++;
+//          }
+//        } else {
+//          fused_outputs_to_add[output] = output_order++;
+//        }
+//      }
+//    } else {
+//      for (const auto& output : node->OutputDefs()) {
+//        const auto& it = fused_inputs.find(output);
+//        if (it != fused_inputs.end()) {
+//          fused_inputs.erase(it);
+//          erased.insert(output);
+//        }
+//        // Only when output is neither in input list nor erased list, add the output to output list
+//        else if (erased.find(output) == erased.end()) {
+//          if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
+//            graph_outputs_to_add[output] = output_order;
+//          }
+//          fused_outputs[output] = output_order++;
+//        }
+//      }
+//    }
+//  }
+//
+//  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
+//  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
+//
+//  // Sort inputs and outputs by the order they were added
+//  std::multimap<int, const NodeArg*> inputs, outputs;
+//  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+//    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+//  }
+//
+//  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
+//    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+//  }
+//
+//  // Generate unique kernel name for TRT subgraph
+//  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(subgraph_index);
+//  auto meta_def = IndexedSubGraph_MetaDef::Create();
+//  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
+//  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
+//  LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT subgraph MetaDef name " + meta_def->name();
+//
+//  // Assign inputs and outputs to subgraph's meta_def
+//  for (const auto& input : inputs) {
+//    if (input.second->Exists()) {
+//      meta_def->inputs().push_back(input.second->Name());
+//    }
+//  }
+//
+//  for (const auto& initializer : initializers) {
+//    meta_def->constant_initializers().push_back(initializer);
+//  }
+//
+//  for (const auto& output : outputs) {
+//    if (output.second->Exists()) {
+//      meta_def->outputs().push_back(output.second->Name());
+//    }
+//  }
+
+  sub_graph->meta_def->domain = "com.microsoft";
+  sub_graph->meta_def->since_version = 1;
+
+  return sub_graph;
+}
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const ProviderOptions& ep_info) : OrtExecutionProvider() {
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
@@ -1158,7 +1311,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                         if (api->OrtGraph_NumberOfNodes(subgraphs[i]) == 0) {
                             continue;
                         }
-                        if (!p->AllNodesAssignedToSpecificEP(subgraphs[i], kTensorrtExecutionProvider)) {
+                        if (!p->AllNodesAssignedToSpecificEP(subgraphs[i], "tensorrtEp")) {
                             all_subgraphs_are_supported = false;
                             break;
                         }
@@ -1174,7 +1327,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
 
         SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
         bool early_termination = false;
-        // supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+        supported_nodes_vector = p->GetSupportedList(parser_nodes_vector, 0, p->max_partition_iterations_, graph, &early_termination);
         if (early_termination) {
             supported_nodes_vector.clear();
         }
@@ -1231,11 +1384,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         } else {
             // LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
         }
-
-        // The context map is only used during EP compile time, release it to save memory space.
-        // subgraph_context_map_.clear();
-        // return result;
-
     };
 
     OrtExecutionProvider::Compile = [](OrtExecutionProvider* this_, const OrtGraphViewer** graph, const OrtNode** node, size_t cnt, OrtNodeComputeInfo** node_compute_info) -> OrtStatusPtr {
@@ -2890,12 +3038,210 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const OrtGraphViewer& graph, bool* early_termination) const {
+                                                                 const OrtGraphViewer* graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
     *early_termination = true;
     return nodes_list_output;
+  }
+
+  std::unordered_set<std::string> graph_output_names;
+  size_t output_size = api_->OrtGraph_GetOutputSize(graph);
+  for (size_t i = 0; i < output_size; i++) {
+    graph_output_names.insert(api_->OrtGraph_GetIthOutputName(graph, i));
+  }
+
+  iterations++;
+  size_t nodes_count = 0;
+  const size_t* node_index = nullptr;
+  api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &nodes_count, &node_index);
+  for (const auto& group : nodes_vector_input) {
+    // Construct subgraph
+    if (!group.first.empty()) {
+      if (group.second) {
+        nodes_list_output.push_back(group);
+      } else {
+//        auto model_build = graph.CreateModel(*GetLogger());
+//        auto& graph_build = model_build->MainGraph();
+//        bool has_control_flow_op = false;
+//
+//        // Add node and node args
+//        // If node output is also parent graph output, the output will be added to the
+//        // subgraph's output list
+//        std::vector<std::string> subgraph_output_names;
+//        for (const auto& index : group.first) {
+//          const auto& node = graph.GetNode(node_index[index]);
+//          std::vector<onnxruntime::NodeArg*> inputs, outputs;
+//          for (auto input : node->InputDefs()) {
+//            auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+//            inputs.push_back(&n_input);
+//            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+//            if (graph.GetInitializedTensor(input->Name(), initializer)) {
+//              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+//              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+//                graph_build.AddInitializedTensor(*(initializer));
+//              }
+//            }
+//          }
+//
+//          for (auto input : node->ImplicitInputDefs()) {
+//            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+//            if (graph.GetInitializedTensor(input->Name(), initializer)) {
+//              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+//              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+//                graph_build.AddInitializedTensor(*(initializer));
+//              }
+//            }
+//          }
+//          for (auto output : node->OutputDefs()) {
+//            auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+//            outputs.push_back(&n_output);
+//            const auto name = output->Name();
+//            if (graph_output_names.find(name) != graph_output_names.end()) {
+//              subgraph_output_names.push_back(name);
+//            }
+//          }
+//
+//          if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+//            has_control_flow_op = true;
+//          }
+//
+//          // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
+//          // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
+//          if (node->GetAttributes().size() > 0) {
+//            auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
+//            // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+//            // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+//            node->ToProto(*node_proto, /* update_subgraphs */ true);
+//            const int num_attributes = node_proto->attribute_size();
+//            auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+//            node_attributes->reserve(num_attributes);
+//
+//            for (int i = 0; i < num_attributes; ++i) {
+//              auto& attr = node_proto->attribute(i);
+//              node_attributes->emplace(attr.name(), attr);
+//            }
+//
+//            // The GraphProto attributes are the updated ones.
+//            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
+//          } else {
+//            // The GraphProto attributes are the original ones.
+//            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+//          }
+//        }
+//
+//        // Only if the newly built graph has control flow op as well as it has parent node,
+//        // it needs to handle outer scope values before calling graph.Resolve().
+//        if (has_control_flow_op && graph.ParentNode()) {
+//          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
+//          BuildSubGraphContext(graph_build);
+//          SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
+//          SetAllGraphInputs(graph_build);
+//        }
+//
+//        ORT_ENFORCE(graph_build.Resolve().IsOK());
+//
+//        // Add parent graph output to the subgraph
+//        int i = 0;
+//        std::vector<const NodeArg*> subgraph_outputs;
+//        subgraph_outputs.resize(subgraph_output_names.size());
+//        for (auto& name : subgraph_output_names) {
+//          auto output_arg = graph.GetNodeArg(name);
+//          auto& subgraph_output_arg = graph_build.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+//          subgraph_outputs[i] = &subgraph_output_arg;
+//          ++i;
+//        }
+//        auto& graph_build_outputs = graph_build.GetOutputs();
+//        subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
+//        graph_build.SetOutputs(graph_build_outputs);
+//        ORT_ENFORCE(graph_build.Resolve().IsOK());
+//
+//        // Check if input tensors have shapes
+//        if (iterations > 1) {
+//          auto graph_inputs = graph_build.GetInputs();
+//          for (auto input_arg : graph_inputs) {
+//            bool has_dim_value_or_param = true;
+//            auto input_shape = input_arg->Shape();
+//            if (input_shape != nullptr) {
+//              auto dim_size = input_shape->dim_size();
+//              for (int i = 0; i < dim_size; ++i) {
+//                auto& dim = input_shape->dim(i);
+//                if (!dim.has_dim_value() && !dim.has_dim_param()) {
+//                  has_dim_value_or_param = false;
+//                  break;
+//                }
+//              }
+//            }
+//
+//            if (input_shape == nullptr || !has_dim_value_or_param) {
+//              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+//                                                 "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
+//                                                     "Please run shape inference on the onnx model first. Details can be found in " +
+//                                                     "https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
+//            }
+//          }
+//        }
+//
+//        // Serialize modelproto to string
+//        auto graph_viewer = graph_build.CreateGraphViewer();
+//        auto model = graph_viewer->CreateModel(*GetLogger());
+//        auto model_proto = model->ToProto();
+//
+//        // ORT's default topological sort is using reversed DFS.
+//        // When creating model proto from graph viewer, let ORT use priority-based topological sort based on node index.
+//        // The reason is, in some cases, for example ResNet50, using default topological sort will end up with generating
+//        // the model proto that has different node ordering compared to original onnx model.
+//        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
+//        model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+//
+//        std::string string_buf;
+//        model_proto->SerializeToString(string_buf);
+//
+//        if (dump_subgraphs_) {
+//          // Dump TensorRT subgraph for debugging
+//          std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+//          model_proto->SerializeToOstream(dump);
+//        }
+
+        void* buf_data = nullptr;
+        size_t buf_size = api_->OrtGraph_SerializeToArray(graph, &buf_data);
+        std::string string_buf(reinterpret_cast<const char*>(buf_data), buf_size);
+
+        // Get supported node list recursively
+        SubGraphCollection_t parser_nodes_list;
+        TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
+        auto trt_builder = GetBuilder(trt_logger);
+        auto network_flags = 0;
+#if NV_TENSORRT_MAJOR > 8
+        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#endif
+        network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(network_flags));
+
+        auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+        trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+        SubGraphCollection_t next_nodes_list;
+        size_t subgraph_node_count = 0;
+        const size_t* subgraph_node_index = nullptr;
+        api_->OrtGraph_GetNodesIndexInTopologicalOrder(graph, 1, &subgraph_node_count, &subgraph_node_index);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, graph, early_termination);
+        for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
+          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+          }
+          nodes_list_output.push_back(next_nodes_list[i]);
+        }
+      }
+    }
   }
   return nodes_list_output;
 }

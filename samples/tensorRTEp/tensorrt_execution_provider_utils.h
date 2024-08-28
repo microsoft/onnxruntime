@@ -1,10 +1,13 @@
 #pragma once
 #include <string>
 #include <filesystem>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
+#include <gsl/gsl>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include "murmurhash3.h"
 
 namespace fs = std::filesystem;
 
@@ -263,6 +266,102 @@ std::string GetTimingCachePath(const std::string& root, std::string& compute_cap
   const std::string timing_cache_name = "TensorrtExecutionProvider_cache_sm" +
                                         compute_cap + ".timing";
   return GetCachePath(root, timing_cache_name);
+}
+
+HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
+  HashValue model_hash = 0;
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtGraph* cur_graph = nullptr;
+  api->OrtGraph_GetOrtGraph(graph_viewer, &cur_graph);
+  bool is_subgraph = false;
+  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  while (is_subgraph) {
+    const OrtGraph* parent_graph = nullptr;
+    api->OrtGraph_GetParentGraph(cur_graph, &parent_graph);
+    cur_graph = parent_graph;
+    api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  }
+
+  const OrtGraph* main_graph = cur_graph;
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  const std::filesystem::path* model_path = nullptr;
+  api->OrtGraph_GetModelPath(graph_viewer, (const void**)&model_path);
+
+  // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
+  if (model_path->has_filename()) {
+    std::string model_name = model_path->filename();
+
+    // LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
+    // Ensure enough characters are hashed in case model names are too short
+    const size_t model_name_length = model_name.size();
+    constexpr size_t hash_string_length = 500;
+    std::string repeat_model_name = model_name;
+    for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      repeat_model_name += model_name;
+    }
+    hash_str(repeat_model_name);
+  } else {
+    // LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
+  }
+
+  // fingerprint current graph by hashing graph inputs
+  // const std::vector<const char*>& input_names = nullptr;
+  const char** input_names = nullptr;
+  size_t input_count = 0;
+  api->OrtGraph_GetInputsIncludingInitializers(graph_viewer, &input_count, &input_names);
+  for (size_t i = 0; i < input_count; ++i) {
+    hash_str(input_names[i]);
+  }
+
+  // hashing output of each node
+  const int number_of_ort_nodes = api->OrtGraph_NumberOfNodes(graph_viewer);
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  size_t nodes_count = 0;
+  const size_t* nodes_index = nullptr;
+  api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_viewer, 0, &nodes_count, &nodes_index);
+  for (const auto& index : nodes_vector) {
+    const OrtNode* node = nullptr;
+    api->OrtGraph_GetOrtNode(graph_viewer, nodes_index[index], &node);
+    size_t output_size = 0;
+    api->OrtNode_GetOutputSize(node, &output_size);
+    for (size_t i = 0; i < output_size; ++i) {
+      const char* output_name = nullptr;
+      api->OrtNode_GetIthOutputName(node, i, &output_name);
+      if (output_name != nullptr) {
+        hash_str(output_name);
+      }
+    }
+  }
+
+#ifdef __linux__
+  hash_str("LINUX");
+#elif defined(_WIN32)
+  hash_str("WINDOWS");
+#endif
+
+#ifdef ORT_VERSION
+  hash_str(ORT_VERSION);
+#endif
+
+#ifdef CUDA_VERSION
+  hash_str(std::to_string(CUDA_VERSION));
+#endif
+
+#if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
+  std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  hash_str(TRT_VERSION);
+#endif
+
+  model_hash = hash[0] | (uint64_t(hash[1]) << 32);
+
+  // return the current unique id
+  return model_hash;
 }
 
 std::vector<std::string> split(const std::string& str, char delimiter) {

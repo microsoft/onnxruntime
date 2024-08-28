@@ -4,9 +4,7 @@
 #include <unordered_set>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
-#include "core/graph/constants.h"
 #include "nv_includes.h"
-#include "onnx_ctx_model_helper.h"
 
 #ifdef _WIN32
 #define EXPORT_API __declspec(dllexport)
@@ -15,7 +13,7 @@
 #endif
 
 namespace onnxruntime {
-
+using HashValue = uint64_t;
 using AllocateFunc = void* (*)(void*, size_t, size_t);
 using DestroyFunc = void (*)(void*, void*);
 
@@ -180,8 +178,11 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
                                       nvinfer1::ICudaEngine* trt_engine,
                                       bool serialize_refitted_engine,
                                       bool detailed_build_log);
+
+    std::unique_ptr<OrtIndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
+                                               const OrtGraphViewer* graph, const HashValue& model_hash, int subgraph_index) const;
     SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                          const OrtGraphViewer& graph, bool* early_termination) const;
+                                          const OrtGraphViewer* graph, bool* early_termination) const;
 
     bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const OrtGraphViewer* graph, const HashValue& model_hash, bool remove_cycles = true) const;
 
