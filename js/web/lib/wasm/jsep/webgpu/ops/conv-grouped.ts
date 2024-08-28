@@ -146,7 +146,7 @@ export const createGroupedConvProgramInfo = (
   };
   return {
     name: 'GroupedConv',
-    shaderCache: { hint: attributes.cacheKey, inputDependencies },
+    shaderCache: { hint: `${attributes.cacheKey}_${components}`, inputDependencies },
     getRunData: () => ({
       outputs: [
         {
