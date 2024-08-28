@@ -102,22 +102,21 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
 // Below is simple implementation of `bit_cast` as it is supported from c++20 and the current supported version is c++17
 // Remove it when that is not the case
-template<class To, class From>
+template <class To, class From>
 std::enable_if_t<
     sizeof(To) == sizeof(From) &&
-    std::is_trivially_copyable_v<From> &&
-    std::is_trivially_copyable_v<To>,
+        std::is_trivially_copyable_v<From> &&
+        std::is_trivially_copyable_v<To>,
     To>
-// constexpr support needs compiler magic
-static bit_cast(const From& src) noexcept
-{
-    static_assert(std::is_trivially_constructible_v<To>,
-        "This implementation additionally requires "
-        "destination type to be trivially constructible");
+    // constexpr support needs compiler magic
+    static bit_cast(const From& src) noexcept {
+  static_assert(std::is_trivially_constructible_v<To>,
+                "This implementation additionally requires "
+                "destination type to be trivially constructible");
 
-    To dst;
-    std::memcpy(&dst, &src, sizeof(To));
-    return dst;
+  To dst;
+  std::memcpy(&dst, &src, sizeof(To));
+  return dst;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
