@@ -22,8 +22,7 @@ class IOpBuilder;
 class ModelBuilder {
  public:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-               const emscripten::val& context, const DataLayout preferred_layout,
-               const WebnnDeviceType wnn_device_type);
+               const emscripten::val& context, const WebnnDeviceType wnn_device_type);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -37,15 +36,6 @@ class ModelBuilder {
   const emscripten::val& GetOperand(const std::string& name) const { return wnn_operands_.at(name); }
   void AddOperand(const std::string& name, const emscripten::val& operand);
   const emscripten::val& GetZeroConstant(const std::string& data_type);
-  // Use the buffers to persist WebNN allocated data like transposed weight.
-  // It ensures the validity during inference session.
-  std::vector<std::unique_ptr<uint8_t[]>> mem_persist_buffers_;
-  // Add a constant operand (allocate persist buffer and move the ownership to mem_persist_buffers_).
-  Status AddOperandFromPersistMemoryBuffer(
-      const std::string& name, const void* buffer,
-      const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
-
-  DataLayout GetPreferredLayout() const { return preferred_layout_; }
 
   WebnnDeviceType GetWebnnDeviceType() const { return wnn_device_type_; }
 
@@ -64,7 +54,6 @@ class ModelBuilder {
 
   emscripten::val wnn_context_ = emscripten::val::undefined();
   emscripten::val wnn_builder_ = emscripten::val::undefined();
-  DataLayout preferred_layout_;
   WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
