@@ -37,8 +37,7 @@ Status TreeEnsemble<T>::GetRemovableAttributes(InlinedVector<std::string>& remov
   InlinedVector<std::string> names{
       "leaf_targetids", "leaf_weights", "membership_values", "nodes_falseleafs",
       "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates", "nodes_missing_value_tracks_true",
-      "nodes_modes", "nodes_splits", "nodes_trueleafs", "nodes_truenodeids"
-  };
+      "nodes_modes", "nodes_splits", "nodes_trueleafs", "nodes_truenodeids"};
   removable_attributes.swap(names);
   return Status::OK();
 }

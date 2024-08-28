@@ -93,7 +93,6 @@ void _multiply_arrays_values(std::vector<T>& data, int64_t val) {
   }
 }
 
-
 template <typename T>
 void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
@@ -233,13 +232,12 @@ TEST(MLOpTest, TreeEnsembleDouble) {
 TEST(MLOpTest, TreeEnsembleSetMembership) {
   std::vector<double> X = {1.2, 3.4, -0.12, NAN, 12.0, 7.0};
   std::vector<double> Y = {
-                1, 0, 0, 0,
-                0, 0, 0, 100,
-                0, 0, 0, 100,
-                0, 0, 1000, 0,
-                0, 0, 1000, 0,
-                0, 10, 0, 0
-            };
+      1, 0, 0, 0,
+      0, 0, 0, 100,
+      0, 0, 0, 100,
+      0, 0, 1000, 0,
+      0, 0, 1000, 0,
+      0, 10, 0, 0};
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
 
   _multiply_arrays_values(Y, 5);
@@ -291,7 +289,6 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   test.AddOutput<double>("Y", {2, 1}, Y);
   test.Run();
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime
