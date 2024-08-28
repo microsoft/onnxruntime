@@ -1885,7 +1885,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         with contextlib.ExitStack() as context_stack:
             if args.android_run_emulator:
                 avd_name = "ort_android"
-                system_image = "system-images;android-34;aosp_atd;x86_64"
+                system_image = f"system-images;android-{args.android_api};default;{args.android_abi}"
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
                 emulator_proc = context_stack.enter_context(
