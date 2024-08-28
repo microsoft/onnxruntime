@@ -23,14 +23,6 @@ class TensorViewImpl implements TensorView {
     public readonly dims: readonly number[],
   ) {}
 
-  getUint16Array(): Uint16Array {
-    if (this.dataType !== DataType.float16 && this.dataType !== DataType.uint16) {
-      throw new Error('Invalid data type');
-    }
-    const elementCount = ShapeUtil.size(this.dims);
-    return elementCount === 0 ? new Uint16Array() : new Uint16Array(this.module.HEAP8.buffer, this.data, elementCount);
-  }
-
   getFloat32Array(): Float32Array {
     if (this.dataType !== DataType.float) {
       throw new Error('Invalid data type');
