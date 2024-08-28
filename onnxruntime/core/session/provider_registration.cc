@@ -165,7 +165,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WebGPU,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
                     _In_ OrtSessionOptions* options,
                     _In_ const OrtWebGPUProviderOptions* webgpu_options,
                     _In_reads_(num_keys) const char* const* string_options_keys,
@@ -208,6 +208,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WebGPU,
   std::string device_handle(buffer, res.ptr - buffer);
   options_keys.push_back("webgpuDevice");
   options_values.push_back(device_handle.c_str());
+
+  // TODO: dawn proc table
 
   for (size_t i = 0; i != num_keys; ++i) {
     options_keys.push_back(string_options_keys[i]);

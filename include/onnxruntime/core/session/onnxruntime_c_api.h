@@ -641,14 +641,20 @@ typedef struct OrtMIGraphXProviderOptions {
  *    It's user's responsibility to manage the lifecycle of the handles and ensure the handles are valid during the
  *    lifetime of the inference session.
  *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_WebGPU
+ * About DawnProcTable:
+ *
+ * When using an ONNX Runtime build that is not directly linked dawn during the build, a pointer to the runtime memory
+ * address of the DawnProcTable should be provided. Otherwise, keep it as nullptr.
+ *
+ * \see OrtApi::SessionOptionsAppendExecutionProvider_WGPU
  */
-typedef struct OrtWebGPUProviderOptions {
+typedef struct OrtWGPUProviderOptions {
   int device_id;          // WebGPU device id.
   void* instance_handle;  // WebGPU instance handle.
   void* adapter_handle;   // WebGPU adapter handle.
   void* device_handle;    // WebGPU device handle.
-} OrtWebGPUProviderOptions;
+  void* dawn_proc_table;  // DawnProcTable pointer.
+} OrtWGPUProviderOptions;
 
 /** \brief OpenVINO Provider Options
  *
@@ -4699,7 +4705,7 @@ struct OrtApi {
    * If WebGPU is not available, this function will return failure.
    *
    * \param[in] options
-   * \param[in] webgpu_options - specify the WebGPU provider options.
+   * \param[in] wgpu_options - specify the WebGPU provider options.
    * \param[in] string_options_keys - keys to configure the string options
    * \param[in] string_options_values - values to configure the string options
    * \param[in] num_keys - number of keys passed in
@@ -4719,8 +4725,8 @@ struct OrtApi {
    *
    * \since Version 1.20.
    */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_WebGPU,
-                  _In_ OrtSessionOptions* options, _In_ const OrtWebGPUProviderOptions* webgpu_options,
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_WGPU,
+                  _In_ OrtSessionOptions* options, _In_ const OrtWGPUProviderOptions* wgpu_options,
                   _In_reads_(num_keys) const char* const* string_options_keys,
                   _In_reads_(num_keys) const char* const* string_options_values,
                   _In_ size_t num_keys);
