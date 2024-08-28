@@ -1320,6 +1320,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         return nullptr;
     };
 
+    OrtExecutionProvider::CreatePreferredAllocators = [](OrtExecutionProvider* this_, OrtAllocator*** ort_allocators) -> int {
+      int device_id = 0; // TODO(chi): The device id should be from provider option
+      int ret = 2;
+      *ort_allocators = new OrtAllocator * [2];
+      (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(device_id));
+      (*ort_allocators)[1] = new CUDAPinnedAllocator();
+      return ret;
+    }
+
     type = ep_type;
     create_stream = new OrtCreateStream();
     create_stream->CreateStreamFunc = [](const OrtDevice* device) -> void* {
