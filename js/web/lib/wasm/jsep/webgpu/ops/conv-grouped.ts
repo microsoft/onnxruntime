@@ -34,8 +34,10 @@ export const createGroupedConvProgramInfo = (
   const wShape = inputs[1].dims;
 
   const isChannelLast = attributes.format === 'NHWC';
-  const outputChannelsPerGroup = (isChannelLast? outputShape[3] : outputShape[1]) / attributes.group;
-  const outputSize = ShapeUtil.size(outputShape);
+  const outputChannels = isChannelLast ? outputShape[3] : outputShape[1];
+  const outputChannelsPerGroup = outputChannels / attributes.group;
+  const components = isChannelLast && outputChannelsPerGroup >= 4 ? getMaxComponents(outputChannels) : 1;
+  const outputSize = ShapeUtil.size(outputShape) / components;
 
   const programUniforms: ProgramUniform[] = [
     { type: DataType.uint32, data: outputSize },
@@ -45,23 +47,23 @@ export const createGroupedConvProgramInfo = (
     { type: DataType.uint32, data: outputChannelsPerGroup },
   ];
   appendActivationUniformsData(attributes, programUniforms);
-  programUniforms.push(...createTensorShapeVariables(xShape, wShape));
-  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
-  if (hasBias) {
-    programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-    inputDependencies.push('rank');
-  }
-  programUniforms.push(...createTensorShapeVariables(outputShape));
+  programUniforms.push(
+    ...createTensorShapeVariables(xShape, [wShape[0], wShape[1], wShape[2], wShape[3] / components]),
+  );
+  const inputDependencies: ProgramInputTensorInfoDependency[] = hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank'];
+  programUniforms.push(
+    ...createTensorShapeVariables([outputShape[0], outputShape[1], outputShape[2], outputShape[3] / components]),
+  );
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+    const output = outputVariable('output', inputs[0].dataType, outputShape.length, components);
     const baseType = tensorTypeToWsglStorageType(output.type.tensor);
     const applyActivation = getActivationSnippet(attributes, output.type.value, baseType);
     const x = inputVariable('x', inputs[0].dataType, xShape.length);
-    const w = inputVariable('w', inputs[1].dataType, wShape.length);
+    const w = inputVariable('w', inputs[1].dataType, wShape.length, components);
     const inputVars = [x, w];
     if (hasBias) {
-      inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims.length));
+      inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims, components));
     }
 
     const uniforms: UniformsArrayType = [
@@ -132,7 +134,7 @@ export const createGroupedConvProgramInfo = (
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
       isChannelLast ? 2 : 3
     }]) * uniforms.strides - uniforms.pads;
-    let group_id: u32 = output_channel / uniforms.output_channels_per_group;
+    let group_id: u32 = output_channel * ${components} / uniforms.output_channels_per_group;
     var in_channel_offset = group_id * uniforms.w_shape[${isChannelLast ? 2 : 1}];
 
     var value: ${output.type.value} = ${output.type.value}(0);
