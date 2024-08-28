@@ -34,7 +34,7 @@ class SharedContext {
     const std::lock_guard<OrtMutex> lock(mtx_);
     return !shared_qnn_models_.empty();
   }
-    
+
   std::shared_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
     const std::lock_guard<OrtMutex> lock(mtx_);
     auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
