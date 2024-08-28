@@ -300,7 +300,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   indices.reserve(target_class_nodeids.size());
   for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
     indices.emplace_back(
-        std::pair<TreeNodeElementId, uint32_t>(TreeNodeElementId{target_class_treeids[i], target_class_nodeids[i]}, i));
+        TreeNodeElementId{target_class_treeids[i], target_class_nodeids[i]}, i);
   }
 
   std::sort(indices.begin(), indices.end());
@@ -376,11 +376,11 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
   }
 
   if (cmodes[left_id] == NODE_MODE::LEAF) {
-    auto left_tree_node = node_tree_ids[left_id];
-    auto left_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(left_tree_node, uint32_t(0)))->second;
+    const auto left_tree_node = node_tree_ids[left_id];
+    const auto left_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(left_tree_node, uint32_t(0)))->second;
 
-    auto right_tree_node = node_tree_ids[right_id];
-    auto right_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(right_tree_node, uint32_t(0)))->second;
+    const auto right_tree_node = node_tree_ids[right_id];
+    const auto right_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(right_tree_node, uint32_t(0)))->second;
 
     if (target_class_weights_as_tensor.empty()) {
       return target_class_weights[left_target_node] == target_class_weights[right_target_node];
@@ -406,7 +406,7 @@ inline void UpdateThreshold(float val, float& mask) {
 }
 
 #define BITCOUNT(T) int64_t(sizeof(T) * 8)
-#define CANMASK(v, T) (v >= 1 && v <= BITCOUNT(T))
+#define CANMASK(v, T) (v >= 1 && v <= BITCOUNT(T)) && v == std::floor(v)
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
@@ -785,12 +785,12 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
 
 // Check whether the feature value is set true in the mask
 inline bool SetMembershipCheck(double val, double mask) {
-  auto val_as_int = static_cast<int64_t>(val);
+  const auto val_as_int = static_cast<int64_t>(val);
   return CANMASK(val_as_int, double) && (((1ll << (val_as_int - 1)) & bit_cast<uint64_t>(mask)) != 0);
 }
 
 inline bool SetMembershipCheck(float val, float mask) {
-  auto val_as_int = static_cast<int64_t>(val);
+  const auto val_as_int = static_cast<int64_t>(val);
   return CANMASK(val_as_int, float) && (((1ll << (val_as_int - 1)) & bit_cast<uint32_t>(mask)) != 0);
 }
 
