@@ -274,7 +274,7 @@ static void ZipMapString() {
     WINML_EXPECT_TRUE(iter2.HasCurrent());
     const auto& pair1 = iter1.Current();
     const auto& pair2 = iter2.Current();
-    WINML_LOG_COMMENT((std::ostringstream() << "key: " << pair1.Key().c_str() << ", value " << pair2.Value()).str());
+    WINML_LOG_COMMENT((std::wostringstream() << "key: " << pair1.Key().c_str() << ", value " << pair2.Value()).str());
     WINML_EXPECT_TRUE(std::wstring(pair1.Key().c_str()).compare(labels[i]) == 0);
     WINML_EXPECT_TRUE(std::wstring(pair2.Key().c_str()).compare(labels[i]) == 0);
     WINML_EXPECT_TRUE(pair1.Value() == inputs[i] && pair2.Value() == inputs[i]);
