@@ -167,7 +167,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
                     _In_ OrtSessionOptions* options,
-                    _In_ const OrtWebGPUProviderOptions* webgpu_options,
+                    _In_ const OrtWGPUProviderOptions* webgpu_options,
                     _In_reads_(num_keys) const char* const* string_options_keys,
                     _In_reads_(num_keys) const char* const* string_options_values,
                     _In_ size_t num_keys) {
