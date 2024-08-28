@@ -69,17 +69,13 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
-
-    // Cache model_proto for all cases with dynamic shapes
-    model_proto_ = std::move(model_proto);
-
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
                 "QDQ stripping should not be enabled for models with dynamic input shapes. "
                 "Set enable_qdq_optimizer to False");
-    if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
-        GetGlobalContext().device_type.find("GPU") != std::string::npos) {
-      if (!GetGlobalContext().disable_dynamic_shapes) {
+    if ((GetGlobalContext().device_type.find("CPU") != std::string::npos ||
+        GetGlobalContext().device_type.find("GPU") != std::string::npos) &&
+        !GetGlobalContext().disable_dynamic_shapes) {
         LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                            << "Creating backend Dynamic Shapes";
         try {
@@ -92,7 +88,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
         }
         LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
                            << "Backend created for graph " << subgraph_context_.subgraph_name;
-      }
+    } else {
+        // Only cache model_proto in global to rewrite the model with input shapes at runtime.
+        // For dynamic backend creation
+        model_proto_ = std::move(model_proto);
     }
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. "

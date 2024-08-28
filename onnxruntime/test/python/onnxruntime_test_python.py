@@ -1696,8 +1696,7 @@ class TestInferenceSession(unittest.TestCase):
         # skip amd gpu build
         if "RocmExecutionProvider" in available_eps:
             return
-        if "OpenVINOExecutionProvider" in available_eps:
-            return
+
         if sys.platform.startswith("win"):
             shared_library = "test_execution_provider.dll"
 
