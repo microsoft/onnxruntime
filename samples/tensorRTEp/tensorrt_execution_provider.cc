@@ -1321,10 +1321,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     };
 
     OrtExecutionProvider::CreatePreferredAllocators = [](OrtExecutionProvider* this_, OrtAllocator*** ort_allocators) -> int {
-      int device_id = 0; // TODO(chi): The device id should be from provider option
+      int device_id = 0; // TODO(Chi): The device id should be from provider option
       int ret = 2;
       *ort_allocators = new OrtAllocator * [2];
-      (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(device_id));
+      (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(device_id)); // TODO(Chi): Add BFC Arena implementation
       (*ort_allocators)[1] = new CUDAPinnedAllocator();
       return ret;
     }
