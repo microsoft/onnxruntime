@@ -219,6 +219,9 @@ def start_emulator(
             cmd = [sdk_tool_paths.adb, "shell", "settings", "put", *setting.split()]
             subprocess.run(cmd, check=True)
 
+        close_sys_diags = "shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS"
+        subprocess.run([sdk_tool_paths.adb, *close_sys_diags.split()], check=True)
+
         return emulator_process
 
 
