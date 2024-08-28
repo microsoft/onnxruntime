@@ -205,6 +205,20 @@ def start_emulator(
             _log.debug(f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
             time.sleep(sleep_interval_seconds)
 
+        # disable things to try and make usage more stable
+        # - animations
+        # - popups
+        settings = [
+            "global window_animation_scale 0.0",
+            "global transition_animation_scale 0.0",
+            "global animator_duration_scale 0.0",
+            "secure immersive_mode_confirmations confirmed",
+        ]
+
+        for setting in settings:
+            cmd = [sdk_tool_paths.adb, "shell", "settings", "put", *setting.split()]
+            subprocess.run(cmd, check=True)
+
         return emulator_process
 
 
