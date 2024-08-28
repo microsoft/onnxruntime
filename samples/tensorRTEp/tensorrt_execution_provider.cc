@@ -1326,6 +1326,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
       *ort_allocators = new OrtAllocator * [2];
       (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(device_id)); // TODO(Chi): Add BFC Arena implementation
       (*ort_allocators)[1] = new CUDAPinnedAllocator();
+      // TODO(Chi): Free allocators' memory 
       return ret;
     }
 
