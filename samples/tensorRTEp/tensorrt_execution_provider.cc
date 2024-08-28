@@ -5,6 +5,7 @@
 #include "core/session/onnxruntime_cxx_api.h"   // TODO(leca): we should be able to use cxx APIs which are built upon C API
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_cuda_allocator.h"
 
 void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
 
@@ -1328,7 +1329,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
       (*ort_allocators)[1] = new CUDAPinnedAllocator();
       // TODO(Chi): Free allocators' memory 
       return ret;
-    }
+    };
 
     type = ep_type;
     create_stream = new OrtCreateStream();
