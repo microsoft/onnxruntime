@@ -64,3 +64,40 @@ steps:
     SessionTimeout: 90
     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
     MaxConcurrency: 25
+- task: PowerShell@2
+  displayName: 'Sign validation for dll file'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $valid_flag=$true
+      $normal_sign_status="Valid"
+
+      $dll_file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\*.dll -Name
+
+      foreach($file in $dll_file_names)
+      {
+          $file_path=Join-Path ${{ parameters.FolderPath }} -ChildPath $file
+          $sign=Get-AuthenticodeSignature -FilePath $file_path
+          $sign_status=$sign.Status.ToString()
+          Write-Host $file
+          Write-Host $sign_status
+          if ($sign_status -ne $normal_sign_status)
+          {
+              Write-Host "File named" $file "does not have valid sign."
+              Write-Host "Sign status: "$sign.status
+              Write-Host "Sign message: "$sign.StatusMessage
+              $valid_flag=$false
+              break
+          }
+      }
+
+      if ($valid_flag -eq $false)
+      {
+          Write-Host "Error: sign validation failed."
+          exit 1
+      }
+      else
+      {
+          Write-Host "sign validation passed."
+          exit 0
+      }
