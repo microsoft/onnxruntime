@@ -1100,11 +1100,6 @@ if (NOT IOS)
     endif()
     set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-    add_custom_command(TARGET onnx_test_runner POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:onnx_test_runner> $<TARGET_FILE_DIR:onnx_test_runner>
-      COMMAND_EXPAND_LISTS
-    )
-
     if (onnxruntime_USE_TVM)
       if (WIN32)
         target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
@@ -1234,11 +1229,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         set(SYS_PATH_LIB shlwapi)
       endif()
     endif()
-
-    add_custom_command(TARGET onnxruntime_perf_test POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:onnxruntime_perf_test> $<TARGET_FILE_DIR:onnxruntime_perf_test>
-      COMMAND_EXPAND_LISTS
-    )
 
     if (onnxruntime_BUILD_SHARED_LIB)
       #It will dynamically link to onnxruntime. So please don't add onxruntime_graph/onxruntime_framework/... here.
