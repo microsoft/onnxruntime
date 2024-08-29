@@ -4,7 +4,9 @@ This folder is for the WebGPU execution provider(WebGPU EP). Currently, WebGPU E
 
 ## Build WebGPU EP
 
-Just append `--use_webgpu` to the `build.bat` command line.
+Just append `--use_webgpu --skip_tests` to the `build.bat` command line.
+
+NOTE: `--skip_tests` is required for now. All existing tests are for CPU EP anyway so no need to run them.
 
 Currently only works on Windows.
 

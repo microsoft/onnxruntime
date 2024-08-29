@@ -139,7 +139,7 @@ This section is WIP.
 
 ## 6. Build and test
 
-use `build.bat --use_webgpu` to build the WebGPU EP. For Release build, append `--config Release` or `--config RelWithDebInfo` to the command line.
+use `build.bat --use_webgpu --skip_tests` to build the WebGPU EP. For Release build, append `--config Release` or `--config RelWithDebInfo` to the command line.
 
 to test, find the "onnx_test_runner.exe" in your build folder. run it like:
 ```
