@@ -134,7 +134,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // split kv buffer
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
     parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
@@ -153,7 +153,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_MEMORY_EFFICIENT_ATTENTION
   int sm = (device_prop.major * 10) + device_prop.minor;
   bool use_memory_efficient_attention =
-      !use_smooth_softmax_ &&
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&

@@ -415,6 +415,7 @@ Status EfficientAttention(
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
+  p.use_smooth_softmax = false;
 
   if (nullptr == data.mask_index) {
     p.seqlen_k_ptr = nullptr;
