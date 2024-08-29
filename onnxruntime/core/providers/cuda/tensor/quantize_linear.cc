@@ -84,6 +84,22 @@ Status CudaQuantizeLinear(cudaStream_t stream, const U* input, uint8_t* output, 
   return CudaQuantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);
 }
 
+template <class U>
+Status CudaQuantizeLinear(cudaStream_t stream, const U* input, Int4x2* output, const U* scale,
+                          const Int4x2* zero_point, size_t num_of_element, bool /*saturate*/) {
+  return CudaQuantizeLinearStdInt4(stream, input, reinterpret_cast<int8_t*>(output), scale,
+                                   zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                   num_of_element);
+}
+
+template <class U>
+Status CudaQuantizeLinear(cudaStream_t stream, const U* input, UInt4x2* output, const U* scale,
+                          const UInt4x2* zero_point, size_t num_of_element, bool /*saturate*/) {
+  return CudaQuantizeLinearStdInt4(stream, input, reinterpret_cast<uint8_t*>(output), scale,
+                                   zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                   num_of_element);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <class U>
@@ -128,6 +144,24 @@ Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, uint8_t* outp
                               const uint8_t* zero_point, size_t num_of_element,
                               size_t batch_size, size_t n_scales, bool /*saturate*/) {
   return CudaQuantizeLinearAxisStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
+}
+
+template <class U>
+Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, Int4x2* output, const U* scale,
+                              const Int4x2* zero_point, size_t num_of_element,
+                              size_t batch_size, size_t n_scales, bool /*saturate*/) {
+  return CudaQuantizeLinearAxisStdInt4(stream, input, reinterpret_cast<int8_t*>(output), scale,
+                                       zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                       num_of_element, batch_size, n_scales);
+}
+
+template <class U>
+Status CudaQuantizeLinearAxis(cudaStream_t stream, const U* input, UInt4x2* output, const U* scale,
+                              const UInt4x2* zero_point, size_t num_of_element,
+                              size_t batch_size, size_t n_scales, bool /*saturate*/) {
+  return CudaQuantizeLinearAxisStdInt4(stream, input, reinterpret_cast<uint8_t*>(output), scale,
+                                       zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                       num_of_element, batch_size, n_scales);
 }
 
 template <typename U>

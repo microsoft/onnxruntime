@@ -11,19 +11,29 @@ namespace onnxruntime {
 namespace cuda {
 
 template <class T, class U>
-Status CudaQuantizeLinearStd(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element);
+Status CudaQuantizeLinearStd(cudaStream_t stream, const U* input, T* output, const U* scale,
+                             const T* zero_point, size_t num_of_element);
 
 template <class T, class U>
-Status CudaQuantizeLinearSat(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
-                             bool saturate);
+Status CudaQuantizeLinearStdInt4(cudaStream_t stream, const U* input, T* output, const U* scale,
+                                 const T* zero_point, size_t num_of_element);
 
 template <class T, class U>
-Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
-                                 size_t batch_size, size_t n_scales);
+Status CudaQuantizeLinearSat(cudaStream_t stream, const U* input, T* output, const U* scale,
+                             const T* zero_point, size_t num_of_element, bool saturate);
 
 template <class T, class U>
-Status CudaQuantizeLinearAxisSat(cudaStream_t stream, const U* input, T* output, const U* scale, const T* zero_point, size_t num_of_element,
-                                 size_t batch_size, size_t n_scales, bool saturate);
+Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const U* input, T* output, const U* scale,
+                                 const T* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaQuantizeLinearAxisStdInt4(cudaStream_t stream, const U* input, T* output, const U* scale,
+                                     const T* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaQuantizeLinearAxisSat(cudaStream_t stream, const U* input, T* output, const U* scale,
+                                 const T* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales,
+                                 bool saturate);
 
 /**
  * @brief block-wise quantization with standard rounding to int4. Input is reshaped to [M, K, N]. K the quantization
@@ -48,18 +58,28 @@ Status CudaQuantizeLinearBlockStdInt4(cudaStream_t stream, const U* input, T* ou
                                       size_t block_size);
 
 template <class T, class U>
-Status CudaDequantizeLinearStd(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element);
+Status CudaDequantizeLinearStd(cudaStream_t stream, const T* input, U* output, const U* scale,
+                               const T* zero_point, size_t num_of_element);
 
 template <class T, class U>
-Status CudaDequantizeLinearSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element);
+Status CudaDequantizeLinearStdInt4(cudaStream_t stream, const T* input, U* output, const U* scale,
+                                   const T* zero_point, size_t num_of_element);
 
 template <class T, class U>
-Status CudaDequantizeLinearAxisStd(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element,
-                                   size_t batch_size, size_t n_scales);
+Status CudaDequantizeLinearSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point,
+                               size_t num_of_element);
 
 template <class T, class U>
-Status CudaDequantizeLinearAxisSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point, size_t num_of_element,
-                                   size_t batch_size, size_t n_scales);
+Status CudaDequantizeLinearAxisStd(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point,
+                                   size_t num_of_element, size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaDequantizeLinearAxisStdInt4(cudaStream_t stream, const T* input, U* output, const U* scale,
+                                       const T* zero_point, size_t num_of_element, size_t batch_size, size_t n_scales);
+
+template <class T, class U>
+Status CudaDequantizeLinearAxisSat(cudaStream_t stream, const T* input, U* output, const U* scale, const T* zero_point,
+                                   size_t num_of_element, size_t batch_size, size_t n_scales);
 
 /**
  * @brief block-wise dequantization with standard rounding to int4. Input is reshaped to [M, K, N]. K the quantization
