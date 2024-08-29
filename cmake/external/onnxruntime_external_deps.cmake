@@ -593,6 +593,7 @@ if (onnxruntime_USE_WEBGPU)
   )
   set(DAWN_FETCH_DEPENDENCIES ON)
   set(DAWN_ENABLE_INSTALL ON)
+  set(TINT_BUILD_TESTS OFF)
   onnxruntime_fetchcontent_makeavailable(dawn)
 endif()
 
