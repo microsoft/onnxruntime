@@ -143,7 +143,7 @@ use `build.bat --use_webgpu` to build the WebGPU EP. For Release build, append `
 
 to test, find the "onnx_test_runner.exe" in your build folder. run it like:
 ```
-onnx_test_runner.exe -v -e webgpu -C "session.disable_cpu_ep_fallback|1" --model_path=C:\code\onnxruntime\js\test\data\node\opset17\test_abs
+onnx_test_runner.exe -v -e webgpu -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```
 
 > Assume C:\code\onnxruntime is the root of your onnxruntime repo
