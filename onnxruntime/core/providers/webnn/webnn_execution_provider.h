@@ -26,7 +26,8 @@ class WebNNExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_registries*/) const override;
 
-  DataLayout GetPreferredLayout() const override { return preferred_layout_; }
+  // WebNN EP uses default NCHW layout for all backends.
+  DataLayout GetPreferredLayout() const override { return DataLayout::NCHW; }
 
   // We implement the Compile that takes FusedNodeAndGraph instances.
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
@@ -44,7 +45,6 @@ class WebNNExecutionProvider : public IExecutionProvider {
  private:
   emscripten::val wnn_context_ = emscripten::val::undefined();
 
-  DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
   ModelMetadefIdGenerator metadef_id_generator_;

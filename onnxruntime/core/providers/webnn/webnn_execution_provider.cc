@@ -19,12 +19,9 @@ namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
-  // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
-    preferred_layout_ = DataLayout::NHWC;
     wnn_device_type_ = webnn::WebnnDeviceType::CPU;
   } else {
-    preferred_layout_ = DataLayout::NCHW;
     if (webnn_device_flags.compare("gpu") == 0) {
       wnn_device_type_ = webnn::WebnnDeviceType::GPU;
     } else if (webnn_device_flags.compare("npu") == 0) {
@@ -212,8 +209,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                preferred_layout_, wnn_device_type_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_device_type_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
 
