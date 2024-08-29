@@ -773,7 +773,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "tensor(float16)",
                OpSchema::Optional)
         .Output(0, "output", "Attention output", "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(float)"}, "Constrains input and output types.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrains input and output types.")
         .TypeConstraint("C", {"tensor(float)", "tensor(float16)", "tensor(float8e4m3fn)"}, "Constrains key and value cache types.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateShapeAndTypeFromFirstInputAndParam(ctx);
