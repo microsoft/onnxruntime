@@ -126,6 +126,16 @@ public:
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return kernel_registry_; }
+
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+    std::vector<AllocatorPtr> ret;
+    OrtAllocator** ort_allocators = nullptr;
+    int cnt = ep_impl_ -> CreatePreferredAllocators(ep_impl_, &ort_allocators);
+    for (int i = 0; i < cnt; i++) {
+      ret.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(ort_allocators[i]));
+    }
+    return ret;
+  }
 private:
   OrtExecutionProvider* ep_impl_;
   std::shared_ptr<KernelRegistry> kernel_registry_; // TODO(leca): should be static local

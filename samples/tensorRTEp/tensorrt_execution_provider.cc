@@ -6,6 +6,7 @@
 #include "core/session/onnxruntime_cxx_api.h"   // TODO(leca): we should be able to use cxx APIs which are built upon C API
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
+#include "tensorrt_cuda_allocator.h"
 #include "onnx_ctx_model_helper.h"
 
 void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
@@ -1513,6 +1514,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         }
         memcpy(dst, src, count);
         return nullptr;
+    };
+
+    OrtExecutionProvider::CreatePreferredAllocators = [](OrtExecutionProvider* this_, OrtAllocator*** ort_allocators) -> int {
+      TensorrtExecutionProvider* p = static_cast<TensorrtExecutionProvider*>(this_);
+      int ret = 2;
+      *ort_allocators = new OrtAllocator * [2];
+      (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(p->device_id_)); // TODO(Chi): Add BFC Arena implementation
+      (*ort_allocators)[1] = new CUDAPinnedAllocator();
+      // TODO(Chi): Free allocators' memory 
+      return ret;
     };
 
     type = ep_type;
