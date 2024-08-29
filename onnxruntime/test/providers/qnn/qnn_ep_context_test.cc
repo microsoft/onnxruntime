@@ -944,7 +944,7 @@ static void GetModelInputNames(const std::string& model_path,
 // 4. Start 2 ort session from the dumped context model,
 // The 2nd session uses graph from 1st session
 // 5. Run the 2nd session
-TEST_F(QnnHTPBackendTests, DISABLED_QnnContextShareAcrossSessions1) {
+TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1035,7 +1035,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_QnnContextShareAcrossSessions1) {
 // The 1st session uses the 2nd model, the 2nd session uses the 1st model
 // so the 2nd session uses graph from the 1st session
 // 6. Run the 2nd session
-TEST_F(QnnHTPBackendTests, DISABLED_QnnContextShareAcrossSessions2) {
+TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
