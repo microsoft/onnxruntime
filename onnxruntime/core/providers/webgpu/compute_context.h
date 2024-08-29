@@ -70,7 +70,7 @@ class ComputeContext {
   Tensor CreateCPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceCPUAllocator(&allocator));
-    return {data_type, std::forward<TensorShapeType>(shape)..., allocator};
+    return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
 
   //
@@ -80,7 +80,7 @@ class ComputeContext {
   Tensor CreateGPUTensor(MLDataType data_type, TensorShapeType&& shape) {
     AllocatorPtr allocator;
     ORT_THROW_IF_ERROR(kernel_context_.GetTempSpaceAllocator(&allocator));
-    return {data_type, std::forward<TensorShapeType>(shape)..., allocator};
+    return {data_type, std::forward<TensorShapeType>(shape), allocator};
   }
 
   //
