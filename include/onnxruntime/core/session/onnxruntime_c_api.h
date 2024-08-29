@@ -710,18 +710,18 @@ typedef struct OrtCreateStream {
 } OrtCreateStream;
 
 typedef struct OrtMetaDef {
-  const char* name;
-  const char* domain;
+  char* name;
+  char* domain;
   int since_version;
 
-  const char** inputs;
+  char** inputs;
   size_t input_len;
-  const char** outputs;
+  char** outputs;
   size_t output_len;
-  const char** constant_initializers;
+  char** constant_initializers;
   size_t initializer_len;
 
-  const char* doc_string;
+  char* doc_string;
 } OrtMetaDef;
 
 typedef struct OrtIndexedSubGraph {
@@ -4756,11 +4756,13 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsAppendOrtExecutionProvider, _In_ OrtSessionOptions* options, _In_ const char* ep_name, _In_ OrtEnv* env,
                    _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
+  const char*(ORT_API_CALL* OrtGraph_GetName)(const OrtGraphViewer*)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+
   ORT_API2_STATUS(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret);
 
   ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ size_t* len, _Out_ const size_t** nodes_index_in_topological_order);
 
-  ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret);
+  ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraphViewer* graph, _Out_ bool* ret);
 
   ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
 

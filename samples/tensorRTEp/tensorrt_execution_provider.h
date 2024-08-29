@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/provider_options.h"
+#include "tensorrt_execution_provider_info.h"
 #include "nv_includes.h"
 
 #ifdef _WIN32
@@ -200,7 +201,7 @@ struct TensorrtExecutionProvider : public OrtExecutionProvider {
     std::unordered_map<std::string, float> dynamic_range_map_;
     std::string cache_suffix_;
 private:
-//  mutable TensorrtExecutionProviderInfo info_;
+  mutable TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;

@@ -930,8 +930,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
-        // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-        OrtIndexedSubGraph* subgraph = new OrtIndexedSubGraph();
+        std::unique_ptr<OrtIndexedSubGraph> subgraph = GetSubGraph(group, graph, model_hash, subgraph_index);
 
         // Create node to inputs/outputs/index maps
         const std::string node_name = subgraph->meta_def->name;
@@ -1053,7 +1052,7 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* 
   const OrtGraph* cur_graph = nullptr;
   api->OrtGraph_GetOrtGraph(graph, &cur_graph);
   bool is_subgraph = false;
-  api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  api->OrtGraph_IsSubgraph(graph, &is_subgraph);
   if (is_subgraph) {
     const OrtNode* node = nullptr;
     api->OrtGraph_GetParenNode(graph, &node);
@@ -1118,46 +1117,62 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
 
   // Find inputs and outputs of the subgraph
   std::unique_ptr<OrtIndexedSubGraph> sub_graph = std::make_unique<OrtIndexedSubGraph>();
+  sub_graph->node_index_len = graph_nodes_index.first.size();
+  sub_graph->node_index = new size_t [sub_graph->node_index_len];
   sub_graph->meta_def = new OrtMetaDef();
-//  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
-//  std::unordered_set<const NodeArg*> erased;
-//  int input_order = 0;
-//  int output_order = 0;
-//
-//  std::vector<std::string> initializers;
-//  for (const auto& index : graph_nodes_index.first) {
-//    sub_graph->Nodes().push_back(node_index[index]);
-//    const auto& node = graph.GetNode(node_index[index]);
-//    for (const auto& input : node->InputDefs()) {
-//      if (graph.IsConstantInitializer(input->Name(), true)) {
-//        initializers.push_back(input->Name());
-//        continue;
-//      }
-//      const auto& it = fused_outputs.find(input);
-//      if (it != fused_outputs.end()) {
-//        fused_outputs.erase(it);
-//        erased.insert(input);
-//      } else if (erased.find(input) == erased.end()) {
-//        // Only when input is neither in output list nor erased list, add the input to input list
-//        fused_inputs[input] = input_order++;
-//      }
-//    }
-//
-//    for (const auto& input : node->ImplicitInputDefs()) {
-//      if (graph.IsConstantInitializer(input->Name(), true)) {
-//        initializers.push_back(input->Name());
-//        continue;
-//      }
-//      const auto& it = fused_outputs.find(input);
-//      if (it != fused_outputs.end()) {
-//        fused_outputs.erase(it);
-//        erased.insert(input);
-//      } else if (erased.find(input) == erased.end()) {
-//        // Only when input is neither in output list nor erased list, add the input to input list
-//        fused_inputs[input] = input_order++;
-//      }
-//    }
-//
+  std::unordered_map<std::string, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_set<std::string> erased;
+  int input_order = 0;
+  int output_order = 0;
+
+  std::vector<std::string> initializers;
+  int i = 0;
+  for (const auto& index : graph_nodes_index.first) {
+    sub_graph->node_index[i++] = node_index[index];
+    const OrtNode* node = nullptr;
+    api_->OrtGraph_GetOrtNode(graph, node_index[index], &node);
+    size_t input_size = 0;
+    api_->OrtNode_GetInputSize(node, &input_size);
+    for (size_t j = 0; j < input_size; j++) {
+      const char* input_name = nullptr;
+      api_->OrtNode_GetIthInputName(node, j, &input_name);
+      bool is_constant_initializer = false;
+      api_->OrtGraph_IsConstantInitializer(graph, input_name, true, &is_constant_initializer);
+      if (is_constant_initializer) {
+        initializers.push_back(input_name);
+        continue;
+      }
+      const auto& it = fused_outputs.find(input_name);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input_name);
+      } else if (erased.find(input_name) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input_name] = input_order++;
+      }
+    }
+
+    size_t implicit_input_size = 0;
+    api_->OrtNode_GetImplicitInputSize(node, &implicit_input_size);
+    for (size_t j = 0; j < implicit_input_size; j++) {
+      const char* input_name = nullptr;
+      api_->OrtNode_GetIthImplicitInputName(node, j, &input_name);
+      bool is_constant_initializer = false;
+      api_->OrtGraph_IsConstantInitializer(graph, input_name, true, &is_constant_initializer);
+      if (is_constant_initializer) {
+        initializers.push_back(input_name);
+        continue;
+      }
+      const auto& it = fused_outputs.find(input_name);
+      if (it != fused_outputs.end()) {
+        fused_outputs.erase(it);
+        erased.insert(input_name);
+      } else if (erased.find(input_name) == erased.end()) {
+        // Only when input is neither in output list nor erased list, add the input to input list
+        fused_inputs[input_name] = input_order++;
+      }
+    }
+
 //    // For output searching, there are two special cases,
 //    // One is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
 //    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
@@ -1191,59 +1206,74 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
 //        }
 //      }
 //    } else {
-//      for (const auto& output : node->OutputDefs()) {
-//        const auto& it = fused_inputs.find(output);
-//        if (it != fused_inputs.end()) {
-//          fused_inputs.erase(it);
-//          erased.insert(output);
-//        }
-//        // Only when output is neither in input list nor erased list, add the output to output list
-//        else if (erased.find(output) == erased.end()) {
-//          if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-//            graph_outputs_to_add[output] = output_order;
-//          }
-//          fused_outputs[output] = output_order++;
-//        }
-//      }
+      size_t output_size = 0;
+      api_->OrtNode_GetOutputSize(node, &output_size);
+      for (size_t j = 0; j < output_size; j++) {
+        const char* output_name = nullptr;
+        api_->OrtNode_GetIthOutputName(node, j, &output_name);
+        const auto& it = fused_inputs.find(output_name);
+        if (it != fused_inputs.end()) {
+          fused_inputs.erase(it);
+          erased.insert(output_name);
+        }
+        // Only when output is neither in input list nor erased list, add the output to output list
+        else if (erased.find(output_name) == erased.end()) {
+          if (graph_output_names.find(output_name) != graph_output_names.end()) {
+            graph_outputs_to_add[output_name] = output_order;
+          }
+          fused_outputs[output_name] = output_order++;
+        }
+      }
 //    }
-//  }
-//
-//  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
-//  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
-//
-//  // Sort inputs and outputs by the order they were added
-//  std::multimap<int, const NodeArg*> inputs, outputs;
-//  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-//    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-//  }
-//
-//  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
-//    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
-//  }
-//
-//  // Generate unique kernel name for TRT subgraph
-//  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(subgraph_index);
-//  auto meta_def = IndexedSubGraph_MetaDef::Create();
-//  const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
-//  meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
-//  LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT subgraph MetaDef name " + meta_def->name();
-//
-//  // Assign inputs and outputs to subgraph's meta_def
-//  for (const auto& input : inputs) {
-//    if (input.second->Exists()) {
-//      meta_def->inputs().push_back(input.second->Name());
-//    }
-//  }
-//
-//  for (const auto& initializer : initializers) {
-//    meta_def->constant_initializers().push_back(initializer);
-//  }
-//
-//  for (const auto& output : outputs) {
-//    if (output.second->Exists()) {
-//      meta_def->outputs().push_back(output.second->Name());
-//    }
-//  }
+  }
+
+  fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
+  fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
+
+  // Sort inputs and outputs by the order they were added
+  std::multimap<int, std::string> inputs, outputs;
+  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+    inputs.insert(std::pair<int, std::string>(it->second, it->first));
+  }
+
+  for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
+    outputs.insert(std::pair<int, std::string>(it->second, it->first));
+  }
+
+  // Generate unique kernel name for TRT subgraph
+  std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(subgraph_index);
+  bool is_subgraph = false;
+  api_->OrtGraph_IsSubgraph(graph, &is_subgraph);
+  const std::string graph_type = is_subgraph ? "subgraph" : "graph";
+  const char* graph_name = api_->OrtGraph_GetName(graph);
+  std::string meta_def_name = "TRTKernel_" + graph_type + "_" + std::string(graph_name) + subgraph_id;
+  sub_graph->meta_def->name = new char [meta_def_name.length() + 1];
+  strcpy(sub_graph->meta_def->name, meta_def_name.c_str());
+
+  // Assign inputs and outputs to subgraph's meta_def
+  sub_graph->meta_def->input_len = inputs.size();
+  sub_graph->meta_def->inputs = new char* [sub_graph->meta_def->input_len];
+  i = 0;
+  for (const auto& input : inputs) {
+    sub_graph->meta_def->inputs[i] = new char [input.second.length() + 1];
+    strcpy(sub_graph->meta_def->inputs[i++], input.second.c_str());
+  }
+
+  sub_graph->meta_def->initializer_len = initializers.size();
+  sub_graph->meta_def->constant_initializers = new char* [sub_graph->meta_def->initializer_len];
+  i = 0;
+  for (const auto& initializer : initializers) {
+    sub_graph->meta_def->constant_initializers[i] = new char [initializer.length() + 1];
+    strcpy(sub_graph->meta_def->constant_initializers[i++], initializer.c_str());
+  }
+
+  sub_graph->meta_def->output_len = outputs.size();
+  sub_graph->meta_def->outputs = new char* [sub_graph->meta_def->output_len];
+  i = 0;
+  for (const auto& output : outputs) {
+    sub_graph->meta_def->outputs[i] = new char [output.second.length() + 1];
+    strcpy(sub_graph->meta_def->outputs[i++], output.second.c_str());
+  }
 
   sub_graph->meta_def->domain = "com.microsoft";
   sub_graph->meta_def->since_version = 1;
@@ -1268,9 +1298,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
 
         if (api->OrtGraph_NumberOfNodes(graph) == 1 && GraphHasCtxNode(graph)) {
             SubGraph_t supported_node_vector = {{0}, true};
-            // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
-            // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-            // return result;
+            std::unique_ptr<OrtIndexedSubGraph> sub_graph = p->GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+            *cnt = 1;
+            *indexed_sub_graph = new OrtIndexedSubGraph* [1];
+            (*indexed_sub_graph)[0] = sub_graph.release();
+            return;
         }
 
         // Generate unique kernel name for TRT graph
@@ -1360,17 +1392,26 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
             }
         }
 
+        std::vector<OrtIndexedSubGraph*> cache;
         // Handle the case where the graph is subgraph of control flow op.
         // The purpose is to make control flow op as well as its subgraphs run on TRT.
         // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
         if (p->IsSubGraphOfControlFlowOp(graph) && p->IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
+          bool all_subgraphs_are_supported = true;
+
+          if (all_subgraphs_are_supported) {
+            for (const auto& group : supported_nodes_vector) {
+
+            }
+            return;
+          }
         }
 
         int number_of_trt_nodes = 0, subgraph_index = 0;
         for (const auto& group : supported_nodes_vector) {
             if (!group.first.empty()) {
-                // std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-                // result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+                std::unique_ptr<OrtIndexedSubGraph> sub_graph = p->GetSubGraph(group, graph, model_hash, subgraph_index);
+                cache.push_back(sub_graph.release());
                 number_of_trt_nodes += static_cast<int>(group.first.size());
                 subgraph_index++;
             }
@@ -1383,6 +1424,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
             // LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
         } else {
             // LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
+        }
+
+        *cnt = cache.size();
+        *indexed_sub_graph = new OrtIndexedSubGraph* [*cnt];
+        for (size_t i = 0; i < *cnt; i++) {
+          (*indexed_sub_graph)[i] = cache[i];
         }
     };
 
@@ -1477,6 +1524,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     };
 
     api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, 0, &default_device);
+
+    info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);
 }
 
 TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {

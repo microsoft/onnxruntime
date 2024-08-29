@@ -2415,6 +2415,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendOrtExecutionProvider, _In_ OrtS
   return nullptr;
 }
 
+ORT_API(const char*, OrtApis::OrtGraph_GetName, const OrtGraphViewer* graph) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  return graph_viewer->Name().c_str();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph, const char* name, bool check_outer_scope, _Out_ bool* ret) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   *ret = graph_viewer->IsConstantInitializer(name, check_outer_scope);
@@ -2429,9 +2434,9 @@ ORT_API_STATUS_IMPL(OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder, const Ort
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* ret) {
-  const ::onnxruntime::Graph* graph_ptr = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
-  *ret = graph_ptr->IsSubgraph();
+ORT_API_STATUS_IMPL(OrtApis::OrtGraph_IsSubgraph, const OrtGraphViewer* graph, _Out_ bool* ret) {
+  const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
+  *ret = graph_viewer->IsSubgraph();
   return nullptr;
 }
 
@@ -3095,6 +3100,7 @@ static constexpr OrtApi ort_api_1_to_19 = {
     &OrtApis::RegisterOrtExecutionProviderLibrary,
     &OrtApis::SessionOptionsAppendOrtExecutionProvider,
 
+    &OrtApis::OrtGraph_GetName,
     &OrtApis::OrtGraph_IsConstantInitializer,
     &OrtApis::OrtGraph_GetNodesIndexInTopologicalOrder,
     &OrtApis::OrtGraph_IsSubgraph,

@@ -27,18 +27,20 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
                 subgraph->meta_def->name = "Relu_subgraph";
                 subgraph->meta_def->input_len = 0;
                 api->OrtNode_GetInputSize(node, &(subgraph->meta_def->input_len));
-                subgraph->meta_def->inputs = new const char* [subgraph->meta_def->input_len];
+                subgraph->meta_def->inputs = new char* [subgraph->meta_def->input_len];
                 for (size_t j = 0; j < subgraph->meta_def->input_len; j++) {
-                    subgraph->meta_def->inputs[j] = nullptr;
-                    api->OrtNode_GetIthInputName(node, j, &(subgraph->meta_def->inputs[j]));
+                    const char* input_j = nullptr;
+                    api->OrtNode_GetIthInputName(node, j, &input_j);
+                    subgraph->meta_def->inputs[j] = const_cast<char*>(input_j);
                 }
 
                 subgraph->meta_def->output_len = 0;
                 api->OrtNode_GetOutputSize(node, &(subgraph->meta_def->output_len));
-                subgraph->meta_def->outputs = new const char* [subgraph->meta_def->output_len];
+                subgraph->meta_def->outputs = new char* [subgraph->meta_def->output_len];
                 for (size_t j = 0; j < subgraph->meta_def->output_len; j++) {
-                    subgraph->meta_def->outputs[j] = nullptr;
-                    api->OrtNode_GetIthOutputName(node, j, &(subgraph->meta_def->outputs[j]));
+                    const char* output_j = nullptr;
+                    api->OrtNode_GetIthOutputName(node, j, &output_j);
+                    subgraph->meta_def->outputs[j] = const_cast<char*>(output_j);
                 }
 
                 cache.push_back(subgraph);
