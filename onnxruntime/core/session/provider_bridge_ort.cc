@@ -2953,7 +2953,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_
   }
   // EP context related session config options.
   for(const auto &option: options->value.config_options.configurations) {
-    auto key = std::string("ort_session_configuration.") + option.first;
+    auto key = std::string("ort_session_config.") + option.first;
     const auto& value = option.second;
     provider_options[key] = value;
   }
