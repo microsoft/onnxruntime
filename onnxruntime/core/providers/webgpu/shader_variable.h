@@ -191,7 +191,11 @@ inline std::string ShaderVariable::BroadcastedIndicesToOffset(const std::string&
 
 template <typename... TIndices>
 inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
-  return rank_ == 0 ? "" : MakeStringWithClassicLocale(name_, "_indices_t(", onnxruntime::detail::StringJoinImpl(", ", std::forward<TIndices>(indices_args)...), ')');
+  return rank_ == 0
+             ? ""
+             : MakeStringWithClassicLocale(name_, "_indices_t(",
+                                           absl::StrJoin(std::forward_as_tuple(std::forward<TIndices>(indices_args)...), ", "),
+                                           ')');
 }
 
 template <typename TIdx, typename TVal>
@@ -219,7 +223,9 @@ inline std::string ShaderVariable::Set(TIndicesAndValue&&... args) const {
     return SetByOffset(std::forward<TIndicesAndValue>(args)...);
   } else {
     usage_ |= UseSet | UseSetByIndices | UseIndicesToOffset;
-    return MakeStringWithClassicLocale("set_", name_, '(', onnxruntime::detail::StringJoinImpl(", ", std::forward<TIndicesAndValue>(args)...), ");");
+    return MakeStringWithClassicLocale("set_", name_, '(',
+                                       absl::StrJoin(std::forward_as_tuple(std::forward<TIndicesAndValue>(args)...), ", "),
+                                       ");");
   }
 }
 
@@ -246,7 +252,9 @@ inline std::string ShaderVariable::Get(TIndices&&... indices) const {
     return GetByOffset(std::forward<TIndices>(indices)...);
   } else {
     usage_ |= UseGet | UseGetByIndices | UseIndicesToOffset;
-    return MakeStringWithClassicLocale("get_", name_, '(', onnxruntime::detail::StringJoinImpl(", ", std::forward<TIndices>(indices)...), ')');
+    return MakeStringWithClassicLocale("get_", name_, '(',
+                                       absl::StrJoin(std::forward_as_tuple(std::forward<TIndices>(indices)...), ", "),
+                                       ')');
   }
 }
 

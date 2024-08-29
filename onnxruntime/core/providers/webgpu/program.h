@@ -7,8 +7,9 @@
 #include <vector>
 #include <iosfwd>
 
+#include <absl/strings/str_join.h>
+
 #include "core/common/common.h"
-#include "core/common/string_join.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 
@@ -218,7 +219,7 @@ class ProgramBase {
   // set the cache hint for the program
   template <typename... CacheHintArgs>
   ProgramBase& CacheHint(CacheHintArgs&&... args) {
-    cache_hint_ = StringJoin("|", std::forward<CacheHintArgs>(args)...);
+    cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<CacheHintArgs>(args)...), "|");
   }
 
   // set one or more program inputs
