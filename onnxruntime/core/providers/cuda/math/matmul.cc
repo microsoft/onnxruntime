@@ -9,6 +9,7 @@
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/tunable/math/matmul.h"
 
 #include <memory.h>
@@ -142,9 +143,54 @@ void NoOpDeleter(void* [[maybe_unused]] ptr) {
   (void)(ptr);
 }
 
-Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
-  cudaStream_t& stream,  const cudaDeviceProp& device_prop,
-  AllocatorPtr allocator, const cublasLtEpilogue_t& epilogue, float alpha)
+Status TransposeAndConvertToFp8(cudaStream_t& stream, const Tensor* right_X, IAllocatorUniquePtr<void>& right_X_fp8,
+  const cudaDeviceProp& device_prop, const AllocatorPtr& allocator, OpKernelContext* ctx)
+{
+  const auto shape_size = right_X->Shape().GetDims().size();
+
+  // TODO why is the size of perm 5? shouldn't it be shape_size?
+  // TODO why is 0 the first element and 1 the last?
+  InlinedVector<size_t, 5> perm;
+  perm.push_back(0);
+  for (size_t i = 2; i < shape_size; i++) {
+    perm.push_back(i);
+  }
+  perm.push_back(1);
+  gsl::span<size_t> permutation(perm.data(), shape_size);
+
+  TensorShapeVector dims;
+  for (size_t i = 0; i < shape_size; i++) {
+    dims.push_back(right_X->Shape()[perm[i]]);
+  }
+
+  std::unique_ptr<Tensor> right_X_transposed = Tensor::Create(right_X->DataType(), TensorShape(dims), allocator);
+
+  cublasHandle_t cublas_handle;
+  CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle));
+
+  auto status = cuda::Transpose::DoTranspose(device_prop, stream, cublas_handle, permutation, *right_X, *right_X_transposed);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  const int num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
+
+// TODO delete
+printf("\nPrinting tensor data for right_X_transposed:\n");
+PrintTensorData<MLFloat16>(stream, right_X_transposed.get()->DataRaw(), num_elems, 12);
+
+  // We don't have access to the context from inside PrePack, which is one of the callers of this method.
+  Stream* stream_ptr = ctx ? ctx->GetComputeStream() : nullptr;
+  right_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, num_elems * sizeof(Float8E4M3FN), false, stream_ptr);
+  status = MLFloat16ToFloat8E4M3FN(stream, right_X_transposed.get(), right_X_fp8.get());
+
+  CUBLAS_RETURN_IF_ERROR(cublasDestroy(cublas_handle));
+  return status;
+}
+
+Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,  cudaStream_t& stream,
+  const cudaDeviceProp& device_prop, const cublasLtEpilogue_t& epilogue, float alpha,
+  IAllocatorUniquePtr<void>& right_X_fp8)
 {
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
@@ -154,7 +200,6 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  std::unique_ptr<Tensor> C = Tensor::Create(Y->DataType(), Y->Shape(), allocator);
 
   // onnxruntime is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
   const TensorShape& shape_A = right_X->Shape();
@@ -176,44 +221,55 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
   const int ldy = ldc;
 
   // Create new tensors on the device which hold fp8 (__nv_fp8_e4m3) equivalents of left_X and right_X.
-  // TODO is this the correct way of creating fp8 tensors?
-  MLDataType fp8_type = DataTypeImpl::GetType<Float8E4M3FN>();
-  std::unique_ptr<Tensor> left_X_fp8 = Tensor::Create(fp8_type, shape_A, allocator);
-  std::unique_ptr<Tensor> right_X_fp8 = Tensor::Create(fp8_type, shape_B, allocator);
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+
+  size_t C_size = left_X->SizeInBytes(); // TODO what size should C have?
+  IAllocatorUniquePtr<void> C = IAllocator::MakeUniquePtr<void>(allocator, C_size, false, ctx->GetComputeStream());
+
+  auto left_X_fp8 = IAllocator::MakeUniquePtr<void>(allocator, left_X->SizeInBytes(), false, ctx->GetComputeStream());
   auto status = MLFloat16ToFloat8E4M3FN(stream, left_X, left_X_fp8.get());
   if (! status.IsOK())
     return status;
-  // TODO if right_X is constant, do this conversion inside PrePack.
-  // if (!is_packed) {
-  status = MLFloat16ToFloat8E4M3FN(stream, right_X, right_X_fp8.get());
-  if (! status.IsOK())
-    return status;
-  // }
+
+  // If right_X is nullptr, it means that its value was constant and this computation was already done inside PrePack.
+  if (right_X != nullptr) {
+    auto status = TransposeAndConvertToFp8(stream, right_X, right_X_fp8, device_prop, allocator, ctx);
+    if (! status.IsOK()) {
+      return status;
+    }
+  }
 
   // `cublasltmatmul` computes the following formula: D = alpha*(A*B) + beta*(C).
   // Our matrix multiplication doesn't use a beta * C bias, so we just set the beta to 0 when calling the API.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
 
-  std::unique_ptr<Tensor> right_X_fp8_transposed = Tensor::Create(fp8_type, shape_A, allocator);
+// TODO delete
+const int left_X_num_elems = left_X->SizeInBytes() / sizeof(MLFloat16);
+const int right_X_num_elems = right_X->SizeInBytes() / sizeof(MLFloat16);
+printf("\nPrinting tensor data for left_X:\n");
+PrintTensorData<MLFloat16>(stream, left_X->DataRaw(), left_X_num_elems, 8);
+printf("\nPrinting tensor data for right_X:\n");
+PrintTensorData<MLFloat16>(stream, right_X->DataRaw(), right_X_num_elems, 12);
 
-  // Transpose A (in cublas, so right_X in ORT) if not constant (in which case it's transposed in PrePack).
-  // TODO if (!is_packed) {
-  status = TransposeMatrix(stream, right_X_fp8.get(), right_X_fp8_transposed.get(), K, N);
-  if (! status.IsOK())
-    return status;
-  // }
+printf("\nPrinting tensor data for left_X_fp8:\n");
+PrintTensorData<Float8E4M3FN>(stream, left_X_fp8.get(), left_X_num_elems, 8);
+printf("\nPrinting tensor data for right_X_fp8 tranposed:\n");
+PrintTensorData<Float8E4M3FN>(stream, right_X_fp8.get(), right_X_num_elems, 12);
 
-  const void* p_input_a = right_X->DataRaw();
-  const void* p_input_b = left_X->DataRaw();
-  const void* p_input_c = C->DataRaw();
+  // const void* p_input_a = right_X->DataRaw();
+  const void* p_input_a = right_X_fp8.get();
+  const void* p_input_b = left_X_fp8.get();
+  const void* p_input_c = C.get();
   void* p_output_y = Y->MutableDataRaw();
 
   // Create matrix descriptors. Not setting any extra attributes.
   // ORT is row_major, but cublas is col_major, so we need to use right_X as A and left_X as B.
+  // TODO what fp8 types can we use for A and B? These are fp16.
   int32_t dtype_A = right_X->GetElementType();
   int32_t dtype_B = left_X->GetElementType();
-  int32_t dtype_C = C->GetElementType();
+  int32_t dtype_C = Y->GetElementType();
   int32_t dtype_Y = Y->GetElementType();
   cudaDataType_t a_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_A);
   cudaDataType_t b_cuda_type = onnxruntime::cuda::ToCudaDataType(dtype_B);
@@ -277,7 +333,7 @@ Status ComputeUsingFp8(OpKernelContext* ctx, MatMulComputeHelper& helper,
 
   // // Get the weights of the model
   // float scale_a, scale_b;
-  // status = ComputeScale(stream, right_X_fp8_transposed.get(), std_quant, scale_a);
+  // status = ComputeScale(stream, right_X_fp8.get(), std_quant, scale_a);
   // if (! status.IsOK())
   //   return status;
   // status = ComputeScale(stream, left_X_fp8.get(), std_quant, scale_b);
@@ -331,6 +387,8 @@ CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, y_cuda_type, N, M, ldc
   int returnedResults = 0;
   cublasStatus_t cuda_status = cublasLtMatmulAlgoGetHeuristic(
       cublasLt, operationDesc, Adesc, Bdesc, Cdesc, Ydesc, preference, 1, &heuristicResult, &returnedResults);
+
+printf("returnedResults = %d, cuda_status == CUBLAS_STATUS_SUCCESS = %d\n", returnedResults, cuda_status == CUBLAS_STATUS_SUCCESS);
 
   int n_inputs = ctx->InputCount();
   ORT_ENFORCE(
@@ -413,10 +471,20 @@ Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr allo
                           bool& is_packed, PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  // TODO do we need to use prepacked_weights?
   if (input_idx == 1) { // right_X
-    // TODO transpose tensor
-    // TODO convert to fp8
-    // is_packed = true;
+    auto& device_prop = GetDeviceProp();
+
+    // TODO Creating a new stream because we don't have access to the OpKernelContext here
+    cudaStream_t stream;
+    CUDA_CALL_THROW(cudaStreamCreate(&stream));
+
+    auto status = TransposeAndConvertToFp8(stream, &tensor, right_X_fp8_, device_prop, alloc, nullptr);
+    if (! status.IsOK()) {
+      return status;
+    }
+    is_packed = true;
+    CUDA_CALL_THROW(cudaStreamDestroy(stream));
   }
 
   return Status::OK();
@@ -617,7 +685,7 @@ Status MatMul<MLFloat16>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelp
   if (use_fp8_) {
     cudaStream_t stream = Stream(ctx);
     auto& device_prop = GetDeviceProp();
-    return ComputeUsingFp8(ctx, helper, stream, device_prop, allocator_, epilogue_, alpha_);
+    return ComputeUsingFp8(ctx, helper, stream, device_prop, epilogue_, alpha_, right_X_fp8_);
   }
 
   return ComputeDefaultImpl(ctx, helper);

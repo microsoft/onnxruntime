@@ -9,56 +9,31 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename CudaFp16T, typename CudaFp8T>
-__global__ void MLFloat16ToFloat8E4M3FNKernel(const CudaFp16T* src_data, CudaFp8T* dest_data)
+__global__ void MLFloat16ToFloat8E4M3FNKernel(const CudaFp16T* src_data, CudaFp8T* dest_data, int num_elems)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  dest_data[i] = Float8E4M3FN(src_data[i]);
+  if (i < num_elems) {
+    dest_data[i] = CudaFp8T(src_data[i]);
+  }
 }
 
-Status MLFloat16ToFloat8E4M3FN(cudaStream_t stream, const Tensor* src, Tensor* dest)
+Status MLFloat16ToFloat8E4M3FN(cudaStream_t stream, const Tensor* src, void* dest)
 {
   typedef typename ToCudaType<MLFloat16>::MappedType CudaFp16T;
   const CudaFp16T* src_data = reinterpret_cast<const CudaFp16T*>(src->Data<MLFloat16>());
 
   typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaFp8T;
-  CudaFp8T* dest_data = reinterpret_cast<CudaFp8T*>(dest->MutableData<Float8E4M3FN>());
+  CudaFp8T* dest_data = reinterpret_cast<CudaFp8T*>(dest);
 
-  int num_elems = src->SizeInBytes() / sizeof(CudaFp16T);
+  // TODO optimize using:   constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
+  // https://github.com/microsoft/onnxruntime/blob/7df8776322bc66bda9bb1bff1502fcceb8596efc/onnxruntime/contrib_ops/cuda/math/bias_gelu_impl.cu#L16
+  int num_elems = src->SizeInBytes() / sizeof(MLFloat16);
   int blocks_per_grid = static_cast<int>((num_elems + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-  int threads_per_block = min(num_elems, GridDim::maxThreadsPerBlock);
-  MLFloat16ToFloat8E4M3FNKernel<CudaFp16T, CudaFp8T><<<blocks_per_grid, threads_per_block, 0, stream>>>(src_data, dest_data);
+  int threads_per_block = GridDim::maxThreadsPerBlock;
+  MLFloat16ToFloat8E4M3FNKernel<CudaFp16T, CudaFp8T><<<blocks_per_grid, threads_per_block, 0, stream>>>(
+    src_data, dest_data, num_elems);
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-
-  return Status::OK();
-}
-
-
-
-template <typename CudaFp8T>
-__global__ void TransposeKernel(const CudaFp8T* src_data, CudaFp8T* dest_data, int src_rows, int src_cols) {
-  int col = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if (col < src_cols && row < src_rows) {
-      // Transpose element from src_data[row][col] to dest_data[col][row]
-      dest_data[col * src_rows + row] = src_data[row * src_cols + col];
-  }
-}
-
-Status TransposeMatrix(cudaStream_t stream, const Tensor* src, Tensor* dest, int src_rows, int src_cols) {
-  typedef typename ToCudaType<Float8E4M3FN>::MappedType CudaFp8T;
-  const CudaFp8T* src_data = reinterpret_cast<const CudaFp8T*>(src->Data<Float8E4M3FN>());
-  CudaFp8T* dest_data = reinterpret_cast<CudaFp8T*>(dest->MutableData<Float8E4M3FN>());
-
-  int num_elems = src->SizeInBytes() / sizeof(CudaFp8T);
-  int blocks_per_grid = static_cast<int>((num_elems + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
-  int threads_per_block = min(num_elems, GridDim::maxThreadsPerBlock);
-  TransposeKernel<<<blocks_per_grid, threads_per_block, 0, stream>>>(src_data, dest_data, src_rows, src_cols);
-
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 
   return Status::OK();
 }
@@ -113,17 +88,20 @@ __global__ void PrintTensorDataKernel(const CudaT* tensor_data, int last_index)
 }
 
 template <typename T>
-void PrintTensorData(cudaStream_t stream,  const Tensor* tensor, int last_index)
+void PrintTensorData(cudaStream_t stream,  const void* tensor_data, int num_elems, int last_index)
 {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  const CudaT* tensor_data = reinterpret_cast<const CudaT*>(tensor->Data<T>());
+  const CudaT* data = reinterpret_cast<const CudaT*>(tensor_data);
 
-  PrintTensorDataKernel<CudaT><<<1, GridDim::maxThreadsPerBlock, 0, stream>>>(tensor_data, last_index);
+  int blocks_per_grid = static_cast<int>((num_elems + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
+  int threads_per_block = GridDim::maxThreadsPerBlock;
+  PrintTensorDataKernel<CudaT><<<blocks_per_grid, threads_per_block, 0, stream>>>(data, last_index);
+
   cudaStreamSynchronize(stream);
 }
 
-template void PrintTensorData<MLFloat16>(cudaStream_t stream,  const Tensor* tensor, int last_index);
-template void PrintTensorData<Float8E4M3FN>(cudaStream_t stream,  const Tensor* tensor, int last_index);
+template void PrintTensorData<MLFloat16>(cudaStream_t stream,  const void* tensor_data, int num_elems, int last_index);
+template void PrintTensorData<Float8E4M3FN>(cudaStream_t stream,  const void* tensor_data, int num_elems, int last_index);
 
 }  // namespace cuda
 }  // namespace onnxruntime
