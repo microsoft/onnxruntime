@@ -151,7 +151,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
                             {168, 115, 255,
                              1, 66, 151});
 
-    //Skip OpenVINOP EP for now as there are Accuracy Mismatches
+    // Skip OpenVINOP EP for now as there are Accuracy Mismatches
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   };
 
@@ -263,7 +263,7 @@ static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
 
   // Skip NNAPI as it doesn't support empty output for now
   // Skip OpenVINO EP as there are accuracy mismatches for OpenVINO
-  if (only_t1_not_initializer==true) {
+  if (only_t1_not_initializer == true) {
     test_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kNnapiExecutionProvider});
   } else {
     test_empty.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});
