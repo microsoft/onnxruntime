@@ -76,8 +76,7 @@ SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 # ln -sf is needed to make sure that version `GLIBCXX_3.4.30' is found
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
 
-RUN pip install numpy \
-                packaging \
+RUN pip install packaging \
                 ml_dtypes==0.3.0 \
                 pytest==7.4.4 \
                 pytest-xdist \
