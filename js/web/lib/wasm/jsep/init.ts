@@ -216,7 +216,7 @@ export const init = async (
       backend,
 
       // jsepAlloc()
-      (size: number) => backend.alloc(size),
+      (size: number) => backend.alloc(Number(size)),
 
       // jsepFree()
       (ptr: number) => backend.free(ptr),
