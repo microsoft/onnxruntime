@@ -145,8 +145,8 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
       LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
       return false;
     }
-    if (!std::all_of(sequence_lens.begin(), sequence_lens.end(),
-                     [steps](int32_t lens) -> bool { return steps == lens; })) {
+    if (std::any_of(sequence_lens.begin(), sequence_lens.end(),
+                    [steps](int32_t lens) -> bool { return steps != lens; })) {
       LOGS(logger, ERROR) << "LSTM: every sequence length must be equal to input shape[0]";
       return false;
     }
