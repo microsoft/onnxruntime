@@ -234,7 +234,7 @@ __global__ void QuantizeLinearKernelStdInt4(const InT* input, OutT* output, cons
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
   int i = 0;
   InT scale = *scale_ptr;
-  int zero_point = zero_point_ptr != nullptr ? static_cast<int>(*zero_point_ptr) : 0;
+  int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
 
 #pragma unroll
   for (; i + 1 < NumElementsPerThread && id + 1 < N; i += 2, id += 2) {
@@ -560,7 +560,7 @@ __global__ void DequantizeLinearKernelStdInt4(const InT* input, OutT* output, co
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
 
   OutT scale = *scale_ptr;
-  int zero_point = zero_point_ptr != nullptr ? static_cast<int>(*zero_point_ptr) : 0;
+  int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
   int i = 0, v0, v1;
 #pragma unroll
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
