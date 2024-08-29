@@ -161,10 +161,10 @@ int real_main(int argc, char* argv[]) {
 
       for (auto model_path : test_config.model_file_paths) {
         std::cout << "Generate context cache model for: " << ToUTF8String(model_path) << std::endl;
-        InferenceSession session_object1{so, ((OrtEnv*)*ort_env.get())->GetEnvironment()};
-        CheckStatus(session_object1.RegisterExecutionProvider(qnn_ep));
-        CheckStatus(session_object1.Load(ToPathString(model_path)));
-        CheckStatus(session_object1.Initialize());
+        InferenceSession session_object{so, ((OrtEnv*)*ort_env.get())->GetEnvironment()};
+        CheckStatus(session_object.RegisterExecutionProvider(qnn_ep));
+        CheckStatus(session_object.Load(ToPathString(model_path)));
+        CheckStatus(session_object.Initialize());
       }
     }
 
