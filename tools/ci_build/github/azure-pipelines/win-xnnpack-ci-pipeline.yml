@@ -30,7 +30,7 @@ pr:
 
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-qnn-windows-vs-2022-arm64'
+  pool: 'onnxruntime-Win-CPU-2022'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     buildArch: x64
