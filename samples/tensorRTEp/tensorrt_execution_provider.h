@@ -14,6 +14,50 @@
 #endif
 
 namespace onnxruntime {
+
+namespace tensorrt_env_vars {
+static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_ITERATIONS";
+static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
+static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
+static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
+static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
+static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
+static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
+static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
+static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
+static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
+static const std::string kWeightStrippedEngineEnable = "ORT_TENSORRT_WEIGHT_STRIPPED_ENGINE_ENABLE";
+static const std::string kOnnxModelFolderPath = "ORT_TENSORRT_ONNX_MODEL_FOLDER_PATH";
+// As a timing cache can be used across multiple ONNX files it makes sense to have a separate cache path
+static const std::string kTimingCachePath = "ORT_TENSORRT_GLOBAL_CACHE_PATH";
+static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
+static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
+static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
+static const std::string kContextMemorySharingEnable = "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
+static const std::string kForceTimingCache = "ORT_TENSORRT_FORCE_TIMING_CACHE_ENABLE";
+static const std::string kDetailedBuildLog = "ORT_TENSORRT_DETAILED_BUILD_LOG_ENABLE";
+static const std::string kBuildHeuristics = "ORT_TENSORRT_BUILD_HEURISTICS_ENABLE";
+static const std::string kSparsityEnable = "ORT_TENSORRT_SPARSITY_ENABLE";
+static const std::string kBuilderOptimizationLevel = "ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL";
+static const std::string kAuxiliaryStreams = "ORT_TENSORRT_AUXILIARY_STREAMS";
+static const std::string kTacticSources = "ORT_TENSORRT_TACTIC_SOURCES";
+static const std::string kExtraPluginLibPaths = "ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS";
+static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
+static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
+static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
+static const std::string kCudaGraphEnable = "ORT_TENSORRT_CUDA_GRAPH_ENABLE";
+static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
+static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
+static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
+static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
+// Old env variable for backward compatibility
+static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
+}  // namespace tensorrt_env_vars
+
 using HashValue = uint64_t;
 using AllocateFunc = void* (*)(void*, size_t, size_t);
 using DestroyFunc = void (*)(void*, void*);
