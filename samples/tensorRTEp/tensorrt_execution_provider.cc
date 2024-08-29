@@ -9,6 +9,18 @@
 #include "tensorrt_cuda_allocator.h"
 #include "onnx_ctx_model_helper.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#define LIBTYPE HINSTANCE
+#define OPENLIB(libname) LoadLibrary(libname)
+#define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
+#else
+#include <dlfcn.h>
+#define LIBTYPE void*
+#define OPENLIB(libname) dlopen((libname), RTLD_LAZY)
+#define LIBFUNC(lib, fn) dlsym((lib), (fn))
+#endif
+
 void CUDA_RETURN_IF_ERROR(cudaError_t res) { if (res != cudaSuccess) abort(); }
 
 namespace onnxruntime {
@@ -1398,14 +1410,78 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         // The purpose is to make control flow op as well as its subgraphs run on TRT.
         // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
         if (p->IsSubGraphOfControlFlowOp(graph) && p->IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
-          bool all_subgraphs_are_supported = true;
+            bool all_subgraphs_are_supported = true;
 
-          if (all_subgraphs_are_supported) {
-            for (const auto& group : supported_nodes_vector) {
+            // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
+            // Check its parent node's another subgraph to see whether that subgraph is also fully supported by TRT.
+            const OrtNode* parent_node = nullptr;
+            api->OrtGraph_GetParenNode(graph, &parent_node);
+            const char* parent_node_op_type = nullptr;
+            api->OrtNode_GetOpType(parent_node, &parent_node_op_type);
+            if (strcmp(parent_node_op_type, "If") == 0) {
+                all_subgraphs_are_supported = false;
+                SubGraphCollection_t subgraph_supported_nodes_vector;
+                size_t subgraph_count = 0;
+                const OrtGraphViewer** subgraphs = nullptr;
+                api->OrtNode_GetSubgraphs(parent_node, &subgraph_count, &subgraphs);
+                const OrtGraph* origin_graph = nullptr;
+                api->OrtGraph_GetOrtGraph(graph, &origin_graph);
+                for (size_t i = 0; i < subgraph_count; i++) {
+                    const OrtGraph* subgraph = nullptr;
+                    api->OrtGraph_GetOrtGraph(subgraphs[i], &subgraph);
+                    if (subgraph == origin_graph) {
+                        continue;
+                    }
+                    const int number_of_ort_subgraph_nodes = api->OrtGraph_NumberOfNodes(subgraphs[i]);
+                    std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
+                    std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
+                    SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
+                    bool subgraph_early_termination = false;
 
+                    // Another subgraph of "If" control flow op has no nodes.
+                    // In this case, TRT EP should consider this empty subgraph is fully supported by TRT.
+                    if (number_of_ort_subgraph_nodes == 0) {
+                        all_subgraphs_are_supported = true;
+                        break;
+                    }
+                    // Another subgraph of "If" control flow op has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
+                    else if (p->AllNodesAssignedToSpecificEP(subgraphs[i], "TensorrtExecutionProvider")) {
+                        all_subgraphs_are_supported = true;
+                        break;
+                    }
+                    // Another subgraph of "If" control flow has been parsed by GetCapability and not all subgraph's nodes assigned to TRT EP.
+                    // (Note: GetExecutionProviderType() returns "" meaning node has not yet been assigned to any EPs)
+                    else if (!p->AllNodesAssignedToSpecificEP(subgraphs[i], "")) {
+                        all_subgraphs_are_supported = false;
+                        break;
+                    }
+
+                    // Another subgraph of "If" control flow has not yet been parsed by GetCapability.
+                    subgraph_supported_nodes_vector = p->GetSupportedList(parser_subgraph_nodes_vector, 0, p->max_partition_iterations_, subgraphs[i], &subgraph_early_termination);
+                    all_subgraphs_are_supported = p->IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
+                    break;
+
+                }
             }
-            return;
-          }
+
+
+            if (all_subgraphs_are_supported) {
+                // for (const auto& group : supported_nodes_vector) {
+                //     if (!group.first.empty()) {
+                //         *cnt = group.first.size();
+                //         *indexed_sub_graph = new OrtIndexedSubGraph* [group.first.size()];
+                //         int i = 0;
+                //         for (const auto& index : group.first) {
+                //             (*indexed_sub_graph)[i]->node_index_len = 1;
+                //             (*indexed_sub_graph)[i]->node_index = new size_t [(*indexed_sub_graph)[i]->node_index_len];
+                //             (*indexed_sub_graph)[i]->node_index[0] = node_index[index];
+                //             i++;
+                //         }
+                //     }
+                // }
+                // LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+                return;
+            }
         }
 
         int number_of_trt_nodes = 0, subgraph_index = 0;
@@ -1522,7 +1598,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
       *ort_allocators = new OrtAllocator * [2];
       (*ort_allocators)[0] = new CUDAAllocator(static_cast<int16_t>(p->device_id_)); // TODO(Chi): Add BFC Arena implementation
       (*ort_allocators)[1] = new CUDAPinnedAllocator();
-      // TODO(Chi): Free allocators' memory 
+      // TODO(Chi): Free allocators' memory
       return ret;
     };
 
@@ -1537,6 +1613,424 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
     api_->CreateDevice(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU, OrtMemoryType::OrtMemoryType_Default, 0, &default_device);
 
     info_ = TensorrtExecutionProviderInfo::FromProviderOptions(ep_info);
+
+    std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
+
+    // incase the EP context is dumped the engine cache has to be enabled
+    auto enable_engine_cache_for_ep_context_model = [this]() {
+        if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+            engine_cache_enable_ = true;
+        }
+    };
+
+    // Get environment variables
+    if (info_.has_trt_options) {
+        max_partition_iterations_ = info_.max_partition_iterations;
+        min_subgraph_size_ = info_.min_subgraph_size;
+        max_workspace_size_ = info_.max_workspace_size;
+        fp16_enable_ = info_.fp16_enable;
+        int8_enable_ = info_.int8_enable;
+        if (int8_enable_) {
+            int8_calibration_cache_name_ = info_.int8_calibration_table_name;
+            int8_use_native_tensorrt_calibration_table_ = info_.int8_use_native_calibration_table;
+        }
+        if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
+            dla_enable_ = info_.dla_enable;
+            dla_core_ = info_.dla_core;
+        }
+        dump_subgraphs_ = info_.dump_subgraphs;
+        engine_cache_enable_ = info_.engine_cache_enable;
+        weight_stripped_engine_enable_ = info_.weight_stripped_engine_enable;
+        onnx_model_folder_path_ = info_.onnx_model_folder_path;
+        timing_cache_enable_ = info_.timing_cache_enable;
+        force_timing_cache_match_ = info_.force_timing_cache;
+        detailed_build_log_ = info_.detailed_build_log;
+        dump_ep_context_model_ = info_.dump_ep_context_model;
+        ep_context_file_path_ = info_.ep_context_file_path;
+        ep_context_embed_mode_ = info_.ep_context_embed_mode;
+        enable_engine_cache_for_ep_context_model();
+        if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+            cache_path_ = info_.engine_cache_path;
+            cache_prefix_ = info_.engine_cache_prefix;
+        }
+        // use a more global cache if given
+        if (timing_cache_enable_) {
+            if (!info_.timing_cache_path.empty()) {
+                global_cache_path_ = info_.timing_cache_path;
+            } else {
+                global_cache_path_ = cache_path_;
+            }
+        }
+        engine_decryption_enable_ = info_.engine_decryption_enable;
+        if (engine_decryption_enable_) {
+            engine_decryption_lib_path_ = info_.engine_decryption_lib_path;
+        }
+        force_sequential_engine_build_ = info_.force_sequential_engine_build;
+        context_memory_sharing_enable_ = info_.context_memory_sharing_enable;
+        if (fp16_enable_) {
+            layer_norm_fp32_fallback_ = info_.layer_norm_fp32_fallback;
+        }
+        build_heuristics_enable_ = info_.build_heuristics_enable;
+        sparsity_enable_ = info_.sparsity_enable;
+        builder_optimization_level_ = info_.builder_optimization_level;
+        auxiliary_streams_ = info_.auxiliary_streams;
+        tactic_sources_ = info_.tactic_sources;
+        profile_min_shapes = info_.profile_min_shapes;
+        profile_max_shapes = info_.profile_max_shapes;
+        profile_opt_shapes = info_.profile_opt_shapes;
+        cuda_graph_enable_ = info_.cuda_graph_enable;
+        engine_hw_compatible_ = info_.engine_hw_compatible;
+    } else {
+        try {
+            // const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
+            // if (!max_partition_iterations_env.empty()) {
+            //     max_partition_iterations_ = std::stoi(max_partition_iterations_env);
+            // }
+
+            // const std::string min_subgraph_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
+            // if (!min_subgraph_size_env.empty()) {
+            //     min_subgraph_size_ = std::stoi(min_subgraph_size_env);
+            // }
+
+            // const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+            // if (!max_workspace_size_env.empty()) {
+            //     max_workspace_size_ = std::stoull(max_workspace_size_env);
+            // }
+
+            // const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+            // if (!fp16_enable_env.empty()) {
+            //     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+            // }
+
+            // const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+            // if (!int8_enable_env.empty()) {
+            //     int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+            // }
+
+            // if (int8_enable_) {
+            //     const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+            //     if (!int8_calibration_cache_name_env.empty()) {
+            //         int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+            //     }
+
+            //     const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+            //     if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
+            //         int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
+            //     }
+            // }
+
+            // if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
+            //     const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
+            //     if (!dla_enable_env.empty()) {
+            //         dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
+            //     }
+
+            //     if (dla_enable_) {
+            //         const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
+            //         if (!dla_core_env.empty()) {
+            //             dla_core_ = std::stoi(dla_core_env);
+            //         }
+            //     }
+            // }
+
+            // const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
+            // if (!dump_subgraphs_env.empty()) {
+            //     dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
+            // }
+
+            // const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
+            // if (!engine_cache_enable_env.empty()) {
+            //     engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
+            // }
+
+            // const std::string weight_stripped_engine_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kWeightStrippedEngineEnable);
+            // if (!weight_stripped_engine_enable_env.empty()) {
+            //     weight_stripped_engine_enable_ = std::stoi(weight_stripped_engine_enable_env) != 0;
+            // }
+
+            // const std::string onnx_model_folder_path_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOnnxModelFolderPath);
+            // if (!onnx_model_folder_path_env.empty()) {
+            //     onnx_model_folder_path_ = onnx_model_folder_path_env;
+            // }
+
+            // const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
+            // if (!timing_cache_enable_env.empty()) {
+            //     timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
+            // }
+
+            // const std::string detailed_build_log_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDetailedBuildLog);
+            // if (!detailed_build_log_env.empty()) {
+            //     detailed_build_log_ = (std::stoi(detailed_build_log_env) == 0 ? false : true);
+            // }
+
+            // const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
+            // if (!timing_force_match_env.empty()) {
+            //     force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
+            // }
+
+            // const std::string dump_ep_context_model_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpEpContextModel);
+            // if (!dump_ep_context_model_env.empty()) {
+            //     dump_ep_context_model_ = (std::stoi(dump_ep_context_model_env) == 0 ? false : true);
+            // }
+
+            // const std::string ep_context_file_path_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextComputeCapabilityEnable);
+            // if (!ep_context_file_path_env.empty()) {
+            //     ep_context_file_path_ = ep_context_file_path_env;
+            // }
+
+            // const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
+            // if (!ep_context_embed_mode_env.empty()) {
+            //     ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
+            // }
+            // // incase the EP context is dumped the engine cache has to be enabled
+            // if (dump_ep_context_model_ && ep_context_embed_mode_ == 0) {
+            //     engine_cache_enable_ = true;
+            // }
+
+            // enable_engine_cache_for_ep_context_model();
+
+            // if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+            //     const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
+            //     cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+            //     cache_prefix_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePrefix);
+            //     if (!engine_cache_path.empty() && cache_path_.empty()) {
+            //         cache_path_ = engine_cache_path;
+            //         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
+            //     }
+            // }
+            // if (timing_cache_enable_) {
+            //     std::string timing_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCachePath);
+            //     // use a more global cache if given
+            //     if (!timing_cache_path.empty()) {
+            //         global_cache_path_ = timing_cache_path;
+            //     } else {
+            //         global_cache_path_ = cache_path_;
+            //     }
+            // }
+
+            // const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
+            // if (!engine_decryption_enable_env.empty()) {
+            //     engine_decryption_enable_ = (std::stoi(engine_decryption_enable_env) == 0 ? false : true);
+            // }
+
+            // if (engine_decryption_enable_) {
+            //     engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
+            // }
+
+            // const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
+            // if (!force_sequential_engine_build_env.empty()) {
+            //     force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
+            // }
+
+            // const std::string context_memory_sharing_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kContextMemorySharingEnable);
+            // if (!context_memory_sharing_enable_env.empty()) {
+            //     context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
+            // }
+
+            // const std::string layer_norm_fp32_fallback_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kLayerNormFP32Fallback);
+            // if (!layer_norm_fp32_fallback_env.empty()) {
+            //     layer_norm_fp32_fallback_ = (std::stoi(layer_norm_fp32_fallback_env) == 0 ? false : true);
+            // }
+
+            // const std::string build_heuristics_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuildHeuristics);
+            // if (!build_heuristics_env.empty()) {
+            //     build_heuristics_enable_ = (std::stoi(build_heuristics_env) == 0 ? false : true);
+            // }
+
+            // const std::string sparsity_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kSparsityEnable);
+            // if (!sparsity_enable_env.empty()) {
+            //     sparsity_enable_ = (std::stoi(sparsity_enable_env) == 0 ? false : true);
+            // }
+
+            // const std::string builder_optimization_level_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBuilderOptimizationLevel);
+            // if (!builder_optimization_level_env.empty()) {
+            //     builder_optimization_level_ = std::stoi(builder_optimization_level_env);
+            // }
+
+            // const std::string auxiliary_streams_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kAuxiliaryStreams);
+            // if (!auxiliary_streams_env.empty()) {
+            //     auxiliary_streams_ = std::stoi(auxiliary_streams_env);
+            // }
+
+            // const std::string tactic_sources_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSources);
+            // if (!tactic_sources_env.empty()) {
+            //     tactic_sources_ = tactic_sources_env;
+            // }
+
+            // profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
+            // profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
+            // profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
+
+            // const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
+            // if (!cuda_graph_enable_env.empty()) {
+            //     cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
+            // }
+
+        } catch (const std::invalid_argument& ex) {
+            // LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
+        } catch (const std::out_of_range& ex) {
+            // LOGS_DEFAULT(WARNING) << "[TensorRT EP] Out Of Range Error (from environment variables): " << ex.what();
+        } catch (...) {
+            // LOGS_DEFAULT(WARNING) << "[TensorRT EP] Unknown Exception (from environment variables)";
+        }
+    }
+
+    // Validate setting
+    if (max_partition_iterations_ <= 0) {
+        // LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_partition_iterations must be a positive integer value. Set it to 1000";
+        max_partition_iterations_ = 1000;
+    }
+    if (min_subgraph_size_ <= 0) {
+        // LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_min_subgraph_size must be a positive integer value. Set it to 1";
+        min_subgraph_size_ = 1;
+    }
+    if (max_workspace_size_ <= 0) {
+        // LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_workspace_size must be a positive integer value. Set it to 1073741824 (1GB)";
+        max_workspace_size_ = 1 << 30;
+    }
+    if (dla_core_ < 0) {
+        // LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_dla_core must be a non-negative integer value. Set it to 0";
+        dla_core_ = 0;
+    }
+
+    // If ep_context_file_path_ is provided as a directory, create it if it's not existed
+    if (dump_ep_context_model_ && !ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
+        if (!std::filesystem::create_directory(ep_context_file_path_)) {
+            throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
+        }
+    }
+
+    // If dump_ep_context_model_ is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
+    // For example,
+    //    - original cache path = "engine_cache_dir" -> new cache path = "./context_model_dir/engine_cache_dir"
+    //    - original cache path = ""                 -> new cache path = "./context_model_dir"
+    // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
+    // For security reason, it needs to make sure the engine cache is saved inside context model directory.
+    if (dump_ep_context_model_ && engine_cache_enable_) {
+        if (IsAbsolutePath(cache_path_)) {
+            // LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
+        }
+        if (IsRelativePathToParentPath(cache_path_)) {
+            // LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
+        }
+
+        // Engine cache relative path to context model directory.
+        // It's used when dumping the "ep_cache_context" node attribute.
+        engine_cache_relative_path_to_context_model_dir = cache_path_;
+
+        // Make cache_path_ to be the relative path of ep_context_file_path_
+        cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+    }
+
+    // Hardware compatibility: pre-check on environment
+    if (engine_cache_enable_ && engine_hw_compatible_) {
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
+        if (std::stoi(compute_capability_) < 80) {
+            // LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as GPU arch < 80. ";
+            engine_hw_compatible_ = false;
+        } else if (std::stoi(compute_capability_) == 87) {
+            // LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled on Jetson Orin. ";
+            engine_hw_compatible_ = false;
+        }
+#else
+        // LOGS_DEFAULT(WARNING) << "Engine hardware compatibility cannot be enabled as TRT < 8.6. ";
+        engine_hw_compatible_ = false;
+#endif
+    }
+
+    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+        if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
+            if (!fs::create_directory(cache_path_)) {
+                throw std::runtime_error("Failed to create directory " + cache_path_);
+            }
+        }
+        if (!global_cache_path_.empty() && !fs::is_directory(global_cache_path_)) {
+            if (!fs::create_directory(global_cache_path_)) {
+                throw std::runtime_error("Failed to create directory " + global_cache_path_);
+            }
+        }
+    }
+
+    if (engine_decryption_enable_) {
+        LIBTYPE handle = OPENLIB(engine_decryption_lib_path_.c_str());
+        if (handle == nullptr) {
+            // TODO(yang)
+            // ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+            //                                    "TensorRT EP could not open shared library from " + engine_decryption_lib_path_));
+        }
+        engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
+        engine_encryption_ = (int (*)(const char*, char*, size_t))LIBFUNC(handle, "encrypt");
+        if (engine_decryption_ == nullptr) {
+            // TODO(yang)
+            // ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+            //                                    "TensorRT EP could not find decryption function in shared library from " + engine_decryption_lib_path_));
+        }
+    }
+
+    if (int8_enable_) {
+        int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+    }
+
+    /*
+     * Parse explicit min/max/opt profile shapes from provider options.
+     *
+     * The format of min/max/opt profile shapes is defined as below:
+     * "input1:dim1xdim2...,input2:dim1xdim2...,...,input1:dim3xdim4...,input2:dim3xdim4...,..."
+     *
+     * (Note: if multiple shapes with same input name are specified, TRT EP will consider them as multiple profiles.
+     *  Please refer to ParserProfileShapes() for more details)
+     *
+     */
+    bool status = true;
+    // if (status) {
+    //     status = ParseProfileShapes(profile_min_shapes, profile_min_shapes_);
+    //     if (!status) {
+    //         profile_min_shapes_.clear();
+    //         // LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_min_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    //     }
+    // }
+
+    // if (status) {
+    //     status = ParseProfileShapes(profile_max_shapes, profile_max_shapes_);
+    //     if (!status) {
+    //         profile_max_shapes_.clear();
+    //         // LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_max_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    //     }
+    // }
+
+    // if (status) {
+    //     status = ParseProfileShapes(profile_opt_shapes, profile_opt_shapes_);
+    //     if (!status) {
+    //         profile_opt_shapes_.clear();
+    //         // LOGS_DEFAULT(WARNING) << "[TensorRT EP] The format of provider option 'trt_profile_opt_shapes' is wrong, please follow the format of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'";
+    //     }
+    // }
+
+    // if (status) {
+    //     status = ValidateProfileShapes(profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
+    //     if (!status) {
+    //         // LOGS_DEFAULT(WARNING) << "[TensorRT EP] Profile shapes validation failed. Make sure the provider options 'trt_profile_min_shapes', 'trt_profile_max_shapes' and 'trt_profile_opt_shapes' have same input name and number of profile.";
+    //         // LOGS_DEFAULT(WARNING) << "[TensorRT EP] TRT EP will implicitly create optimization profiles based on input tensor for you.";
+    //         profile_min_shapes_.clear();
+    //         profile_max_shapes_.clear();
+    //         profile_opt_shapes_.clear();
+    //     }
+    // }
+
+    // cuda graph:
+    // cudaStreamSynchronize() is not allowed in cuda graph capture.
+    //
+    // external stream:
+    // If user provides "external" cuda stream, only this cuda stream will be used even if multiple threads are running InferenceSession.Run() concurrently.
+    // So, no need to synchronize different streams after enqueueV3.
+    if (cuda_graph_enable_ || external_stream_) {
+        sync_stream_after_enqueue_ = false;
+    }
+
+    {
+        // auto lock = GetApiLock();  // TODO(leca)
+        runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
+    }
 }
 
 TensorrtExecutionProviderFactory::TensorrtExecutionProviderFactory() {
