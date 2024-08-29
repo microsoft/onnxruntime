@@ -44,8 +44,7 @@ TEST(DequantizeLinearOpTest, Int4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<Int4x2>("x_zero_point", {}, {Int4x2(-1, unused_val)});
   test.AddOutput<float>("y", dims, {-14.0f, -4.0f, 4.0f, 16.0f, 6.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,});
 }
 
 // scalar scale with int4
@@ -58,8 +57,7 @@ TEST(DequantizeLinearOpTest, Int4NoZeroPoint) {
   test.AddInput<Int4x2>("x", dims, {Int4x2(-8, -3), Int4x2(1, 7), Int4x2(2, unused_val)});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", dims, {-16.0f, -6.0f, 2.0f, 14.0f, 4.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar zero & scale with uint4
@@ -73,8 +71,7 @@ TEST(DequantizeLinearOpTest, UInt4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<UInt4x2>("x_zero_point", {}, {UInt4x2(1, unused_val)});
   test.AddOutput<float>("y", dims, {-2.0f, 0.0f, 4.0f, 28.0f, 2.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar scale with uint4
@@ -87,8 +84,7 @@ TEST(DequantizeLinearOpTest, UInt4NoZeroPoint) {
   test.AddInput<UInt4x2>("x", dims, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, unused_val)});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", dims, {0.0f, 2.0f, 6.0f, 30.0f, 4.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test int16 DequantizeLinear (per tensor)
@@ -428,8 +424,7 @@ TEST(QuantizeLinearOpTest, Int4) {
                          {Int4x2(-8, -7), Int4x2(-1, 1), Int4x2(2, 7),
                           Int4x2(7, unused_val)});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test uint4 QuantizeLinear (per tensor)
@@ -452,8 +447,7 @@ TEST(QuantizeLinearOpTest, UInt4) {
                           {UInt4x2(0, 0), UInt4x2(2, 4), UInt4x2(5, 15),
                            UInt4x2(15, unused_val)});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 template <bool Signed>
@@ -497,8 +491,7 @@ TEST(QuantizeLinearOpTest, OddLarge_Int4) {
   test.AddInput<Int4x2>("zero_point", {}, {Int4x2(zp, unused_val)}, true);
   test.AddOutput<Int4x2>("y", dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test uint4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
@@ -524,8 +517,7 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt4) {
   test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(zp, unused_val)}, true);
   test.AddOutput<UInt4x2>("y", dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider});  // CUDA int4 only support blocked quantization.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // quantize with scalar zero point and scale
