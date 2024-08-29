@@ -759,12 +759,12 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  if (provider_type == onnxruntime::kDmlExecutionProvider) {
-    // DML's memory is not byte addressable and hence mem pattern doesn't work.
+  if (provider_type == onnxruntime::kDmlExecutionProvider || provider_type == onnxruntime::kWebGpuExecutionProvider) {
+    // DML and WebGPU memory is not byte addressable and hence mem pattern doesn't work.
     if (session_options_.enable_mem_pattern) {
       LOGS(*session_logger_, INFO)
-          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
-          << "So disabling it for this session since it uses the DML Execution Provider.";
+          << "Having memory pattern enabled is not supported while using " << provider_type << ". "
+          << "So disabling it for this session since it uses " << provider_type << ".";
       session_options_.enable_mem_pattern = false;
     }
 

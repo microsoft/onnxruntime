@@ -839,6 +839,25 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_MIG
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_WGPU(const OrtWGPUProviderOptions& wgpu_options,
+                                                                                  const std::unordered_map<std::string, std::string>& string_options) {
+  auto num_entries = string_options.size();
+  std::vector<const char*> keys, values;
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+
+    for (const auto& entry : string_options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_WGPU(this->p_, &wgpu_options, keys.data(), values.data(), num_entries));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CANN(this->p_, &provider_options));
   return *this;

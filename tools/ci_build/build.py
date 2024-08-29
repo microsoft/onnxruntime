@@ -563,6 +563,7 @@ def parse_arguments():
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
     parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
+    parser.add_argument("--use_webgpu", action="store_true", help="Build with WebGPU support.")
     parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -1054,6 +1055,7 @@ def generate_build_tree(
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
+        "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -1309,6 +1311,9 @@ def generate_build_tree(
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
+
+    if args.use_jsep and args.use_webgpu:
+        raise BuildError("JSEP (--use_jsep) and WebGPU (--use_webgpu) cannot be enabled at the same time.")
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]

@@ -40,6 +40,11 @@ file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"
 )
 
+file(GLOB_RECURSE onnxruntime_webgpu_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.h"
+  "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.cc"
+)
+
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
@@ -60,7 +65,7 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
-  set(onnxruntime_cpu_neural_speed_srcs 
+  set(onnxruntime_cpu_neural_speed_srcs
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"

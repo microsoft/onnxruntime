@@ -384,6 +384,13 @@ ORT_API_STATUS_IMPL(InvokeOp,
 
 ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_WGPU,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtWGPUProviderOptions* wgpu_options,
+                    _In_reads_(num_keys) const char* const* string_options_keys,
+                    _In_reads_(num_keys) const char* const* string_options_values,
+                    _In_ size_t num_keys);
+
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
                     _In_ OrtSessionOptions* options,
                     _In_ const char* provider_name,

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <string>
+#include <charconv>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -132,6 +133,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "WebGPU") == 0) {
+#if defined(USE_WEBGPU)
+    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(&(options->value)));
+#else
+    status = create_not_supported_status();
+#endif
   } else if (strcmp(provider_name, "AZURE") == 0) {
 #if defined(USE_AZURE)
     options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
@@ -155,6 +162,61 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   }
 
   return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtWGPUProviderOptions* webgpu_options,
+                    _In_reads_(num_keys) const char* const* string_options_keys,
+                    _In_reads_(num_keys) const char* const* string_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  std::vector<const char*> options_keys;
+  options_keys.reserve(num_keys + 4);
+  std::vector<const char*> options_values;
+  options_values.reserve(num_keys + 4);
+
+  // the following code uses std::to_chars() to convert int/size_t to string.
+  // unlike std::to_string(), std::to_chars() is guaranteed locale-independent.
+  //
+  // uint64_t to string is no more than 20 characters, and
+  // int32_t to string is no more than 11 characters.
+  static_assert(sizeof(size_t) == 4 || sizeof(size_t) == 8);
+  char buffer[sizeof(size_t) == 4 ? 11 : 20];
+
+  auto res = std::to_chars(buffer, buffer + sizeof(buffer), webgpu_options->device_id);
+  ORT_ENFORCE(res.ec == std::errc(), "Failed to convert device_id to string");
+  std::string device_id(buffer, res.ptr - buffer);
+  options_keys.push_back("deviceId");
+  options_values.push_back(device_id.c_str());
+
+  res = std::to_chars(buffer, buffer + sizeof(buffer), reinterpret_cast<size_t>(webgpu_options->instance_handle));
+  ORT_ENFORCE(res.ec == std::errc(), "Failed to convert instance_handle to string");
+  std::string instance_handle(buffer, res.ptr - buffer);
+  options_keys.push_back("webgpuInstance");
+  options_values.push_back(instance_handle.c_str());
+
+  res = std::to_chars(buffer, buffer + sizeof(buffer), reinterpret_cast<size_t>(webgpu_options->adapter_handle));
+  ORT_ENFORCE(res.ec == std::errc(), "Failed to convert adapter_handle to string");
+  std::string adapter_handle(buffer, res.ptr - buffer);
+  options_keys.push_back("webgpuAdapter");
+  options_values.push_back(adapter_handle.c_str());
+
+  res = std::to_chars(buffer, buffer + sizeof(buffer), reinterpret_cast<size_t>(webgpu_options->device_handle));
+  ORT_ENFORCE(res.ec == std::errc(), "Failed to convert device_handle to string");
+  std::string device_handle(buffer, res.ptr - buffer);
+  options_keys.push_back("webgpuDevice");
+  options_values.push_back(device_handle.c_str());
+
+  // TODO: dawn proc table
+
+  for (size_t i = 0; i != num_keys; ++i) {
+    options_keys.push_back(string_options_keys[i]);
+    options_values.push_back(string_options_values[i]);
+  }
+
+  return OrtApis::SessionOptionsAppendExecutionProvider(options, "WebGPU", options_keys.data(), options_values.data(), options_keys.size());
   API_IMPL_END
 }
 
