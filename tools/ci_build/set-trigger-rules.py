@@ -34,13 +34,14 @@ skip_js_changes = [
     "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
     "orttraining-mac-ci-pipeline.yml",
     "win-ci-pipeline.yml",
-    "win-gpu-ci-dml-pipeline.yml",
-    "win-gpu-ci-cuda-pipeline.yml",
-    "win-gpu-ci-training-pipeline.yml",
-    "win-gpu-ci-doc-gen-pipeline.yml",
+    "win-gpu-dml-ci-pipeline.yml",
+    "win-gpu-cuda-ci-pipeline.yml",
+    "win-gpu-training-ci-pipeline.yml",
+    "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
     "win-qnn-arm64-ci-pipeline.yml",
     "win-qnn-ci-pipeline.yml",
+    "win-xnn-ci-pipeline.yml",
 ]
 
 

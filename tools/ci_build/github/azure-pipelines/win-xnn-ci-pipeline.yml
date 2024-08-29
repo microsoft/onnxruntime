@@ -32,12 +32,8 @@ jobs:
   pool: 'onnxruntime-Win-CPU-2022'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     buildArch: x64
-    setVcvars: true
     BuildConfig: 'RelWithDebInfo'
-    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   workspace:
