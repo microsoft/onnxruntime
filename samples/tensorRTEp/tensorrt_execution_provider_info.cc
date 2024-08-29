@@ -2,12 +2,6 @@
 // Licensed under the MIT License.
 
 #include "tensorrt_execution_provider_info.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
-
-#include "core/common/make_string.h"
-#include "core/common/parse_string.h"
-#include "core/framework/provider_options_utils.h"
-// #include "onnxruntime/core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace tensorrt {

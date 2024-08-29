@@ -23,11 +23,10 @@ void TestTensorRTEp(const OrtApi* g_ort, OrtEnv* env, OrtSessionOptions* so) {
     std::vector<const char*> keys{"int_property", "str_property"}, values{"3", "strvalue"};
     THROW_ON_ERROR(g_ort->SessionOptionsAppendOrtExecutionProvider(so, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
 
-    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
-    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
-
-    g_ort->ReleaseCUDAProviderOptions(cuda_options);
+//    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+//    THROW_ON_ERROR(g_ort->CreateCUDAProviderOptions(&cuda_options));
+//    THROW_ON_ERROR(g_ort->SessionOptionsAppendExecutionProvider_CUDA_V2(so, cuda_options));
+//    g_ort->ReleaseCUDAProviderOptions(cuda_options);
 }
 
 void TestOriginalTensorRTEp(const OrtApi* g_ort, OrtSessionOptions* so) {

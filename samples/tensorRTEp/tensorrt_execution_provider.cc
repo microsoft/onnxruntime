@@ -2,6 +2,7 @@
 #include <fstream>
 #include <list>
 #include <functional>
+#include <iostream>
 #include <cuda_runtime.h>
 #include "core/session/onnxruntime_cxx_api.h"   // TODO(leca): we should be able to use cxx APIs which are built upon C API
 #include "tensorrt_execution_provider.h"
@@ -3269,7 +3270,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
 //        IncrementRegularRunCountBeforeGraphCapture();
 //      }
 //    }
-
+    std::cout << "end of ComputeFunc in TRTEp's CreateNodeComputeInfoFromGraph()\n";
     return nullptr;
   };
 
