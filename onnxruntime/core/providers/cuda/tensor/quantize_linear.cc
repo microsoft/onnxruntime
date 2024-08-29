@@ -301,6 +301,22 @@ Status CudaDequantizeLinear(cudaStream_t stream, const uint8_t* input, U* output
   return CudaDequantizeLinearStd(stream, input, output, scale, zero_point, num_of_element);
 }
 
+template <class U>
+Status CudaDequantizeLinear(cudaStream_t stream, const Int4x2* input, U* output, const U* scale,
+                            const Int4x2* zero_point, size_t num_of_element) {
+  return CudaDequantizeLinearStdInt4(stream, reinterpret_cast<const int8_t*>(input), output, scale,
+                                     zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                     num_of_element);
+}
+
+template <class U>
+Status CudaDequantizeLinear(cudaStream_t stream, const UInt4x2* input, U* output, const U* scale,
+                            const UInt4x2* zero_point, size_t num_of_element) {
+  return CudaDequantizeLinearStdInt4(stream, reinterpret_cast<const uint8_t*>(input), output, scale,
+                                     zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                     num_of_element);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 template <class U>
 Status CudaDequantizeLinear(cudaStream_t stream, const Float8E4M3FN* input, U* output, const U* scale,
@@ -327,6 +343,24 @@ Status CudaDequantizeLinearAxis(cudaStream_t stream, const uint8_t* input, U* ou
                                 const uint8_t* zero_point, size_t num_of_element,
                                 size_t batch_size, size_t n_scales) {
   return CudaDequantizeLinearAxisStd(stream, input, output, scale, zero_point, num_of_element, batch_size, n_scales);
+}
+
+template <class U>
+Status CudaDequantizeLinearAxis(cudaStream_t stream, const Int4x2* input, U* output, const U* scale,
+                                const Int4x2* zero_point, size_t num_of_element,
+                                size_t batch_size, size_t n_scales) {
+  return CudaDequantizeLinearAxisStdInt4(stream, reinterpret_cast<const int8_t*>(input), output, scale,
+                                         zero_point ? reinterpret_cast<const int8_t*>(zero_point) : nullptr,
+                                         num_of_element, batch_size, n_scales);
+}
+
+template <class U>
+Status CudaDequantizeLinearAxis(cudaStream_t stream, const UInt4x2* input, U* output, const U* scale,
+                                const UInt4x2* zero_point, size_t num_of_element,
+                                size_t batch_size, size_t n_scales) {
+  return CudaDequantizeLinearAxisStdInt4(stream, reinterpret_cast<const uint8_t*>(input), output, scale,
+                                         zero_point ? reinterpret_cast<const uint8_t*>(zero_point) : nullptr,
+                                         num_of_element, batch_size, n_scales);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)

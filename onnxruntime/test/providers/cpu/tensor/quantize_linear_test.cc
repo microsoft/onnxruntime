@@ -44,7 +44,7 @@ TEST(DequantizeLinearOpTest, Int4) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<Int4x2>("x_zero_point", {}, {Int4x2(-1, unused_val)});
   test.AddOutput<float>("y", dims, {-14.0f, -4.0f, 4.0f, 16.0f, 6.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar scale with int4
