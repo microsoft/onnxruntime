@@ -26,7 +26,11 @@ private:
     if constexpr (RequestedNumQueriesPerCta == 1) {
       return PagedAttentionTask<NumThreads, HeadSize, PageSize, TI, TO, TKV, Worker, Config, KVConfig>{};
     } else if constexpr (RequestedNumQueriesPerCta == 4) {
-      return PagedGroupQueryAttentionTask<NumThreads, HeadSize, PageSize, TI, TO, TKV, Worker, Config, KVConfig>{};
+      if constexpr (std::is_same_v<TKV, float>) {
+        return PagedGroupQueryAttentionTask<NumThreads, HeadSize, PageSize, TI, TO, TKV, Worker, Config, KVConfig>{};
+      } else {
+        return PagedGroupQueryAttentionTcSm80Task<NumThreads, HeadSize, PageSize, TI, TO, TKV, Worker, Config, KVConfig>{};
+      }
     } else if constexpr (RequestedNumQueriesPerCta == 8) {
       return PagedGroupQueryAttentionTcSm80Task<NumThreads, HeadSize, PageSize, TI, TO, TKV, Worker, Config, KVConfig>{};
     } else {

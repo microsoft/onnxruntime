@@ -46,7 +46,8 @@ template <
     typename KVConfig = DefaultKV>
 struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads, HeadSize, PageSize, TI, TO_, TKV, Worker, Config, KVConfig> {
   static_assert(PageSize == 8 || PageSize == 16 || PageSize == 32);
-  static_assert(Config::NumQueriesPerCta == 8);
+  constexpr static int NumQueriesPerCtaMma = 8;                    // physical limit, control smem and mma tile
+  static_assert(Config::NumQueriesPerCta <= NumQueriesPerCtaMma);  // number of queries this task actually process
 
   using BaseTask = PagedAttentionTask<NumThreads, HeadSize, PageSize, TI, TO_, TKV, Worker, Config, KVConfig>;
   using TQ = TI;
@@ -88,13 +89,13 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
       const int q_stride
   ) {
     __shared__ int chunk_page_table[ceil_div(Config::TaskChunkSeqLen, PageSize)];
-    __align__(128) __shared__ float smem_out[Config::NumQueriesPerCta][HeadSize];
-    __shared__ float2 smem_max_sum[Config::NumQueriesPerCta];
-    __shared__ float2 chunk_max_sum[Config::NumQueriesPerCta];
+    __align__(128) __shared__ float smem_out[NumQueriesPerCtaMma][HeadSize];
+    __shared__ float2 smem_max_sum[NumQueriesPerCtaMma];
+    __shared__ float2 chunk_max_sum[NumQueriesPerCtaMma];
     __align__(128) __shared__ TSB sSB_buffer[NumWarps][PageSize * ScaleBiasNumChunks * 2];
-    __shared__ float alibi_slopes_smem[Config::NumQueriesPerCta];
-    __align__(128) __shared__ float logits_or_attn_scores_buffer[Config::NumQueriesPerCta * (Config::TaskChunkSeqLen + 4)];
-    static_assert(Config::NumQueriesPerCta * Config::TaskChunkSeqLen * sizeof(float) < 40 * 1024,
+    __shared__ float alibi_slopes_smem[NumQueriesPerCtaMma];
+    __align__(128) __shared__ float logits_or_attn_scores_buffer[NumQueriesPerCtaMma * (Config::TaskChunkSeqLen + 4)];
+    static_assert(NumQueriesPerCtaMma * Config::TaskChunkSeqLen * sizeof(float) < 40 * 1024,
                   "Kernels relying on shared memory allocations over 48 KB per block are architecture-specific,"
                   "and must use dynamic shared memory rather than statically sized shared memory arrays.");
 
@@ -143,13 +144,12 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
     const auto seq_page_table = &(make_tensor(make_gmem_ptr(page_table), make_layout(make_shape(num_seqs, max_num_pages_per_seq), LayoutRight{}))(seq_idx, _0{}));
 
     // cooperative load q to sA (sQ)
-    // constexpr const auto SmemQLayout = make_layout(make_shape(Int<Config::NumQueriesPerCta>{}, Int<HeadSize>{}), LayoutRight{});
-    constexpr const auto SmemQLayout = make_layout(make_shape(Int<Config::NumQueriesPerCta>{}, Int<HeadSize>{}), make_stride(Int<HeadSize + 8>{}, _1{}));
+    constexpr const auto SmemQLayout = make_layout(make_shape(Int<NumQueriesPerCtaMma>{}, Int<HeadSize>{}), make_stride(Int<HeadSize + 8>{}, _1{}));
     __align__(128) __shared__ TQ sQ_buffer[cosize(SmemQLayout)];
     auto sQ = make_tensor(make_smem_ptr(sQ_buffer), SmemQLayout);
     {
-      auto sQ = make_tensor(make_smem_ptr(sQ_buffer), select<1, 0>(SmemQLayout));  // transposed view for copy
-      auto cQ = make_identity_tensor(sQ.shape());
+      constexpr auto valid_sQ_shape = make_shape(Int<HeadSize>{}, Int<Config::NumQueriesPerCta>{});      // transposed view for copy of valid q tile
+      auto sQ = make_tensor(make_smem_ptr(sQ_buffer), select<1, 0>(SmemQLayout));                        // transposed view for copy
       constexpr int QLoadVec = cute::min(next_power_of_two(ceil_div(size(sQ.shape()), NumThreads)), 8);  // load n elems per thread
       static_assert(HeadSize % QLoadVec == 0);
       constexpr int ThrD = HeadSize / QLoadVec;
@@ -162,7 +162,8 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
           make_layout(make_shape(Int<ValD>{}, Int<ValH>{}))
       );
       const auto thr_copy = tiled_copy.get_thread_slice(threadIdx.x);
-      const auto ctaQ = local_tile(gQ, sQ.shape(), make_coord(_0{}, head_idx / Config::NumQueriesPerCta));
+      const auto ctaQ = local_tile(gQ, valid_sQ_shape, make_coord(_0{}, head_idx / Config::NumQueriesPerCta));
+      const auto cQ = make_identity_tensor(valid_sQ_shape);
       const auto thr_cQ = thr_copy.partition_S(cQ);
       const auto thr_ld = thr_copy.partition_S(ctaQ);
       auto thr_st = thr_copy.partition_D(sQ);
@@ -170,7 +171,7 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
       for (int i = 0; i < size<1>(thr_ld); i++) {
         CUTE_UNROLL
         for (int j = 0; j < size<2>(thr_ld); j++) {
-          if (elem_less(thr_cQ(_0{}, i, j), shape(sQ))) {
+          if (elem_less(thr_cQ(_0{}, i, j), valid_sQ_shape)) {
             copy(thr_ld(_, i, j), thr_st(_, i, j));
           }
         }
@@ -181,11 +182,11 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
     }
 
     float* logits_ptr = &logits_or_attn_scores_buffer[0];
-    using LogitsLayout = Layout<Shape<Int<Config::TaskChunkSeqLen>, Int<Config::NumQueriesPerCta>>, Stride<_1, Int<Config::TaskChunkSeqLen + 4>>>;
+    using LogitsLayout = Layout<Shape<Int<Config::TaskChunkSeqLen>, Int<NumQueriesPerCtaMma>>, Stride<_1, Int<Config::TaskChunkSeqLen + 4>>>;
     auto logits = make_tensor(make_smem_ptr(logits_ptr), LogitsLayout{});
     auto cL = make_identity_tensor(shape(logits));
-    auto logits_paged = coalesce_tensor(flat_divide(logits, make_tile(Int<PageSize>{}, Int<Config::NumQueriesPerCta>{})));  // (tid_in_page,hidx_in_group,lpid)
-    auto cL_paged = coalesce_tensor(flat_divide(cL, make_tile(Int<PageSize>{}, Int<Config::NumQueriesPerCta>{})));          // (tid_in_page,hidx_in_group,lpid)
+    auto logits_paged = coalesce_tensor(flat_divide(logits, make_tile(Int<PageSize>{}, Int<NumQueriesPerCtaMma>{})));  // (tid_in_page,hidx_in_group,lpid)
+    auto cL_paged = coalesce_tensor(flat_divide(cL, make_tile(Int<PageSize>{}, Int<NumQueriesPerCtaMma>{})));          // (tid_in_page,hidx_in_group,lpid)
 
     auto tiled_mma1 = make_tiled_mma(SM80_16x8x8_F32F16F16F32_TN{});
     auto thr_mma1 = tiled_mma1.get_thread_slice(lane_id());
@@ -207,7 +208,7 @@ struct PagedGroupQueryAttentionTcSm80Task : public PagedAttentionTask<NumThreads
     }();
 
     float* attn_scores_ptr = &logits_or_attn_scores_buffer[0];
-    using AttnScoresLayout = Layout<Shape<Int<PageSize>, Int<Config::TaskChunkSeqLen / PageSize>, Int<Config::NumQueriesPerCta>>, Stride<_1, Int<PageSize>, Int<Config::TaskChunkSeqLen + 4>>>;
+    using AttnScoresLayout = Layout<Shape<Int<PageSize>, Int<Config::TaskChunkSeqLen / PageSize>, Int<NumQueriesPerCtaMma>>, Stride<_1, Int<PageSize>, Int<Config::TaskChunkSeqLen + 4>>>;
     auto attn_scores = make_tensor(make_smem_ptr(attn_scores_ptr), AttnScoresLayout{});
 
     auto tiled_mma2 = make_tiled_mma(SM80_16x8x8_F32F16F16F32_TN{});
