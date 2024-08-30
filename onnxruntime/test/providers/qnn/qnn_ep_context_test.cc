@@ -840,8 +840,7 @@ static void CreateQdqModel(const std::string& model_file_name, const Logger& log
 }
 
 static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
-                                   const std::vector<std::string>& onnx_model_paths,
-                                   std::vector<std::string>& ctx_model_paths) {
+                                   const std::vector<std::string>& onnx_model_paths) {
   SessionOptions so;
   so.session_logid = "qnn_ctx_model_logger";
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
@@ -853,10 +852,6 @@ static void DumpModelWithSharedCtx(const ProviderOptions& provider_options,
   std::shared_ptr<IExecutionProvider> qnn_ep_shared(std::move(qnn_ep));
 
   for (auto model_path : onnx_model_paths) {
-    std::string ctx_model_path(model_path);
-    ctx_model_path.replace(ctx_model_path.end() - 5, ctx_model_path.end(), "_ctx.onnx");
-    ctx_model_paths.push_back(ctx_model_path);
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ctx_model_path.c_str()));
     InferenceSessionWrapper session_object{so, GetEnvironment()};
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(qnn_ep_shared));
     ASSERT_STATUS_OK(session_object.Load(ToPathString(model_path)));
@@ -954,13 +949,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
+  std::vector<std::string> ctx_model_paths;
   for (auto model_path : onnx_model_paths) {
     CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
+    ctx_model_paths.push_back(model_path + "_ctx.onnx");
   }
 
-  std::vector<std::string> ctx_model_paths;
-  DumpModelWithSharedCtx(provider_options, onnx_model_paths, ctx_model_paths);
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths);
 
   // Get the last context binary file name
   std::string last_qnn_ctx_binary_file_name;
@@ -1003,14 +999,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names_c;
-  for (int i = 0; i < input_names.size(); ++i) {
+  for (size_t i = 0; i < input_names.size(); ++i) {
     auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
                                                  input_dim.data(), input_dim.size());
     ort_inputs.push_back(std::move(input_tensor));
     input_names_c.push_back(input_names[i].c_str());
   }
   std::vector<const char*> output_names_c;
-  for (int i = 0; i < output_names.size(); ++i) {
+  for (size_t i = 0; i < output_names.size(); ++i) {
     output_names_c.push_back(output_names[i].c_str());
   }
 
@@ -1045,13 +1041,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share21.onnx", "./weight_share22.onnx"};
+  std::vector<std::string> ctx_model_paths;
   for (auto model_path : onnx_model_paths) {
     CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
     EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
+    ctx_model_paths.push_back(model_path + "_ctx.onnx");
   }
 
-  std::vector<std::string> ctx_model_paths;
-  DumpModelWithSharedCtx(provider_options, onnx_model_paths, ctx_model_paths);
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths);
 
   // Get the last context binary file name
   std::string last_qnn_ctx_binary_file_name;
@@ -1097,14 +1094,14 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char*> input_names_c;
-  for (int i = 0; i < input_names.size(); ++i) {
+  for (size_t i = 0; i < input_names.size(); ++i) {
     auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
                                                  input_dim.data(), input_dim.size());
     ort_inputs.push_back(std::move(input_tensor));
     input_names_c.push_back(input_names[i].c_str());
   }
   std::vector<const char*> output_names_c;
-  for (int i = 0; i < output_names.size(); ++i) {
+  for (size_t i = 0; i < output_names.size(); ++i) {
     output_names_c.push_back(output_names[i].c_str());
   }
 
