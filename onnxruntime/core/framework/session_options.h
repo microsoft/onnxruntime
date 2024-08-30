@@ -83,6 +83,9 @@ struct SessionOptions {
   // enable profiling for this session.
   bool enable_profiling = false;
 
+  // save pre-packed constant initializers instead of original initializers
+  bool save_prepacked_constant_initializers = false;
+
   // Non empty filepath enables serialization of the transformed optimized model to the specified filepath.
   //
   // Set session config value for ORT_SESSION_OPTIONS_CONFIG_SAVE_MODEL_FORMAT to 'ORT' or 'ONNX' to explicitly
@@ -191,6 +194,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " execution_mode:" << session_options.execution_mode
      << " execution_order:" << session_options.execution_order
      << " enable_profiling:" << session_options.enable_profiling
+     << " save_prepacked_constant_initializers:" << session_options.save_prepacked_constant_initializers
      << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath)
      << " enable_mem_pattern:" << session_options.enable_mem_pattern
      << " enable_mem_reuse:" << session_options.enable_mem_reuse
