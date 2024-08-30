@@ -29,19 +29,16 @@ namespace qnnctxgen {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
-      "perf_test [options...] model_path [result_file]\n"
+      "onnxruntime_qnn_ctx_gen [options...] model1_path,model2_path\n"
       "Options:\n"
       "\t-v: Show verbose information.\n"
-      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
-      "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
-      "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
       "\t    [Example] -C \"ep.context_enable|1\" \n"
       "\t-i: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
-      "\t    [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'.\n"
+      "\t    [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. default to HTP backend\n"
       "\t    [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
       "\t    [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
@@ -111,34 +108,6 @@ static bool ParseSessionConfigs(const std::string& configs_string,
     switch (ch) {
       case 'v':
         test_config.run_config.f_verbose = true;
-        break;
-      case 'o': {
-        int tmp = static_cast<int>(OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
-        switch (tmp) {
-          case ORT_DISABLE_ALL:
-            test_config.run_config.optimization_level = ORT_DISABLE_ALL;
-            break;
-          case ORT_ENABLE_BASIC:
-            test_config.run_config.optimization_level = ORT_ENABLE_BASIC;
-            break;
-          case ORT_ENABLE_EXTENDED:
-            test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
-            break;
-          case ORT_ENABLE_ALL:
-            test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            break;
-          default: {
-            if (tmp > ORT_ENABLE_ALL) {  // relax constraint
-              test_config.run_config.optimization_level = ORT_ENABLE_ALL;
-            } else {
-              return false;
-            }
-          }
-        }
-        break;
-      }
-      case 'u':
-        test_config.run_config.optimized_model_path = optarg;
         break;
       case 'i': {
 #ifdef _MSC_VER

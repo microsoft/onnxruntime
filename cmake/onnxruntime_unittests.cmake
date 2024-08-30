@@ -1260,23 +1260,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     "${onnxruntime_qnn_ctx_gen_src_dir}/*.cc"
     "${onnxruntime_qnn_ctx_gen_src_dir}/*.h")
 
-    if(WIN32)
-      list(APPEND onnxruntime_qnn_ctx_gen_src_patterns
-        "${onnxruntime_qnn_ctx_gen_src_dir}/windows/*.cc"
-        "${onnxruntime_qnn_ctx_gen_src_dir}/windows/*.h" )
-    else ()
-      list(APPEND onnxruntime_qnn_ctx_gen_src_patterns
-        "${onnxruntime_qnn_ctx_gen_src_dir}/posix/*.cc"
-        "${onnxruntime_qnn_ctx_gen_src_dir}/posix/*.h" )
-    endif()
-
     file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
       ${onnxruntime_qnn_ctx_gen_src_patterns}
       )
-    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
-    if(MSVC)
-      target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>")
-    endif()
+    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
     target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})

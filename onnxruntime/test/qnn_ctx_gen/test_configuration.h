@@ -16,8 +16,6 @@ namespace qnnctxgen {
 
 struct RunConfig {
   bool f_verbose{false};
-  GraphOptimizationLevel optimization_level{ORT_ENABLE_ALL};
-  std::basic_string<ORTCHAR_T> optimized_model_path;
   std::unordered_map<std::string, std::string> session_config_entries;
   std::unordered_map<std::string, std::string> qnn_options;
 };
