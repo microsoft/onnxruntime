@@ -7,7 +7,9 @@ def shared
   config = use_native_modules!
 
   use_react_native!(:path => config["reactNativePath"])
-
+  pod 'React', :path => '../node_modules/react-native', :subspecs => [
+    'RCTBlobManager'
+  ]
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
 
