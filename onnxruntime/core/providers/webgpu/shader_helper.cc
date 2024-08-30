@@ -180,8 +180,12 @@ std::string ShaderHelper::GetFinalSourceCode() {
   // Indices helper
   //
   ss << "\n";
-  // for (const auto& group : vars_) {
-  // }
+  for (const auto& var_group : vars_) {
+    for (const auto& var : var_group) {
+      var.Impl(ss);
+    }
+    ss << "\n";
+  }
 
   //
   // Additional Implementation

@@ -129,7 +129,7 @@ class ShaderVariable {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariable);
 
   void Init();
-  void Impl(std::ostringstream& ss);
+  void Impl(std::ostringstream& ss) const;
 
   std::string GetByOffsetImpl(const std::string& offset) const;
   std::string SetByOffsetImpl(const std::string& offset, const std::string& value) const;

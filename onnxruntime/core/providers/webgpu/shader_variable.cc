@@ -26,7 +26,7 @@ void ShaderVariable::Init() {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
 }
 
-void ShaderVariable::Impl(std::ostringstream& ss) {
+void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Start generating code
 
   const std::string value_t = name_ + "_value_t";
