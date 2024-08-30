@@ -82,10 +82,10 @@ constexpr int getWarpsPerSmFw() {
 static CUTLASS_DEVICE float atomicMaxFloat(float* addr, float value) {
   // source: https://stackoverflow.com/a/51549250
   return (value >= 0)
-      ? __int_as_float(atomicMax((int*)addr, __float_as_int(value)))
-      : __uint_as_float(atomicMin((unsigned int*)addr, __float_as_uint(value)));
+             ? __int_as_float(atomicMax((int*)addr, __float_as_int(value)))
+             : __uint_as_float(atomicMin((unsigned int*)addr, __float_as_uint(value)));
 }
-} // namespace
+}  // namespace
 
 // If ToBatchHookType_ is supplied other than this default (which is
 // never the case in the xformers library) then the user is
@@ -144,13 +144,13 @@ struct AttentionKernel {
   static constexpr int kMaxK = kMaxK_;
   static constexpr bool kIsAligned = isAligned_;
   static constexpr bool kSingleValueIteration = kMaxK <= kKeysPerBlock;
-  static constexpr int32_t kAlignLSE = 32; // block size of backward
+  static constexpr int32_t kAlignLSE = 32;  // block size of backward
   static constexpr bool kIsHalf = cutlass::sizeof_bits<scalar_t>::value == 16;
   static constexpr bool kPreloadV =
       ArchTag::kMinComputeCapability >= 80 && kIsHalf;
   static constexpr bool kKeepOutputInRF = kSingleValueIteration;
   static constexpr bool kNeedsOutputAccumulatorBuffer = !kKeepOutputInRF &&
-      !cutlass::platform::is_same<output_accum_t, output_t>::value;
+                                                        !cutlass::platform::is_same<output_accum_t, output_t>::value;
 
   static_assert(kQueriesPerBlock % 32 == 0, "");
   static_assert(kKeysPerBlock % 32 == 0, "");
@@ -165,10 +165,10 @@ struct AttentionKernel {
 
   struct Params {
     // Input tensors
-    scalar_t* query_ptr = nullptr; // [num_queries, num_heads, head_dim]
-    scalar_t* key_ptr = nullptr; // [num_keys, num_heads, head_dim]
-    scalar_t* value_ptr = nullptr; // [num_keys, num_heads, head_dim_value]
-    scalar_t* attn_bias_ptr = nullptr; // [num_heads, num_queries, num_keys]
+    scalar_t* query_ptr = nullptr;      // [num_queries, num_heads, head_dim]
+    scalar_t* key_ptr = nullptr;        // [num_keys, num_heads, head_dim]
+    scalar_t* value_ptr = nullptr;      // [num_keys, num_heads, head_dim_value]
+    scalar_t* attn_bias_ptr = nullptr;  // [num_heads, num_queries, num_keys]
     int32_t* seqstart_q_ptr = nullptr;
     int32_t* seqstart_k_ptr = nullptr;
 
@@ -176,7 +176,7 @@ struct AttentionKernel {
     uint32_t causal_diagonal_offset = 0;
 
     // Output tensors
-    output_t* output_ptr = nullptr; // [num_queries, num_heads, head_dim_value]
+    output_t* output_ptr = nullptr;  // [num_queries, num_heads, head_dim_value]
     // [num_queries, num_heads, head_dim_value]
     output_accum_t* output_accum_ptr = nullptr;
     // [num_heads, num_queries] - can be null
@@ -334,7 +334,7 @@ struct AttentionKernel {
       }
 
       num_queries -= query_start;
-      num_batches = 0; // no longer used after
+      num_batches = 0;  // no longer used after
 
       // If num_queries == 1, and there is only one key head we're wasting
       // 15/16th of tensor core compute In that case :
@@ -345,7 +345,7 @@ struct AttentionKernel {
           return false;
         q_strideM = q_strideH;
         num_queries = num_heads;
-        num_heads = 1; // unused but here for intent
+        num_heads = 1;  // unused but here for intent
         // remove causal since n_query = 1
         // otherwise, offset would change with head !
         custom_mask_type = NoCustomMask;
@@ -401,8 +401,8 @@ struct AttentionKernel {
             ArchTag,
             scalar_t,
             scalar_t,
-            scalar_t, // ElementC
-            accum_t // ElementAccumulator
+            scalar_t,  // ElementC
+            accum_t    // ElementAccumulator
             >;
     static constexpr int kAlignmentA =
         kIsAligned ? DefaultConfig::kAlignmentA : GemmType::kMinimumAlignment;
@@ -412,23 +412,23 @@ struct AttentionKernel {
         GemmShape<kQueriesPerBlock, kKeysPerBlock, GemmType::ThreadK>;
     using WarpShape = cutlass::gemm::GemmShape<32, 32, GemmType::WarpK>;
     using DefaultMma = typename cutlass::gemm::threadblock::FindDefaultMma<
-        scalar_t, // ElementA,
-        cutlass::layout::RowMajor, // LayoutA,
+        scalar_t,                   // ElementA,
+        cutlass::layout::RowMajor,  // LayoutA,
         kAlignmentA,
-        scalar_t, // ElementB,
-        cutlass::layout::ColumnMajor, // LayoutB,
+        scalar_t,                      // ElementB,
+        cutlass::layout::ColumnMajor,  // LayoutB,
         kAlignmentB,
         accum_t,
-        cutlass::layout::RowMajor, // LayoutC,
+        cutlass::layout::RowMajor,  // LayoutC,
         OpClass,
-        ArchTag, // ArchTag
-        ThreadblockShape, // ThreadblockShape
-        WarpShape, // WarpShape
-        typename GemmType::InstructionShape, // InstructionShape
+        ArchTag,                              // ArchTag
+        ThreadblockShape,                     // ThreadblockShape
+        WarpShape,                            // WarpShape
+        typename GemmType::InstructionShape,  // InstructionShape
         ArchTag::kMinComputeCapability >= 80 && kIsHalf
             ? 4
             : DefaultConfig::kStages,
-        typename GemmType::Operator // Operator
+        typename GemmType::Operator  // Operator
         >::DefaultMma;
     using MmaCore = typename DefaultMma::MmaCore;
     using IteratorA = typename DefaultMma::IteratorA;
@@ -481,10 +481,10 @@ struct AttentionKernel {
             ArchTag,
             scalar_t,
             scalar_t,
-            output_accum_t, // ElementC
-            accum_t // ElementAccumulator
+            output_accum_t,  // ElementC
+            accum_t          // ElementAccumulator
             >;
-    static constexpr int kAlignmentA = DefaultConfig::kAlignmentA; // from smem
+    static constexpr int kAlignmentA = DefaultConfig::kAlignmentA;  // from smem
     static constexpr int kAlignmentB =
         kIsAligned ? DefaultConfig::kAlignmentB : GemmType::kMinimumAlignment;
     using ThreadblockShape = cutlass::gemm::
@@ -494,14 +494,14 @@ struct AttentionKernel {
 
     using LayoutB = cutlass::layout::RowMajor;
     using DefaultGemm = cutlass::gemm::kernel::DefaultGemm<
-        scalar_t, // ElementA,
-        cutlass::layout::RowMajor, // LayoutA,
+        scalar_t,                   // ElementA,
+        cutlass::layout::RowMajor,  // LayoutA,
         kAlignmentA,
-        scalar_t, // ElementB,
-        LayoutB, // LayoutB,
+        scalar_t,  // ElementB,
+        LayoutB,   // LayoutB,
         kAlignmentB,
         output_accum_t,
-        cutlass::layout::RowMajor, // LayoutC,
+        cutlass::layout::RowMajor,  // LayoutC,
         accum_t,
         OpClass,
         ArchTag,
@@ -509,25 +509,25 @@ struct AttentionKernel {
         WarpShape,
         typename GemmType::InstructionShape,
         typename DefaultConfig::EpilogueOutputOp,
-        void, // ThreadblockSwizzle - not used
+        void,  // ThreadblockSwizzle - not used
         ArchTag::kMinComputeCapability >= 80 && kIsHalf
             ? 4
             : DefaultConfig::kStages,
-        false, // SplitKSerial
+        false,  // SplitKSerial
         typename GemmType::Operator>;
 
     using WarpIteratorA = typename cutlass::gemm::threadblock::
         DefaultWarpIteratorAFromSharedMemory<
-            typename DefaultGemm::Mma::Policy::Operator::Shape, // WarpShape
+            typename DefaultGemm::Mma::Policy::Operator::Shape,  // WarpShape
             typename DefaultGemm::Mma::Policy::Operator::InstructionShape,
             typename DefaultGemm::Mma::Policy::Operator::IteratorA,
             typename DefaultGemm::Mma::Policy>::WarpIterator;
     using DefaultMmaFromSmem =
         typename cutlass::gemm::threadblock::DefaultMmaFromSharedMemory<
             typename DefaultGemm::Mma,
-            MM0::AccumulatorSharedStorage::Shape::kN, // kMaxK
+            MM0::AccumulatorSharedStorage::Shape::kN,  // kMaxK
             WarpIteratorA,
-            false>; // kScaleOperandA
+            false>;  // kScaleOperandA
     using Mma = typename DefaultMmaFromSmem::Mma;
     using IteratorB = typename Mma::IteratorB;
     using WarpCount = typename Mma::WarpCount;
@@ -649,7 +649,8 @@ struct AttentionKernel {
     if (p.window_size > 0) {
       XFORMERS_CHECK(
           p.custom_mask_type == CausalFromTopLeft ||
-          p.custom_mask_type == CausalFromBottomRight, "invalid value for custom_mask_type");
+              p.custom_mask_type == CausalFromBottomRight,
+          "invalid value for custom_mask_type");
     }
     return true;
   }
@@ -755,8 +756,8 @@ struct AttentionKernel {
             problem_size_1_k);
       };
 
-      __syncthreads(); // Need to have shared memory initialized, and `m_prime`
-                       // updated from end of prev iter
+      __syncthreads();  // Need to have shared memory initialized, and `m_prime`
+                        // updated from end of prev iter
       //
       // MATMUL: Q.K_t
       //
@@ -882,7 +883,7 @@ struct AttentionKernel {
               // last local col is (last absolute query + offset -
               // iter_key_start)
               last_col = query_start + accum_m + p.causal_diagonal_offset -
-                  iter_key_start;
+                         iter_key_start;
             },
             [&](int accum_m, int accum_n, int idx) {
               if (accum_n > last_col) {
@@ -911,7 +912,7 @@ struct AttentionKernel {
             my_lane_id, my_warp_id, iteratorC_tile_offset);
         int32_t first_col;
         const int32_t offset = query_start + p.causal_diagonal_offset -
-            p.window_size - iter_key_start;
+                               p.window_size - iter_key_start;
         MM0::AccumLambdaIterator::iterateRows(
             lane_offset,
             [&](int accum_m) { first_col = accum_m + offset; },
@@ -947,7 +948,7 @@ struct AttentionKernel {
 
       // Output results to shared-memory
       int warp_idx_mn_0 = my_warp_id %
-          (MM0::Mma::Base::WarpCount::kM * MM0::Mma::Base::WarpCount::kN);
+                          (MM0::Mma::Base::WarpCount::kM * MM0::Mma::Base::WarpCount::kN);
       auto output_tile_coords = cutlass::MatrixCoord{
           warp_idx_mn_0 % MM0::Mma::Base::WarpCount::kM,
           warp_idx_mn_0 / MM0::Mma::Base::WarpCount::kM};
@@ -1002,8 +1003,8 @@ struct AttentionKernel {
           // apply dropout scaling to elements this thread is responsible for,
           // in chunks of 4
           for (int sij_start_col_idx = thread_start_j; sij_start_col_idx <
-               cutlass::fast_min(thread_start_j + elts_per_thread,
-                                 problem_size_0_n);
+                                                       cutlass::fast_min(thread_start_j + elts_per_thread,
+                                                                         problem_size_0_n);
                sij_start_col_idx += 4) {
             const float4 rand_uniform_quad = curand_uniform4(&curand_state);
 
@@ -1016,7 +1017,7 @@ struct AttentionKernel {
             }
           }
         }
-        __syncthreads(); // p.use_dropout should have same value kernel-wide
+        __syncthreads();  // p.use_dropout should have same value kernel-wide
       }
 #endif
 
@@ -1028,9 +1029,9 @@ struct AttentionKernel {
       //
 
       const int64_t nBlockN = kSingleValueIteration
-          ? 1
-          : ceil_div(
-                (int64_t)problem_size_1_n, int64_t(MM1::ThreadblockShape::kN));
+                                  ? 1
+                                  : ceil_div(
+                                        (int64_t)problem_size_1_n, int64_t(MM1::ThreadblockShape::kN));
       for (int blockN = 0; blockN < nBlockN; ++blockN) {
         int gemm_k_iterations =
             (problem_size_1_k + MM1::Mma::Shape::kK - 1) / MM1::Mma::Shape::kK;
@@ -1038,7 +1039,7 @@ struct AttentionKernel {
         // Compute threadblock-scoped matrix multiply-add and store it in accum
         // (in registers)
         if (!kPreloadV) {
-          __syncthreads(); // we share shmem between mma and epilogue
+          __syncthreads();  // we share shmem between mma and epilogue
         }
 
         typename MM1::Mma::IteratorB iterator_V(
@@ -1075,7 +1076,7 @@ struct AttentionKernel {
                                  p.window_size + 1,
                              0) /
                          kKeysPerBlock) *
-                kKeysPerBlock;
+                        kKeysPerBlock;
           }
           MM1::Mma::drain_cp_asyncs();
           DISPATCH_BOOL(
@@ -1117,9 +1118,9 @@ struct AttentionKernel {
                               EpilogueOutputOp,
                               typename DefaultEpilogue::Padding,
                               DefaultEpilogue::kFragmentsPerIteration,
-                              true, // IterationsUnroll
-                              typename MM1::OutputTileIteratorAccum // Read
-                                                                    // iterator
+                              true,                                  // IterationsUnroll
+                              typename MM1::OutputTileIteratorAccum  // Read
+                                                                     // iterator
                               >;
 
                       int col = blockN * MM1::Mma::Shape::kN;
@@ -1143,7 +1144,7 @@ struct AttentionKernel {
           }
         }
       }
-      __syncthreads(); // we modify `m_prime` after
+      __syncthreads();  // we modify `m_prime` after
     }
 
     if (kKeepOutputInRF) {
@@ -1154,11 +1155,11 @@ struct AttentionKernel {
       using ElementCompute = typename DefaultOp::ElementCompute;
       using EpilogueOutputOp =
           typename cutlass::epilogue::thread::MemoryEfficientAttentionNormalize<
-              output_t, // output
-              output_accum_t, // source
+              output_t,        // output
+              output_accum_t,  // source
               DefaultOp::kCount,
-              typename DefaultOp::ElementAccumulator, // accum
-              output_accum_t, // compute
+              typename DefaultOp::ElementAccumulator,  // accum
+              output_accum_t,                          // compute
               kIsFirst,
               kIsLast,
               cutlass::Array<ElementCompute, kQueriesPerBlock>>;
@@ -1167,15 +1168,15 @@ struct AttentionKernel {
               typename DefaultEpilogue::Shape,
               typename MM1::Mma::Operator,
               DefaultEpilogue::kPartitionsK,
-              typename MM1::OutputTileIterator, // destination
+              typename MM1::OutputTileIterator,  // destination
               typename DefaultEpilogue::AccumulatorFragmentIterator,
               typename DefaultEpilogue::WarpTileIterator,
               typename DefaultEpilogue::SharedLoadIterator,
               EpilogueOutputOp,
               typename DefaultEpilogue::Padding,
               DefaultEpilogue::kFragmentsPerIteration,
-              true, // IterationsUnroll
-              typename MM1::OutputTileIteratorAccum // source tile
+              true,                                  // IterationsUnroll
+              typename MM1::OutputTileIteratorAccum  // source tile
               >;
       auto dest_iter = createOutputIter(0);
       EpilogueOutputOp rescale(s_prime, out_rescale);
@@ -1194,10 +1195,10 @@ struct AttentionKernel {
     static_assert(kQueriesPerBlock < kNumWarpsPerBlock * kWarpSize, "");
     if (p.logsumexp_ptr && thread_id() < kQueriesPerBlock) {
       auto lse_dim = ceil_div((int32_t)p.num_queries, kAlignLSE) * kAlignLSE;
-      constexpr float kLog2e = 1.4426950408889634074; // log_2(e) = M_LOG2E
+      constexpr float kLog2e = 1.4426950408889634074;  // log_2(e) = M_LOG2E
       if (thread_id() < p.num_queries) {
         p.logsumexp_ptr[thread_id()] = accum_t(mi[thread_id()] / kLog2e) +
-            cutlass::fast_log(accum_t(s_prime[thread_id()]));
+                                       cutlass::fast_log(accum_t(s_prime[thread_id()]));
       } else if (thread_id() < lse_dim) {
         p.logsumexp_ptr[thread_id()] =
             cutlass::platform::numeric_limits<accum_t>::infinity();
@@ -1207,7 +1208,7 @@ struct AttentionKernel {
 
   template <typename WarpIteratorC>
   CUTLASS_DEVICE static void iterative_softmax(
-      typename WarpIteratorC::Fragment& frag_o, // output so far
+      typename WarpIteratorC::Fragment& frag_o,  // output so far
       typename WarpIteratorC::Fragment& frag,
       cutlass::Array<accum_t, kQueriesPerBlock>& mi,
       cutlass::Array<accum_t, kQueriesPerBlock>& m_prime,
@@ -1240,7 +1241,7 @@ struct AttentionKernel {
         accum_t,
         kWarpSize>::Iterator;
     // Convert to `accum_t` (rather than double)
-    constexpr float kLog2e = 1.4426950408889634074; // log_2(e) = M_LOG2E
+    constexpr float kLog2e = 1.4426950408889634074;  // log_2(e) = M_LOG2E
 
     static_assert(kQueriesPerBlock % kNumWarpsPerBlock == 0, "");
     static constexpr int kLinesPerWarp = kQueriesPerBlock / kNumWarpsPerBlock;
@@ -1280,7 +1281,7 @@ struct AttentionKernel {
       int id = warp_id * kLinesPerWarp + lane_id;
       auto m_prime_id = m_prime[id];
       auto mi_id = mi[id];
-      bool changed = m_prime_id < mi_id; // `false` if both are -inf
+      bool changed = m_prime_id < mi_id;  // `false` if both are -inf
       if (changed) {
         auto m_prime_exp = exp2f(m_prime_id - mi_id);
         out_rescale[id] = m_prime_exp;
@@ -1297,7 +1298,7 @@ struct AttentionKernel {
         out_rescale[id] = 1.0f;
       }
     }
-    __syncthreads(); // Update output fragments
+    __syncthreads();  // Update output fragments
     if (kKeepOutputInRF && !is_first) {
       accum_t line_rescale;
       LambdaIterator::iterateRows(
@@ -1313,7 +1314,7 @@ struct AttentionKernel {
       accum_t mi_row, total_row;
       LambdaIterator::iterateRows(
           lane_offset,
-          [&](int accum_m) { mi_row = mi[accum_m];},
+          [&](int accum_m) { mi_row = mi[accum_m]; },
           [&](int accum_m, int accum_n, int idx) {
             frag[idx] =
                 (accum_n < max_col) ? exp2f(frag[idx] - mi_row) : accum_t(0.0);
