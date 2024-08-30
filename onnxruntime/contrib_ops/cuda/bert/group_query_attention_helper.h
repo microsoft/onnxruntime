@@ -251,6 +251,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
+    output_parameters->total_sequence_length = total_sequence_length;      // total sequence length
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
     output_parameters->head_size = head_size;
