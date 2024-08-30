@@ -231,13 +231,14 @@ template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typen
 __global__ void QuantizeLinearKernelStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
                                             const OutT* zero_point_ptr, CUDA_LONG N,
                                             RoundStdInt4<InT, OutT> round) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
-  int i = 0;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   InT scale = *scale_ptr;
   int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
+  int i = 0;
+  constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
-  for (; i + 1 < NumElementsPerThread && id + 1 < N; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < N; i += 2, id += step) {
     output[id >> 1] = round(input[id], input[id + 1], scale, scale, zero_point, zero_point);
   }
 
@@ -271,14 +272,15 @@ __global__ void QuantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, 
                                                 const OutT* zero_point_ptr, CUDA_LONG num_element,
                                                 size_t batch_size, size_t n_scales,
                                                 RoundStdInt4<InT, OutT> round) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   // Process continuous NumElementsPerThread int4 per thread.
   int i = 0;
   // The scale needs to change every n_same_scale.
   CUDA_LONG n_same_scale = num_element / (batch_size * n_scales);
+  constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
-  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
     int scale_id0 = (id / n_same_scale) % n_scales;
     int scale_id1 = ((id + 1) / n_same_scale) % n_scales;
     int zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
@@ -312,12 +314,13 @@ __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output,
                                                  size_t N, size_t scale_KN, size_t block_size,
                                                  RoundStdInt4<InT, OutT> round) {
   // Process continuous NumElementsPerThread int4 per thread.
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   int i = 0;
+  constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
   // Process two elements which belong to one byte at a time.
-  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
     int x0 = id / KN, x1 = (id + 1) / KN;
     int y0 = id % KN / N, y1 = (id + 1) % KN / N;
     int z0 = id % N, z1 = (id + 1) % N;
@@ -557,13 +560,14 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                               const InT* zero_point_ptr, CUDA_LONG num_element) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
 
   OutT scale = *scale_ptr;
   int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
   int i = 0, v0, v1;
+  constexpr int step = NumThreadsPerBlock << 1;
 #pragma unroll
-  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
     v0 = ExtractInt4FromByte(input[id >> 1], 0);
     v1 = ExtractInt4FromByte(input[id >> 1], 1);
     output[id] = static_cast<OutT>(v0 - zero_point) * scale;
@@ -598,14 +602,15 @@ template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThrea
 __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                                   const InT* zero_point_ptr, CUDA_LONG num_element,
                                                   size_t batch_size, size_t n_scales) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   // The scale needs to change every n_same_scale.
   CUDA_LONG n_same_scale = num_element / (batch_size * n_scales);
   int i = 0;
   int scale_id0, scale_id1, zp0, zp1, v0, v1;
+  constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
-  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
       scale_id0 = (id / n_same_scale) % n_scales;
       scale_id1 = ((id + 1) / n_same_scale) % n_scales;
 
@@ -633,12 +638,13 @@ __global__ void DequantizeLinearKernelBlockStdInt4(const InT* input, OutT* outpu
                                                    const InT* zero_point_ptr, CUDA_LONG num_element,
                                                    size_t KN, size_t N, size_t scale_KN, size_t block_size) {
   // Process continuous NumElementsPerThread int4 per thread.
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + NumElementsPerThread * threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   int i = 0;
+  constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
   // Process two elements which belong to one byte at a time.
-  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += 2) {
+  for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
     int x0 = id / KN, x1 = (id + 1) / KN;
     int y0 = id % KN / N, y1 = (id + 1) % KN / N;
     int z0 = id % N, z1 = (id + 1) % N;
