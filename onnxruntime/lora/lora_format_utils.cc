@@ -6,6 +6,10 @@
 
 #include "core/common/common.h"
 #include "core/common/span_utils.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/tensor.h"
 
 #include <fstream>
 
@@ -89,23 +93,25 @@ void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string
   fbs_tensor = CreateParameter(flat_builder, name_str, shape_vec, data_type, data_vec);
 }
 
-// std::pair<std::string, OrtValue> CreateOrtValueOverFlatBufferLoraParameter(
-// const Parameter& tensor) {
-// std::string name;
-// LoadStringFromLoraFormat(name, tensor.name());
+std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param) {
+  OrtValue result;
 
-// const auto data_type = tensor.data_type();
+  std::string name;
+  LoadStringFromLoraFormat(name, param.name());
 
-// gsl::span<const int64_t> shape_span(tensor.dims()->data(), tensor.dims()->size());
+  const auto data_type = param.data_type();
+  gsl::span<const int64_t> shape_span(param.dims()->data(), param.dims()->size());
 
-// auto mem_info = OrtMemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-// auto ort_value =
-// OrtValue::CreateTensor(*mem_info, const_cast<uint8_t*>(tensor.raw_data()->data()),
-// static_cast<size_t>(tensor.raw_data()->size()), shape_span,
-// static_cast<ONNXTensorElementDataType>(data_type));
-// return std::make_pair(std::move(name), std::move(ort_value));
-// }
+  OrtMemoryInfo cpu_meminfo(CPU, OrtAllocatorType::OrtDeviceAllocator);
 
+  Tensor::InitOrtValue(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(),
+                       TensorShape(shape_span),
+                       const_cast<uint8_t*>(param.raw_data()->data()),
+                       cpu_meminfo,
+                       result);
+
+  return std::make_pair(std::move(name), std::move(result));
+}
 }  // namespace utils
 }  // namespace lora
 }  // namespace onnxruntime

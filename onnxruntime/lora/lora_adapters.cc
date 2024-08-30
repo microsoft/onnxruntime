@@ -40,5 +40,13 @@ size_t BinaryFormatHolder::GetSize() const {
 
 }  // namespace details
 
+void LoraAdapter::Load(const std::filesystem::path& file_path) {
+  binary_format_holder_.Load(file_path);
+}
+
+void LoraAdapter::MemoryMap(const std::filesystem::path& file_path) {
+  binary_format_holder_.MemoryMap(file_path);
+}
+
 }  // namespace lora
 }  // namespace onnxruntime

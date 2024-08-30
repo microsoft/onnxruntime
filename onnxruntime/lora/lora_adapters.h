@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/ort_value.h"
+
+#include "lora/lora_format_utils.h"
 
 #include <filesystem>
 #include <string>
@@ -43,7 +46,7 @@ class BinaryFormatHolder {
   void MemoryMap(const std::filesystem::path& file_path);
 
   // Get Flatbuffer object pointer
-  const Adapter* GetParameters() const noexcept { return adapter_; }
+  const Adapter* GetBinaryAdapter() const noexcept { return adapter_; }
 
   // Get the size of the buffer
   size_t GetSize() const;
@@ -62,7 +65,7 @@ class BinaryFormatHolder {
   };
 
   std::variant<MemMapHolder, BufferHolder> buffer_;
-  const Adapter* adapter_;
+  const Adapter* adapter_{nullptr};
 };
 
 /// <summary>
@@ -77,6 +80,42 @@ struct LoraParam {
 };
 
 }  // namespace details
+
+/// <summary>
+/// Container to hold and access Lora Parameters
+/// </summary>
+class LoraAdapter {
+ public:
+  LoraAdapter() = default;
+  LoraAdapter(const LoraAdapter&) = delete;
+  LoraAdapter& operator=(const LoraAdapter&) = delete;
+  ~LoraAdapter() = default;
+
+  LoraAdapter(LoraAdapter&&) = default;
+  LoraAdapter& operator=(LoraAdapter&&) = default;
+
+  /// <summary>
+  /// Load parameters into memory from an adapter file and validates its format.
+  /// </summary>
+  /// <param name="file_name">file name that can be opened</param>
+  void Load(const std::filesystem::path& file_path);
+
+  /// <summary>
+  /// Memory maps adapter file into memory and validates its format.
+  /// </summary>
+  /// <param name="file_name"></param>
+  void MemoryMap(const std::filesystem::path& file_path);
+
+  template <class NamesOutputIter, class TensorOutputIter>
+  void OutputAdaptersParameters(NamesOutputIter names_out,
+                                TensorOutputIter params_out) {
+    const auto* adapter = binary_format_holder_.GetBinaryAdapter();
+    utils::OutputAdaptersParameters(*adapter, names_out, params_out);
+  }
+
+ private:
+  details::BinaryFormatHolder binary_format_holder_;
+};
 
 }  // namespace lora
 }  // namespace onnxruntime
