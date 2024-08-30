@@ -219,18 +219,6 @@ Status WebGpuContext::Run(const ComputeContext& /*context*/, const ProgramBase& 
 #endif
   }
 
-  std::vector<WGPUBuffer> input_buffers;
-  input_buffers.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    input_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
-  }
-
-  std::vector<WGPUBuffer> output_buffers;
-  output_buffers.reserve(outputs.size());
-  for (const auto& output : outputs) {
-    output_buffers.push_back(reinterpret_cast<WGPUBuffer>(output->MutableDataRaw()));
-  }
-
   WGPUBuffer uniform_buffer = nullptr;
   auto uniform_buffer_size = program_artifact->uniform_total_size;
   if (uniform_buffer_size > 0) {
