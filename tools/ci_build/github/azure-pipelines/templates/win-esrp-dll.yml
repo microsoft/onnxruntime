@@ -72,7 +72,7 @@ steps:
       Write-Host "FolderPath: ${{ parameters.FolderPath }}"
       Write-Host "Pattern(s): ${{ parameters.Pattern }}"
 
-      if ($null -eq ${{ parameters.Pattern }} -Or ${{ parameters.Pattern }} -eq "")
+      if ("${{ parameters.Pattern }}" -eq "")
       {
           Write-Host "Pattern is empty."
           exit 0
