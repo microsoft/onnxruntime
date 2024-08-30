@@ -1800,4 +1800,4 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   endif()
 endif()
 
-include(onnxruntime_fuzz_test.cmake)
+include(${REPO_ROOT}/cmake/onnxruntime_fuzz_test.cmake)
