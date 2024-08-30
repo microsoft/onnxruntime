@@ -3,9 +3,11 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/common.h"
+#endif
 
 namespace onnxruntime {
 namespace utils {

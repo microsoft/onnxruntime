@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/utils.h"
-
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+
+#include "core/providers/utils.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -51,7 +51,7 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   const auto& rhs_shape = rhs_tensor->Shape();
 
   TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(utils::ComputeOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));
+  ORT_RETURN_IF_ERROR(utils::ComputeBroadcastOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));
   auto output_tensor = context->Output(0, output_shape);
 
   ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, p));
