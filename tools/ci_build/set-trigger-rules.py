@@ -50,12 +50,12 @@ def add_trigger_filter(file_name, trigger_lines):
         lines = f.readlines()
 
     start_marker = f"##### start trigger Don't edit it manually, Please do edit {os.path.basename(__file__)} ####"
-    end_marker = f"#### end trigger ####\n"
+    end_marker = "#### end trigger ####\n"
     reminder = f"### please do rerun {os.path.basename(__file__)} ###"
     trigger_lines.insert(0, f"{reminder}\n")
 
     if lines[0].startswith(start_marker):
-        for i in range(1, len(lines) + 1):
+        for i in range(1, len(lines)):
             if lines[i].startswith(end_marker):
                 lines[1:i] = trigger_lines
                 break
