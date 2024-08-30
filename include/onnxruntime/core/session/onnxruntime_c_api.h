@@ -304,6 +304,7 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(LoraAdapter);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -4670,6 +4671,37 @@ struct OrtApi {
                   _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
                   _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
                   size_t num_external_initializer_files);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function attempts to locate file specified by adapter_file_path, read it and create an OrtLoraAdapter
+   * instance. The adapter_file_path should be a valid absolute path to a file that contains a valid Lora Adapter
+   * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
+   * the platform does not support memory mapping, in which case the file will be read into memory.
+   *
+   * \param[in] adapter_file_path Absolute file path to the adapter file.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   */
+  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
+   */
+  ORT_CLASS_RELEASE(LoraAdapter);
+
+
+  /** \brief Set the active Lora Adapter for the run options
+   *
+   * The function sets the active Lora Adapter for the run options. The Lora Adapter must be created with
+   * OrtApi::CreateLoraAdapter. The Lora Adapter will be used by the session to run the model.
+   * The instance of the OrtRunOptions will then can be used to customize the OrtSession::Run() calls.
+   * More than one OrtLoraAdapter can be set active at the same time. Lora Parameters that belong to difference
+   * Lora adapters that will be active at the same time must not overlap.
+   *
+   * \param[in] options OrtRunOptions instance
+   * \param[in] adapter OrtLoraAdapter instance
+   */
+  ORT_API2_STATUS(RunOptionsSetActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 };
 
 /*

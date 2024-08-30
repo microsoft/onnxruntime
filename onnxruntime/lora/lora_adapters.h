@@ -25,14 +25,22 @@ class BinaryFormatHolder {
   BinaryFormatHolder() = default;
   BinaryFormatHolder(const BinaryFormatHolder&) = delete;
   BinaryFormatHolder& operator=(const BinaryFormatHolder&) = delete;
+  ~BinaryFormatHolder();
+
+  BinaryFormatHolder(BinaryFormatHolder&&) = default;
+  BinaryFormatHolder& operator=(BinaryFormatHolder&&) = default;
 
   /// <summary>
-  /// Load parameters from a flatbuffer file.
+  /// Load parameters from an adapter file and validates its format.
   /// </summary>
   /// <param name="file_name">file name that can be opened</param>
   void Load(const std::filesystem::path& file_path);
 
-  void MemoryMapFile(const std::string& file_name);
+  /// <summary>
+  /// Memory maps adapter file into memory and validates its format.
+  /// </summary>
+  /// <param name="file_name"></param>
+  void MemoryMap(const std::filesystem::path& file_path);
 
   // Get Flatbuffer object pointer
   const Adapter* GetParameters() const noexcept { return adapter_; }
