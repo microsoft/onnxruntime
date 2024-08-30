@@ -146,9 +146,9 @@ to test, find the "onnx_test_runner.exe" in your build folder. run it like:
 onnx_test_runner.exe -v -e webgpu -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```
 
-> Assume C:\code\onnxruntime is the root of your onnxruntime repo
+> Assume `C:\code\onnxruntime` is the root of your onnxruntime repo
 >
-> if it does not exist, run the following in your onnxruntime repo root:
+> if folder `C:\code\onnxruntime\js\test\data` does not exist, run the following in your onnxruntime repo root:
 > ```
 > cd js
 > npm ci

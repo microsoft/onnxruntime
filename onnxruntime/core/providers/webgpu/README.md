@@ -4,11 +4,14 @@ This folder is for the WebGPU execution provider(WebGPU EP). Currently, WebGPU E
 
 ## Build WebGPU EP
 
-Just append `--use_webgpu --skip_tests` to the `build.bat` command line.
+Just append `--use_webgpu --skip_tests` to the `build.bat`/`build.sh` command line.
 
 NOTE: `--skip_tests` is required for now. All existing tests are for CPU EP anyway so no need to run them.
 
-Currently only works on Windows.
+For linux, a few dependencies need to be installed:
+```sh
+apt-get install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libx11-dev libx11-xcb-dev
+```
 
 ## Troubleshooting
 
