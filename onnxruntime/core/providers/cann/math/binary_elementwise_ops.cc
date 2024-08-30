@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cann/math/binary_elementwise_ops.h"
+#include "core/providers/utils.h"
 #include <vector>
 #include <algorithm>
 #include <string>
@@ -20,7 +21,7 @@ Status BinaryElementwise::Prepare(OpKernelContext* ctx, CannPreparation& prepare
   const Tensor* B = ctx->Input<Tensor>(1);
 
   TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), A->Shape(), B->Shape(), output_shape));
+  ORT_RETURN_IF_ERROR(utils::ComputeBroadcastOutputShape(Node().Name(), A->Shape(), B->Shape(), output_shape));
   Tensor* C = ctx->Output(0, output_shape);
 
   void* A_data = const_cast<void*>(A->DataRaw());

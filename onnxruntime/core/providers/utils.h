@@ -20,5 +20,14 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
 ///   e.g. a scale of 0.5 is 1/2, the reciprocal is 2, and 2 is a factor of any even number.
 /// </summary>
 bool ReciprocalIsAFactorOfN(int64_t n, float scale);
+
+/// <summary>
+/// Compute the output shape for broadcasting the given input shapes of lhs and rhs.
+/// </summary>
+common::Status ComputeBroadcastOutputShape(const std::string& node_name,
+                                           const TensorShape& lhs_shape,
+                                           const TensorShape& rhs_shape,
+                                           TensorShape& out_shape);
+
 }  // namespace utils
 }  // namespace onnxruntime
