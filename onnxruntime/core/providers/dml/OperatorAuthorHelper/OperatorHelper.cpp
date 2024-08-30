@@ -633,11 +633,6 @@ namespace OperatorHelper
             std::rotate(newStrides.begin(), newStrides.begin() + 1, newStrides.end() - 1);
         }
 
-        if (transpose && dimensionCount > 1)
-        {
-            std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
-            std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
-        }
 
         return std::make_pair(newSizes, newStrides);
     }

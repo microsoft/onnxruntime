@@ -67,8 +67,8 @@ public:
         gemmDesc.BTensor = &inputDescs[1];
         gemmDesc.CTensor = nullptr;
         gemmDesc.OutputTensor = &outputDescs[0];
-        gemmDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
-        gemmDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
+        gemmDesc.TransA = (transA ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
+        gemmDesc.TransB = (transB ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
         gemmDesc.Alpha = alpha;
         gemmDesc.Beta = 0.0f;
         gemmDesc.FusedActivation = fusedActivation ? &fusedActivationDmlDesc : nullptr;
