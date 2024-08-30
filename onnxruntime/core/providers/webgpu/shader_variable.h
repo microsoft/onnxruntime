@@ -140,7 +140,7 @@ class ShaderVariable {
 
   std::string name_;
   ProgramVariableDataType type_;
-  size_t rank_;
+  int rank_;
   TensorShape dims_;
 
   mutable Usage usage_;
