@@ -552,6 +552,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
+#ifdef USE_WEBGPU
+    session_options.AppendExecutionProvider(
+        "WebGPU", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
+#else
+    ORT_THROW("WebGpu is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
 #ifdef _MSC_VER

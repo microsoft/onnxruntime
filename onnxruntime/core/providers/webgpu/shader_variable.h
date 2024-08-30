@@ -131,7 +131,7 @@ class ShaderVariable {
   void Init();
   void Impl(std::ostringstream& ss);
 
-  std::string ShaderVariable::GetByOffsetImpl(const std::string& offset) const;
+  std::string GetByOffsetImpl(const std::string& offset) const;
   std::string SetByOffsetImpl(const std::string& offset, const std::string& value) const;
 
   std::string_view StorageType() const;
@@ -140,7 +140,7 @@ class ShaderVariable {
 
   std::string name_;
   ProgramVariableDataType type_;
-  int rank_;
+  size_t rank_;
   TensorShape dims_;
 
   mutable Usage usage_;

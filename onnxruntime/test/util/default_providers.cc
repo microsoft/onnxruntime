@@ -301,6 +301,14 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
+#ifdef USE_WEBGPU
+  return WebGpuProviderFactoryCreator::Create(nullptr)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
