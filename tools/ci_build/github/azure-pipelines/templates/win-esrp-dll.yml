@@ -87,7 +87,7 @@ steps:
       {
           Write-Host "Validating pattern:" $pattern
 
-          $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name
+          $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name -Recurse -Force
 
           foreach($file in $file_names)
           {
