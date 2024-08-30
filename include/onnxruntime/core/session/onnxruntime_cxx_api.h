@@ -508,6 +508,7 @@ ORT_DEFINE_RELEASE(CustomOpDomain);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(RunOptions);
+ORT_DEFINE_RELEASE(LoraAdapter);
 ORT_DEFINE_RELEASE(Session);
 ORT_DEFINE_RELEASE(SessionOptions);
 ORT_DEFINE_RELEASE(TensorTypeAndShapeInfo);
@@ -736,6 +737,15 @@ struct CustomOpDomain : detail::Base<OrtCustomOpDomain> {
   void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
 };
 
+/// \brief LoraAdapter holds a set of Lora Parameters loaded from a single file
+struct LoraAdapter : detail::Base<OrtLoraAdapter> {
+  /// \brief Wraps OrtApi::CreateLoraAdapter
+  /// 
+  /// The function attempts to load the adapter from the specified file
+  /// \param absolute_adapter_path The absolute path to the Lora adapter
+  explicit LoraAdapter(const std::basic_string<ORTCHAR_T>& absolute_adapter_path);
+};
+
 /** \brief RunOptions
  *
  */
@@ -766,6 +776,8 @@ struct RunOptions : detail::Base<OrtRunOptions> {
    * Wraps OrtApi::RunOptionsUnsetTerminate
    */
   RunOptions& UnsetTerminate();
+
+  RunOptions& SetLoraAdapterActive(const LoraAdapter& adapter);
 };
 
 namespace detail {
