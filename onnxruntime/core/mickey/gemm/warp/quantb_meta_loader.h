@@ -37,12 +37,12 @@ void weightsMinuEight2Half(uint32_t const &weights,
   //
   // For element 0, 1, 4, 5, we have 0x000?000?, set the high bits
   // to 0x6400, essentially we set the exponent bits to 25, effective
-  // exp = 25 - 15 = 10, with explicity hight bit, the value is
+  // exp = 25 - 15 = 10, with explicitly hight bit, the value is
   //   2^10 + q_w.
   //
   // Similarly for element 2, 3, 6, 7, we have 0x00?000?, set the
   // high bits to 0x5400, essentially we set the exponent bits to 21,
-  // effective exp = 21 - 15 = 6, with explicity hight bit, the value
+  // effective exp = 21 - 15 = 6, with explicitly hight bit, the value
   // is 2^6 + q_w.
   //
   // 1.125 instruction per weight, 9 instructions in total.
@@ -86,12 +86,12 @@ void weights2Half([[maybe_unused]] uint32_t const &weights,
   //
   // For element 0, 1, 4, 5, we have 0x000?000?, set the high bits
   // to 0x6400, essentially we set the exponent bits to 25, effective
-  // exp = 25 - 15 = 10, with explicity hight bit, the value is
+  // exp = 25 - 15 = 10, with explicitly hight bit, the value is
   //   2^10 + q_w.
   //
   // Similarly for element 2, 3, 6, 7, we have 0x00?000?, set the
   // high bits to 0x5400, essentially we set the exponent bits to 21,
-  // effective exp = 21 - 15 = 6, with explicity hight bit, the value
+  // effective exp = 21 - 15 = 6, with explicitly hight bit, the value
   // is 2^6 + q_w.
   //
   // 1.125 instruction per weight, 9 instructions in total.

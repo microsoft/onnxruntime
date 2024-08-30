@@ -35,18 +35,21 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   if (op_type == "Add") {
-    output = model_builder.GetBuilder().call<emscripten::val>("add", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("add", input0, input1, options);
   } else if (op_type == "Sub") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sub", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("sub", input0, input1, options);
   } else if (op_type == "Mul") {
-    output = model_builder.GetBuilder().call<emscripten::val>("mul", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("mul", input0, input1, options);
   } else if (op_type == "Div") {
-    output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1, options);
   } else if (op_type == "Pow") {
-    output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1, options);
   } else if (op_type == "PRelu") {
-    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);

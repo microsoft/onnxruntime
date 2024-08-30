@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper } from './common';
 
 export interface EinsumAttributes extends AttributeWithCacheKey {
   readonly equation: string;
@@ -20,17 +20,16 @@ export interface EinsumAttributes extends AttributeWithCacheKey {
 // Each symbol corresponds to a dimension in the input variable. The symbol can be either a letter, 'a' to 'z' or 'A' to
 // 'Z' or '...' to represent arbitrary dimensions.
 
-const symbolPattern =
-    '[a-zA-Z]|\\.\\.\\.';  // The pattern each symbol in each term in the symbolic equation should match
-const termPattern = '(' + symbolPattern + ')+';   // The pattern each term in the symbolic equation should match
-const termPatternOnly = '^' + termPattern + '$';  // The patterns only matchs a term begin to end.
-const lhsPattern = '(' + termPattern + ',)*' + termPattern;  // The pattern the LHS should match
-const lhsPatternOnly = '^' + lhsPattern + '$';               // The patterns only matchs a LHS begin to end.
+const symbolPattern = '[a-zA-Z]|\\.\\.\\.'; // The pattern each symbol in each term in the symbolic equation should match
+const termPattern = '(' + symbolPattern + ')+'; // The pattern each term in the symbolic equation should match
+const termPatternOnly = '^' + termPattern + '$'; // The patterns only matchs a term begin to end.
+const lhsPattern = '(' + termPattern + ',)*' + termPattern; // The pattern the LHS should match
+const lhsPatternOnly = '^' + lhsPattern + '$'; // The patterns only matchs a LHS begin to end.
 
 interface SymbolInfo {
-  count: number;           // Symbol corresponding to a dimmension of an input
-  inputIndices: number[];  // Number of input variables the symbol corresponds to
-  dimValue: number;        // Number of dimensions the symbol corresponds to
+  count: number; // Symbol corresponding to a dimmension of an input
+  inputIndices: number[]; // Number of input variables the symbol corresponds to
+  dimValue: number; // Number of dimensions the symbol corresponds to
 }
 
 class EinsumTerm {
@@ -50,12 +49,15 @@ class EinsumTerm {
     this.symbolToIndices.set(symbol, value);
   }
 
-  symbolToIndices: Map<string, number[]>;  // Map from symbol to dimensions of the input corresponding to the term
-  inputIndex: number;                      // -1 for output and 0, 1, 2, ... for inputs
+  symbolToIndices: Map<string, number[]>; // Map from symbol to dimensions of the input corresponding to the term
+  inputIndex: number; // -1 for output and 0, 1, 2, ... for inputs
 }
 
 class EinsumEquation {
-  constructor(inputs: readonly TensorView[], public readonly equation: string) {
+  constructor(
+    inputs: readonly TensorView[],
+    public readonly equation: string,
+  ) {
     this.hasEllipsis = false;
     this.symbolToInfo = new Map<string, SymbolInfo>();
     this.lhs = new Array<EinsumTerm>();
@@ -80,9 +82,9 @@ class EinsumEquation {
     if (rhs === '') {
       // Construct RHS from LHS terms/symbols
       rhs += [...this.symbolToInfo.entries()]
-                 .filter(([sym, info]) => (info.count === 1 || sym === '...'))
-                 .map(([sym]) => sym)
-                 .join('');
+        .filter(([sym, info]) => info.count === 1 || sym === '...')
+        .map(([sym]) => sym)
+        .join('');
     } else {
       if (!rhs.match(RegExp(termPattern))) {
         throw new Error('Invalid RHS');
@@ -103,7 +105,7 @@ class EinsumEquation {
       }
     });
     this.rhs = this.processTerm(rhs, false, this.outputDims);
-  }  // End of EinsumEqation constructor
+  } // End of EinsumEqation constructor
 
   // Add a symbol to the equation
   addSymbol(symbol: string, dimValue: number, inputIndex: number) {
@@ -116,7 +118,7 @@ class EinsumEquation {
         info.inputIndices.push(inputIndex);
       }
     } else {
-      info = {count: 1, dimValue, inputIndices: [inputIndex]};
+      info = { count: 1, dimValue, inputIndices: [inputIndex] };
     }
     this.symbolToInfo.set(symbol, info);
   }
@@ -128,7 +130,7 @@ class EinsumEquation {
     let ellipsisDims = [];
     let nextDim = 0;
     // For output empty string is allowed because the output may be reduced to a scalar value
-    if (!term.match(RegExp(termPatternOnly)) && (!isInput && term !== '')) {
+    if (!term.match(RegExp(termPatternOnly)) && !isInput && term !== '') {
       throw new Error('Invalid LHS term');
     }
     const indexSymbols = term.match(RegExp(symbolPattern, 'g'));
@@ -146,8 +148,10 @@ class EinsumEquation {
         }
         ellipsisDims = dims.slice(nextDim, nextDim + ellipsisDimLength);
         if (this.hasEllipsis) {
-          if (this.ellipsisDims.length !== ellipsisDims.length ||
-              this.ellipsisDims.toString() !== ellipsisDims.toString()) {
+          if (
+            this.ellipsisDims.length !== ellipsisDims.length ||
+            this.ellipsisDims.toString() !== ellipsisDims.toString()
+          ) {
             throw new Error('Ellipsis dimensions mismatch');
           }
         } else if (isInput) {
@@ -170,92 +174,100 @@ class EinsumEquation {
     return einsumTerm;
   }
 
-  symbolToInfo: Map<string, SymbolInfo>;  // All symbols in the equation
-  hasEllipsis: boolean;                   // The equation has ellipsis or not
-  ellipsisDims: number[];                 // The dimensions of the equation ellipsis corresponds to.
-  lhs: EinsumTerm[];                      // Terms on the left-hand side of the equation
-  rhs: EinsumTerm;                        // Term on the right-hand side of the equation
-  outputDims: number[];                   // Output dimensions of the equation
-}  // End of class EinsumEquation
+  symbolToInfo: Map<string, SymbolInfo>; // All symbols in the equation
+  hasEllipsis: boolean; // The equation has ellipsis or not
+  ellipsisDims: number[]; // The dimensions of the equation ellipsis corresponds to.
+  lhs: EinsumTerm[]; // Terms on the left-hand side of the equation
+  rhs: EinsumTerm; // Term on the right-hand side of the equation
+  outputDims: number[]; // Output dimensions of the equation
+} // End of class EinsumEquation
 
 const appendMax = (name: string): string => name + '_max';
 
-const createEinsumProgramInfo =
-    (inputShapes: Array<readonly number[]>, dataType: number, einsumEquation: EinsumEquation,
-     outputShape: readonly number[]): ProgramInfo => {
-      const ranks = inputShapes.map((dims) => dims.length);
-      const inputVars = ranks.map((rank, index) => inputVariable(`input${index}`, dataType, rank));
-      const outputSize = ShapeUtil.size(outputShape);
-      const output = outputVariable('output', dataType, outputShape.length);
-      const uniformsSymbols =
-          [...einsumEquation.symbolToInfo.keys()].filter((symbol) => !einsumEquation.rhs.symbolToIndices.has(symbol));
-      const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const idxCopy: string[] = [];
-        const initProd = 'var prod = 1.0;';
-        const initSum = 'var sum = 0.0;';
-        const updateSum = 'sum += prod;';
-        const reduceOpsSetIndices: string[] = [];
-        const reduceOpsLoopHeaders: string[] = [];
-        const reduceOpsLoopFooters: string[] = [];
-        const reduceOpCompute: string[] = [];
-        const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === einsumEquation.rhs.symbolToIndices.size;
-        einsumEquation.symbolToInfo.forEach((info, symbol) => {
-          if (einsumEquation.rhs.symbolToIndices.has(symbol)) {
-            const outputIndex = einsumEquation.rhs.symbolToIndices.get(symbol)?.[0];
-            if (outputIndex !== undefined) {
-              einsumEquation.lhs.forEach((term, i) => {
-                if (info.inputIndices.includes(i)) {
-                  const indices = term.symbolToIndices.get(symbol);
-                  if (indices === undefined) {
-                    throw new Error('Invalid symbol error');
-                  }
-                  indices.forEach((index) => {
-                    idxCopy.push(`${
-                        inputVars[i].indicesSet(
-                            `input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
-                  });
-                }
+const createEinsumProgramInfo = (
+  inputShapes: Array<readonly number[]>,
+  dataType: number,
+  einsumEquation: EinsumEquation,
+  outputShape: readonly number[],
+): ProgramInfo => {
+  const ranks = inputShapes.map((dims) => dims.length);
+  const inputVars = ranks.map((rank, index) => inputVariable(`input${index}`, dataType, rank));
+  const outputSize = ShapeUtil.size(outputShape);
+  const output = outputVariable('output', dataType, outputShape.length);
+  const uniformsSymbols = [...einsumEquation.symbolToInfo.keys()].filter(
+    (symbol) => !einsumEquation.rhs.symbolToIndices.has(symbol),
+  );
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const idxCopy: string[] = [];
+    const initProd = 'var prod = 1.0;';
+    const initSum = 'var sum = 0.0;';
+    const updateSum = 'sum += prod;';
+    const reduceOpsSetIndices: string[] = [];
+    const reduceOpsLoopHeaders: string[] = [];
+    const reduceOpsLoopFooters: string[] = [];
+    const reduceOpCompute: string[] = [];
+    const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === einsumEquation.rhs.symbolToIndices.size;
+    einsumEquation.symbolToInfo.forEach((info, symbol) => {
+      if (einsumEquation.rhs.symbolToIndices.has(symbol)) {
+        const outputIndex = einsumEquation.rhs.symbolToIndices.get(symbol)?.[0];
+        if (outputIndex !== undefined) {
+          einsumEquation.lhs.forEach((term, i) => {
+            if (info.inputIndices.includes(i)) {
+              const indices = term.symbolToIndices.get(symbol);
+              if (indices === undefined) {
+                throw new Error('Invalid symbol error');
+              }
+              indices.forEach((index) => {
+                idxCopy.push(
+                  `${inputVars[i].indicesSet(
+                    `input${i}Indices`,
+                    index,
+                    output.indicesGet('outputIndices', outputIndex),
+                  )}`,
+                );
               });
             }
-          } else {
-            einsumEquation.lhs.forEach((term, i) => {
-              if (info.inputIndices.includes(i)) {
-                const indices = term.symbolToIndices.get(symbol);
-                if (indices === undefined) {
-                  throw new Error('Invalid symbol error');
-                }
-                indices.forEach((index) => {
-                  reduceOpsSetIndices.push(`${inputVars[i].indicesSet(`input${i}Indices`, index, `${symbol}`)}`);
-                });
-                reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
-              }
+          });
+        }
+      } else {
+        einsumEquation.lhs.forEach((term, i) => {
+          if (info.inputIndices.includes(i)) {
+            const indices = term.symbolToIndices.get(symbol);
+            if (indices === undefined) {
+              throw new Error('Invalid symbol error');
+            }
+            indices.forEach((index) => {
+              reduceOpsSetIndices.push(`${inputVars[i].indicesSet(`input${i}Indices`, index, `${symbol}`)}`);
             });
-            reduceOpsLoopHeaders.push(
-                `for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${appendMax(symbol)}; ${symbol}++) {`);
-            reduceOpsLoopFooters.push('}');
+            reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
           }
         });
-        const reduceOps = isReduceOpsWithoutLoop ?
-            [
-              ...idxCopy,
-              `let sum = ${inputVars.map((inputVar, i) => inputVar.getByIndices(`input${i}Indices`)).join(' * ')};`
-            ] :
-            [
-              ...idxCopy,
-              initSum,
-              ...reduceOpsLoopHeaders,
-              ...reduceOpsSetIndices,
-              initProd,
-              ...reduceOpCompute,
-              updateSum,
-              ...reduceOpsLoopFooters,
-            ];
-        return `
-            ${
-            shaderHelper
-                .registerUniforms(uniformsSymbols.map((symbol) => ({name: `${appendMax(symbol)}`, type: 'u32'})))
-                .registerUniform('outputSize', 'u32')
-                .declareVariables(...inputVars, output)}
+        reduceOpsLoopHeaders.push(
+          `for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${appendMax(symbol)}; ${symbol}++) {`,
+        );
+        reduceOpsLoopFooters.push('}');
+      }
+    });
+    const reduceOps = isReduceOpsWithoutLoop
+      ? [
+          ...idxCopy,
+          `let sum = ${inputVars.map((inputVar, i) => inputVar.getByIndices(`input${i}Indices`)).join(' * ')};`,
+        ]
+      : [
+          ...idxCopy,
+          initSum,
+          ...reduceOpsLoopHeaders,
+          ...reduceOpsSetIndices,
+          initProd,
+          ...reduceOpCompute,
+          updateSum,
+          ...reduceOpsLoopFooters,
+        ];
+    return `
+            ${shaderHelper
+              .registerUniforms(uniformsSymbols.map((symbol) => ({ name: `${appendMax(symbol)}`, type: 'u32' })))
+              .registerUniform('outputSize', 'u32')
+              .declareVariables(...inputVars, output)}
 
             ${shaderHelper.mainStart()}
             ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
@@ -264,32 +276,30 @@ const createEinsumProgramInfo =
             ${reduceOps.join('\n')};
             ${output.setByOffset('global_idx', 'sum')};
           }`;
-      };
+  };
+  return {
+    name: 'Einsum',
+    shaderCache: { hint: einsumEquation.equation, inputDependencies: inputShapes.map(() => 'rank') },
+    getRunData: () => {
+      // The symbols from uniformSymbols array are guaranteed to exist in einsumEquations.symbolToInfo map. The
+      // filter is added to make sure that dimValue is never 0.
+      const programUniformsInit: ProgramUniform[] = uniformsSymbols
+        .filter((symbol) => einsumEquation.symbolToInfo.has(symbol))
+        .map((symbol) => ({ type: DataType.uint32, data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0 }));
+      programUniformsInit.push({ type: DataType.uint32, data: outputSize });
+      const programUniforms: ProgramUniform[] = inputShapes
+        .map((dims, _) => [...createTensorShapeVariables(dims)])
+        .reduce((acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), programUniformsInit);
+      programUniforms.push(...createTensorShapeVariables(outputShape));
       return {
-        name: 'Einsum',
-        shaderCache: {hint: einsumEquation.equation, inputDependencies: inputShapes.map(() => 'rank')},
-        getRunData: () => {
-          // The symbols from uniformSymbols array are guaranteed to exist in einsumEquations.symbolToInfo map. The
-          // filter is added to make sure that dimValue is never 0.
-          const programUniformsInit: ProgramUniform[] =
-              uniformsSymbols.filter((symbol) => einsumEquation.symbolToInfo.has(symbol))
-                  .map(
-                      (symbol) =>
-                          ({type: DataType.uint32, data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0}));
-          programUniformsInit.push({type: DataType.uint32, data: outputSize});
-          const programUniforms: ProgramUniform[] =
-              inputShapes.map((dims, _) => [...createTensorShapeVariables(dims)])
-                  .reduce((acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), programUniformsInit);
-          programUniforms.push(...createTensorShapeVariables(outputShape));
-          return ({
-            outputs: [{dims: outputShape, dataType}],
-            dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-            programUniforms
-          });
-        },
-        getShaderSource,
+        outputs: [{ dims: outputShape, dataType }],
+        dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+        programUniforms,
       };
-    };
+    },
+    getShaderSource,
+  };
+};
 
 export const einsum = (context: ComputeContext, attributes: EinsumAttributes): void => {
   const einsumEquation = new EinsumEquation(context.inputs, attributes.equation);
@@ -300,5 +310,5 @@ export const einsum = (context: ComputeContext, attributes: EinsumAttributes): v
 
 export const parseEinsumAttributes = (attributes: Record<string, unknown>): EinsumAttributes => {
   const equation = (attributes.equation as string).replace(/\s+/g, '');
-  return createAttributeWithCacheKey({equation});
+  return createAttributeWithCacheKey({ equation });
 };

@@ -141,12 +141,12 @@ struct TensorRuntimeClassID<double> {
   static const wchar_t* RuntimeClass_ID;
 };
 
-__declspec(selectany
-) const wchar_t* TensorRuntimeClassID<float>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorFloat;
+__declspec(selectany) const wchar_t* TensorRuntimeClassID<float>::RuntimeClass_ID =
+  RuntimeClass_Windows_AI_MachineLearning_TensorFloat;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<float16>::RuntimeClass_ID =
   RuntimeClass_Windows_AI_MachineLearning_TensorFloat16Bit;
-__declspec(selectany
-) const wchar_t* TensorRuntimeClassID<int8_t>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorInt8Bit;
+__declspec(selectany) const wchar_t* TensorRuntimeClassID<int8_t>::RuntimeClass_ID =
+  RuntimeClass_Windows_AI_MachineLearning_TensorInt8Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint8_t>::RuntimeClass_ID =
   RuntimeClass_Windows_AI_MachineLearning_TensorUInt8Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint16_t>::RuntimeClass_ID =
@@ -161,10 +161,10 @@ __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint64_t>::RuntimeClas
   RuntimeClass_Windows_AI_MachineLearning_TensorUInt64Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<int64_t>::RuntimeClass_ID =
   RuntimeClass_Windows_AI_MachineLearning_TensorInt64Bit;
-__declspec(selectany
-) const wchar_t* TensorRuntimeClassID<bool>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorBoolean;
-__declspec(selectany
-) const wchar_t* TensorRuntimeClassID<double>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorDouble;
+__declspec(selectany) const wchar_t* TensorRuntimeClassID<bool>::RuntimeClass_ID =
+  RuntimeClass_Windows_AI_MachineLearning_TensorBoolean;
+__declspec(selectany) const wchar_t* TensorRuntimeClassID<double>::RuntimeClass_ID =
+  RuntimeClass_Windows_AI_MachineLearning_TensorDouble;
 
 template <typename T>
 struct TensorFactory {};
@@ -319,30 +319,30 @@ struct TensorFactoryIID<double> {
   static const GUID IID;
 };
 
-__declspec(selectany
-) const GUID TensorFactoryIID<float>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorFloatStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<float16>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorFloat16BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<int8_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt8BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<uint8_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt8BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<uint16_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt16BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<int16_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt16BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<uint32_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt32BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<int32_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt32BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<uint64_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt64BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<int64_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt64BitStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<bool>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorBooleanStatics;
-__declspec(selectany
-) const GUID TensorFactoryIID<double>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorDoubleStatics;
+__declspec(selectany) const GUID TensorFactoryIID<float>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorFloatStatics;
+__declspec(selectany) const GUID TensorFactoryIID<float16>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorFloat16BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<int8_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt8BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<uint8_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt8BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<uint16_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt16BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<int16_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt16BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<uint32_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt32BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<int32_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt32BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<uint64_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt64BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<int64_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt64BitStatics;
+__declspec(selectany) const GUID TensorFactoryIID<bool>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorBooleanStatics;
+__declspec(selectany) const GUID TensorFactoryIID<double>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorDoubleStatics;
 
 template <typename T>
 struct TensorFactory2IID {};
@@ -395,30 +395,30 @@ struct TensorFactory2IID<double> {
   static const GUID IID;
 };
 
-__declspec(selectany
-) const GUID TensorFactory2IID<float>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorFloatStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<float16>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorFloat16BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<int8_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt8BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<uint8_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt8BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<uint16_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt16BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<int16_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt16BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<uint32_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt32BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<int32_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt32BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<uint64_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorUInt64BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<int64_t>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorInt64BitStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<bool>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorBooleanStatics2;
-__declspec(selectany
-) const GUID TensorFactory2IID<double>::IID = ABI::Windows::AI::MachineLearning::IID_ITensorDoubleStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<float>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorFloatStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<float16>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorFloat16BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<int8_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt8BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<uint8_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt8BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<uint16_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt16BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<int16_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt16BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<uint32_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt32BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<int32_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt32BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<uint64_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorUInt64BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<int64_t>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorInt64BitStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<bool>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorBooleanStatics2;
+__declspec(selectany) const GUID TensorFactory2IID<double>::IID =
+  ABI::Windows::AI::MachineLearning::IID_ITensorDoubleStatics2;
 
 inline HRESULT GetActivationFactory(const wchar_t* p_class_id, const IID& iid, void** factory) noexcept {
   // Fallback to OS binary if the redistributable is not present!

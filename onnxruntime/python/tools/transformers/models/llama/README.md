@@ -27,8 +27,6 @@ Please note the package versions needed for using LLaMA-2 in the `requirements.t
   - Note that `torch` with CUDA enabled is not installed automatically. This is because `torch` should be installed with the CUDA version used on your machine. Please visit [the PyTorch website](https://pytorch.org/get-started/locally/) to download the `torch` version that is used with the CUDA version installed on your machine and satisfies the requirement listed in the file.
 - `requirements-quant.txt`
   - For running the SmoothQuant algorithm using [Intel's Neural Compressor](https://github.com/intel/neural-compressor)
-- `requirements-70b-model.txt`
-  - For running the LLaMA-2 70B model on multiple GPUs
 - `requirements.txt`
   - Package versions needed in each of the above files
 
@@ -221,18 +219,6 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-cpu --precision int4 --quantization_method blockwise --execution_provider cpu --use_gqa
 ```
 
-Export LLaMA-2 70B sharded model into 4 partitions
-```
-# From source:
-# 1. Install necessary packages from requirements-70b-model.txt
-$ pip install -r requirements-70b-model.txt
-
-# 2. Build ONNX Runtime from source with NCCL enabled. Here is a sample command:
-$ ./build.sh --config Release --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
-
-# 3. Shard and export the LLaMA-2 70B model. With FP16, you will need at least 140GB of GPU memory to load the model. Therefore, you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
-$ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-distributed --precision fp16 --execution_provider cuda --use_gqa
-```
 
 ## Parity Checking LLaMA-2
 
@@ -395,18 +381,6 @@ CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-9. ONNX Runtime, FP16, convert_to_onnx, LLaMA-2 70B shard to 4 GPUs
-```
-CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
-    --benchmark-type ort-convert-to-onnx \
-    --ort-model-path ./llama2-70b-dis/rank_{}_Llama-2-70b-hf_decoder_merged_model_fp16.onnx \
-    --model-name meta-llama/Llama-2-70b-hf \
-    --cache-dir ./model_cache \
-    --precision fp16 \
-    --device cuda \
-    --warmup-runs 5 \
-    --num-runs 100
-```
 
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
 

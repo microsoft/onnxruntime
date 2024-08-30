@@ -62,7 +62,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.23.0.240531
+  default: 2.25.0.240728
 
 resources:
   repositories:
@@ -83,7 +83,7 @@ variables:
   value: 11.8
 
 - name: win_trt_home
-  value: $(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8
+  value: $(Agent.TempDirectory)\TensorRT-10.3.0.26.Windows10.x86_64.cuda-11.8
 - name: win_cuda_home
   value: $(Agent.TempDirectory)\v11.8
 
@@ -112,17 +112,6 @@ stages:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
-- template: templates/ondevice-training-cpu-packaging-pipeline.yml
-  parameters:
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Training'
-    AdditionalBuildFlags: '--enable_training_apis'
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
-    BuildVariant: 'default'
-
 - template: stages/java-cuda-packaging-stage.yml
   parameters:
     CudaVersion: 11.8
@@ -133,7 +122,6 @@ stages:
   parameters:
       DoCompliance: ${{ parameters.DoCompliance }}
       CudaVersion: 11.8
-      docker_base_image: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
       RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
       UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       win_trt_home: ${{ variables.win_trt_home }}

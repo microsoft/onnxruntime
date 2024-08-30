@@ -36,6 +36,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   NodeAttrHelper helper(node);
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   if (op_type == "Elu") {
     options.set("alpha", helper.Get("alpha", 1.0f));
     output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
@@ -46,20 +47,20 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     options.set("beta", helper.Get("beta", 0.5f));
     output = model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", input, options);
   } else if (op_type == "HardSwish") {
-    output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input, options);
   } else if (op_type == "LeakyRelu") {
     options.set("alpha", helper.Get("alpha", 0.0f));
     output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
   } else if (op_type == "Relu") {
-    output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("relu", input, options);
   } else if (op_type == "Sigmoid") {
-    output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input, options);
   } else if (op_type == "Softplus") {
-    output = model_builder.GetBuilder().call<emscripten::val>("softplus", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("softplus", input, options);
   } else if (op_type == "Softsign") {
-    output = model_builder.GetBuilder().call<emscripten::val>("softsign", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("softsign", input, options);
   } else if (op_type == "Tanh") {
-    output = model_builder.GetBuilder().call<emscripten::val>("tanh", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("tanh", input, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);

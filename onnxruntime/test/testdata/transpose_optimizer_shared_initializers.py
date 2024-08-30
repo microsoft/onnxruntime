@@ -59,7 +59,7 @@ def create_model_with_Where():  # noqa 'Where' is the operator name
     initializer and other usage. We need to use Where as we require more than 2 inputs.
     The `condition` input will be having a Transpose pushed through it will have a negative cost.
     The `X` input will have a positive cost which cancels out the negative value.
-    The `Y` input will be a shared initializer that is braodcast. If we don't find the Transpose to make the cost of it
+    The `Y` input will be a shared initializer that is broadcast. If we don't find the Transpose to make the cost of it
     negative we will not push the Transpose though.
 
     If we only have 2 inputs, the broadcast initializer will always cost less due to its smaller rank, meaning we don't

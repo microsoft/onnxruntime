@@ -256,7 +256,7 @@ def _generate_type_control_overrides(ort_root: Path, build_dir: Path, cpp_lines:
         inserted = False
         with open(src) as input, open(target, "w") as output:
             inside_insertion_block = False
-            for line in input.readlines():
+            for line in input:
                 if "@@insertion_point_begin(allowed_types)@@" in line:
                     inside_insertion_block = True
                     output.write(line)

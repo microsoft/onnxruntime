@@ -177,6 +177,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -188,7 +189,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -213,6 +216,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -224,7 +228,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -247,6 +253,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -258,7 +265,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {
@@ -283,6 +292,7 @@
                     "properties": {
                       "type": {
                         "enum": [
+                          "float16",
                           "float32",
                           "float64",
                           "int8",
@@ -294,7 +304,9 @@
                           "uint32",
                           "uint64",
                           "bool",
-                          "string"
+                          "string",
+                          "int4",
+                          "uint4"
                         ]
                       },
                       "data": {

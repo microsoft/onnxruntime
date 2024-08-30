@@ -107,12 +107,9 @@ stages:
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        pushd $(Build.BinariesDirectory)/artifacts_staging
-        zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        pushd $(Build.BinariesDirectory)/ios_framework/framework_out
+        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
+          onnxruntime.xcframework
         popd
       displayName: "Build Apple xcframework"
 
@@ -364,6 +361,8 @@ stages:
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
       displayName: 'List artifacts'
 
+    - template: set-version-number-variables-step.yml
+
     # Reconstruct the build dir
     - task: PowerShell@2
       displayName: 'Extract native libraries for addition to nuget native package'
@@ -403,7 +402,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -493,6 +492,9 @@ stages:
   - Linux_C_API_Packaging_CPU
   - Linux_C_API_Packaging_GPU
   - MacOS_C_API_Package_Publish
+  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job: Nodejs_Packaging

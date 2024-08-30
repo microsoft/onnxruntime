@@ -71,7 +71,7 @@ def write_json(models):
 def main():
     links = []
     with open("links.txt") as fh:
-        links = [link.rstrip() for link in fh.readlines()]
+        links = [link.rstrip() for link in fh]
 
     model_list = []
     for link in links:

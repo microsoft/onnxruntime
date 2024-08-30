@@ -33,16 +33,18 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   if (op_type == "Equal") {
-    output = model_builder.GetBuilder().call<emscripten::val>("equal", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("equal", input0, input1, options);
   } else if (op_type == "Greater") {
-    output = model_builder.GetBuilder().call<emscripten::val>("greater", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("greater", input0, input1, options);
   } else if (op_type == "GreaterOrEqual") {
-    output = model_builder.GetBuilder().call<emscripten::val>("greaterOrEqual", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("greaterOrEqual", input0, input1, options);
   } else if (op_type == "Less") {
-    output = model_builder.GetBuilder().call<emscripten::val>("lesser", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("lesser", input0, input1, options);
   } else if (op_type == "LessOrEqual") {
-    output = model_builder.GetBuilder().call<emscripten::val>("lesserOrEqual", input0, input1);
+    output = model_builder.GetBuilder().call<emscripten::val>("lesserOrEqual", input0, input1, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "LogicalOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);

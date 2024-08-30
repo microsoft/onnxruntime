@@ -4,8 +4,8 @@
 import * as base64 from 'base64-js';
 import * as fs from 'node:fs/promises';
 
-import {Attribute} from '../lib/onnxjs/attribute';
-import {Graph} from '../lib/onnxjs/graph';
+import { Attribute } from '../lib/onnxjs/attribute';
+import { Graph } from '../lib/onnxjs/graph';
 
 export function base64toBuffer(data: string): Uint8Array {
   return base64.toByteArray(data);
@@ -24,7 +24,7 @@ async function retry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 100): Prom
       if (retries-- === 0) {
         throw err;
       }
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
     // eslint-disable-next-line no-constant-condition
   } while (true);
@@ -54,13 +54,13 @@ export async function readJsonFile(file: string): Promise<any> {
  * create a single-node graph for unit test purpose
  */
 export function createMockGraph(opType: string, attributes: Attribute): Graph {
-  const node: Graph.Node = {name: '', opType, inputs: [], outputs: [], attributes};
+  const node: Graph.Node = { name: '', opType, inputs: [], outputs: [], attributes };
   return {
     getInputIndices: () => [],
     getInputNames: () => [],
     getOutputIndices: () => [],
     getOutputNames: () => [],
     getNodes: () => [node],
-    getValues: () => []
+    getValues: () => [],
   };
 }

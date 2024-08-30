@@ -55,8 +55,15 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val sizes = emscripten::val::array();
   sizes.call<void>("push", slice_length);
 
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
+
   // Since WebNN doesn't support Shape op, we use constant + slice ops as workaround.
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice", shape_constant, starts, sizes);
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("slice",
+                                                                            shape_constant,
+                                                                            starts,
+                                                                            sizes,
+                                                                            options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
