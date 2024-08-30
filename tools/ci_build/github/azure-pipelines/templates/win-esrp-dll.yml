@@ -70,26 +70,34 @@ steps:
     targetType: 'inline'
     script: |
       Write-Host "FolderPath: ${{ parameters.FolderPath }}"
+      Write-Host "Pattern(s): ${{ parameters.Pattern }}"
 
       $valid_flag=$true
       $normal_sign_status="Valid"
 
-      $dll_file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\*.dll -Name
+      $patterns=${{ parameters.Pattern }} -split ','
 
-      foreach($file in $dll_file_names)
+      foreach($pattern in $patterns)
       {
-          $file_path=Join-Path ${{ parameters.FolderPath }} -ChildPath $file
-          $sign=Get-AuthenticodeSignature -FilePath $file_path
-          $sign_status=$sign.Status.ToString()
-          Write-Host "File:" $file
-          Write-Host "Signature Status:" $sign_status
-          if ($sign_status -ne $normal_sign_status)
+          Write-Host "Pattern:" $pattern
+
+          $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name
+
+          foreach($file in $file_names)
           {
-              Write-Host "File" $file "does not have valid signature."
-              Write-Host "Signature status:" $sign.status
-              Write-Host "Signature message:" $sign.StatusMessage
-              $valid_flag=$false
-              break
+              $file_path=Join-Path ${{ parameters.FolderPath }} -ChildPath $file
+              $sign=Get-AuthenticodeSignature -FilePath $file_path
+              $sign_status=$sign.Status.ToString()
+              Write-Host "File:" $file
+              Write-Host "Signature Status:" $sign_status
+              if ($sign_status -ne $normal_sign_status)
+              {
+                  Write-Host "File" $file "does not have valid signature."
+                  Write-Host "Signature status:" $sign.status
+                  Write-Host "Signature message:" $sign.StatusMessage
+                  $valid_flag=$false
+                  break
+              }
           }
       }
 
