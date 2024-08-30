@@ -21,27 +21,29 @@
 #include <sstream>
 #include <type_traits>
 
+#include "core/util/force_inline.h"
+
 namespace onnxruntime {
 
 namespace detail {
 
-inline void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
+ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
 }
 
 template <typename T>
-inline void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
+ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
   ss << t;
 }
 
 template <typename T, typename... Args>
-inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
+ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
   MakeStringImpl(ss, t);
   MakeStringImpl(ss, args...);
 }
 
 // see MakeString comments for explanation of why this is necessary
 template <typename... Args>
-inline std::string MakeStringImpl(const Args&... args) noexcept {
+ORT_FORCEINLINE std::string MakeStringImpl(const Args&... args) noexcept {
   std::ostringstream ss;
   MakeStringImpl(ss, args...);
   return ss.str();
@@ -78,7 +80,7 @@ using if_char_array_make_ptr_t = typename if_char_array_make_ptr<T>::type;
  * This version uses the current locale.
  */
 template <typename... Args>
-std::string MakeString(const Args&... args) {
+ORT_FORCEINLINE std::string MakeString(const Args&... args) {
   // We need to update the types from the MakeString template instantiation to decay any char[n] to char*.
   //   e.g. MakeString("in", "out") goes from MakeString<char[2], char[3]> to MakeStringImpl<char*, char*>
   //        so that MakeString("out", "in") will also match MakeStringImpl<char*, char*> instead of requiring
@@ -98,7 +100,7 @@ std::string MakeString(const Args&... args) {
  * This version uses std::locale::classic().
  */
 template <typename... Args>
-std::string MakeStringWithClassicLocale(const Args&... args) {
+ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const Args&... args) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
   detail::MakeStringImpl(ss, args...);
@@ -107,19 +109,19 @@ std::string MakeStringWithClassicLocale(const Args&... args) {
 
 // MakeString versions for already-a-string types.
 
-inline std::string MakeString(const std::string& str) {
+ORT_FORCEINLINE std::string MakeString(const std::string& str) {
   return str;
 }
 
-inline std::string MakeString(const char* cstr) {
+ORT_FORCEINLINE std::string MakeString(const char* cstr) {
   return cstr;
 }
 
-inline std::string MakeStringWithClassicLocale(const std::string& str) {
+ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const std::string& str) {
   return str;
 }
 
-inline std::string MakeStringWithClassicLocale(const char* cstr) {
+ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const char* cstr) {
   return cstr;
 }
 
