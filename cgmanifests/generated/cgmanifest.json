@@ -306,7 +306,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7d49e6c7e2f8896c47f586706e67e1fb215529dc",
+          "commitHash": "f7b19de32c5d1f3cedfc735c2849f12b537522ee",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
