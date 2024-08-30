@@ -14,11 +14,11 @@
 #include "core/framework/execution_provider.h"
 
 #include "core/providers/webgpu/program.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 
 class Tensor;
-class OpKernelContext;
 
 namespace webgpu {
 

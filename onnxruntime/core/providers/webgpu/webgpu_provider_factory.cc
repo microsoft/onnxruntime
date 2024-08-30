@@ -67,7 +67,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_info.enable_graph_capture;
 
-  auto parse_buffer_cache_mode = [session_options](const std::string& config_entry_str, webgpu::BufferCacheMode default) -> webgpu::BufferCacheMode {
+  auto parse_buffer_cache_mode = [session_options](const std::string& config_entry_str,
+                                                   webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
     std::string buffer_cache_mode_str;
     if (session_options->config_options.TryGetConfigEntry(config_entry_str, buffer_cache_mode_str)) {
       if (buffer_cache_mode_str == kBufferCacheMode_Disabled) {
@@ -82,7 +83,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
         ORT_THROW("Invalid buffer cache mode: ", config_entry_str);
       }
     } else {
-      return default;
+      return default_value;
     }
   };
 

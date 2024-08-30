@@ -1208,6 +1208,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
+  } else if (type == kWebGpuExecutionProvider) {
+#if defined(USE_WEBGPU)
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(&session_options)->CreateProvider();
+#endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
     if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
