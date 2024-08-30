@@ -647,6 +647,7 @@ struct AttentionKernel {
         p.custom_mask_type < NumCustomMaskTypes,
         "invalid value for `custom_mask_type`");
     if (p.window_size > 0) {
+      printf("window_size: %d\n", p.window_size);
       XFORMERS_CHECK(
           p.custom_mask_type == CausalFromTopLeft ||
               p.custom_mask_type == CausalFromBottomRight,

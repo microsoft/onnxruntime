@@ -24,6 +24,7 @@ struct MemoryEfficientAttentionParams {
   int32_t max_sequence_length;
   int32_t qk_head_size;
   int32_t v_head_size;
+  int32_t local_window_size;
   bool causal;
   bool use_smooth_softmax;
 
