@@ -118,6 +118,8 @@ ORT_API_STATUS_IMPL(RunOptionsGetRunTag, _In_ const OrtRunOptions*, _Out_ const 
 
 ORT_API_STATUS_IMPL(RunOptionsSetTerminate, _Inout_ OrtRunOptions* options);
 ORT_API_STATUS_IMPL(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
+ORT_API_STATUS_IMPL(RunOptionsSetActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter*);
+
 
 ORT_API_STATUS_IMPL(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
                     _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -523,4 +525,9 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessi
 ORT_API_STATUS_IMPL(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
 
 ORT_API_STATUS_IMPL(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+ORT_API_STATUS_IMPL(CreateLoraAdapter, _In_ const ORTCHAR_T* adapter_file_path, _Outptr_ OrtLoraAdapter** out);
+ORT_API(void, ReleaseLoraAdapter, _Frees_ptr_opt_ OrtLoraAdapter*);
+ORT_API_STATUS_IMPL(RunOptionsSetActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+
 }  // namespace OrtApis

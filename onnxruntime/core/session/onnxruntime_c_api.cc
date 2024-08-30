@@ -2730,6 +2730,9 @@ static constexpr OrtApi ort_api_1_to_20 = {
     &OrtApis::KernelInfoGetAllocator,
     &OrtApis::AddExternalInitializersFromFilesInMemory,
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::CreateLoraAdapter,
+    &OrtApis::ReleaseLoraAdapter,
+    &OrtApis::RunOptionsSetActiveLoraAdapter,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -2786,7 +2789,7 @@ ORT_API(const char*, OrtApis::GetVersionString) {
   return ORT_VERSION;
 }
 
-ORT_API(const char*, OrtApis::GetBuildInfoString) {
+const char* _stdcall OrtApis::GetBuildInfoString() noexcept {
   return ORT_BUILD_INFO;
 }
 
@@ -2799,6 +2802,8 @@ ORT_API(void, OrtApis::ReleaseEnv, OrtEnv* value) {
 }
 
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
-DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
+void _stdcall OrtApis::ReleaseRunOptions(OrtRunOptions* value) noexcept {
+  delete reinterpret_cast<OrtRunOptions*>(value);
+}
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)

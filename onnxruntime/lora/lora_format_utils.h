@@ -46,7 +46,7 @@ std::vector<uint8_t> LoadLoraAdapterBytes(const std::filesystem::path& file_path
 /// This function memory maps the adapter file in memory
 /// </summary>
 /// <param name="file_path"></param>
-/// <returns></returns>
+/// <returns>memory handle and file size in a tuple</returns>
 std::pair<Env::MappedMemoryPtr, size_t> MemoryMapAdapterFile(const std::filesystem::path& file_path);
 
 /// <summary>

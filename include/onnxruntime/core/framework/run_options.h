@@ -8,6 +8,10 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
 
+namespace onnxruntime {
+struct OrtLoraAdapter;
+}  // namespace onnxruntime
+
 /**
  * Configuration information for a Run call.
  */
@@ -39,6 +43,8 @@ struct OrtRunOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;
+
+  std::vector<onnxruntime::OrtLoraAdapter*> active_adapters_;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
