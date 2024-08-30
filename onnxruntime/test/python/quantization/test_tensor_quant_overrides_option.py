@@ -5,7 +5,9 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import os
 import struct
+import tempfile
 import unittest
 
 import numpy as np
@@ -1148,6 +1150,48 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         qnn_config = get_qnn_qdq_config("add_ext_data.onnx", DummyDataReader(self.activations))
         self.assertEqual(set(qnn_config.op_types_to_quantize), {"Add"})
+        self.assertTrue(qnn_config.use_external_data_format)
+
+    def test_get_qnn_qdq_config_ext_data_separate_dir(self):
+        """
+        Test that get_qnn_qdq_config() can validate per-channel quantization overrides for a model with external data
+        that is in a separate directory not in the cwd.
+        """
+
+        # Create model with a weight large enough (> 1024 bytes) to be stored externally.
+        large_weight = onnx.numpy_helper.from_array(np.random.random((1, 2, 32, 32)).astype(np.float32), "weight")
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Conv", ["input", "weight"], ["output"])],
+            "conv_ext_data",
+            [onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, (1, 2, 64, 64))],
+            [onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, None)],
+            initializer=[large_weight],
+        )
+        model = onnx.helper.make_model(
+            graph,
+            opset_imports=[onnx.helper.make_opsetid("", 21)],
+        )
+
+        # Make a separate directory in which to save model and its external data.
+        model_dir_path = tempfile.mkdtemp(prefix="model_ext_data")
+        model_name = "conv_ext_data.onnx"
+        model_path = os.path.join(model_dir_path, model_name)
+
+        onnx.save_model(
+            model,
+            str(model_path),
+            save_as_external_data=True,
+        )
+
+        # Use tensor quantization overrides to quantize Conv's weight input to 4 bits on axis 0.
+        init_overrides = {"weight": [{"quant_type": QuantType.QInt4, "axis": 0, "symmetric": True}]}
+
+        # get_qnn_qdq_config() should be able to validate the per-channel axis without having to load
+        # the external weight data.
+        qnn_config = get_qnn_qdq_config(
+            str(model_path), DummyDataReader([]), init_overrides=init_overrides  # Dummy data reader does nothing
+        )
+        self.assertEqual(set(qnn_config.op_types_to_quantize), {"Conv"})
         self.assertTrue(qnn_config.use_external_data_format)
 
 

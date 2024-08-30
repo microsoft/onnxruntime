@@ -47,6 +47,11 @@ class EtwSink : public ISink {
 };
 
 class EtwRegistrationManager {
+  enum class InitializationStatus { NotInitialized,
+                                    Initializing,
+                                    Initialized,
+                                    Failed };
+
  public:
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
@@ -65,6 +70,9 @@ class EtwRegistrationManager {
 
   // Get the current keyword
   uint64_t Keyword() const;
+
+  // Get the ETW registration status
+  HRESULT Status() const;
 
   void RegisterInternalCallback(const EtwInternalCallback& callback);
 
@@ -93,10 +101,11 @@ class EtwRegistrationManager {
   OrtMutex callbacks_mutex_;
   mutable OrtMutex provider_change_mutex_;
   OrtMutex init_mutex_;
-  bool initialized_ = false;
+  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
+  HRESULT etw_status_;
 };
 
 }  // namespace logging

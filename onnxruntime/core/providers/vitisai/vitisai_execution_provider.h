@@ -3,6 +3,7 @@
 
 #pragma once
 
+// Standard headers/libs.
 #include <ctime>
 #include <vector>
 #include <memory>
@@ -26,7 +27,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   explicit VitisAIExecutionProvider(const ProviderOptions& info);
   ~VitisAIExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                 const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return 0; }
@@ -35,8 +36,11 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
+  // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+
  private:
-  void CreateKernelRegistry();
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
   using my_ep_uptr_t = std::shared_ptr<my_ep_t>;
   // we have to hide the implementation by forward declaration.
@@ -45,6 +49,14 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::shared_ptr<KernelRegistry> registry_;
   std::set<std::string> vitisai_optypes_;
+  // EP context related.
+  bool ep_ctx_enabled_ = false;
+  bool ep_ctx_embed_mode_ = true;
+  std::string ep_ctx_model_path_cfg_{""};
+  mutable PathString ep_ctx_model_file_loc_{};
+  // It might need to be called before loading
+  // the EP context model that is compiled AOT/offline.
+  void LoadEPContexModelFromFile() const;
 };
 
 }  // namespace onnxruntime

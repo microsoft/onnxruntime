@@ -78,6 +78,9 @@ struct CUDAExecutionProviderInfo {
 
   // By default, enable TF32 to speed up float GEMM/MatMul or cuDNN convolution of float matrices.
   bool use_tf32{true};
+  bool fuse_conv_bias{false};
+
+  int sdpa_kernel{0};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
@@ -91,6 +94,7 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     size_t value{0xbc9f1d34};  // seed
 
     // Bits: device_id (16), arena_extend_strategy/cudnn_conv_algo_search (reserved 2), boolean options (1 each)
+    // Do not exceed 32 bits here otherwise some bits will be lost in x86.
     size_t data = static_cast<size_t>(info.device_id) ^
                   (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
                   (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
@@ -104,11 +108,13 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
                   (static_cast<size_t>(info.enable_skip_layer_norm_strict_mode) << 27) ^
                   (static_cast<size_t>(info.prefer_nhwc) << 28) ^
                   (static_cast<size_t>(info.use_ep_level_unified_stream) << 29) ^
-                  (static_cast<size_t>(info.use_tf32) << 30);
+                  (static_cast<size_t>(info.use_tf32) << 30) ^
+                  (static_cast<size_t>(info.fuse_conv_bias) << 31);
     onnxruntime::HashCombine(data, value);
 
     onnxruntime::HashCombine(info.gpu_mem_limit, value);
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
+    onnxruntime::HashCombine(info.sdpa_kernel, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);

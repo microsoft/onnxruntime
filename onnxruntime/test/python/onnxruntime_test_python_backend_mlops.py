@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# -*- coding: UTF-8 -*-
 import unittest
 
 import numpy as np
@@ -10,7 +9,7 @@ from onnx import load
 
 import onnxruntime.backend as backend
 from onnxruntime import datasets
-from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend  # noqa: N813
+from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
 
 def check_list_of_map_to_float(testcase, expected_rows, actual_rows):

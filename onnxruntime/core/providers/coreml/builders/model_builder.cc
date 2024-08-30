@@ -839,6 +839,13 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     if (is_input) {
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
+
+      // we need to convert int64 to int32 here as well
+      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+        tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+            OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+      }
+
       tensor_value_type.set_name(name);
 
       mlprogram_main_fn_->mutable_inputs()->Add(std::move(tensor_value_type));

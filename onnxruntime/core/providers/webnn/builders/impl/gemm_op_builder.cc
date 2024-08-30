@@ -39,6 +39,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   emscripten::val a = model_builder.GetOperand(node.InputDefs()[a_idx]->Name());
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   if (op_type == "MatMul") {
     std::vector<int64_t> a_shape;
     if (!GetShape(*input_defs[a_idx], a_shape, logger)) {
@@ -53,23 +55,34 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (a_shape.size() == 1) {
       extended_a_shape = true;
       a_shape.insert(a_shape.begin(), 1);
+      emscripten::val reshape_a_options = emscripten::val::object();
+      reshape_a_options.set("label", node.Name() + "_reshape_a");
       a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)));
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)),
+                                                           reshape_a_options);
     }
     // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
     bool extended_b_shape = false;
     if (b_shape.size() == 1) {
       extended_b_shape = true;
       b_shape.push_back(1);
+      emscripten::val reshape_b_options = emscripten::val::object();
+      reshape_b_options.set("label", node.Name() + "_reshape_b");
       b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
-                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)));
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)),
+                                                           reshape_b_options);
     }
 
-    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, options);
 
+    emscripten::val reshape_output_options = emscripten::val::object();
+    reshape_output_options.set("label", node.Name() + "_reshape_output");
     // If the inputs are both 1D， reduce the output to a scalar.
     if (extended_a_shape && extended_b_shape) {
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array());
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(),
+                                                                reshape_output_options);
     }
     // After matrix multiplication the prepended 1 is removed.
     else if (extended_a_shape) {
@@ -78,7 +91,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         new_shape.push_back(narrow<uint32_t>(b_shape[i]));
       }
       new_shape.push_back(narrow<uint32_t>(b_shape.back()));
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_output_options);
     }
     // After matrix multiplication the appended 1 is removed.
     else if (extended_b_shape) {
@@ -86,7 +102,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       for (size_t i = 0; i < a_shape.size() - 1; i++) {
         new_shape.push_back(narrow<uint32_t>(a_shape[i]));
       }
-      output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_output_options);
     }
   } else if (op_type == "MatMulInteger") {
     emscripten::val a_zero_point = emscripten::val::null();
@@ -101,9 +120,13 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       b_zero_point = model_builder.GetZeroConstant("uint8");
     }
-    output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger", a, a_zero_point, b, b_zero_point);
+    output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger",
+                                                              a,
+                                                              a_zero_point,
+                                                              b,
+                                                              b_zero_point,
+                                                              options);
   } else {  // Gemm
-    emscripten::val options = emscripten::val::object();
     NodeAttrHelper helper(node);
     const auto transA = helper.Get("transA", 0);
     options.set("aTranspose", emscripten::val(transA == 1));

@@ -98,6 +98,10 @@ ULONGLONG EtwRegistrationManager::Keyword() const {
   return keyword_;
 }
 
+HRESULT EtwRegistrationManager::Status() const {
+  return etw_status_;
+}
+
 void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.push_back(&callback);
@@ -133,22 +137,43 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 EtwRegistrationManager::~EtwRegistrationManager() {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   callbacks_.clear();
-  ::TraceLoggingUnregister(etw_provider_handle);
+  if (initialization_status_ == InitializationStatus::Initialized ||
+      initialization_status_ == InitializationStatus::Initializing) {
+    std::lock_guard<OrtMutex> init_lock(init_mutex_);
+    assert(initialization_status_ != InitializationStatus::Initializing);
+    if (initialization_status_ == InitializationStatus::Initialized) {
+      ::TraceLoggingUnregister(etw_provider_handle);
+      initialization_status_ = InitializationStatus::NotInitialized;
+    }
+  }
 }
 
 EtwRegistrationManager::EtwRegistrationManager() {
 }
 
 void EtwRegistrationManager::LazyInitialize() {
-  static HRESULT etw_status = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-  if (FAILED(etw_status)) {
-    ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status));
+  if (initialization_status_ == InitializationStatus::NotInitialized) {
+    std::lock_guard<OrtMutex> lock(init_mutex_);
+    if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
+      initialization_status_ = InitializationStatus::Initializing;
+      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+      if (FAILED(etw_status_)) {
+        initialization_status_ = InitializationStatus::Failed;
+        ORT_THROW("ETW registration failed. Logging will be broken: " + std::to_string(etw_status_));
+      }
+      initialization_status_ = InitializationStatus::Initialized;
+    }
   }
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                              ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                              PVOID CallbackContext) {
+  if (initialization_status_ != InitializationStatus::Initialized) {
+    // Drop messages until manager is fully initialized.
+    return;
+  }
+
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
     (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
@@ -160,6 +185,12 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
 
   // register on first usage
   static EtwRegistrationManager& etw_manager = EtwRegistrationManager::Instance();
+
+  // do something (not that meaningful) with etw_manager so it doesn't get optimized out
+  // as we want an instance around to do the unregister
+  if (FAILED(etw_manager.Status())) {
+    return;
+  }
 
   // TODO: Validate if this filtering makes sense.
   if (message.DataType() == DataType::USER) {

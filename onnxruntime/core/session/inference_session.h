@@ -18,6 +18,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
@@ -386,7 +387,7 @@ class InferenceSession {
    * @param run_options run options.
    * @param mutable_feeds inputs owned by client code and will be released as long as the feeds be set in session states.
    * Then the feeds will purely managed in the session states.
-   * @param fetches outputs produced after the executin of this function.
+   * @param fetches outputs produced after the execution of this function.
    * @param state State of the graph needed to resume partial graph run.
    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
    *                              copy/checks.
@@ -453,6 +454,11 @@ class InferenceSession {
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
+
+  /*
+   * Get the GetExternalDataLoaderManager associated with this session
+   */
+  const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 
   /*
    * Get all the providers' options this session was initialized with.
@@ -783,6 +789,9 @@ class InferenceSession {
 
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
+
+  // External data loader manager.
+  ExternalDataLoaderManager external_data_loader_mgr_;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;

@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace rocm {
 
 // Op Set 11 for Conv only update document to clearify default dilations and strides value.
-// which are already convered by op set 11 cpu versoin, so simply add declaration.
+// which are already convered by op set 11 cpu version, so simply add declaration.
 #define REGISTER_KERNEL_TYPED(T)                                                           \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       Conv,                                                                                \

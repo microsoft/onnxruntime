@@ -5,6 +5,8 @@
 #include "gather_elements.h"
 #include "onnxruntime_config.h"
 
+#include "core/util/force_inline.h"
+
 namespace onnxruntime {
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -66,14 +68,8 @@ static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& inpu
   return base_offset;
 }
 
-#if defined(_MSC_VER)
-#define FORCEINLINE __forceinline
-#else
-#define FORCEINLINE __attribute__((always_inline)) inline
-#endif
-
 template <typename T>
-FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
+ORT_FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   int64_t index = indices[i];
   if (index < 0)  // Handle negative indices
     index += axis_size;

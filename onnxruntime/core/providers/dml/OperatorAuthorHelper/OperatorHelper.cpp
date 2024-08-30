@@ -852,7 +852,7 @@ namespace OperatorHelper
             {
                 ML_CHECK_VALID_ARGUMENT(outputShape[C] == gsl::narrow_cast<int>(m_outputShapes[0].GetShape()[C]),
                     "Output channel must be equivalent to filter channel.");
-            } 
+            }
 
             for (size_t i = 0; i < m_kernel.spatialDimensionCount; ++i)
             {
@@ -1857,14 +1857,13 @@ namespace OperatorHelper
         DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
-        m_dilations = {dimCount, 1};
-        m_pads = {dimCount * 2, 0};
-        m_strides = {dimCount, 1};
+        m_dilations.assign(dimCount, 1);
+        m_pads.assign(dimCount, 0);
+        m_strides.assign(dimCount, 1);
 
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
-            m_dilations.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
@@ -1872,7 +1871,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
-            m_pads.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_pads);
             ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
         }
@@ -1880,7 +1878,6 @@ namespace OperatorHelper
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
             shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
-            m_strides.resize(shapeData.size());
             DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }

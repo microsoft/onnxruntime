@@ -368,7 +368,7 @@ def parse_arguments():
         required=False,
         type=str,
         default=None,
-        help=("cache directy of huggingface, by setting this to avoid useless downloading if you have one"),
+        help=("cache directly of huggingface, by setting this to avoid useless downloading if you have one"),
     )
     parser.add_argument(
         "--with_past",

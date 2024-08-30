@@ -195,8 +195,8 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
         }
         sorted_boxes.pop();
       }  // while
-    }    // for class_index
-  }      // for batch_index
+    }  // for class_index
+  }  // for batch_index
 
   constexpr auto last_dim = 3;
   const auto num_selected = selected_indices.size();

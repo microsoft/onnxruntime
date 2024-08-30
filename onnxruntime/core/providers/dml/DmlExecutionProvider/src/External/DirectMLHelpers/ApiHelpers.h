@@ -29,6 +29,9 @@ union ActivationOperatorDescUnion
     DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_DESC thresholdedRelu;
     DML_ACTIVATION_SHRINK_OPERATOR_DESC shrink;
     DML_ACTIVATION_GELU_OPERATOR_DESC gelu;
+    DML_ACTIVATION_SWISH_OPERATOR_DESC swish;
+    DML_ACTIVATION_HARD_SWISH_OPERATOR_DESC hardSwish;
+    DML_ELEMENT_WISE_CLIP_OPERATOR_DESC clip;
 };
 
 struct ActivationOperatorDesc
@@ -46,7 +49,7 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_CELU: return { activationType, &params.celu };
         case DML_OPERATOR_ACTIVATION_HARDMAX: return { activationType, &params.hardmax };
         case DML_OPERATOR_ACTIVATION_HARDMAX1: return { activationType, &params.hardmax1 };
-        case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return { activationType, &params.sigmoid };
+        case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return { activationType, &params.hardSigmoid };
         case DML_OPERATOR_ACTIVATION_IDENTITY: return { activationType, &params.identity };
         case DML_OPERATOR_ACTIVATION_LEAKY_RELU: return { activationType, &params.leakyRelu };
         case DML_OPERATOR_ACTIVATION_LINEAR: return { activationType, &params.linear };
@@ -66,6 +69,9 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return { activationType, &params.thresholdedRelu };
         case DML_OPERATOR_ACTIVATION_SHRINK: return { activationType, &params.shrink };
         case DML_OPERATOR_ACTIVATION_GELU: return { activationType, &params.gelu };
+        case DML_OPERATOR_ACTIVATION_SWISH: return { activationType, &params.swish };
+        case DML_OPERATOR_ACTIVATION_HARD_SWISH: return { activationType, &params.hardSwish };
+        case DML_OPERATOR_ELEMENT_WISE_CLIP: return { activationType, &params.clip };
         default:
             ORT_THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };

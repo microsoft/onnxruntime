@@ -552,7 +552,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t thread_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    // to avoid a byte being writen from mutiple threads, use 2 * N as thread block
+    // to avoid a byte being written from mutiple threads, use 2 * N as thread block
     ORT_UNUSED_PARAMETER(thread_block_size);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
@@ -637,7 +637,7 @@ struct BlockedQuantizeLinear<float, TOut, 2> {
     ORT_UNUSED_PARAMETER(saturate);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
-    // to avoid a byte being writen from mutiple threads, use 2 * K as thread block
+    // to avoid a byte being written from mutiple threads, use 2 * K as thread block
     auto size_thread_block = 2 * K;
     auto quant_block_num_K = (K + quant_block_size - 1) / quant_block_size;
     auto num_thread_block = (M + 1) / 2;
@@ -697,7 +697,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
                             std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
                             const std::ptrdiff_t thread_block_size, bool saturate) {
     ORT_UNUSED_PARAMETER(saturate);
-    // to avoid a byte being writen from mutiple threads, use 2 * N as thread block
+    // to avoid a byte being written from mutiple threads, use 2 * N as thread block
     ORT_UNUSED_PARAMETER(thread_block_size);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
@@ -786,7 +786,7 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
     ORT_UNUSED_PARAMETER(saturate);
     constexpr auto low = static_cast<int32_t>(TOut::min_val);
     constexpr auto high = static_cast<int32_t>(TOut::max_val);
-    // to avoid a byte being writen from mutiple threads, use 2 * K as thread block
+    // to avoid a byte being written from mutiple threads, use 2 * K as thread block
     auto size_thread_block = 2 * K;
     auto quant_block_num_K = (K + quant_block_size - 1) / quant_block_size;
     auto num_thread_block = (M + 1) / 2;

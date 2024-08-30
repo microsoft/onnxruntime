@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "node_unit.h"
+#include <utility>
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
@@ -270,6 +271,20 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
       output_edges_.insert(*cur_edge);
     }
   }
+}
+
+NodeUnit::NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node,
+                   gsl::span<const Node* const> q_nodes, Type unit_type,
+                   gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
+                   size_t input_edge_count, Node::EdgeSet output_edges)
+    : dq_nodes_(dq_nodes.begin(), dq_nodes.end()),
+      target_node_(target_node),
+      q_nodes_(q_nodes.begin(), q_nodes.end()),
+      type_(unit_type),
+      inputs_(inputs.begin(), inputs.end()),
+      outputs_(outputs.begin(), outputs.end()),
+      input_edge_count_(input_edge_count),
+      output_edges_(std::move(output_edges)) {
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

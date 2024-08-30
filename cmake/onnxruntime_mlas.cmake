@@ -427,12 +427,24 @@ else()
           )
           if(COMPILES_P10)
             check_cxx_source_compiles("
+              #ifdef _AIX
+              #define POWER_10       0x40000
+              #define POWER_10_ANDUP (POWER_10)
+              #include <sys/systemcfg.h>
+              #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+              int main() {
+                bool HasP10 = (__power_10_andup() && __power_mma_version() == MMA_V31);
+                return 0;
+              }
+              #else
               #include <sys/auxv.h>
               int main() {
                 unsigned long hwcap2 = getauxval(AT_HWCAP2);
                 bool HasP10 = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
                 return 0;
-              }"
+              }
+              }
+              #endif"
               HAS_P10_RUNTIME
             )
             if (HAS_P10_RUNTIME)
@@ -543,8 +555,17 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
+message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
+
+if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "10")
+          message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
+          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mavxvnni")
+else()
+          message(STATUS "Using -mavx2 -mfma flags")
+          set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+endif()
         set(mlas_platform_srcs_avx512f
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
@@ -563,7 +584,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
         )
-        set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
+        set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp

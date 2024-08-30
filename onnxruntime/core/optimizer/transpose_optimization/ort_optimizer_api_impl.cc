@@ -33,6 +33,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
   explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg) {}
   std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
+  std::optional<size_t> ShapeRank() const override;
   api::DataType DType() const override;
 
   void SetShape(const std::vector<int64_t>* shape) override;
@@ -182,6 +183,15 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
   result.reserve(dims.size());
   result.assign(dims.begin(), dims.end());
   return result;
+}
+
+std::optional<size_t> ApiValueInfo::ShapeRank() const {
+  const auto* shape_proto = GetNodeArgShape(&node_arg_);
+  if (shape_proto == nullptr) {
+    return std::nullopt;
+  }
+
+  return static_cast<size_t>(shape_proto->dim_size());
 }
 
 api::DataType ApiValueInfo::DType() const {
@@ -766,10 +776,10 @@ std::string_view ApiGraph::AddInitializer(api::DataType dtype, const std::vector
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(gsl::narrow_cast<int32_t>(dtype));
   tensor_proto.set_name(name);
-  tensor_proto.set_raw_data(data.data(), data.size());
   for (int64_t dim : shape) {
     tensor_proto.add_dims(dim);
   }
+  utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size());
 
   const auto& node_arg = graph_utils::AddInitializer(graph_, tensor_proto);
   return node_arg.Name();
