@@ -6,7 +6,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/common/path.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
 #include "core/framework/framework_common.h"
@@ -15,6 +14,8 @@
 
 namespace onnxruntime {
 namespace training {
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 /**
  * @brief Open file descriptor and call use_fn
@@ -44,6 +45,8 @@ common::Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn us
   Status close_status = Env::Default().FileClose(fd);
   return !use_fn_status.IsOK() ? use_fn_status : close_status;
 }
+
+#endif
 
 /**
  * @brief Create OrtValues From TensorProto objects

@@ -6,9 +6,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,7 +47,7 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(OrtMemTypeDefault);
+  auto default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   allocator_ = default_allocator;
 
   // The ordering is the same as used in Setup
@@ -65,17 +65,20 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_position_ids,
                                              expanded_attention_mask));
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        ort_stream,
+  AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
+  const OrtMemoryInfo& location = default_allocator->Info();
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
-                                        buffer));
+                                        buffer,
+                                        default_allocator,
+                                        pinned_allocator,
+                                        location));
 
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   if (!past_present_share_buffer_) {
     // Initialize empty past state
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
-    TensorShape past_shape(&past_state_dims[0], 5);
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, 0, head_size};
     OrtValue empty_past;
     Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
 
@@ -85,8 +88,7 @@ Status GptSubgraph::CreateInitialFeeds(
     }
   } else {
     // Past state feeds
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
-    TensorShape past_shape(&past_state_dims[0], 5);
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
 
     // The remaining inputs are past state except the last one or three (see below for details)
     // If `need_cache_indir` is false, then the last input is `past_sequence_length`
@@ -141,6 +143,8 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
 
   // Past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads).
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
+  ORT_RETURN_IF(past_shape == nullptr,
+                "subgraph past state cannot be nullptr");
   ORT_RETURN_IF(past_shape->dim_size() != 5,
                 "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());
 

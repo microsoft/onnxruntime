@@ -38,7 +38,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   void printOptions();
@@ -64,7 +64,6 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;
-  AllocatorPtr allocator_;
 };
 
 }  // namespace tvm

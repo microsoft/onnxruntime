@@ -4,7 +4,7 @@
 #include "core/providers/cpu/tensor/unique.h"
 #include <map>
 #include <core/common/safeint.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0,
-    float, int64_t, int8_t, std::string);
+    float, int64_t, int8_t, std::string, double);
 }
 
 using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -51,7 +51,7 @@ ONNX_OPERATOR_SET_SCHEMA(
             1,
             "indices",
             "A 1-D INT64 tensor "
-            "containing indices of 'Y' elements' first occurance in 'X'. "
+            "containing indices of 'Y' elements' first occurrence in 'X'. "
             "When 'axis' is provided, it contains indices to subtensors in input 'X' on the 'axis'. "
             "When 'axis' is not provided, it contains indices to values in the flattened input tensor. ",
             "tensor(int64)",
@@ -91,7 +91,9 @@ Status Unique::Compute(OpKernelContext* context) const {
   Status status;
   // arbitrary set of types to support initially
   // Note: The non-string implementations can probably be based on data type size.
-  if (input.IsDataType<float>())
+  if (input.IsDataType<double>())
+    status = ComputeImpl<double>(*context);
+  else if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context);
   else if (input.IsDataType<int64_t>())
     status = ComputeImpl<int64_t>(*context);

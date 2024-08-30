@@ -19,6 +19,7 @@ struct CANNExecutionProviderInfo {
   ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};
   bool enable_cann_graph{true};
   bool dump_graphs{false};
+  bool dump_om_model{true};
   std::string precision_mode;
   std::string op_select_impl_mode;
   std::string optypelist_for_implmode;

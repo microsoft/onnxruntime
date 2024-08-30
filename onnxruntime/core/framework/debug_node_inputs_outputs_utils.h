@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "core/common/path.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
@@ -36,6 +35,9 @@ constexpr const char* kDumpNodePlacement = "ORT_DEBUG_NODE_IO_DUMP_NODE_PLACEMEN
 constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 // set to non-zero to dump node output data
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
+// Output statistics data like min, max, count of NaN, count of infinity etc.
+constexpr const char* kDumpStatisticsData = "ORT_DEBUG_NODE_IO_DUMP_STATISTICS_DATA";
+
 // specify a node name filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
 constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
@@ -70,7 +72,8 @@ struct NodeDumpOptions {
     InputData = 1 << 1,
     OutputData = 1 << 2,
     NodePlacement = 1 << 3,
-    AllData = Shape | InputData | OutputData | NodePlacement,
+    StatisticsData = 1 << 4,
+    AllData = Shape | InputData | OutputData | NodePlacement | StatisticsData,
   };
 
   // specifies the information to dump per node
@@ -105,9 +108,9 @@ struct NodeDumpOptions {
 
   std::string file_suffix;
   // the output directory for dumped data files
-  Path output_dir;
+  std::filesystem::path output_dir;
   // the sqlite3 db to append dumped data
-  Path sqlite_db_prefix;
+  std::filesystem::path sqlite_db_prefix;
 
   // Total number of elements which trigger snippet rather than full array for Stdout. Value 0 disables snippet.
   int snippet_threshold;

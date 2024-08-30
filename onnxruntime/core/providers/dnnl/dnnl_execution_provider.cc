@@ -5,8 +5,6 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/dnnl/dnnl_execution_provider.h"
-
 #include <fstream>
 #include <iomanip>
 #include <unordered_set>
@@ -16,6 +14,7 @@
 
 #include "core/platform/ort_mutex.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_node_capability.h"
@@ -30,25 +29,9 @@ constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DnnlExecutionProvider::DnnlExecutionProvider(const DnnlExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true},
+    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider},
       info_(info) {
   InitProviderOrtApi();
-
-  AllocatorCreationInfo default_memory_info(
-      {[](int) {
-        return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
-      }},
-      0, info.use_arena);
-
-  AllocatorCreationInfo cpu_memory_info(
-      {[](int) {
-        return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
-                                                             OrtMemTypeCPUOutput));
-      }},
-      0, info.use_arena);
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 
   // debug env variable to dump subgraphs
   const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_DUMP_SUBGRAPHS");
@@ -93,8 +76,8 @@ DnnlExecutionProvider::DnnlExecutionProvider(const DnnlExecutionProviderInfo& in
   // Log the number of threads used
   LOGS_DEFAULT(INFO) << "Allocated " << omp_get_max_threads() << " OpenMP threads for oneDNN ep\n";
 #endif  // defined(DNNL_OPENMP)
-
-}  // namespace onnxruntime
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
+}
 
 DnnlExecutionProvider::~DnnlExecutionProvider() {
 }
@@ -245,7 +228,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
 
     // Assign inputs and outputs to subgraph's meta_def
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
     meta_def->name() = "DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain() = kMSDomain;
@@ -280,7 +263,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
     graph_viewer.ToProto(*model_proto->mutable_graph(), false, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     std::fstream dump("DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id) + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
@@ -361,7 +344,7 @@ Status DnnlExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
-        // dnnl expectes non-const data
+        // dnnl expects non-const data
         void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,

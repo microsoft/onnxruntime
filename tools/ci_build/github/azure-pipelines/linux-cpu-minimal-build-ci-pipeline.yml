@@ -20,21 +20,38 @@
 #        in an extended minimal build.
 # 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
 #    this safe-guards the extended minimal build with NNAPI EP.
-
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: onnxruntime-Linux-CPU-For-Android-CI
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
   variables:
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -49,9 +66,11 @@ jobs:
     clean: true
     submodules: none
 
+  - template: "templates/use-android-ndk.yml"
+
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
@@ -114,7 +133,7 @@ jobs:
               --config Debug \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --minimal_build \
               --disable_exceptions \
@@ -195,7 +214,7 @@ jobs:
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended
       workingDirectory: $(Build.SourcesDirectory)
@@ -219,14 +238,12 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --build_wheel \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --skip_tests \
               --disable_ml_ops \
+              --disable_types sparsetensor float8 optional \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_FLOAT8_TYPES=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -247,16 +264,15 @@ jobs:
               --config MinSizeRel \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --minimal_build \
               --disable_exceptions \
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -276,17 +292,16 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --build_shared_lib \
+              --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
               --minimal_build extended \
               --disable_exceptions \
               --disable_ml_ops \
               --skip_tests \
               --enable_reduced_operator_type_support \
+              --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
-                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -307,7 +322,7 @@ jobs:
               --cmake_generator Ninja \
               --config MinSizeRel \
               --skip_submodule_sync \
-              --parallel \
+              --parallel --use_binskim_compliant_compile_flags \
               --android \
               --android_sdk_path /android_home \
               --android_ndk_path /ndk_home \

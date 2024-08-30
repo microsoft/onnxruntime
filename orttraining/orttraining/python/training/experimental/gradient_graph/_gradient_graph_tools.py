@@ -38,7 +38,7 @@ def export_gradient_graph(
     """
 
     # Make sure that loss nodes that expect multiple outputs are set up.
-    CustomOpSymbolicRegistry.register_all()
+    CustomOpSymbolicRegistry.register_all(opset_version)
 
     if not isinstance(gradient_graph_path, str):
         gradient_graph_path = str(gradient_graph_path)

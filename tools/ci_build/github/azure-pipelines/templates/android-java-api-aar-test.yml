@@ -10,7 +10,6 @@ parameters:
   default: ''
 
 - name: packageName
-  # now we can build onnxruntime-android or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
   default: 'onnxruntime-android'
@@ -20,11 +19,13 @@ jobs:
   workspace:
     clean: all
   pool:
+    # We need macOS-12 to run the Android emulator for now.
+    # https://github.com/actions/runner-images/issues/7671
     vmImage: 'macOS-12'
   variables:
   - name: runCodesignValidationInjection
     value: false
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   steps:
@@ -46,13 +47,12 @@ jobs:
 
   - template: use-android-ndk.yml
 
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-31;default;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
+  - template: install-appcenter.yml
+
+  - template: use-android-emulator.yml
+    parameters:
+      create: true
+      start: true
 
   - script: |
       set -e -x
@@ -61,10 +61,14 @@ jobs:
       cp -av $(Build.SourcesDirectory)/java/src/test/android ./
       cd ./android
       mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
+      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
+
+  - template: use-android-emulator.yml
+    parameters:
+      stop: true
 
   - script: |
       set -e -x
@@ -79,14 +83,6 @@ jobs:
         --token $(app_center_api_token)
     displayName: Run E2E tests using App Center
     workingDirectory: $(Build.BinariesDirectory)
-
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
-    condition: always()
 
   - template: component-governance-component-detection-steps.yml
     parameters :

@@ -3,6 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from onnxruntime.capi._pybind_state import is_torch_interop_default_on
+from onnxruntime.training import ortmodule
+
 
 class Enabler:
     def __init__(self):
@@ -49,10 +52,9 @@ def enable_custom_autograd_support(to_enable=True):
     if to_enable is True and custom_autograd_function_enabler.state is False:
         if custom_autograd_function_enabler.already_enabled is False:
             # Initialize static objects needed to run custom autograd.Function's.
-            from ._custom_autograd_function_runner import call_python_backward_function, call_python_forward_function
 
-            register_forward_runner(call_python_forward_function)
-            register_backward_runner(call_python_backward_function)
+            register_forward_runner(torch_interop_utils.get_custom_function_forward_runner())
+            register_backward_runner(torch_interop_utils.get_custom_function_backward_runner())
 
             # Unregister all python functions automatically upon normal interpreter termination.
             atexit.register(unregister_python_functions)
@@ -83,10 +85,7 @@ def enable_custom_autograd_support(to_enable=True):
         custom_autograd_function_enabler.state = False
 
 
-from onnxruntime.capi._pybind_state import is_torch_interop_default_on  # noqa: E402
-from onnxruntime.training import ortmodule  # noqa: E402
-
 # Enable the custom autograd by default when PythonOp backend support is enabled during build.
 enable_custom_autograd_support(
-    not ortmodule._defined_from_envvar("ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT", 0) and is_torch_interop_default_on()
+    ortmodule._defined_from_envvar("ORTMODULE_ENABLE_CUSTOM_AUTOGRAD", 1) and is_torch_interop_default_on()
 )

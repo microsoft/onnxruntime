@@ -472,7 +472,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
                         false /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceOptimizerTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -497,27 +497,27 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
   NameMLValMap feeds;
   // Learning rate inputs
   OrtValue ml_value_eta;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {eta}, &ml_value_eta);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {eta}, &ml_value_eta);
   feeds.insert(std::make_pair(lr_string, ml_value_eta));
 
   // Grad scale inputs
   OrtValue ml_value_scale;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {scale}, &ml_value_scale);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {scale}, &ml_value_scale);
   feeds.insert(std::make_pair(grad_divisor_string, ml_value_scale));
 
   // Update count inputs
   OrtValue ml_value_uc;
-  CreateMLValue<int64_t>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {update_count}, &ml_value_uc);
+  CreateMLValue<int64_t>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {update_count}, &ml_value_uc);
   feeds.insert(std::make_pair(update_count_string, ml_value_uc));
 
   // Gradient inputs
   OrtValue ml_value_input_t;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_allreduce_input, values_allreduce_input, &ml_value_input_t);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], dims_allreduce_input, values_allreduce_input, &ml_value_input_t);
   feeds.insert(std::make_pair(input_gradient_string, ml_value_input_t));
 
   // Weight inputs
   OrtValue ml_value_weight_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_weight_input,
                        &ml_value_weight_inputs);
@@ -525,7 +525,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
 
   // M1 inputs
   OrtValue ml_value_m1_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_m1_input,
                        &ml_value_m1_inputs);
@@ -533,7 +533,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
 
   // M2 inputs
   OrtValue ml_value_m2_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_m2_input,
                        &ml_value_m2_inputs);
@@ -649,7 +649,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
                         true /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -674,22 +674,22 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
   NameMLValMap feeds;
   // Learning rate inputs
   OrtValue ml_value_eta;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {eta}, &ml_value_eta);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {eta}, &ml_value_eta);
   feeds.insert(std::make_pair(lr_string, ml_value_eta));
 
   // Grad scale inputs
   OrtValue ml_value_scale;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {scale}, &ml_value_scale);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {scale}, &ml_value_scale);
   feeds.insert(std::make_pair(grad_divisor_string, ml_value_scale));
 
   // Update count inputs
   OrtValue ml_value_uc;
-  CreateMLValue<int64_t>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), {1}, {update_count}, &ml_value_uc);
+  CreateMLValue<int64_t>(testCPUExecutionProvider->CreatePreferredAllocators()[0], {1}, {update_count}, &ml_value_uc);
   feeds.insert(std::make_pair(update_count_string, ml_value_uc));
 
   // Gradient inputs
   OrtValue ml_value_input_t;
-  CreateMLValue<MLFloat16>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                            dims_allreduce_input,
                            values_allreduce_input_half,
                            &ml_value_input_t);
@@ -697,7 +697,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
 
   // Weight inputs
   OrtValue ml_value_weight_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_weight_input,
                        &ml_value_weight_inputs);
@@ -705,7 +705,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
 
   // M1 inputs
   OrtValue ml_value_m1_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_m1_input,
                        &ml_value_m1_inputs);
@@ -713,7 +713,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
 
   // M2 inputs
   OrtValue ml_value_m2_inputs;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_m2_input,
                        &ml_value_m2_inputs);
@@ -791,7 +791,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
   adasum_graph_configs.push_back(adasum_graph_config);
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -813,7 +813,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault), dims_allreduce_input, values_allreduce_input, &ml_value_input_t);
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0], dims_allreduce_input, values_allreduce_input, &ml_value_input_t);
 
   NameMLValMap feeds;
   feeds.insert(std::make_pair(input_gradient_string, ml_value_input_t));
@@ -896,7 +896,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
                         false /*build_optimizer*/,
                         true /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumFP16AllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumFP16AllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -918,7 +918,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
-  CreateMLValue<MLFloat16>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                            dims_allreduce_input, values_allreduce_input_half, &ml_value_input_t);
 
   NameMLValMap feeds;
@@ -1003,7 +1003,7 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
 
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::CpuReduction);
 
-  std::string model_file_name = "GPUAdasumAllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUAdasumAllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1025,7 +1025,7 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
-  CreateMLValue<float>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<float>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                        dims_allreduce_input,
                        values_allreduce_input,
                        &ml_value_input_t);
@@ -1110,7 +1110,7 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
 
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::CpuReduction, true /*half_precision*/);
 
-  std::string model_file_name = "GPUAdasumFP16AllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUAdasumFP16AllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1132,7 +1132,7 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
   OrtValue ml_value_input_t;
-  CreateMLValue<MLFloat16>(testCPUExecutionProvider->GetAllocator(OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(testCPUExecutionProvider->CreatePreferredAllocators()[0],
                            dims_allreduce_input, values_allreduce_input_half, &ml_value_input_t);
 
   NameMLValMap feeds;

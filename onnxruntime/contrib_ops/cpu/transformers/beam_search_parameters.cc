@@ -47,6 +47,23 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   }
   batch_size = static_cast<int>(dims[0]);
 
+  extra_decoding_ids = gsl::span<int32_t>();
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper && extra_decoding_ids_input_id > 0) {
+    const Tensor* extra_decoder_tensor = context->Input<Tensor>(extra_decoding_ids_input_id);
+    if (extra_decoder_tensor != nullptr) {
+      const auto& extra_decoder_tensor_dims = extra_decoder_tensor->Shape().GetDims();
+      ORT_ENFORCE(extra_decoder_tensor_dims.size() == 2,
+                  "extra_decoder_tensor shall have 2 dimensions. Got ",
+                  extra_decoder_tensor_dims.size());
+      ORT_ENFORCE(extra_decoder_tensor_dims[0] == batch_size,
+                  "extra_decoder_tensor first dim not same as batch_size. Got ",
+                  extra_decoder_tensor_dims[0], ", expecting ", batch_size);
+      if (extra_decoder_tensor->Shape().Size() > 0) {
+        extra_decoding_ids = gsl::span<const int32_t>(extra_decoder_tensor->Data<int32_t>(), (size_t)extra_decoder_tensor->Shape().Size());
+      }
+    }
+  }
+
   if (this->model_type == IGenerationParameters::kModelTypeGpt) {
     sequence_length = static_cast<int>(dims[1]);
   } else if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
@@ -81,10 +98,10 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
   auto* length_penalty_tensor = context->Input<Tensor>(5);
   if (length_penalty_tensor) {
-    if (length_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
-      length_penalty = static_cast<float>(*length_penalty_tensor->Data<float>());
+    if (length_penalty_tensor->IsDataType<float>()) {
+      length_penalty = *length_penalty_tensor->Data<float>();
     } else {
-      length_penalty = static_cast<MLFloat16>(*length_penalty_tensor->Data<MLFloat16>());
+      length_penalty = static_cast<float>(*length_penalty_tensor->Data<MLFloat16>());
     }
   } else {
     length_penalty = 1.0f;
@@ -92,10 +109,10 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(6);
   if (repetition_penalty_tensor) {
-    if (repetition_penalty_tensor->DataType() == DataTypeImpl::GetType<float>()) {
-      repetition_penalty = static_cast<float>(*repetition_penalty_tensor->Data<float>());
+    if (repetition_penalty_tensor->IsDataType<float>()) {
+      repetition_penalty = *repetition_penalty_tensor->Data<float>();
     } else {
-      repetition_penalty = static_cast<MLFloat16>(*repetition_penalty_tensor->Data<MLFloat16>());
+      repetition_penalty = static_cast<float>(*repetition_penalty_tensor->Data<MLFloat16>());
     }
   } else {
     repetition_penalty = 1.0f;
@@ -106,8 +123,20 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   logits_processor = logits_processor_tensor ? static_cast<int>(*logits_processor_tensor->Data<int32_t>()) : 0;
   ORT_ENFORCE(logits_processor >= 0,
               "logits_processor shall be a non-negative integer, got ", logits_processor);
-}
 
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    auto* temperature_tensor = context->Input<Tensor>(14);
+    if (temperature_tensor) {
+      if (temperature_tensor->IsDataType<float>()) {
+        temperature = *temperature_tensor->Data<float>();
+      } else {
+        temperature = static_cast<float>(*temperature_tensor->Data<MLFloat16>());
+      }
+    } else {
+      temperature = 1.0f;
+    }
+  }
+}
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
   // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
@@ -117,6 +146,24 @@ void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads,
   num_heads = heads;
   head_size = hidden_size_per_head;
   num_layers = layers;
+}
+
+void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
+  BeamSearchParameters::ParseFromAttributes(info);
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IGenerationParameters::kModelTypeWhisper));
+  ORT_ENFORCE(model_type == IGenerationParameters::kModelTypeWhisper);
+
+  // Token ids are defined below in the order that they appear in the tokenizer
+  translate_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("translate_token_id", -1LL));
+  transcribe_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("transcribe_token_id", -1LL));
+  start_of_lm_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("start_of_lm_token_id", -1LL));
+  no_speech_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_speech_token_id", -1LL));
+  no_timestamps_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_timestamps_token_id", -1LL));
+  beginning_timestamp_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("beginning_timestamp_token_id", -1LL));
+  cross_qk_layer_head_input_id = 12;
+  extra_decoding_ids_input_id = 13;
+  cross_qk_output_id = 3;
+  no_speech_probs_output_id = 4;
 }
 
 }  // namespace transformers

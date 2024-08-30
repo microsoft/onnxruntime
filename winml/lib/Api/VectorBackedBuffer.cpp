@@ -6,7 +6,8 @@
 
 namespace _winml {
 
-vector_backed_buffer::vector_backed_buffer(size_t size) : buffer_(size) {}
+vector_backed_buffer::vector_backed_buffer(size_t size) : buffer_(size) {
+}
 
 uint32_t vector_backed_buffer::Capacity() const {
   return static_cast<uint32_t>(buffer_.size());

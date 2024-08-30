@@ -1569,6 +1569,96 @@ Return Value:
             c -= 16;
         }
 
+#elif defined(MLAS_LSX_INTRINSICS)
+        uint32_t val = 0x80808080;
+        const __m128i BitFlipVector = __lsx_vreplgr2vr_w(val);
+        if constexpr (std::is_unsigned<T8Bits>::value) {
+            MLAS_UNREFERENCED_PARAMETER(BitFlipVector);
+        }
+
+        while (c >= 32) {
+
+            __m128i MaximumVector0 = __lsx_vldi(0);
+            __m128i MaximumVector1 = __lsx_vldi(0);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
+                __m128i InputVector1 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset + 16], 0);
+
+                if constexpr (std::is_signed<T8Bits>::value) {
+                    InputVector0 = __lsx_vxor_v(InputVector0, BitFlipVector);
+                    InputVector1 = __lsx_vxor_v(InputVector1, BitFlipVector);
+                }
+
+                MaximumVector0 = __lsx_vmax_bu(MaximumVector0, InputVector0);
+                MaximumVector1 = __lsx_vmax_bu(MaximumVector1, InputVector1);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = __lsx_vxor_v(MaximumVector0, BitFlipVector);
+                MaximumVector1 = __lsx_vxor_v(MaximumVector1, BitFlipVector);
+            }
+
+            __lsx_vst(MaximumVector0, (__m128i*)&Output[0], 0);
+            __lsx_vst(MaximumVector1, (__m128i*)&Output[16], 0);
+            Output += 32;
+
+            ChannelOffset += 32;
+            c -= 32;
+        }
+
+        while (c >= 16) {
+
+            __m128i MaximumVector0 = __lsx_vldi(0);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = __lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0);
+
+                if constexpr (std::is_signed<T8Bits>::value){
+                    InputVector0 = __lsx_vxor_v(InputVector0, BitFlipVector);
+                }
+
+                MaximumVector0 = __lsx_vmax_bu(MaximumVector0, InputVector0);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = __lsx_vxor_v(MaximumVector0, BitFlipVector);
+            }
+
+            __lsx_vst(MaximumVector0, (__m128i*)&Output[0], 0);
+            Output += 16;
+
+            ChannelOffset += 16;
+            c -= 16;
+        }
+
+        if (c >= 8) {
+
+            __m128i MaximumVector0 = __lsx_vldi(0);
+
+            for (size_t k = 0; k < KernelSize; k++) {
+
+                __m128i InputVector0 = __lsx_vinsgr2vr_d(__lsx_vld((const __m128i*)&Input[k][ChannelOffset], 0), 0, 1);
+
+                if constexpr (std::is_signed<T8Bits>::value){
+                    InputVector0 = __lsx_vxor_v(InputVector0, BitFlipVector);
+                }
+
+                MaximumVector0 = __lsx_vmax_bu(MaximumVector0, InputVector0);
+            }
+
+            if constexpr (std::is_signed<T8Bits>::value) {
+                MaximumVector0 = __lsx_vxor_v(MaximumVector0, BitFlipVector);
+            }
+
+            __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i*)&Output[0] , 0), __lsx_vpickve2gr_d(MaximumVector0, 0), 0), (__m128i*)&Output[0], 0);
+            Output += 8;
+
+            ChannelOffset += 8;
+            c -= 8;
+        }
 #endif
 
         while (c > 0) {

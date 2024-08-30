@@ -19,7 +19,15 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(DFT, 17,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    DFT,
+    17, 19,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
+    DFT);
+
+ONNX_CPU_OPERATOR_KERNEL(DFT, 20,
                          KernelDefBuilder()
                              .TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
                              .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
@@ -79,7 +87,7 @@ static inline T bit_reverse(T num, unsigned significant_bits) {
 template <typename T>
 static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
   // Calculate fundamental angular velocity
-  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T pi = static_cast<T>(M_PI);
   static constexpr T tau = 2 * pi;
   T inverse_switch = inverse ? 1.f : -1.f;
   T angular_velocity = inverse_switch * tau / number_of_samples;
@@ -196,7 +204,7 @@ static Status dft_bluestein_z_chirp(
     OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
     int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
     InlinedVector<std::complex<T>>& temp_output) {
-  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T pi = static_cast<T>(M_PI);
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
@@ -442,7 +450,13 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_, is_onesided_, is_inverse_));
+  int64_t axis = axis_;
+  if (opset_ >= 20 && ctx->InputCount() >= 3) {
+    const Tensor* axes_tensor = ctx->Input<Tensor>(2);
+    axis = axes_tensor->Data<int64_t>()[0];
+  }
+
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis, is_onesided_, is_inverse_));
   return Status::OK();
 }
 
@@ -492,7 +506,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 
   // Calculate the window size with preference to the window input.
   const auto window_size = window ? window->Shape()[0] : frame_length;
-  ORT_ENFORCE(window_size < signal_size, "Ensure that the dft size is smaller than the signal.");
+  ORT_ENFORCE(window_size <= signal_size, "Ensure that the dft size is smaller than the signal.");
 
   // Calculate the number of dfts to run
   const auto n_dfts =

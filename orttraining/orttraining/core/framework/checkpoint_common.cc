@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace training {
 
 /**
- * @brief Create OrtValues From TensorProto objects
+ * @brief Create OrtValues From TensorProto objects. Doesn't support external tensor.
  *
  * @param tensor_protos vector of TensorProto
  * @param name_to_ort_value saved results.
@@ -25,9 +25,16 @@ namespace training {
 Status CreateOrtValuesFromTensorProtos(
     const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     NameMLValMap& name_to_ort_value) {
-  static const CPUExecutionProviderInfo info;
-  static const CPUExecutionProvider cpu_provider(info);
-  static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  bool create_arena = true;
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+  create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
+#endif
+  static const AllocatorCreationInfo info{[](int) { return std::make_unique<CPUAllocator>(); }, DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  static const AllocatorPtr cpu_allocator = CreateAllocator(info);
 
   for (const auto& tensor_proto : tensor_protos) {
     TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
@@ -35,7 +42,7 @@ Status CreateOrtValuesFromTensorProtos(
                                            tensor_proto.data_type())
                                            ->GetElementType();
     auto p_tensor = std::make_unique<Tensor>(tensor_dtype, tensor_shape, cpu_allocator);
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, tensor_proto, *p_tensor));
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), std::filesystem::path(), tensor_proto, *p_tensor));
 
     OrtValue ort_value;
     ort_value.Init(p_tensor.release(),

@@ -4,6 +4,7 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 
@@ -21,15 +22,20 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        const NodeUnit& node_unit,
                                        const logging::Logger& logger,
-                                       bool is_quantized_model,
                                        std::vector<std::string>& input_names,
                                        bool do_op_validation) const {
   if (do_op_validation) {
@@ -41,9 +47,26 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto& input_0 = node_unit.Inputs()[0];
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input_0, logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, input_0, logger, input_names));
 
   return Status::OK();
+}
+
+Status ReshapeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                  const NodeUnit& node_unit,
+                                                  const logging::Logger& logger,
+                                                  const std::vector<std::string>& input_names,
+                                                  size_t output_index,
+                                                  Qnn_DataType_t qnn_data_type,
+                                                  QnnQuantParamsWrapper& quant_param) const {
+  if (!quant_param.IsPerTensor()) {
+    return Status::OK();
+  }
+
+  // Force Reshape output to use the same quantization parameters as the input if nearly equal.
+  // This helps the HTP backend emply certain optimizations.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -15,11 +15,10 @@ namespace test {
 
 namespace {
 template <typename T>
-std::vector<T> CalculateOutput(
-    int64_t axis,
-    const TensorShape& output_shape,
-    const std::vector<T>& grad,
-    const std::vector<int64_t>& indices) {
+std::vector<T> CalculateOutput(int64_t axis,
+                               const TensorShape& output_shape,
+                               const std::vector<T>& grad,
+                               const std::vector<int64_t>& indices) {
   const int64_t num_batches = output_shape.SizeToDimension(axis);
   const int64_t gather_dimension_size = output_shape[axis];
   const int64_t num_gathered_per_index = output_shape.SizeFromDimension(axis + 1);
@@ -43,12 +42,11 @@ std::vector<T> CalculateOutput(
 }
 
 template <typename T>
-void ConfigureGatherGradRandomDataOpTester(
-    int64_t axis,
-    const TensorShape& X_shape,
-    const TensorShape& indices_shape,
-    optional<RandomValueGenerator::RandomSeedType> random_seed,
-    OpTester& test) {
+void ConfigureGatherGradRandomDataOpTester(int64_t axis,
+                                           const TensorShape& X_shape,
+                                           const TensorShape& indices_shape,
+                                           optional<RandomValueGenerator::RandomSeedType> random_seed,
+                                           OpTester& test) {
   ASSERT_LE(0, axis);
   ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
 
@@ -68,8 +66,7 @@ void ConfigureGatherGradRandomDataOpTester(
   test.AddAttribute<int64_t>("axis", axis);
   // auto shape_dims = X_shape.GetDims();
   // std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
-  test.AddInput<int64_t>(
-      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.AsShapeVector());
+  test.AddInput<int64_t>("shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDims());
   test.AddInput<int64_t>("indices", indices_shape.AsShapeVector(), indices);
   test.AddInput<T>("grad", dY_shape.AsShapeVector(), grad);
   test.AddOutput<T>("output", X_shape.AsShapeVector(), output);
@@ -204,7 +201,7 @@ void RunGatherGradConsistentOutputTest(
     auto output_handler =
         [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
           ASSERT_EQ(fetches.size(), 1);
-          const Tensor& output_tensor = FetchTensor(fetches[0]);
+          const Tensor& output_tensor = fetches[0].Get<Tensor>();
           const auto output_size = output_tensor.Shape().Size();
           std::vector<float> output;
           output.reserve(output_size);

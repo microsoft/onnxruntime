@@ -33,18 +33,20 @@ def run_model(model_path, all_inputs, use_gpu, disable_optimization):
     return results, latency_list, output_names
 
 
-def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
+def compare(baseline_results, treatment_results, verbose, rtol=1e-1, atol=1e-3):
     # Validate the output of baseline and treatment, to make sure the results are similar.
     diff_count = 0
-    max_rel_diff = 0
     max_abs_diff = 0
     for test_case_id, results in enumerate(baseline_results):
         case_passed = True
         for i in range(len(results)):
             treatment_output = treatment_results[test_case_id][i]
-            rel_diff = np.amax(np.abs((treatment_output - results[i]) / results[i]))
             abs_diff = np.amax(np.abs(treatment_output - results[i]))
-            max_rel_diff = max(max_rel_diff, rel_diff)
+            if verbose and abs_diff > atol:
+                print("abs_diff", abs_diff)
+                print("treatment", treatment_output)
+                print("baseline", results[i])
+
             max_abs_diff = max(max_abs_diff, abs_diff)
             if not np.allclose(results[i].tolist(), treatment_output.tolist(), rtol=rtol, atol=atol):
                 if case_passed:
@@ -54,24 +56,17 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
                     if verbose:
                         print(f"case {test_case_id} output {i}")
                         print(f"baseline={results[i].tolist()}\ntreatment={treatment_output}")
-                        print(f"rel_diff={rel_diff} abs_diff={abs_diff}")
+                        print(f"abs_diff={abs_diff}")
 
     if diff_count == 0:
-        print(
-            "100% passed for {} random inputs given thresholds (rtol={}, atol={}).".format(
-                len(baseline_results), rtol, atol
-            )
-        )
+        print(f"100% passed for {len(baseline_results)} random inputs given thresholds (rtol={rtol}, atol={atol}).")
     else:
         print(
-            "WARNING: {} out of {} results NOT passed for thresholds (rtol={}, atol={}).".format(
-                diff_count, len(baseline_results), rtol, atol
-            )
+            f"WARNING: {diff_count} out of {len(baseline_results)} results NOT passed for thresholds (rtol={rtol}, atol={atol})."
         )
 
     print(f"maximum absolute difference={max_abs_diff}")
-
-    print(f"maximum relative difference={max_rel_diff}")
+    return max_abs_diff, case_passed
 
 
 def run_test(
@@ -89,6 +84,7 @@ def run_test(
     input_ids_name,
     segment_ids_name,
     input_mask_name,
+    mask_type,
 ):
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(
@@ -96,6 +92,7 @@ def run_test(
     )
 
     # Use random mask length for accuracy test. It might introduce slight inflation in latency reported in this script.
+    average_sequence_length = int(sequence_length / 2) if sequence_length >= 2 else sequence_length
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -105,18 +102,16 @@ def run_test(
         input_ids,
         segment_ids,
         input_mask,
-        random_mask_length=True,
+        average_sequence_length,
+        True,  # random sequence length
+        mask_type,
     )
 
     baseline_results, baseline_latency, output_names = run_model(
         baseline_model, all_inputs, use_gpu, disable_optimization=True
     )
     if verbose:
-        print(
-            "baseline average latency (all optimizations disabled): {} ms".format(
-                statistics.mean(baseline_latency) * 1000
-            )
-        )
+        print(f"baseline average latency (all optimizations disabled): {statistics.mean(baseline_latency) * 1000} ms")
 
     if output_dir is not None:
         for i, inputs in enumerate(all_inputs):
@@ -129,7 +124,7 @@ def run_test(
         print(f"treatment average latency: {statistics.mean(treatment_latency) * 1000} ms")
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
-    compare(baseline_results, treatment_results, verbose, rtol, atol)
+    return compare(baseline_results, treatment_results, verbose, rtol, atol)
 
 
 def parse_arguments():
@@ -208,6 +203,14 @@ def parse_arguments():
         help="input name for attention mask",
     )
 
+    parser.add_argument(
+        "--mask_type",
+        required=False,
+        type=int,
+        default=2,
+        help="mask type: (1: mask index or sequence length, 2: raw 2D mask, 3: key len, cumulated lengths of query and key)",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -235,6 +238,7 @@ def main():
         args.input_ids,
         args.segment_ids,
         args.input_mask,
+        args.mask_type,
     )
 
 

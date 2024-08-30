@@ -6,4 +6,4 @@ onnx
 packaging
 protobuf
 sympy
-setuptools>=41.4.0
+setuptools>=61.0.0

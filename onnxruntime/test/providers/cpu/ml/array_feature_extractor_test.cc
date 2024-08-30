@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 using namespace std;
 namespace onnxruntime {
 namespace test {

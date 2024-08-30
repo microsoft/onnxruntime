@@ -107,7 +107,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<MLFloat16>& values_y) {
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -159,7 +159,7 @@ TEST(Float16_Tests, Mul_16_Test) {
   std::vector<float> values_x_32 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   std::vector<MLFloat16> values_x;
   for (float i : values_x_32) {
-    values_x.push_back(MLFloat16(math::floatToHalf(i)));
+    values_x.push_back(MLFloat16(i));
   }
 
   // prepare expected inputs and outputs
@@ -168,7 +168,7 @@ TEST(Float16_Tests, Mul_16_Test) {
   std::vector<float> expected_values_y_32 = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   std::vector<MLFloat16> expected_values_y;
   for (float i : expected_values_y_32) {
-    expected_values_y.push_back(MLFloat16(math::floatToHalf(i)));
+    expected_values_y.push_back(MLFloat16(i));
   }
 
   // Now run

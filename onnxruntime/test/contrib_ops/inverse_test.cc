@@ -30,14 +30,14 @@ TEST(InverseContribOpTest, two_by_two_float16) {
   std::transform(
       input_float.begin(), input_float.end(), std::back_inserter(input),
       [](float v) {
-        return MLFloat16(math::floatToHalf(v));
+        return MLFloat16(v);
       });
 
   auto output_float = {0.6f, -0.7f, -0.2f, 0.4f};
   std::vector<MLFloat16> output;
   std::transform(
       output_float.begin(), output_float.end(), std::back_inserter(output), [](float v) {
-        return MLFloat16(math::floatToHalf(v));
+        return MLFloat16(v);
       });
 
   test.AddInput<MLFloat16>("X", {2, 2}, input);

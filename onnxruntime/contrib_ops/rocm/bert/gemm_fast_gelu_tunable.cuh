@@ -6,7 +6,7 @@
 #include <hip/hip_runtime.h>
 #include <memory>
 
-#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
+#include "contrib_ops/rocm/bert/elementwise.h"
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_ck.cuh"
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "core/providers/rocm/tunable/gemm.h"
@@ -44,33 +44,34 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   //
   // Note: If any change cause directly usage of GemmFastGeluUnfused, add PreTuning() and PostTuning() in FastGeluTunableOp
   // to protect original input value.
-  return onnxruntime::contrib::rocm::LaunchFastGeluKernel<T>(params->tuning_ctx,
-                                                             params->stream,
-                                                             static_cast<int>(fast_gelu_input_length),
-                                                             static_cast<int>(bias_length),
-                                                             params->c,
-                                                             params->bias,
-                                                             params->c);
+  return onnxruntime::contrib::rocm::LaunchElementwiseKernel<functor::FastGeLU, T>(
+      params->tuning_ctx, params->Stream(),
+      params->c, static_cast<int>(fast_gelu_input_length),
+      params->bias, static_cast<int>(bias_length),
+      params->c);
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
  public:
   GemmFastGeluTunableOp() {
     this->RegisterOp(GemmFastGeluUnfused<T>);
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKGemmAddFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKGemmFastGeluTypeStringAndOps<T, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #endif
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmFastGeluOp<T>);
+    for (auto&& [_, op] : GetHipBlasLtGemmFastGeluTypeStringAndOps<T, OpA, OpB>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
 #endif
   }
 };

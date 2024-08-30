@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -17,6 +17,7 @@ class OrtAllocator implements AutoCloseable {
     }
   }
 
+  /** The native pointer. */
   final long handle;
 
   private final boolean isDefault;
@@ -53,7 +54,7 @@ class OrtAllocator implements AutoCloseable {
   }
 
   /**
-   * Closes the allocator, must be done after all it's child objects have been closed.
+   * Closes the allocator, must be done after all its child objects have been closed.
    *
    * <p>The default allocator is not closeable, and this operation is a no-op on that allocator.
    *

@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- netstandard2.0 is required by xamarin and used by most platforms.
-         net6.0 is required for linux. -->
+    <!-- netstandard2.0 is used by most platforms. net6.0 is required for linux. -->
     <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
@@ -14,7 +13,7 @@
     <ProtoSrc>$(OnnxRuntimeCsharpRoot)\..\cmake\external\onnx</ProtoSrc>
 
     <!-- following attributes were necessary for the migrated Tensor tests -->
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>default</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
@@ -50,8 +49,10 @@
 
   <ItemGroup>
     <Compile Remove="InferenceTest.cs" />
-    <Compile Remove="OrtEnvTests.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
+    <Compile Remove="OrtEnvTests.cs" />
+    <Compile Remove="OrtValueTests.cs" />
+    <Compile Remove="OrtFloat16Tests.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
     <Compile Remove="TrainingTest.cs" />
   </ItemGroup>
@@ -79,9 +80,10 @@
   <ItemGroup>
     <!-- include common files for visibility, however they're compiled directly by the target specific test projects -->
     <None Include="InferenceTest.cs" />
-    <None Include="OrtEnvTests.cs" />
     <None Include="OnnxData.cs" />
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <None Include="OrtValueTests.cs" />
+    <None Include="OrtFloat16Tests.cs" />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="TrainingTest.cs" />
@@ -116,8 +118,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
-    <PackageReference Include="Google.Protobuf" Version="3.16.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="Google.Protobuf" Version="3.21.12" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="xunit" Version="2.4.1" />
   </ItemGroup>
 

@@ -97,7 +97,7 @@ Status AdamOptimizerBuilder::Build(
           ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, element_type, weight_dims));
           moment_tensor_proto = utils::TensorToTensorProto(init_tensor, gradient_moment_name);
         } else if (opt_configs[i].use_mixed_precision_moments) {
-          moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(math::floatToHalf(0.f)), weight_dims);
+          moment_tensor_proto = CreateTensorProto<MLFloat16>(gradient_moment_name, MLFloat16(0.f), weight_dims);
         } else {
           moment_tensor_proto = CreateTensorProto<float>(gradient_moment_name, 0.f, weight_dims);
         }

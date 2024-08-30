@@ -61,17 +61,19 @@ class ImageConverter {
   void SyncD3D11ToD3D12(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* D3D11_texture);
   void SyncD3D12ToD3D11(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Texture2D* texture);
   void ResetCommandList(_In_ _winml::D3DDeviceCache& device_cache);
-  Microsoft::WRL::ComPtr<ID3D11Fence> FetchOrCreateFenceOnDevice(_In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Device* D3D11_device);
+  Microsoft::WRL::ComPtr<ID3D11Fence> FetchOrCreateFenceOnDevice(
+    _In_ _winml::D3DDeviceCache& device_cache, _In_ ID3D11Device* D3D11_device
+  );
 
   Microsoft::WRL::ComPtr<ID3D11Texture2D> CreateTextureFromUnsupportedColorFormat(
-      const wm::IVideoFrame& video_frame,
-      const wgi::BitmapBounds& input_bounds,
-      const wgi::BitmapBounds& output_bounds,
-      wgdx::DirectXPixelFormat new_format);
+    const wm::IVideoFrame& video_frame,
+    const wgi::BitmapBounds& input_bounds,
+    const wgi::BitmapBounds& output_bounds,
+    wgdx::DirectXPixelFormat new_format
+  );
 
   static void CopyTextureIntoTexture(
-      _In_ ID3D11Texture2D* texture_from,
-      _In_ const wgi::BitmapBounds& input_bounds,
-      _Inout_ ID3D11Texture2D* texture_to);
+    _In_ ID3D11Texture2D* texture_from, _In_ const wgi::BitmapBounds& input_bounds, _Inout_ ID3D11Texture2D* texture_to
+  );
 };
 }  // namespace _winml

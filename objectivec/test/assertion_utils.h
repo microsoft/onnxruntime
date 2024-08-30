@@ -29,4 +29,18 @@ NS_ASSUME_NONNULL_BEGIN
     XCTAssertNotNil(error);                            \
   } while (0)
 
+#define ORTAssertEqualFloatAndNoError(expected, result, error)                                                         \
+  do {                                                                                                                 \
+    XCTAssertEqualWithAccuracy(expected, result, 1e-3f, @"Expected %f but got %f. Error:%@", expected, result, error); \
+    XCTAssertNil(error);                                                                                               \
+  } while (0)
+
+#define ORTAssertEqualFloatArrays(expected, result)                                        \
+  do {                                                                                     \
+    XCTAssertEqual(expected.count, result.count);                                          \
+    for (size_t i = 0; i < expected.count; ++i) {                                          \
+      XCTAssertEqualWithAccuracy([expected[i] floatValue], [result[i] floatValue], 1e-3f); \
+    }                                                                                      \
+  } while (0)
+
 NS_ASSUME_NONNULL_END

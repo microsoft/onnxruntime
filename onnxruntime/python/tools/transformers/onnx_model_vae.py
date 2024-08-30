@@ -32,6 +32,7 @@ class VaeOnnxModel(UnetOnnxModel):
         ops = [
             "Attention",
             "GroupNorm",
+            "SkipGroupNorm",
             "NhwcConv",
         ]
         for op in ops:

@@ -24,7 +24,7 @@ if __name__ == "__main__":
     onnx.save(onnx_model, os.path.join(model_dir, f"{model_name}.onnx"))
 
     logging.info(
-        "Begining Quantization process for model saved at: %s",
+        "Beginning Quantization process for model saved at: %s",
         os.path.join(model_dir, f"{model_name}.onnx"),
     )
     logging.info("Skipping model preprocessing step. As QAT requires a un preprocessed model.")
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     )
 
     logging.info("Preparing the training artifacts for QAT.")
-    training_model_name = "mnist_qat"
+    training_model_name = "mnist_qat_"
     artifacts_dir = os.path.join(model_dir, "training_artifacts")
     utils.makedir(artifacts_dir)
     training_artifacts = create_training_artifacts(

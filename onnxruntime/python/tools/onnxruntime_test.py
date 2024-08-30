@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from __future__ import annotations
 
 import argparse
 import os
@@ -29,8 +30,9 @@ integer_dict = {
 }
 
 
-def generate_feeds(sess, symbolic_dims={}):  # noqa: B006
+def generate_feeds(sess, symbolic_dims: dict | None = None):
     feeds = {}
+    symbolic_dims = symbolic_dims or {}
     for input_meta in sess.get_inputs():
         # replace any symbolic dimensions
         shape = []
@@ -38,7 +40,7 @@ def generate_feeds(sess, symbolic_dims={}):  # noqa: B006
             if not dim:
                 # unknown dim
                 shape.append(1)
-            elif type(dim) == str:
+            elif isinstance(dim, str):
                 # symbolic dim. see if we have a value otherwise use 1
                 if dim in symbolic_dims:
                     shape.append(int(symbolic_dims[dim]))
@@ -67,10 +69,11 @@ def run_model(
     num_iters=1,
     debug=None,
     profile=None,
-    symbolic_dims={},  # noqa: B006
+    symbolic_dims=None,
     feeds=None,
     override_initializers=True,
 ):
+    symbolic_dims = symbolic_dims or {}
     if debug:
         print(f"Pausing execution ready for debugger to attach to pid: {os.getpid()}")
         print("Press key to continue.")

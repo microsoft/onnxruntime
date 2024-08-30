@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/common/path.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/ort_value.h"
@@ -32,15 +31,15 @@ constexpr const PathChar* k_tensors_data_file_name = ORT_TSTR("tensors.bin");
 constexpr const PathChar* k_properties_file_name = ORT_TSTR("properties.pbseq");
 
 PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_file_name);
+  return ConcatPathComponent(checkpoint_directory, k_tensors_file_name);
 }
 
 PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_data_file_name);
+  return ConcatPathComponent(checkpoint_directory, k_tensors_data_file_name);
 }
 
 PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_properties_file_name);
+  return ConcatPathComponent(checkpoint_directory, k_properties_file_name);
 }
 
 Status SaveRuntimeTensor(
@@ -260,13 +259,10 @@ Status LoadModelCheckpoint(
     ORT_RETURN_IF_ERROR(Env::Default().GetCanonicalPath(
         checkpoint_path, checkpoint_canonical_path));
 
-    Path relative_tensors_data_path_obj{};
-    ORT_RETURN_IF_ERROR(RelativePath(
-        Path::Parse(model_directory_canonical_path),
-        Path::Parse(GetCheckpointTensorsDataFilePath(checkpoint_canonical_path)),
-        relative_tensors_data_path_obj));
+    std::filesystem::path relative_tensors_data_path_obj = std::filesystem::relative(
+        GetCheckpointTensorsDataFilePath(checkpoint_canonical_path), model_directory_canonical_path);
     ORT_RETURN_IF_ERROR(UpdateTensorsExternalDataLocations(
-        relative_tensors_data_path_obj.ToPathString(), loaded_tensor_protos));
+        relative_tensors_data_path_obj.native(), loaded_tensor_protos));
   }
 
   // read properties file

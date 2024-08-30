@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     14,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t>()),
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t, bool>()),
     Trilu);
 
 template <typename T>
@@ -109,6 +109,9 @@ Status Trilu::Compute(OpKernelContext* ctx) const {
       break;
     case sizeof(double):
       status = TriluImpl<double>(X, Y, k_val, up);
+      break;
+    case sizeof(bool):
+      status = TriluImpl<bool>(X, Y, k_val, up);
       break;
     default:
       ORT_THROW("Unsupported input data type of ", data_type);

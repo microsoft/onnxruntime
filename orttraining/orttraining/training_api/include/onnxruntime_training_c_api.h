@@ -13,7 +13,7 @@
  *
  * In order to train a model with onnxruntime, the following training artifacts must be generated:
  * - The training onnx model
- * - The checkpoint directory
+ * - The checkpoint file
  * - The optimizer onnx model
  * - The eval onnx model model (optional)
  *
@@ -123,17 +123,18 @@ struct OrtTrainingApi {
   /// \name Accessing The Training Session State
   /// @{
 
-  /** \brief Load a checkpoint state from directory on disk into checkpoint_state.
+  /** \brief Load a checkpoint state from a file on disk into checkpoint_state.
    *
-   * This function will parse a checkpoint directory, pull relevant files and load the training
+   * This function will parse a checkpoint file, pull relevant data and load the training
    * state into the checkpoint_state. This checkpoint state can then be used to create the
    * training session by invoking OrtTrainingApi::CreateTrainingSession. By doing so, the training
    * session will resume training from the given checkpoint state.
    * \note Note that the training session created with a checkpoint state uses this state to store the entire
    * training state (including model parameters, its gradients, the optimizer states and the properties).
    * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
+   * \note Note that the checkpoint file can be either the complete checkpoint or the nominal checkpoint.
    *
-   * \param[in] checkpoint_path Path to the checkpoint directory
+   * \param[in] checkpoint_path Path to the checkpoint file
    * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -142,14 +143,14 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path,
                   _Outptr_ OrtCheckpointState** checkpoint_state);
 
-  /** \brief Save the given state to a checkpoint directory on disk.
+  /** \brief Save the given state to a checkpoint file on disk.
    *
-   * This function serializes the provided checkpoint state to a directory on disk.
+   * This function serializes the provided checkpoint state to a file on disk.
    * This checkpoint can later be loaded by invoking OrtTrainingApi::LoadCheckpoint to resume
    * training from this snapshot of the state.
    *
    * \param[in] checkpoint_state The checkpoint state to save.
-   * \param[in] checkpoint_path Path to the checkpoint directory.
+   * \param[in] checkpoint_path Path to the checkpoint file.
    * \param[in] include_optimizer_state Flag to indicate whether to save the optimizer state or not.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -172,7 +173,7 @@ struct OrtTrainingApi {
    * - The training onnx model
    * - The evaluation onnx model (optional)
    * - The optimizer onnx model
-   * - The checkpoint directory
+   * - The checkpoint file
    *
    * These artifacts can be generated using the `onnxruntime-training` python [utility](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/onnxblock/README.md).
    *
@@ -190,7 +191,29 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
                   _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
                   _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
-                  _Outptr_ OrtTrainingSession** out);
+                  _Outptr_result_maybenull_ OrtTrainingSession** out);
+
+  /** \brief Create a training session that can be used to begin or resume training.
+   * This api provides a way to load all the training artifacts from buffers instead of files.
+   *
+   * \param[in] env Environment to be used for the training session.
+   * \param[in] options Session options that the user can customize for this training session.
+   * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
+   * \param[in] train_model_data Buffer containing the model data to be used to perform training
+   * \param[in] train_data_length Length of the buffer containing train_model_data
+   * \param[in] eval_model_data Buffer containing the model data to be used to perform evaluation
+   * \param[in] eval_data_length Length of the buffer containing eval_model_data
+   * \param[in] optim_model_data Buffer containing the model data to be used to perform weight update
+   * \param[in] optim_data_length Length of the buffer containing optim_model_data
+   * \param[out] out Created training session.
+   *
+   */
+  ORT_API2_STATUS(CreateTrainingSessionFromBuffer, _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const void* train_model_data, size_t train_data_length,
+                  _In_ const void* eval_model_data, size_t eval_data_length,
+                  _In_ const void* optim_model_data, size_t optim_data_length,
+                  _Outptr_result_maybenull_ OrtTrainingSession** out);
 
   /// @}
 
@@ -441,10 +464,12 @@ struct OrtTrainingApi {
    *
    * The parameters_buffer argument has to be of the size given by OrtTrainingApi::GetParametersSize api call,
    * with matching setting for trainable_only argument. All the target parameters must be of the same
-   * datatype. This is a complementary function to OrtTrainingApi::CopyBufferToParameters
+   * datatype. This is a complementary function to OrtTrainingApi::CopyParametersToBuffer
    * and can be used to load updated buffer values onto the training state.
    * Parameter ordering is preserved.
    * User is responsible for allocating and freeing the resources used by the parameters_buffer.
+   * In case the training session was created with a nominal checkpoint, invoking this function is required
+   * to load the updated parameters onto the checkpoint to complete it.
    *
    * \param[in] sess The `this` pointer to the training session.
    * \param[in] trainable_only Whether to skip non-trainable parameters
@@ -586,14 +611,14 @@ struct OrtTrainingApi {
   /// \name Accessing The Training Session State
   /// @{
 
-  /** \brief Adds the given property to the checkpoint state.
+  /** \brief Adds or updates the given property to/in the checkpoint state.
    *
    * Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
-   * state by the user if they desire by calling this function with the appropriate property name and
-   * value. The given property name must be unique to be able to successfully add the property.
+   * state by the user by calling this function with the corresponding property name and value.
+   * The given property name must be unique to be able to successfully add the property.
    *
    * \param[in] checkpoint_state The checkpoint state which should hold the property.
-   * \param[in] property_name Unique name of the property being added.
+   * \param[in] property_name Name of the property being added or updated.
    * \param[in] property_type Type of the property associated with the given name.
    * \param[in] property_value Property value associated with the given name.
    *
@@ -610,7 +635,7 @@ struct OrtTrainingApi {
    * exist in the checkpoint state to be able to retrieve it successfully.
    *
    * \param[in] checkpoint_state The checkpoint state that is currently holding the property.
-   * \param[in] property_name Unique name of the property being retrieved.
+   * \param[in] property_name Name of the property being retrieved.
    * \param[in] allocator Allocator used to allocate the memory for the property_value.
    * \param[out] property_type Type of the property associated with the given name.
    * \param[out] property_value Property value associated with the given name.
@@ -621,6 +646,82 @@ struct OrtTrainingApi {
   ORT_API2_STATUS(GetProperty, _In_ const OrtCheckpointState* checkpoint_state,
                   _In_ const char* property_name, _Inout_ OrtAllocator* allocator,
                   _Out_ enum OrtPropertyType* property_type, _Outptr_ void** property_value);
+
+  /// @}
+
+  /// \name Accessing The Training Session State
+  /// @{
+
+  /** \brief Load a checkpoint state from a buffer into checkpoint_state.
+   *
+   * This function will parse a checkpoint bytes buffer, pull relevant data and load the training
+   * state into the checkpoint_state. This checkpoint state can then be used to create the
+   * training session by invoking OrtTrainingApi::CreateTrainingSession. By doing so, the training
+   * session will resume training from the given checkpoint state.
+   * \note Note that the training session created with a checkpoint state uses this state to store the entire
+   * training state (including model parameters, its gradients, the optimizer states and the properties).
+   * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
+   *
+   * \param[in] checkpoint_buffer Path to the checkpoint bytes buffer.
+   * \param[in] num_bytes Number of bytes in the checkpoint buffer.
+   * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                  _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state);
+
+  /** \brief Retrieves the type and shape information of the parameter associated with the given parameter name.
+   *
+   * This function retrieves the type and shape of the parameter associated with the given parameter name.
+   * The parameter must exist in the checkpoint state to be able to retrieve its type and shape information successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \param[out] parameter_type_and_shape The type and shape of the parameter being retrieved.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(GetParameterTypeAndShape, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _Outptr_ OrtTensorTypeAndShapeInfo** parameter_type_and_shape);
+
+  /** \brief Updates the data associated with the model parameter in the checkpoint state for the given parameter name.
+   *
+   * This function updates a model parameter in the checkpoint state with the given parameter data.
+   * The training session must be already created with the checkpoint state that contains the parameter
+   * being updated. The given parameter is copied over to the registered device for the training session.
+   * The parameter must exist in the checkpoint state to be able to update it successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being updated.
+   * \param[in] parameter The parameter data that should replace the existing parameter data.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(UpdateParameter, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _In_ OrtValue* parameter);
+
+  /** \brief Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
+   *
+   * This function retrieves the model parameter data from the checkpoint state for the given parameter name.
+   * The parameter is copied over and returned as an OrtValue. The training session must be already created
+   * with the checkpoint state that contains the parameter being retrieved.
+   * The parameter must exist in the checkpoint state to be able to retrieve it successfully.
+   *
+   * \param[in] checkpoint_state The checkpoint state.
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \param[in] allocator Allocator used to allocate the memory for the parameter.
+   * \param[out] parameter The parameter data that is retrieved from the checkpoint state.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   */
+  ORT_API2_STATUS(GetParameter, _In_ const OrtCheckpointState* checkpoint_state,
+                  _In_ const char* parameter_name, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ OrtValue** parameter);
 
   /// @}
 };

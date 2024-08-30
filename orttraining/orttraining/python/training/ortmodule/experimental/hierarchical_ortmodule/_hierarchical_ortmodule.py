@@ -1,14 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# debug_options.py
+# _hierarchical_ortmodule.py
 import tempfile
 import warnings
 
 import torch
 
-from .... import ortmodule
-from ... import ORTModule
-from ...debug_options import DebugOptions, LogLevel
+from onnxruntime.training import ortmodule
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule.options import DebugOptions, LogLevel
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
@@ -113,9 +113,9 @@ class HierarchicalORTModule(torch.nn.Module):
             # We cannot skip module in allowlist because it's possible that a module is called multiple times
             # so that we still need to know the number of different input sets and use _IteratedORTModule to handle it.
             handle_pool.append(module.register_forward_pre_hook(record_args))
-            for _, sub_module in module._modules.items():
+            for sub_module in module._modules.values():
                 if isinstance(sub_module, torch.nn.ModuleList):
-                    for _, sub_module_item in sub_module._modules.items():
+                    for sub_module_item in sub_module._modules.values():
                         recursive_hook(sub_module_item)
                 else:
                     recursive_hook(sub_module)
@@ -142,7 +142,7 @@ class HierarchicalORTModule(torch.nn.Module):
                 except Exception as e:
                     if self._log_level <= LogLevel.WARNING:
                         warnings.warn(
-                            f"Failed to export module with type {type(module).__name__}. Error message: {str(e)}",
+                            f"Failed to export module with type {type(module).__name__}. Error message: {e!s}",
                             UserWarning,
                         )
                     return False
@@ -176,9 +176,9 @@ class HierarchicalORTModule(torch.nn.Module):
                 # No sub-module exists, so this module is a leaf
                 return
 
-            for _, sub_module in sub_module_dict.items():
+            for sub_module in sub_module_dict.values():
                 if isinstance(sub_module, torch.nn.ModuleList):
-                    for _, sub_module_item in sub_module._modules.items():
+                    for sub_module_item in sub_module._modules.values():
                         check_exportable(sub_module_item)
                 else:
                     check_exportable(sub_module)
@@ -214,8 +214,7 @@ class HierarchicalORTModule(torch.nn.Module):
                 if isinstance(sub_module, torch.nn.ModuleList):
                     # We encounter a list of sub-modules.
                     # Let's wrap them one-by-one.
-                    idx = 0
-                    for item_name, sub_module_item in sub_module._modules.items():
+                    for idx, (item_name, sub_module_item) in enumerate(sub_module._modules.items()):
                         # Avoid saving too many graphs.
                         new_save_onnx = save_onnx and idx == 0
                         sub_new_prefix = new_prefix + "_" + item_name
@@ -237,7 +236,6 @@ class HierarchicalORTModule(torch.nn.Module):
                                 )
                         else:
                             recursive_wrap(sub_module_item, new_save_onnx, sub_new_prefix)
-                        idx += 1
                 else:
                     if is_supported(sub_module):
                         # Just wrap it as ORTModule when possible.
@@ -268,7 +266,7 @@ class HierarchicalORTModule(torch.nn.Module):
             recursive_wrap(self._original_module, self._save_onnx, self._name_prefix)
         if self._log_level <= LogLevel.WARNING:
             warnings.warn(
-                f"Wrapped module: {str(self._original_module)}.",
+                f"Wrapped module: {self._original_module!s}.",
                 UserWarning,
             )
         self._initialized = True

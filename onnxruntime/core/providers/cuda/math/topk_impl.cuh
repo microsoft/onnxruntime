@@ -398,7 +398,10 @@ __global__ void ExcludeOutput(T* output_i, T K, T dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, Stream* ort_stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
+                Stream* ort_stream, const T* input_x, T* output_v, int64_t* output_i,
+                const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest,
+                int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
@@ -407,17 +410,34 @@ Status TopKImpl(const CudaKernel* kernel, Stream* ort_stream, const T* input_x, 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
-    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>), stream>>>(
+        input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension,
+        aligned_dimension, NumericLimits<T>::Min(), NumericLimits<T>::Max());
   } else if (K <= BT * 16 || 0 == sorted) {
+    if (use_deterministic_compute) {
+      static std::once_flag log_warning;
+      std::call_once(log_warning, []() {
+        LOGS_DEFAULT(WARNING) << "Non-deterministic TopKImpl kernel is called, its outputs may still be nondeterministic.";
+      });
+    }
+
     auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
     if (BT * 2 >= K || 0 == sorted) {
-      RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
+          input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
+          NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else if (BT * 4 >= K) {
-      RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
+          input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
+          NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else if (BT * 8 >= K) {
-      RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
+          input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
+          NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else {
-      RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
+          input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
+          NumericLimits<T>::Min(), NumericLimits<T>::Max());
     }
   } else {
     auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);
@@ -451,6 +471,7 @@ Status TopKImpl(const CudaKernel* kernel, Stream* ort_stream, const T* input_x, 
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel,         \
+                                                 bool use_deterministic_compute,   \
                                                  Stream* ort_stream,               \
                                                  const T* input_x,                 \
                                                  T* output_v,                      \
@@ -464,7 +485,7 @@ Status TopKImpl(const CudaKernel* kernel, Stream* ort_stream, const T* input_x, 
                                                  int64_t N,                        \
                                                  int64_t dimension)
 
-// This file is causing excessive long compilation time in ROCm EP. Split all those compilation into multiple
+// This file is causing excessive long compilation time in ROCm EP. Split all those compilations into multiple
 // translation units to speed it up.
 TOPKIMPLE(TOPK_IMPL_TYPE);
 

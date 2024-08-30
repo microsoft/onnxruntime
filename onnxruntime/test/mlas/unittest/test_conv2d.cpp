@@ -4,11 +4,6 @@
 #include "test_conv2d.h"
 #include "test_conv2d_fixture.h"
 
-template <>
-MlasConv2DTest<false>* MlasTestFixture<MlasConv2DTest<false>>::mlas_tester(nullptr);
-template <>
-MlasConv2DTest<true>* MlasTestFixture<MlasConv2DTest<true>>::mlas_tester(nullptr);
-
 static size_t Conv2dRegistLongExecute() {
   size_t count = MlasLongExecuteTests<MlasConv2DTest<false>>::RegisterLongExecute();
   if (GetMlasThreadPool() != nullptr) {

@@ -45,19 +45,23 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
   const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiHeadAttentionParams parameters;
+
+  parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
+      attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
+
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -81,8 +85,8 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   }
 
   // TODO(hasesh): If there is a need, we will support this later
-  if (relative_position_bias != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention does not support relative position bias currently");
+  if (attention_bias != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedSelfAttention does not support attention bias currently");
   }
 
   // TODO(hasesh): Support more mask types. Currently, it only supports the HuggingFace GreedySearch/BeamSearch pattern.
@@ -139,7 +143,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T1>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T1>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, UseTF32()));
 
   // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();
@@ -183,6 +187,14 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
     }
 
     parameters.cache_indir = cache_indir->Data<int32_t>();
+  }
+
+  // NeoX rotary embedding
+  if (do_rotary_) {
+    ORT_ENFORCE(parameters.head_size == 64 || parameters.head_size == 128,
+                "Current implementation of rotary embedding only supports head size of 64 or 128");
+    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.t_step = parameters.past_sequence_length;
   }
 
   switch (parameters.head_size) {

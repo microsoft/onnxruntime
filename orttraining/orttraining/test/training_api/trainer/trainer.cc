@@ -321,7 +321,7 @@ int RunTraining(const TestRunnerParameters& params) {
         // Save trained weights
         std::ostringstream oss;
         oss << "ckpt_" << params.model_name << std::to_string(batch_idx);
-        PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
+        PathString ckpt_file = ConcatPathComponent(params.output_dir, ToPathString(oss.str()));
         checkpoint_state.AddProperty("epoch", epoch);
         checkpoint_state.AddProperty("loss", *loss);
         checkpoint_state.AddProperty("framework", "onnxruntime");
@@ -336,7 +336,7 @@ int RunTraining(const TestRunnerParameters& params) {
   // Save trained weights
   std::ostringstream oss;
   oss << "ckpt_" << params.model_name;
-  PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
+  PathString ckpt_file = ConcatPathComponent(params.output_dir, ToPathString(oss.str()));
   Ort::CheckpointState::SaveCheckpoint(checkpoint_state, ckpt_file);
 
   auto end = std::chrono::high_resolution_clock::now();

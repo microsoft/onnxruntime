@@ -705,7 +705,7 @@ Status Min_6<float>::Compute(OpKernelContext* ctx) const {
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
-    min = min.array().min(EigenMap<float>(data_n).array());
+    min = min.array().template min<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
   }
 
   return Status::OK();
@@ -721,15 +721,16 @@ struct Min_8::ComputeImpl {
     ProcessBroadcastSpanFuncs funcs{
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput1<T>().array().min(per_iter_bh.ScalarInput0<T>());
+              per_iter_bh.EigenInput1<T>().array().template min<Eigen::PropagateNaN>(per_iter_bh.ScalarInput0<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.ScalarInput1<T>());
+              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(per_iter_bh.ScalarInput1<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().min(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template min<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();
@@ -827,7 +828,7 @@ Status Max_6<float>::Compute(OpKernelContext* ctx) const {
   for (int index = 1; index < inputCount; index++) {
     auto& data_n = *ctx->Input<Tensor>(index);
     ORT_ENFORCE(data_n.Shape() == shape, "All inputs must have the same shape");
-    max = max.array().max(EigenMap<float>(data_n).array());
+    max = max.array().template max<Eigen::PropagateNaN>(EigenMap<float>(data_n).array());
   }
 
   return Status::OK();
@@ -843,19 +844,25 @@ struct Max_8::ComputeImpl {
     ProcessBroadcastSpanFuncs funcs{
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput1<T>().array().max(per_iter_bh.ScalarInput0<T>());
+              per_iter_bh.EigenInput1<T>().array().template max<Eigen::PropagateNaN>(per_iter_bh.ScalarInput0<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.ScalarInput1<T>());
+              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(per_iter_bh.ScalarInput1<T>());
         },
         [](BroadcastHelper& per_iter_bh) {
           per_iter_bh.OutputEigen<T>() =
-              per_iter_bh.EigenInput0<T>().array().max(per_iter_bh.EigenInput1<T>().array());
+              per_iter_bh.EigenInput0<T>().array().template max<Eigen::PropagateNaN>(
+                  per_iter_bh.EigenInput1<T>().array());
         }};
 
     int input_count = inst.Node().InputArgCount().front();
-    UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    // TODO: Parallelize across spans in UntypedBroadcastVariadic to avoid specific logic here
+    if (input_count == 2) {
+      UntypedBroadcastTwo(*context, funcs, 1.0);
+    } else {
+      UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    }
 
     return Status::OK();
   }
@@ -962,7 +969,7 @@ Status Xor::Compute(OpKernelContext* context) const {
       },
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<bool>() =
-            per_iter_bh.EigenInput0<bool>().array() ^ per_iter_bh.EigenInput1<bool>().array();
+            per_iter_bh.EigenInput0<bool>().array() != per_iter_bh.EigenInput1<bool>().array();
       }};
 
   UntypedBroadcastTwo(*context, funcs, 1.0);
@@ -1849,7 +1856,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
-                         return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
+                         return MLFloat16(std::fmod(X_fl, y.ToFloat()));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1859,7 +1866,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
-                         return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
+                         return MLFloat16(std::fmod(x.ToFloat(), Y_fl));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1869,9 +1876,9 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](const MLFloat16& x, const MLFloat16& y) {
-                         auto x_fl = math::halfToFloat(x.val);
-                         auto y_fl = math::halfToFloat(y.val);
-                         return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+                         auto x_fl = x.ToFloat();
+                         auto y_fl = y.ToFloat();
+                         return MLFloat16(std::fmod(x_fl, y_fl));
                        });
       }};
 

@@ -67,6 +67,10 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 | BSNH | BLNH*| BLNH^| -      | -     | -         | -        | MHA basic
 | BSNH | BNLH*| BNLH^| -      | -     | -         | -        | MHA cross, pass_past_in_kv = true
 | BSNH | -    | -    | -      | -     | BNLH *    | BNLH ^   | MHA cross, pass_past_in_kv = false
+| BSNH | BLNH | BLNH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BNLH | BNLH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BLNH | BLNH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
+| BSNH | BNLH | BNLH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
 | BSNH | BLNH | BLNH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
 | BSNH | BNLH | BNLH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
 | BSNH | BLNH | BLNH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
@@ -76,7 +80,7 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 
 Q, K, V, past(K), pastV, present(K), presentV is the Input of the contrib OpKernel
 
-About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_b for v_buffer
+About k_buffer and v_buffer, we always explicitly concat past to present and use present_k for k_buffer and present_v for v_buffer
 
 - Marked with `*` indicate the Tensor is used for k_buffer passing.
 - Marked with `^` indicate the Tensor is used for v_buffer passing.
@@ -162,7 +166,7 @@ struct Strides {
   }
 
   template <typename T = longlong4>
-  T ForBNSHCoord() {
+  T ForBNSHCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
              static_cast<E>(strides_for_bnsh_coord.y),
@@ -171,7 +175,7 @@ struct Strides {
   }
 
   template <typename T = longlong4>
-  T ForBSNHCoord() {
+  T ForBSNHCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
              static_cast<E>(strides_for_bnsh_coord.z),
@@ -180,12 +184,17 @@ struct Strides {
   }
 
   template <typename T = longlong4>
-  T ForBNHSCoord() {
+  T ForBNHSCoord() const {
     using E = typename T::value_type;
     return T{static_cast<E>(strides_for_bnsh_coord.x),
              static_cast<E>(strides_for_bnsh_coord.y),
              static_cast<E>(strides_for_bnsh_coord.w),
              static_cast<E>(strides_for_bnsh_coord.z)};
+  }
+
+  int64_t OffsetAt(int b, int n, int s, int h) const {
+    return strides_for_bnsh_coord.x * b + strides_for_bnsh_coord.y * n +
+           strides_for_bnsh_coord.z * s + strides_for_bnsh_coord.w * h;
   }
 
   // store intermediate strides in the canonical (b,n,s,h) coordinate order
@@ -200,13 +209,15 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
     const T* value = nullptr,    //
     const T* present = nullptr,  // present or present_k
     const T* present_v = nullptr) {
-  ORT_UNUSED_PARAMETER(present_v);
   switch (attn->mode) {
-    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE: {
+    case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE: {
       return {reinterpret_cast<const HipT*>(query),
               reinterpret_cast<const HipT*>(key),
               reinterpret_cast<const HipT*>(value)};
     }
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE:
     case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE: {
       auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_heads * attn->total_sequence_length *
                     attn->head_size;
@@ -214,6 +225,25 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
               reinterpret_cast<const HipT*>(present),
               reinterpret_cast<const HipT*>(present) + offset};
     }
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+    case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE: {
+      auto offset = static_cast<int64_t>(attn->batch_size) * attn->num_heads * attn->max_sequence_length *
+                    attn->head_size;
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(present),
+              reinterpret_cast<const HipT*>(present) + offset};
+    }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return {reinterpret_cast<const HipT*>(query),
+              reinterpret_cast<const HipT*>(present),
+              reinterpret_cast<const HipT*>(present_v)};
     case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE: {
       auto packed_kv = reinterpret_cast<const HipT*>(key);
       return {reinterpret_cast<const HipT*>(query), packed_kv, packed_kv + attn->head_size};
@@ -234,7 +264,8 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
   const int& N = attn->num_heads;
   const int& S = attn->sequence_length;
   const int& L = attn->kv_sequence_length;
-  // const int& T = attn->total_sequence_length;
+  const int& T = attn->total_sequence_length;
+  const int& M = attn->max_sequence_length;
   const int& H = attn->head_size;
   const int& Hv = attn->v_head_size;
 
@@ -253,6 +284,36 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
             Strides::BSNHMemory(B, L, N, Hv),
         };
       }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, T, H),
+          Strides::BNSHMemory(B, N, T, Hv),
+      };
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, M, H),
+          Strides::BNSHMemory(B, N, M, Hv),
+      };
+    case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BSNHMemory(B, L, N, H),
+          Strides::BSNHMemory(B, L, N, Hv),
+      };
+    case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, L, H),
+          Strides::BNSHMemory(B, N, L, Hv),
+      };
     case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       return {
           Strides::BSNHMemory(B, S, N, H),
@@ -310,8 +371,10 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_T", attention->total_sequence_length,
         "_N", attention->num_heads,
         "_H", attention->head_size,
+        "_Hv", attention->v_head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
         "_M", mask_index_dims.size(),
+        "_QKV", attention->qkv_format,
         "_MODE", attention->mode);
   }
 
@@ -320,7 +383,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     auto m = attention->sequence_length;
     auto n = attention->total_sequence_length;
     auto k = attention->head_size;
-    auto o = attention->head_size;
+    auto o = attention->v_head_size;
     auto batch = attention->batch_size * attention->num_heads;
     return {m, n, k, o, batch};
   }
@@ -335,7 +398,8 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   const T* v_buffer;
   T* out_buffer;
 
-  // optional, bias [B,N,S,T]
+  // optional, attention bias [B,N,S,T]
+  // TODO: support shape [B,1,S,T], [1, N, S, T], [1, 1, S, T] with broadcast.
   const T* bias_buffer{nullptr};
 
   // optional, mask value
@@ -345,6 +409,20 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   // optional, internal
   void* workspace_buffer{nullptr};
 };
+
+inline bool IsKVBNMH(AttentionMode mode) {
+  switch (mode) {
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+    case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return true;
+    default:
+      return false;
+  }
+}
 
 template <typename T>
 struct GemmSoftmaxGemmPermuteGenericPipeline {
@@ -378,6 +456,12 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   inline static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int k_buffer_stride = n * k;
+    if (IsKVBNMH(params->attention->mode)) {
+      k_buffer_stride = params->attention->max_sequence_length * params->attention->head_size;
+    }
+
     // GEMM1 [m,k] * [n,k]' -> [m,n]
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
@@ -386,7 +470,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         // For raw attention mask, the scalar is moved to softmax computation.
         /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->scale,
         params->q_buffer, k, m * k,
-        params->k_buffer, k, n * k,
+        params->k_buffer, k, k_buffer_stride,
         /*beta=*/0.0f,
         gemm1_out, n, m * n,
         batch);
@@ -415,7 +499,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     const int* mask_start = (mask_1d_size > attn->batch_size) ? mask_1d + attn->batch_size : nullptr;
     return ComputeSoftmaxWithMask1D<T>(
-        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         mask_1d, mask_start, params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
@@ -424,13 +508,19 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return ComputeSoftmax<T>(
-        params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
+        params->StreamHandle(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
         params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
   inline static Status Gemm2(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int v_buffer_stride = n * o;
+    if (IsKVBNMH(params->attention->mode)) {
+      v_buffer_stride = params->attention->max_sequence_length * params->attention->v_head_size;
+    }
+
     // GEMM2 [m,n] * [n,o] -> [m,o]
     // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus B,N,S,H.
     return blas::row_major::StridedBatchedGemm(
@@ -439,7 +529,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         m, o, n,
         /*alpha=*/1.0f,
         softmax_out, n, m * n,
-        params->v_buffer, o, n * o,
+        params->v_buffer, o, v_buffer_stride,
         /*beta=*/0.0f,
         gemm2_out, o, m * o,
         batch);
@@ -451,15 +541,58 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     auto attn = params->attention;
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return LaunchTransCtx(
-        params->Stream(),
+        params->StreamHandle(),
         attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
         params->device_prop->maxThreadsPerBlock, false, gemm2_out, params->out_buffer);
   }
 
+  static Status GetSupportedStatus(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    const auto& attn = params->attention;
+    // TODO: address the BNMH k,v strides
+    switch (attn->mode) {
+      case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
+      case QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE:
+      case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE:
+      case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+      case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
+        if (attn->qkv_format == Q_K_V_BNSH) {
+          return Status::OK();
+        } else {
+          return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, got ",
+                                        attn->qkv_format);
+        }
+      case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH but k, v are BLNH");
+      case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+        // If sequence_length is 1, query of B1NH can be simply viewed as BN1H.
+        if (attn->sequence_length == 1) {
+          return Status::OK();
+        } else {
+          return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, ",
+                                        "only if sequence_length is 1, query of BSNH can be viewed as BNSH");
+        }
+      case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
+      case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
+        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH");
+      default:
+        return TUNABLE_OP_UNSUPPORTED("unknonw");
+    }
+    return TUNABLE_OP_UNSUPPORTED("unknonw case");
+  }
+
   static Status Run(const GemmSoftmaxGemmPermuteParams<T>* params, bool use_persistent_softmax) {
-    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        params->attention->qkv_format != Q_K_V_BNSH,
-        "GenericPipeline only supports qkv_format as Q_K_V_BNSH, got", params->attention->qkv_format);
+    auto supported_status = GetSupportedStatus(params);
+    if (!supported_status.IsOK()) {
+      return supported_status;
+    }
     ORT_RETURN_IF_ERROR(Gemm1(params));
 
     if (UseRawAttentionMask(params)) {
@@ -491,6 +624,16 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
         } else {
           return false;
         }
+      case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
+      case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
       case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
         return true;
@@ -513,11 +656,16 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   }
 
   inline static size_t GetWorkspaceNumBytes(const RocmAttentionParameters* attn) {
-    if (!IsSupportedMaskType(attn)) {
-      return 0;
+    size_t num_bytes = GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(attn);
+
+#ifdef USE_COMPOSABLE_KERNEL
+    if (IsSupportedMaskType(attn)) {
+      auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(nullptr, attn);
+      num_bytes = std::max(num_bytes, sizeof(T) * sizes.x * sizes.y * sizes.z);
     }
-    auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(nullptr, attn);
-    return sizeof(T) * sizes.x * sizes.y * sizes.z;
+#endif
+
+    return num_bytes;
   }
 
   template <int VecSize, typename Converter>
@@ -554,7 +702,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       *reinterpret_cast<StoreT*>(out + out_offset) = store;
     } else {
 #pragma unroll
-      for (int i = tidx; i < mask_lengths.z; i++) {
+      for (int i = 0; i < mask_lengths.z - tidx; i++) {
         out[out_offset + i] = cvt(mask_buffer[in_offset + i]);
       }
     }
@@ -574,7 +722,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       return v == 1 ? 0 : mask_filter_value;
     };
 
-    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->Stream()>>>(
+    ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->StreamHandle()>>>(
         reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
         buffer, lengths, strides,                                                               // mask desc
         cvt);
@@ -585,123 +733,154 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T, bool USE_BIAS, bool USE_MASK>
-auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
+template <typename U, typename V, typename T, bool USE_BIAS, bool USE_MASK>
+auto GetArgAndRunInvoker(const U& impl, const V& invoker, const GemmSoftmaxGemmPermuteParams<T>* params) {
   constexpr const int kNumBiasBuffer = static_cast<int>(USE_BIAS) + static_cast<int>(USE_MASK);
 
   using Nop = ck::tensor_operation::element_wise::PassThrough;
   using Acc0ElementOp = internal::PreSoftmaxAttentionScoreOp;
 
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+      !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMode(params->attention),
+      "attention mode is not supported, got ", params->attention->mode);
+  if constexpr (USE_BIAS) {
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        params->bias_buffer == nullptr, "biased version only support input with bias");
+  } else {
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        params->bias_buffer != nullptr, "non-biased version only support input without bias");
+  }
+  if constexpr (USE_MASK) {
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention),
+        "mask type is not supported, got ", params->attention->mask_type);
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        params->mask_index_buffer == nullptr, "masked version only support input with mask");
+  } else {
+    TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+        params->mask_index_buffer != nullptr, "non-masked version only support input without mask");
+  }
+
+  auto attn = params->attention;
+  const int& G0 = attn->batch_size;
+  const int& G1 = attn->num_heads;
+  const int& M = attn->sequence_length;
+  const int& N = attn->total_sequence_length;
+  const int& K = attn->head_size;
+  const int& O = attn->v_head_size;
+  {
+    auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
+    ORT_ENFORCE(M == m && N == n && K == k && O == o && G0 * G1 == batch, "semantic mismatch");
+  }
+
+  auto [qs, ks, vs] = GetQkvStrides(attn);
+  std::vector<ck::index_t> q_buffer_lengths = {G0, G1, M, K};
+  std::vector<ck::index_t> q_buffer_strides = qs.template ForBNSHCoord<std::vector<ck::index_t>>();
+  std::vector<ck::index_t> k_buffer_lengths = {G0, G1, N, K};
+  std::vector<ck::index_t> k_buffer_strides = ks.template ForBNSHCoord<std::vector<ck::index_t>>();
+  std::vector<ck::index_t> v_buffer_lengths = {G0, G1, O, N};
+  std::vector<ck::index_t> v_buffer_strides = vs.template ForBNHSCoord<std::vector<ck::index_t>>();
+  std::vector<ck::index_t> out_buffer_lengths = {G0, G1, M, O};
+  std::vector<ck::index_t> out_buffer_strides = {M * G1 * O, O, G1 * O, 1};  // permute 0213
+
+  std::array<void*, kNumBiasBuffer> bias_buffers{};
+  std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_lengths{};
+  std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_strides{};
+  if constexpr (USE_BIAS) {
+    bias_buffers[0] = const_cast<T*>(params->bias_buffer);
+    bias_lengths[0] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
+    bias_strides[0] = {G1 * M * N, M * N, N, 1};
+  }
+  if constexpr (USE_MASK) {
+    bias_buffers[kNumBiasBuffer - 1] = params->workspace_buffer;
+    bias_lengths[kNumBiasBuffer - 1] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
+    if (params->mask_index_dims.size() == 2) {          // [B,T]
+      bias_strides[kNumBiasBuffer - 1] = {N, 0, 0, 1};
+    } else if (params->mask_index_dims.size() == 3) {  // [B,S,T]
+      bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
+    } else if (params->mask_index_dims.size() == 4) {  // [B,1,max_seq_len,max_seq_len] -->convert--> [B,S,T]
+      bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
+    } else {
+      ORT_ENFORCE(false, "Unreachable");
+    }
+  }
+
+  auto arg = impl->MakeArgumentPointer(
+      params->q_buffer, params->k_buffer, params->v_buffer, params->out_buffer,
+      bias_buffers,  // Gemm1 bias, as attention mask
+      {},            // Gemm2 bias
+      q_buffer_lengths, q_buffer_strides,
+      k_buffer_lengths, k_buffer_strides,
+      v_buffer_lengths, v_buffer_strides,
+      out_buffer_lengths, out_buffer_strides,
+      bias_lengths, bias_strides,
+      {},
+      {},
+      Nop{},
+      Nop{},
+      Acc0ElementOp{params->scale},
+      Nop{},
+      Nop{});
+
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                            impl->GetTypeString(), " does not support the params");
+
+  if constexpr (USE_MASK) {
+    ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
+  }
+
+  invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
+  return Status::OK();
+}
+
+template <typename T, bool USE_BIAS, bool USE_MASK>
+auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using D0DataType = typename ck::detail::tuple_concat<
       std::conditional_t<USE_BIAS, ck::Tuple<CKDataType>, ck::Tuple<>>,
       std::conditional_t<USE_MASK, ck::Tuple<CKDataType>, ck::Tuple<>>>::type;
 
-  constexpr static auto MaskingSpec =
+  constexpr static auto MaskingSpecMaskDisabled =
       ck::tensor_operation::device::MaskingSpecialization::MaskDisabled;
+  constexpr static auto MaskingSpecMaskOutUpperTriangle =
+      ck::tensor_operation::device::MaskingSpecialization::MaskOutUpperTriangle;
 
-  std::vector<std::pair<std::string, Op<GemmSoftmaxGemmPermuteParams<T>>>> ret;
+  std::vector<std::pair<std::string, Op<GemmSoftmaxGemmPermuteParams<T>>>>
+      ret;
+
   for (auto&& impl : internal::GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
-           CKDataType, D0DataType, internal::F32, internal::PreSoftmaxAttentionScoreOp, MaskingSpec>()) {
+           CKDataType, D0DataType, internal::F32, internal::PreSoftmaxAttentionScoreOp, MaskingSpecMaskDisabled>()) {
     auto type_string = impl->GetTypeString();
 
     auto invoker = impl->MakeInvokerPointer();
     auto op = [impl = std::move(impl), invoker = std::move(invoker)](
                   const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMode(params->attention),
-          "attention mode is not supported, got ", params->attention->mode);
-      if constexpr (USE_BIAS) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->bias_buffer == nullptr, "biased version only support input with bias");
-      } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->bias_buffer != nullptr, "non-biased version only support input without bias");
-      }
-      if constexpr (USE_MASK) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention),
-            "mask type is not supported, got ", params->attention->mask_type);
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->mask_index_buffer == nullptr, "masked version only support input with mask");
-      } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->mask_index_buffer != nullptr, "non-masked version only support input without mask");
-      }
+          params->attention->is_unidirectional, "unidirectional attention is not supported with MaskingSpecMaskDisabled");
 
-      auto attn = params->attention;
-      const int& G0 = attn->batch_size;
-      const int& G1 = attn->num_heads;
-      const int& M = attn->sequence_length;
-      const int& N = attn->total_sequence_length;
-      const int& K = attn->head_size;
-      const int& O = attn->v_head_size;
-      {
-        auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
-        ORT_ENFORCE(M == m && N == n && K == k && O == o && G0 * G1 == batch, "semantic mismatch");
-        ORT_ENFORCE(K == O, "inner product dimension mismatch");
-      }
-
-      auto [qs, ks, vs] = GetQkvStrides(attn);
-      std::vector<ck::index_t> q_buffer_lengths = {G0, G1, M, K};
-      std::vector<ck::index_t> q_buffer_strides = qs.template ForBNSHCoord<std::vector<ck::index_t>>();
-      std::vector<ck::index_t> k_buffer_lengths = {G0, G1, N, K};
-      std::vector<ck::index_t> k_buffer_strides = ks.template ForBNSHCoord<std::vector<ck::index_t>>();
-      std::vector<ck::index_t> v_buffer_lengths = {G0, G1, O, N};
-      std::vector<ck::index_t> v_buffer_strides = vs.template ForBNHSCoord<std::vector<ck::index_t>>();
-      std::vector<ck::index_t> out_buffer_lengths = {G0, G1, M, O};
-      std::vector<ck::index_t> out_buffer_strides = {M * G1 * O, O, G1 * O, 1};  // permute 0213
-
-      std::array<void*, kNumBiasBuffer> bias_buffers{};
-      std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_lengths{};
-      std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_strides{};
-      if constexpr (USE_BIAS) {
-        bias_buffers[0] = const_cast<T*>(params->bias_buffer);
-        bias_lengths[0] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
-        bias_strides[0] = {G1 * M * N, M * N, N, 1};
-      }
-      if constexpr (USE_MASK) {
-        bias_buffers[kNumBiasBuffer - 1] = params->workspace_buffer;
-        bias_lengths[kNumBiasBuffer - 1] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
-        if (params->mask_index_dims.size() == 2) {          // [B,T]
-          bias_strides[kNumBiasBuffer - 1] = {N, 0, 0, 1};
-        } else if (params->mask_index_dims.size() == 3) {  // [B,S,T]
-          bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
-        } else if (params->mask_index_dims.size() == 4) {  // [B,1,max_seq_len,max_seq_len] -->convert--> [B,S,T]
-          bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
-        } else {
-          ORT_ENFORCE(false, "Unreachable");
-        }
-      }
-
-      auto arg = impl->MakeArgumentPointer(
-          params->q_buffer, params->k_buffer, params->v_buffer, params->out_buffer,
-          bias_buffers,  // Gemm1 bias, as attention mask
-          {},            // Gemm2 bias
-          q_buffer_lengths, q_buffer_strides,
-          k_buffer_lengths, k_buffer_strides,
-          v_buffer_lengths, v_buffer_strides,
-          out_buffer_lengths, out_buffer_strides,
-          bias_lengths, bias_strides,
-          {},
-          {},
-          Nop{},
-          Nop{},
-          Acc0ElementOp{params->scale},
-          Nop{},
-          Nop{});
-
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-
-      if constexpr (USE_MASK) {
-        ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
-      }
-      invoker->Run(arg.get(), StreamConfig{params->Stream()});
-      return Status::OK();
+      return GetArgAndRunInvoker<decltype(impl), decltype(invoker), T, USE_BIAS, USE_MASK>(impl, invoker, params);
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));
   }
+
+  for (auto&& impl : internal::GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+           CKDataType, D0DataType, internal::F32, internal::PreSoftmaxAttentionScoreOp, MaskingSpecMaskOutUpperTriangle>()) {
+    auto type_string = impl->GetTypeString();
+
+    auto invoker = impl->MakeInvokerPointer();
+    auto op = [impl = std::move(impl), invoker = std::move(invoker)](
+                  const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          !params->attention->is_unidirectional, "bidirectional attention is not supported with MaskingSpecMaskOutUpperTriangle");
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          params->attention->sequence_length != params->attention->total_sequence_length,
+          "seqence_length != total_seqence_length is not supported with MaskingSpecMaskOutUpperTriangle");
+
+      return GetArgAndRunInvoker<decltype(impl), decltype(invoker), T, USE_BIAS, USE_MASK>(impl, invoker, params);
+    };
+    ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));
+  }
+
   return ret;
 }
 #endif  // USE_COMPOSABLE_KERNEL

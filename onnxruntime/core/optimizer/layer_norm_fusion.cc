@@ -4,7 +4,6 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/optimizer_api.h"
 #include "float.h"
 #include <algorithm>
 #include <deque>
@@ -14,7 +13,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+static constexpr std::array<std::string_view, 4> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"};
 // Default epsilon
 static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
@@ -415,20 +414,20 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* scale = nullptr;
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
+      }
+      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = mul_node.MutableInputDefs()[i];
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(last_add_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, last_add_node.MutableInputDefs()[i])) {
-        if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          bias = last_add_node.MutableInputDefs()[i];
-        }
+      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
+      }
+      if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        bias = last_add_node.MutableInputDefs()[i];
       }
     }
     if (scale == nullptr || bias == nullptr) {
@@ -448,8 +447,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
                                         : reduce_mean_node.MutableInputDefs()[0];
+
+    // CPU doesn't support fp16
+    if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
+        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
-    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
+    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/LayerNormFusion/"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
@@ -668,20 +674,20 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (graph_utils::NodeArgIsConstant(graph, *(mul_node.MutableInputDefs()[i])) ||
-          graph_utils::IsGraphInput(graph, mul_node.MutableInputDefs()[i])) {
-#ifdef ENABLE_TRAINING_CORE
-        if (axes_values.empty() ||
-            mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
-#else
-        // Scale must be 1d.
-        if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-          scale = mul_node.MutableInputDefs()[i];
-        }
-#endif
+      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+        continue;
       }
+#ifdef ENABLE_TRAINING_CORE
+      if (axes_values.empty() ||
+          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = mul_node.MutableInputDefs()[i];
+      }
+#else
+      // Scale must be 1d.
+      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
+        scale = mul_node.MutableInputDefs()[i];
+      }
+#endif
     }
 
     if (scale == nullptr) {
@@ -690,9 +696,16 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
+
+    // CPU doesn't support fp16
+    if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
+        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      continue;
+    }
+
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
-        graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"), "SimplifiedLayerNormalization",
+        graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
                       "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, {}, kOnnxDomain);
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.

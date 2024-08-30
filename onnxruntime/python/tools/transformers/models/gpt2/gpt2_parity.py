@@ -16,17 +16,13 @@ import datetime
 import json
 import logging
 import os
-import sys
 
 import onnx
 import scipy.stats
+from benchmark_helper import get_ort_environment_variables, setup_logger
 from convert_to_onnx import main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
 from onnx_model import OnnxModel
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from benchmark_helper import get_ort_environment_variables, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -134,7 +130,7 @@ def load_results_from_csv(csv_path):
     with open(csv_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            rows.append(row)
+            rows.append(row)  # noqa: PERF402
     return rows
 
 
@@ -175,17 +171,15 @@ def print_wins(wins, rows, test_name):
 
     rank = 0
     previous_value = -1
-    count = 0
-    for key, value in sorted_wins.items():
+    for count, (key, value) in enumerate(sorted_wins.items()):
         if value != previous_value:
             rank = count
         previous_value = value
-        count += 1
 
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f}, top1_match={:.4f}, size={}_MB, experiment={}, {}".format(
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f}, top1_match={:.4f}, size={}_MB, experiment={}, {}".format(  # noqa: G001
                         rank,
                         value,
                         key,

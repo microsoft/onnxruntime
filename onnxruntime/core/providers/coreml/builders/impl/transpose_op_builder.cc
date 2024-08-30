@@ -1,35 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-#ifdef __APPLE__
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
-#endif
 #include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class TransposeOpBuilder : public BaseOpBuilder {
-  // Add operator related
-#ifdef __APPLE__
- private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
-#endif
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
+
+  bool SupportsMLProgram() const override { return true; }
 };
 
-// Add operator related
-
-#ifdef __APPLE__
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const Node& node,
                                                  const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
-
   NodeAttrHelper helper(node);
   std::vector<int64_t> perm = helper.Get("perm", std::vector<int64_t>());
   std::vector<int64_t> input_shape;
@@ -42,15 +34,29 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     ORT_RETURN_IF_NOT(perm.size() == input_dims, "Perm and input should have same dimension");
   }
 
-  *layer->mutable_transpose()->mutable_axes() = {perm.cbegin(), perm.cend()};
+#if defined(COREML_ENABLE_MLPROGRAM)
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
 
-  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+    std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "transpose");
+    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    AddOperationInput(*op, "perm", model_builder.AddConstant(op->type(), "perm", perm));
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.AddOperation(std::move(op));
 
-  model_builder.AddLayer(std::move(layer));
+  } else
+#endif  // defined(COREML_ENABLE_MLPROGRAM)
+  {
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+    *layer->mutable_transpose()->mutable_axes() = {perm.cbegin(), perm.cend()};
+
+    *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
+    *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+    model_builder.AddLayer(std::move(layer));
+  }
   return Status::OK();
 }
-#endif
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<TransposeOpBuilder>());

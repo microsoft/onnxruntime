@@ -4,7 +4,9 @@ author_url: https://www.onnxruntime.ai
 github_url: https://github.com/microsoft/onnxruntime
 
 objc: true
-umbrella_header: ../include/onnxruntime.h
+# Specify the training header as umbrella_header so that every public header is included.
+# The training header is a superset of the inference-only header.
+umbrella_header: ../include/onnxruntime_training.h
 framework_root: ..
 
 readme: ./main_page.md

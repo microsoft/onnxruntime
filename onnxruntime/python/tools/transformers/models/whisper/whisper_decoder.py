@@ -6,42 +6,38 @@
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
 import torch
+from io_binding_helper import TypeHelper
+from models.t5.past_helper import PastKeyValuesHelper
+from onnx_model import OnnxModel
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import WhisperConfig, file_utils
+from whisper_openai_helper import WhisperDecoderInitOpenai
 
 from onnxruntime import InferenceSession
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper  # noqa: E402
-from models.t5.past_helper import PastKeyValuesHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
 class WhisperDecoderInit(torch.nn.Module):
-    """A Whisper decoder with LM head to create initial past key values.
+    """A Whisper decoder to create initial past key values.
     This model is only called once during starting decoding.
     """
 
     def __init__(
         self,
         decoder: torch.nn.Module,
-        lm_head: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder
-        self.lm_head = lm_head
         self.config = config
         self.decoder_start_token_id = (
             decoder_start_token_id if decoder_start_token_id is not None else self.config.decoder_start_token_id
@@ -70,13 +66,15 @@ class WhisperDecoderInit(torch.nn.Module):
 
 
 class WhisperDecoder(torch.nn.Module):
-    """A Whisper decoder with LM head and past key values"""
+    """A Whisper decoder with past key values"""
 
-    def __init__(self, decoder, lm_head, config):
+    def __init__(self, decoder, config, model_impl: str = "hf", model: torch.nn.Module = None):
         super().__init__()
         self.decoder = decoder
-        self.lm_head = lm_head
         self.config = config
+        self.model_impl = model_impl
+        if model is not None:
+            self.whisper_decoder_openai_init = WhisperDecoderInitOpenai(model, decoder)
 
     def forward(self, decoder_input_ids, *past):
         encoder_outputs = file_utils.ModelOutput()
@@ -84,6 +82,14 @@ class WhisperDecoder(torch.nn.Module):
         encoder_outputs["last_hidden_state"] = dummy_encoder_hidden_states
         encoder_outputs["hidden_states"] = dummy_encoder_hidden_states
         encoder_outputs["attentions"] = None
+
+        if self.model_impl == "openai":
+            dummy_encoder_hidden_states.unsqueeze(0)
+            dec_out, present = self.whisper_decoder_openai_init(
+                decoder_input_ids, dummy_encoder_hidden_states, past=past
+            )
+            return dec_out, present
+
         if len(past) == 0:
             past_key_values = None
         else:
@@ -120,6 +126,7 @@ class WhisperDecoderInputs:
         device: torch.device,
         float16: bool = False,
         use_int32_inputs: bool = False,
+        model_impl: str = "hf",
     ):  # -> WhisperDecoderInputs:
         """Create dummy inputs for WhisperDecoder.
 
@@ -164,7 +171,7 @@ class WhisperDecoderInputs:
             cross_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
-                encode_sequence_length,
+                encode_sequence_length if model_impl == "hf" else past_decode_sequence_length,
                 head_size,
             ]
 
@@ -219,9 +226,10 @@ class WhisperDecoderHelper:
             decoder.config,
             batch_size=2,
             encode_sequence_length=3000,
-            past_decode_sequence_length=5 if isinstance(decoder, WhisperDecoder) else 0,
+            past_decode_sequence_length=6 if isinstance(decoder, WhisperDecoder) else 0,
             device=device,
             use_int32_inputs=use_int32_inputs,
+            model_impl=decoder.model_impl,
         )
         input_list = inputs.to_list()
 

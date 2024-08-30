@@ -5,9 +5,10 @@
 
 #include <utility>
 #include <random>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/allocator.h"
-#include "contrib_ops/cpu/utils/console_dumper.h"
+#include "core/framework/ort_value.h"
+#include "contrib_ops/cpu/utils/debug_macros.h"
 
 namespace onnxruntime {
 
@@ -39,8 +40,7 @@ struct IBeamSearchState {
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
 
-  // The final chosen indices after BeamScorer has finished processing
-  gsl::span<int32_t> chosen_indices;  // shape (batch_size, num_beams)
+  gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
 
   Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
@@ -54,6 +54,7 @@ struct IBeamSearchCpuState {
   gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
   gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
   gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
 };
 
 template <typename T>
@@ -96,6 +97,8 @@ struct ISamplingState {
 struct ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual gsl::span<const int32_t> GetCurrentDeviceSequences() const = 0;  // Get all current beam_index sequences in one continuous block (to pass to CUDA)
+  virtual gsl::span<int32_t> GetNextDeviceSequences() = 0;                 // Get all next beam_index sequences in one continuous block (to pass to CUDA)
   virtual int GetSequenceLength() const = 0;
 };
 
@@ -118,7 +121,16 @@ struct IBeamScorer {
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 
-  virtual gsl::span<int32_t>& GetNextIndices() = 0;
+  virtual void OutputScores(gsl::span<const float>& final_scores,
+                            Tensor* output_scores) = 0;
+
+  virtual bool IsDone() const = 0;                    // GPU version will return false here, as it asynchronously queues up the event
+  virtual bool IsDoneLater() const { return false; }  // GPU version waits for the asynchous result to complete here
+
+  virtual gsl::span<float> GetNextScores() = 0;
+  virtual gsl::span<int32_t> GetNextTokens() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesCPU() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesGPU() { return {}; }  // If this is non CPU, returns the device buffer of the indices
 };
 
 struct IGenerationParameters {
@@ -168,6 +180,24 @@ struct IGenerationParameters {
   int seed = 0;
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
+
+  // Parameters for whisper model
+  bool decoder_output_cross_qk = false;
+  gsl::span<const int32_t> extra_decoding_ids;
+
+  // Token ids are defined below in the order that they appear in the tokenizer
+  int32_t translate_token_id = -1;
+  int32_t transcribe_token_id = -1;
+  int32_t start_of_lm_token_id = -1;
+  int32_t no_speech_token_id = -1;
+  int32_t no_timestamps_token_id = -1;
+  int32_t beginning_timestamp_token_id = -1;
+  void* no_speech_probs = nullptr;
+
+  int cross_qk_layer_head_input_id = -1;
+  int extra_decoding_ids_input_id = -1;
+  int cross_qk_output_id = -1;
+  int no_speech_probs_output_id = -1;
 };
 
 }  // namespace transformers

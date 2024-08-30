@@ -10,7 +10,7 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/flatbuffers/ort_format_version.h"
@@ -317,6 +317,22 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
                               {"com.microsoft.FusedConv", expected_num_fusions}}));
       });
 }
+
+#if !defined(ORT_NEURAL_SPEED)
+TEST(GraphRuntimeOptimizationTest, FuseMatMulNBitsAndAdd) {
+  SaveAndLoadRuntimeOptimizationsForModel(
+      ORT_TSTR("testdata/transform/runtime_optimization/matmulnbits_add.onnx"),
+      ORT_TSTR("testdata/transform/runtime_optimization/matmulnbits_add.runtime_optimizations.ort"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        EXPECT_EQ(loaded_ops,
+                  (OpCountMap{{"com.microsoft.MatMulNBits", 1},
+                              {"Add", 1}}));
+
+        EXPECT_EQ(initialized_ops,
+                  (OpCountMap{{"com.microsoft.MatMulNBits", 1}}));
+      });
+}
+#endif  // !defined(ORT_NEURAL_SPEED)
 
 TEST(GraphRuntimeOptimizationTest, TestNhwcTransformer) {
   CheckNhwcTransformerIsApplied(

@@ -9,8 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 template <typename T>
 Status QOrderQuantize(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
@@ -78,8 +76,6 @@ cublasLtOrder_t GetCublasLtOrderAttr(
 
 int64_t CalcLeadingDimensionLt(
     int64_t rows, int64_t cols, cublasLtOrder_t order);
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

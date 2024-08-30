@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "my_ep_factory.h"
 #include "my_execution_provider.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/shared/common.h"
 #include <iostream>
 #include "core/framework/provider_options_utils.h"
@@ -31,7 +31,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MyEP(c
 }
 
 struct MyEP_Provider : Provider {
-  GSL_SUPPRESS(c .35)
+  GSL_SUPPRESS(c.35)
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     ProviderOptions* options = (ProviderOptions*)(provider_options);
     MyProviderInfo info;

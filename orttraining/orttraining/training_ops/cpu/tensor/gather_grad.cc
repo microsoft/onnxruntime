@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/tensor/gather_grad.h"
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {
@@ -37,7 +38,7 @@ Status GatherGrad::Compute(OpKernelContext* context) const {
   const Tensor& indices = *context->Input<Tensor>(1);
   const Tensor& grad = *context->Input<Tensor>(2);
 
-  const TensorShape data_shape(shape.template Data<int64_t>(), shape.Shape().Size());
+  const TensorShape data_shape(shape.template DataAsSpan<int64_t>());
   Tensor& output = *context->Output(0, data_shape);
   memset(output.MutableDataRaw(), 0, output.SizeInBytes());
 
@@ -56,13 +57,13 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
   const T* grad_data = grad.template Data<T>();
   T* output_data = output.template MutableData<T>();
 
-  const int64_t axis = HandleNegativeAxis(axis_, data_shape.NumDimensions());
+  const auto axis = narrow<size_t>(HandleNegativeAxis(axis_, data_shape.NumDimensions()));
   const int64_t block_size = data_shape.SizeFromDimension(axis + 1);
   const int64_t N = indices.Shape().Size();
   const int64_t input_block_size = data_shape.SizeFromDimension(axis);
   const int64_t output_block_size = N * block_size;
   const int64_t indices_max = data_shape[axis];
-  const int64_t grad_size = grad.Shape().Size();
+  const auto grad_size = narrow<ptrdiff_t>(grad.Shape().Size());
 
   // Check the indices first in case there's a out of bound index.
   // All index values are expected to be within bounds [-s, s-1] along axis of size s.

@@ -3,8 +3,7 @@
 
 #include "test.h"
 
-struct RawApiTestsGpuApi
-{
+struct RawApiTestsGpuApi {
   SetupClass RawApiTestsGpuApiTestsClassSetup;
   VoidTest CreateDirectXDevice;
   VoidTest CreateD3D11DeviceDevice;

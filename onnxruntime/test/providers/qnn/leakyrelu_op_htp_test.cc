@@ -5,6 +5,7 @@
 
 #include <string>
 #include "core/graph/graph.h"
+#include "core/graph/node_attr_utils.h"
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -15,18 +16,12 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-/**
- * Runs a LeakyRelu op model on the QNN HTP backend. Checks the graph node assignment, and that inference
- * outputs for QNN and CPU match.
- *
- * \param op_type The LeakyRelu op type (e.g., ReduceSum).
- * \param opset The opset version.
- * \param test_description Description of the test for error reporting.
- * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
- */
+// Checks the accuracy of a QDQ LeakyRelu model by comparing to ORT CPU EP.
 template <typename QuantType>
-static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
-                                  ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
+static void RunLeakyReluOpQDQTest(const TestInputDef<float>& input_def,
+                                  const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                  int opset,
+                                  ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -34,29 +29,52 @@ static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildQDQLeakyReluOpTestCase<QuantType>({2, 3, 4}),
-                  provider_options,
-                  opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+  TestQDQModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
+                       BuildQDQOpTestCase<QuantType>("LeakyRelu", {input_def}, {}, attrs),
+                       provider_options,
+                       opset,
+                       expected_ep_assignment);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
-TEST_F(QnnHTPBackendTests, TestQDQLeakyReluOpSet15) {
-  RunLeakyReluOpQDQTest<uint8_t>(15, "TestQDQLeakyReluOpSet15");
+TEST_F(QnnHTPBackendTests, LeakyReluOpSet15) {
+  RunLeakyReluOpQDQTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 0.0f, 10.0f, 30.0f, 40.0f}),
+                                 {utils::MakeAttribute("alpha", 0.2f)},
+                                 15,
+                                 ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
 // - Uses uint8 as the quantization type.
-TEST_F(QnnHTPBackendTests, TestQDQLeakyReluOpSet16) {
-  RunLeakyReluOpQDQTest<uint8_t>(16, "TestQDQLeakyReluOpSet16");
+TEST_F(QnnHTPBackendTests, LeakyReluOpSet16) {
+  RunLeakyReluOpQDQTest<uint8_t>(TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 0.0f, 10.0f, 30.0f, 40.0f}),
+                                 {utils::MakeAttribute("alpha", 0.2f)},
+                                 16,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test Leaky Relu where input is FP16 and alpha is FP32
+TEST_F(QnnHTPBackendTests, LeakyReluFP16OpSet16) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  auto input_def = TestInputDef<float>({1, 2, 3}, false, {-40.0f, -20.0f, 1.0f, 10.0f, 30.0f, 40.0f});
+  TestInputDef<MLFloat16> input_fp16_def = ConvertToFP16InputDef(input_def);
+  auto attrs = {utils::MakeAttribute("alpha", 0.2f)};
+  TestFp16ModelAccuracy(BuildOpTestCase<float>("LeakyRelu", {input_def}, {}, attrs),
+                        BuildOpTestCase<MLFloat16>("LeakyRelu", {input_fp16_def}, {}, attrs),
+                        provider_options,
+                        16,
+                        ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

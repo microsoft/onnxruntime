@@ -87,7 +87,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   int64_t batch_size = (batch_ndim == 0 ? 1 : input_shape.SizeToDimension(batch_ndim));
 
   // infer output shape
-  // copy the input shape up to the second last dimention
+  // copy the input shape up to the second last dimension
   std::vector<int64_t> output_dims, signal_dims;
   int i = 0;
   for (; i < batch_ndim + signal_ndim_ - 1; ++i) {
@@ -100,7 +100,7 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   // process the last dim(s)
   if (onesided_) {
     if (complex_input && !complex_output) {  // IRFFT
-      int64_t inferred_size = input_shape[i] * 2 - 1;
+      int64_t inferred_size = 2 * (input_shape[i] - 1);
       output_dims.push_back(inferred_size);
       signal_dims.push_back(inferred_size);
     } else if (!complex_input && complex_output) {  // RFFT

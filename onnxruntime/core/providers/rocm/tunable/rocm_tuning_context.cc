@@ -9,6 +9,7 @@
 #include "core/framework/tuning_context_impl.h"
 #undef TUNING_CONTEXT_IMPL
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -65,6 +66,9 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   std::ostringstream oss;
 #ifdef USE_COMPOSABLE_KERNEL
   oss << "USE_CK=" << 1 << "|";
+#ifdef USE_COMPOSABLE_KERNEL_CK_TILE
+  oss << "USE_CKTILE=" << 1 << "|";
+#endif
 #else
   oss << "USE_CK=" << 0 << "|";
 #endif
@@ -132,6 +136,20 @@ const TuningResultsManager& RocmTuningContext::GetTuningResultsManager() const {
 
 const TuningResultsValidator& RocmTuningContext::GetTuningResultsValidator() const {
   return validator_;
+}
+
+IAllocatorUniquePtr<void> RocmTuningContext::GetScratchBuffer(
+    size_t num_bytes, Stream* stream, OrtMemType mem_type) const {
+  if (num_bytes == 0) {
+    return nullptr;
+  }
+
+  auto it = allocators_->find(ep_->GetOrtDeviceByMemType(mem_type));
+  if (it == allocators_->end()) {
+    return nullptr;
+  }
+
+  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, stream, WaitRocmNotificationOnDevice);
 }
 
 }  // namespace tunable

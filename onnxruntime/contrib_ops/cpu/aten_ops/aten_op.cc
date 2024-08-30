@@ -32,8 +32,10 @@ Status ATen::Compute(OpKernelContext* p_ctx) const {
   aten_ops::ATenOperatorExecutor::Instance()(op_name_, overload_name_, input_size, dlpack_inputs.get(), output_size,
                                              dlpack_outputs.get());
   for (size_t i = 0; i < output_size; ++i) {
-    ORT_RETURN_IF_ERROR(
-        p_ctx_internal->SetOutputMLValue(static_cast<int>(i), dlpack::DlpackToOrtValue(dlpack_outputs[i])));
+    if (dlpack_outputs[i]) {
+      ORT_RETURN_IF_ERROR(
+          p_ctx_internal->SetOutputMLValue(static_cast<int>(i), dlpack::DlpackToOrtValue(dlpack_outputs[i])));
+    }
   }
 
   return Status::OK();

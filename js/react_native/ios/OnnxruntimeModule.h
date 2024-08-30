@@ -5,19 +5,24 @@
 #define OnnxruntimeModule_h
 
 #import <React/RCTBridgeModule.h>
+#import <React/RCTBlobManager.h>
 
-@interface OnnxruntimeModule : NSObject<RCTBridgeModule>
+@interface OnnxruntimeModule : NSObject <RCTBridgeModule>
 
--(NSDictionary*)loadModel:(NSString*)modelPath
-                  options:(NSDictionary*)options;
+- (void)setBlobManager:(RCTBlobManager*)manager;
 
--(NSDictionary*)loadModelFromBuffer:(NSData*)modelData
-                            options:(NSDictionary*)options;
+- (NSDictionary*)loadModel:(NSString*)modelPath
+                   options:(NSDictionary*)options;
 
--(NSDictionary*)run:(NSString*)url
-              input:(NSDictionary*)input
-             output:(NSArray*)output
-            options:(NSDictionary*)options;
+- (NSDictionary*)loadModelFromBuffer:(NSData*)modelData
+                             options:(NSDictionary*)options;
+
+- (void)dispose:(NSString*)key;
+
+- (NSDictionary*)run:(NSString*)url
+               input:(NSDictionary*)input
+              output:(NSArray*)output
+             options:(NSDictionary*)options;
 
 @end
 

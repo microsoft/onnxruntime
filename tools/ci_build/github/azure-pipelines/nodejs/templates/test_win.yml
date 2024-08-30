@@ -4,10 +4,10 @@ parameters:
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
-  - Nodejs_Packaging_CPU
+  - Nodejs_Packaging
   condition: succeeded()
   jobs:
-  - job:
+  - job: Nodejs_Test_${{ parameters.StageSuffix }}
     workspace:
       clean: all
     timeoutInMinutes:  120

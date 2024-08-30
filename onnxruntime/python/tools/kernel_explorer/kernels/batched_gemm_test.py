@@ -3,14 +3,16 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
+import os
 from dataclasses import dataclass
 from itertools import product
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
+
+max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
 
 
 def dtype_to_suffix(dtype):
@@ -20,6 +22,7 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
+@ke.dispatchable
 def _test_batched_gemm(
     func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
 ):
@@ -31,7 +34,7 @@ def _test_batched_gemm(
     np.random.seed(0)
     as_ = [(np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
     bs = [(np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
-    intermediate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    intermediate_cs = [matmul(as_[i], bs[i], transa, transb) for i in range(batch)]
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_cs = intermediate_cs
     else:
@@ -63,6 +66,11 @@ def _test_batched_gemm(
         if not my_gemm.SelectOp(impl):
             continue
 
+        # Restore C Arrays
+        for my_c in my_cs:
+            my_c.fill(1.0)
+        for dev_c in dev_cs:
+            dev_c.UpdateDeviceArray()
         my_gemm.Run()
         for dev_c in dev_cs:
             dev_c.UpdateHostNumpyArray()
@@ -85,7 +93,7 @@ dtypes = ["float32", "float16"]
 all_transabs = list(product([True, False], repeat=2))
 
 
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -95,7 +103,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 
 
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -130,16 +138,17 @@ class BatchedGemmMetric(ke.ComputeMetric):
     batch: int
 
     def report(self):
-        prefix = (
-            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} "
+        common = (
+            f"{self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} batch={self.batch:<3} {self.name}"
         )
         if self.duration <= 0:
-            return prefix + "not supported"
+            return "not supported          " + common
 
-        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -165,16 +174,17 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         duration_ms = -1
         if my_gemm.SelectOp(impl):
             duration_ms = my_gemm.Profile()
-        FLOPs = batch * m * k * n * 2  # noqa: N806
-        ke.report(BatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
+        flops = batch * m * k * n * 2
+        ke.report(BatchedGemmMetric(impl, dtype, duration_ms, flops, transa, transb, m, n, k, batch))
 
 
-def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
+@ke.dispatchable
+def profile_with_args(dtype, transa, transb, m, n, k, batch):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
     fn_rocblas = getattr(ke, "RocBlasBatchedGemm" + dtype_suffix)
     fn_tunable = getattr(ke, "BatchedGemmTunable" + dtype_suffix + transab_suffix)
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
     print()
@@ -184,14 +194,12 @@ def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=False):
             for batch in [1, 32, 64]:
-                profile_with_args(dtype, False, False, m, n, k, batch, True)
+                profile_with_args(dtype, False, False, m, n, k, batch)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
@@ -199,12 +207,9 @@ if __name__ == "__main__":
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
     group.add_argument("batch", type=int)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
-            args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch, args.sort
-        )
+        args.dispatch(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)

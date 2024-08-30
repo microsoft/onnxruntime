@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <functional>
+#include "core/common/safeint.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -14,13 +15,20 @@
 namespace onnxruntime {
 
 /**
+Returns whether `axis` is in range [-`tensor_rank`, `tensor_rank`).
+**/
+constexpr inline bool IsAxisInRange(int64_t axis, int64_t tensor_rank) {
+  return axis >= -tensor_rank && axis <= tensor_rank - 1;
+}
+
+/**
 Handle a potentially negative axis. Enforces negative axis is valid.
 @param axis Axis to convert from negative to positive if needed.
 @param tensor_rank Rank of tensor axis applies to. Tensor::Shape()::NumDimensions().
 @returns non-negative axis.
 */
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t tensor_rank) {
-  ORT_ENFORCE(axis >= -tensor_rank && axis <= tensor_rank - 1, "axis ", axis,
+  ORT_ENFORCE(IsAxisInRange(axis, tensor_rank), "axis ", axis,
               " is not in valid range [-", tensor_rank, ",", tensor_rank - 1, "]");
   // Handle negative axis
   return axis < 0 ? axis + tensor_rank : axis;
@@ -75,6 +83,14 @@ inline AutoPadType StringToAutoPadType(const std::string& str) {
 
 // helper function
 
+constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
+                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
+                                            const int64_t pad_head, const int64_t pad_tail) {
+  const SafeInt<int64_t> dkernel = SafeInt<int64_t>(dilation) * (kernel - 1) + 1;
+  int64_t dkernel_value = SafeInt<int64_t>(in_dim) + pad_head + pad_tail - dkernel;
+  return static_cast<int64_t>(static_cast<double>(dkernel_value) / stride + 1);
+}
+
 inline Status ComputePad(const int64_t in_dim,
                          const int64_t stride, const int64_t kernel, const int64_t dilation,
                          AutoPadType pad_type,
@@ -96,8 +112,17 @@ inline Status ComputePad(const int64_t in_dim,
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `legacy_target_size`
       // is `ceil (in_dim / stride)`. The following line of code is essentially just that and
       // is retained as is
-      int64_t legacy_target_size = (in_dim + stride - 1) / stride;
-      int64_t pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      SafeInt<int64_t> legacy_target_size = (SafeInt<int64_t>(in_dim) + stride - 1) / stride;
+      SafeInt<int64_t> pad_needed = (legacy_target_size - 1) * stride + kernel - in_dim;
+      // out_dim = floor((in_dim + 2p - k) / s) + 1
+      // => if (in_dim + 2p - k) is not divisible by s we can remove the floor with following equation:
+      // out_dim + eps = ((in_dim + 2p - k) / s) + 1 ;where eps is in [0.0, 1.0]
+      // therefore in edge cases padding can lower calculated above than it should be
+      SafeInt<int64_t> actual_out_size = ComputeOutputShape(in_dim, stride, kernel, /*dilation*/ 1,
+                                                            pad_needed, pad_needed);
+      if (actual_out_size < legacy_target_size) {
+        pad_needed += 1;
+      }
       // make sure padding is symmetric
       if (force_symmetric_auto_padding) {
         // Inlining math::roundUpPow2() from util/math.h to avoid bringing in the transitive dependencies.
@@ -118,13 +143,6 @@ inline Status ComputePad(const int64_t in_dim,
   return Status::OK();
 }
 
-constexpr inline int64_t ComputeOutputShape(const int64_t in_dim,
-                                            const int64_t stride, const int64_t kernel, const int64_t dilation,
-                                            const int64_t pad_head, const int64_t pad_tail) {
-  const int64_t dkernel = dilation * (kernel - 1) + 1;
-  return static_cast<int64_t>(static_cast<double>(in_dim + pad_head + pad_tail - dkernel) / stride + 1);
-}
-
 inline Status ComputePadAndOutputShape(const int64_t in_dim,
                                        const int64_t stride, const int64_t kernel, const int64_t dilation,
                                        AutoPadType pad_type,
@@ -135,6 +153,25 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
       ComputePad(in_dim, stride, kernel, dilation, pad_type, pad_head, pad_tail, force_symmetric_auto_padding));
   out_dim = ComputeOutputShape(in_dim, stride, kernel, dilation, pad_head, pad_tail);
   return Status::OK();
+}
+
+constexpr inline int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
+                                         int64_t kernel, int64_t dilation, int64_t out_size) {
+  return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
+}
+
+inline void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
+                              int64_t& pad_head, int64_t& pad_tail) {
+  if (pad_type == AutoPadType::SAME_UPPER) {
+    // pad more on tail when total_pad is odd.
+    pad_head = total_pad / 2;
+    pad_tail = total_pad - total_pad / 2;
+  } else {
+    // When pad_type is NOTSET, SAME_LOWER or VALID,
+    // pad more on head when total_pad is odd.
+    pad_head = total_pad - total_pad / 2;
+    pad_tail = total_pad / 2;
+  }
 }
 
 // Note: This helper function will not have overflow protection

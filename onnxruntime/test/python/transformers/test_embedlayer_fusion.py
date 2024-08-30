@@ -74,6 +74,38 @@ class TestFusion(unittest.TestCase):
         os.remove(original_model_path)
         os.remove(optimized_model_path)
 
+    def test_embedlayer_fusion_with_embedding_sum_output(self):
+        model = create_gpt2_embedlayer(one_attention_node=True, output_embedding_sum=True)
+        path = "."
+        original_model_path = os.path.join(path, "gpt2_embedlayer_one_attn_output_sum.onnx")
+        optimized_model_path = os.path.join(path, "gpt2_embedlayer_one_attn_output_sum_opt.onnx")
+        expected_model_filename = "gpt2_embedlayer_one_attn_output_sum_exp.onnx"
+
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+
+        self.verify_fusion(optimized_model, expected_model_filename)
+        self.verify_parity(optimized_model_path, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_path)
+
+    def test_embedlayer_fusion_with_embedding_sum_output_no_sln(self):
+        model = create_gpt2_embedlayer(one_attention_node=True, has_skip_layer_norm=False, output_embedding_sum=True)
+        path = "."
+        original_model_path = os.path.join(path, "gpt2_embedlayer_one_attn_output_sum_no_sln.onnx")
+        optimized_model_path = os.path.join(path, "gpt2_embedlayer_one_attn_output_sum_no_sln_opt.onnx")
+        expected_model_filename = "gpt2_embedlayer_one_attn_output_sum_exp.onnx"
+
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
+
+        self.verify_fusion(optimized_model, expected_model_filename)
+        self.verify_parity(optimized_model_path, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_path)
+
 
 if __name__ == "__main__":
     unittest.main()

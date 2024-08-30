@@ -111,6 +111,7 @@ class SoftmaxTunable : public IKernelExplorer {
   }
 
   void Run() override {
+    WithMaxTuningDurationMs max_duration(TuningContext(), 250);
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
@@ -177,7 +178,7 @@ template <typename T>
 class SoftmaxTriton : public IKernelExplorer {
  public:
   SoftmaxTriton(DeviceArray& output, DeviceArray& input, int softmax_elements,
-            int input_stride, int output_stride, int batch_count, bool is_log_softmax)
+                int input_stride, int output_stride, int batch_count, bool is_log_softmax)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
     for (auto&& [name, op] : rocm::GetSoftmaxTritonOps<T, T>()) {

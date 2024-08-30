@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -508,7 +507,12 @@ namespace Microsoft.ML.OnnxRuntime
         {
             try
             {
+#if NETSTANDARD2_0
+                var ortApiBasePtr = NativeMethods.OrtGetApiBase();
+                var ortApiBase = (OrtApiBase)Marshal.PtrToStructure(ortApiBasePtr, typeof(OrtApiBase));
+#else
                 var ortApiBase = NativeMethods.OrtGetApiBase();
+#endif
                 NativeApiStatus.VerifySuccess(
                     OrtExtensionsNativeMethods.RegisterCustomOps(this.handle, ref ortApiBase)
                 );
@@ -696,6 +700,15 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         private bool _enableCpuMemArena = true;
+
+        /// <summary>
+        /// Disables the per session threads. Default is true.
+        /// This makes all sessions in the process use a global TP.
+        /// </summary>
+        public void DisablePerSessionThreads()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtDisablePerSessionThreads(handle));
+        }
 
         /// <summary>
         /// Log Id to be used for the session. Default is empty string.

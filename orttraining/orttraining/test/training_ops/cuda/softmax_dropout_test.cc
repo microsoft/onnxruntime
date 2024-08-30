@@ -45,11 +45,11 @@ void LaunchBiasSoftmaxDropoutTester(const std::vector<int64_t>& input_dims, cons
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     ASSERT_EQ(fetches.size(), 3);
-    const auto& dropout_output_tensor = FetchTensor(fetches[0]);
+    const auto& dropout_output_tensor = fetches[0].Get<Tensor>();
     auto dropout_output_span = dropout_output_tensor.DataAsSpan<T>();
-    const auto& mask_tensor = FetchTensor(fetches[1]);
+    const auto& mask_tensor = fetches[1].Get<Tensor>();
     auto mask_span = mask_tensor.DataAsSpan<bool>();
-    const auto& softmax_output_tensor = FetchTensor(fetches[2]);
+    const auto& softmax_output_tensor = fetches[2].Get<Tensor>();
     auto softmax_output_span = softmax_output_tensor.DataAsSpan<T>();
 
     const auto num_dropped_values = std::count(mask_span.begin(), mask_span.end(), false);
@@ -163,7 +163,7 @@ void LaunchSoftmaxDropoutGradTester(const std::vector<int64_t>& dims, const std:
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     ASSERT_EQ(fetches.size(), 1);
-    const auto& dx_tensor = FetchTensor(fetches[0]);
+    const auto& dx_tensor = fetches[0].Get<Tensor>();
     auto dx_span = dx_tensor.DataAsSpan<T>();
     ASSERT_EQ(dx_data.size(), dx_span.size()) << "provider: " << provider_type;
     for (size_t i = 0; i < dx_data.size(); ++i) {

@@ -23,11 +23,11 @@ $ErrorActionPreference = "Stop"
 
 $Env:Path = "$install_prefix\bin;" + $env:Path
 $Env:MSBUILDDISABLENODEREUSE=1
-
+$Env:CMAKE_PREFIX_PATH = "$install_prefix"
 New-Item -Path "$install_prefix" -ItemType Directory -Force
 
 # Setup compile flags
-$compile_flags = @('/MP', '/guard:cf', '/DWIN32', '/D_WINDOWS', '/DWINVER=0x0A00', '/D_WIN32_WINNT=0x0A00', '/DNTDDI_VERSION=0x0A000000', '/W3')
+$compile_flags = @('/MP', '/guard:cf', '/DWIN32', '/D_WINDOWS', '/D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR', '/DWINVER=0x0A00', '/D_WIN32_WINNT=0x0A00', '/DNTDDI_VERSION=0x0A000000', '/W3')
 $linker_flags=@('/guard:cf')
 
 if ($use_cache) {
@@ -93,11 +93,12 @@ if(-not (Test-Path $vshwere_path -PathType Leaf)){
 
 $msbuild_path = &$vshwere_path -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
 
-Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
 
-Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+Install-Abseil -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
 
-# This is the python Protobuf version, which is different than the C++ version that is in deps.txt
+Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
+
 $protobuf_version="4.21.12"
 
 # ONNX doesn't allow us to specify CMake's path

@@ -2,6 +2,8 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/webnn/builders/helper.h"
+
 #pragma once
 
 namespace onnxruntime {
@@ -27,7 +29,7 @@ class IOpBuilder {
  public:
   // Check if an operator is supported.
   virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                             const logging::Logger& logger) const = 0;
+                             const WebnnDeviceType device_type, const logging::Logger& logger) const = 0;
 };
 
 }  // namespace webnn

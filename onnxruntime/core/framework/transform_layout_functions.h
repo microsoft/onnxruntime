@@ -10,7 +10,7 @@ class Graph;
 class IExecutionProvider;
 
 // Layout transformation related functions.
-namespace layout_transformer {
+namespace layout_transformation {
 // DebugGraphFn can be used to debug the graph modifications made during layout transformation.
 // See kDebugLayoutTransformation in /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h for
 // more details.
@@ -23,5 +23,5 @@ using DebugGraphFn = std::function<void(const Graph&)>;
 // and used in layout transformation (core/optimizers/transpose_optimizer)
 using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep,
                                                      const DebugGraphFn& debug_graph_fn)>;
-}  // namespace layout_transformer
+}  // namespace layout_transformation
 }  // namespace onnxruntime

@@ -3,16 +3,15 @@
 #include "LearningModelBuilder.h"
 #include "TensorFeatureDescriptor.h"
 
-namespace WINML_EXPERIMENTALP
-{
+namespace WINML_EXPERIMENTALP {
 
-LearningModelOutputs::LearningModelOutputs(winml_experimental::LearningModelBuilder builder) :
-    output_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
+LearningModelOutputs::LearningModelOutputs(winml_experimental::LearningModelBuilder builder)
+  : output_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
     builder_(builder) {
 }
 
-winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output)
-{
+winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearningModelFeatureDescriptor const& output
+) {
   // Perform model update inside the builder
   auto model = builder_.as<winml_experimentalp::LearningModelBuilder>()->UseModel();
   auto descriptor_provider = output.as<_winml::IDescriptorInfoProvider>();
@@ -22,4 +21,4 @@ winml_experimental::LearningModelBuilder LearningModelOutputs::Add(winml::ILearn
   return builder_;
 }
 
-} // namespace WINML_EXPERIMENTALP
+}  // namespace WINML_EXPERIMENTALP

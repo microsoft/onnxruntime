@@ -51,10 +51,11 @@ class WindowsEnv : public Env {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-  void WindowsEnv::SleepForMicroseconds(int64_t micros) const override;
+  void SleepForMicroseconds(int64_t micros) const override;
   static int DefaultNumCores();
   int GetNumPhysicalCpuCores() const override;
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override;
+  int GetL2CacheSize() const override;
   static WindowsEnv& Instance();
   PIDType GetSelfPid() const override;
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override;
@@ -113,6 +114,8 @@ class WindowsEnv : public Env {
    * }
    */
   std::vector<LogicalProcessors> cores_;
+
+  int l2_cache_size_;
   /*
    * "global_processor_info_map_" is a map of:
    * global_processor_id <--> (group_id, local_processor_id)

@@ -6,9 +6,12 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include "core/common/flatbuffers.h"
+
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
@@ -17,6 +20,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -42,12 +46,6 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/program_region.h"
 #endif
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 
@@ -96,10 +94,12 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
+               const ExternalDataLoaderManager& external_data_loader_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr,
+               AllocatorMap* parent_allocators = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -129,7 +129,14 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
-  AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
+
+  /*
+   * Get allocators.
+   */
+  const AllocatorMap& GetAllocators() const { return *allocators_; }
+
+  void UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>&);
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
@@ -255,8 +262,8 @@ class SessionState {
      * \param p_node0 Nullable
      * \param kci0 Nullable
      */
-    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0)
-        : index(index0), p_node(p_node0), kci(kci0), device(&device0) {}
+    NodeInfo(size_t index0, const onnxruntime::Node* p_node0, const KernelCreateInfo* kci0, const OrtDevice& device0, int stream_index0 = -1)
+        : index(index0), p_node(p_node0), kci(kci0), device(&device0), stream_index(stream_index0) {}
 
     size_t index;
     // Nullable
@@ -264,6 +271,7 @@ class SessionState {
     // Nullable
     const KernelCreateInfo* kci = nullptr;
     const OrtDevice* device = nullptr;
+    int stream_index;
   };
 
   using NameNodeInfoMapType = InlinedHashMap<std::string, InlinedVector<NodeInfo>>;
@@ -290,6 +298,8 @@ class SessionState {
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
+  const ExternalDataLoaderManager& GetExternalDataLoaderMgr() const noexcept { return external_data_loader_mgr_; }
+
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -297,6 +307,10 @@ class SessionState {
   void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
+
+  std::unordered_map<std::string, std::unique_ptr<Tensor>>* GetMutableBufferedTensors() {
+    return &name_to_buffered_tensor_;
+  }
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
@@ -352,8 +366,6 @@ class SessionState {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
-
-  void SetupAllocators();
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
@@ -438,22 +450,17 @@ class SessionState {
     }
   };
 
-  // using std::map as OrtMemoryInfo would need a custom hash function to be used with std::unordered_map,
+  // using std::map as OrtDevice would need a custom hash function to be used with std::unordered_map,
   // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
   // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
   // entries in the map
-  //
-  // NOTE: We store a delegate to get the allocator to support scenarios such as the CUDA EP where a thread_local
-  // allocator is returned.
-  //
-  // TODO: The CUDA EP may not need to use the per-thread allocator for allocations that would use this map
-  // (e.g. primarily from ExecutionFrame and utils::Copy{Inputs|Outputs}AcrossDevices). It does need it
-  // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
-  // directly instead of going through CUDAExecutionProvider::GetAllocator.
-  // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-      allocators_;
+  // SessionState will contain other SessionState objects for subgraph. The unique ptr will be initialized only the
+  // SessionState object is in the parent graph, the raw pointer will be initialized when session state is in parent
+  // graph (from the unique ptr) or in the subgraph (from the raw pointer from parent session state). The raw pointer
+  // will be used all the way to access std::map<OrtDevice, AllocatorPtr>, unique pointer is only releasing the resource
+  // when the parent session state is releasing.
+  std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
+  AllocatorMap* allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
@@ -510,6 +517,8 @@ class SessionState {
 
   const DataTransferManager& data_transfer_mgr_;
 
+  const ExternalDataLoaderManager& external_data_loader_mgr_;
+
   const SessionOptions& sess_options_;
 
   std::optional<NodeIndexInfo> node_index_info_;
@@ -564,6 +573,12 @@ class SessionState {
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;
 #endif
+
+  // Holds the tensors which provide memory buffer for TensorProtos
+  // Use case: in optimizer, transform a TensorProto to a new TensorProto whose the memory buffer is
+  // allocated by CPU instead by protobuf's arena. Arena style memory allocators do not fully release
+  // a instance's memory which may result large memory consumption, which is a tradeoff for speed.
+  std::unordered_map<std::string, std::unique_ptr<Tensor>> name_to_buffered_tensor_;
 };
 
 }  // namespace onnxruntime

@@ -14,6 +14,7 @@ class SpaceDepthBase {
                 "Attribute blocksize is not set.");
   }
 
+  template <bool IsNHWC = false>
   Status InputValidationsAndOutputDimsCalc(const Tensor& input,
                                            int64_t& batch,
                                            int64_t& input_depth, int64_t& input_height, int64_t& input_width,
@@ -27,9 +28,15 @@ class SpaceDepthBase {
     }
 
     batch = input_shape[0];
-    input_depth = input_shape[1];
-    input_height = input_shape[2];
-    input_width = input_shape[3];
+    if constexpr (IsNHWC) {
+      input_depth = input_shape[3];
+      input_height = input_shape[1];
+      input_width = input_shape[2];
+    } else {
+      input_depth = input_shape[1];
+      input_height = input_shape[2];
+      input_width = input_shape[3];
+    }
 
     if (is_space_to_depth) {  // SpaceToDepth op
       if ((input_height % this->blocksize_) != 0) {
@@ -46,7 +53,8 @@ class SpaceDepthBase {
 
     } else {  // DepthToSpace op
       if ((input_depth % (blocksize_ * blocksize_) != 0)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DepthToSpace requires input depth to be a multiple of (block_size * blok_size)");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "DepthToSpace requires input depth to be a multiple of (block_size * block_size)");
       }
 
       output_depth = input_depth / blocksize_ / blocksize_;

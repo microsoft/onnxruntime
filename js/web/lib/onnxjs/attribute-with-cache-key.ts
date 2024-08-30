@@ -6,13 +6,15 @@ class AttributeWithCacheKeyImpl {
     Object.assign(this, attribute);
   }
 
-  private _cacheKey: string;
+  private key: string;
   public get cacheKey(): string {
-    if (!this._cacheKey) {
-      this._cacheKey =
-          Object.getOwnPropertyNames(this).sort().map(name => `${(this as Record<string, unknown>)[name]}`).join(';');
+    if (!this.key) {
+      this.key = Object.getOwnPropertyNames(this)
+        .sort()
+        .map((name) => `${(this as Record<string, unknown>)[name]}`)
+        .join(';');
     }
-    return this._cacheKey;
+    return this.key;
   }
 }
 
@@ -20,5 +22,6 @@ export interface AttributeWithCacheKey {
   readonly cacheKey: string;
 }
 
-export const createAttributeWithCacheKey = <T extends Record<string, unknown>>(attribute: T): T&AttributeWithCacheKey =>
-    new AttributeWithCacheKeyImpl(attribute) as unknown as T & AttributeWithCacheKey;
+export const createAttributeWithCacheKey = <T extends Record<string, unknown>>(
+  attribute: T,
+): T & AttributeWithCacheKey => new AttributeWithCacheKeyImpl(attribute) as unknown as T & AttributeWithCacheKey;

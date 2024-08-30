@@ -154,7 +154,7 @@ class TransformerBase(ABC):
     the dependency between it and existing transformers.
     """
 
-    _TRANSFORMERS = []
+    _TRANSFORMERS = []  # noqa: RUF012
 
     @classmethod
     def register_transformer(cls, klass):
@@ -328,7 +328,7 @@ class ListUnpackTransformer(TransformerBase):
             if len([output for output in node.output if len(output) > 0]) > 1:
                 idx = self.ops.get(node.op_type, 0)
                 self.ops[node.op_type] = idx + 1
-                new_output = f"{get_prefix(node.output[0])}{node.op_type}_{str(idx)}_output"
+                new_output = f"{get_prefix(node.output[0])}{node.op_type}_{idx!s}_output"
                 for output in node.output:
                     if len(output) > 0:
                         new_nodes.append(helper.make_node("ListUnpack", [new_output], [output]))

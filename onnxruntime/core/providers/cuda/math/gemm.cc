@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/math/gemm.h"
+
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/tunable/math/gemm.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -57,20 +58,34 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
   const auto* X = ctx->Input<Tensor>(0);
   const auto* W = ctx->Input<Tensor>(1);
   const auto* B = ctx->Input<Tensor>(2);
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({}));
-
-  if (!helper.State().IsOK())
-    return helper.State();
-
+  if (!helper.State().IsOK()) return helper.State();
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
+
+  auto* Y = ctx->Output(0, {M, N});
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) return Status::OK();
+
+  if (GetTuningContext()->IsTunableOpEnabled()) {
+    return tunable::TunableGemm<T>(M, N, K, trans_A_, trans_B_, alpha_, B ? beta_ : 0.0f, this, ctx);
+  }
+
+  return ComputeDefault(ctx, M, N, K);
+}
+
+template <typename T>
+Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  const auto* X = ctx->Input<Tensor>(0);
+  const auto* W = ctx->Input<Tensor>(1);
+  const auto* B = ctx->Input<Tensor>(2);
   auto* Y = ctx->Output(0, {M, N});
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
@@ -103,7 +118,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           b_data, N,
           GetConstOnes<CudaT>(M, Stream(ctx)), 1,
           /*beta*/ &zero,
-          out_data, N, device_prop));
+          out_data, N, device_prop, UseTF32()));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -115,7 +130,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           GetConstOnes<CudaT>(N, Stream(ctx)), N,
           b_data, 1,
           /*beta*/ &zero,
-          out_data, N, device_prop));
+          out_data, N, device_prop, UseTF32()));
     } else {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, static_cast<size_t>(M) * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
@@ -138,7 +153,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
       B != nullptr ? &beta : &zero,
-      out_data, N, device_prop));
+      out_data, N, device_prop, UseTF32()));
 
   return Status::OK();
 }

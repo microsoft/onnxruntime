@@ -1,15 +1,22 @@
 ---
 # clang-format settings for the C# code
-BasedOnStyle:  Microsoft
+BasedOnStyle: Microsoft
+
+# Setting ColumnLimit to 0 so developer choices about where to break lines are maintained.
+# Developers are responsible for adhering to the 120 character maximum.
+ColumnLimit: 0
 
 BreakBeforeBraces: Custom
 BraceWrapping:
-  AfterCaseLabel:  true
-  BeforeWhile:     true
+  AfterCaseLabel: true
+  BeforeWhile: true
   SplitEmptyFunction: false
   SplitEmptyRecord: false
-  # unfortunately there's no config option for handling the 'get' or 'set' of properties 
+  # unfortunately there's no config option for handling the 'get' or 'set' of properties
 
 IndentCaseLabels: true
 KeepEmptyLinesAtTheStartOfBlocks: false
+NamespaceIndentation: All
 SpacesInContainerLiterals: false
+SortIncludes: CaseSensitive
+SortUsingDeclarations: LexicographicNumeric

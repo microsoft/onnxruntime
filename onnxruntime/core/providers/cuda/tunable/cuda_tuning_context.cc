@@ -9,6 +9,7 @@
 #include "core/framework/tuning_context_impl.h"
 #undef TUNING_CONTEXT_IMPL
 #include <core/providers/cuda/cuda_execution_provider.h>
+#include <core/providers/cuda/cuda_stream_handle.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -25,6 +26,17 @@ static Status ValidateCudaVersion(const std::string& value) {
   ORT_RETURN_IF(current != value, "CUDA runtime version mismatch: tuning results produced with CUDA ", value,
                 ", onnxruntime currently run with CUDA ", current);
   return Status::OK();
+}
+
+std::string CudaTuningResultsValidator::GetOrtBuildConfig() const {
+  std::ostringstream oss;
+#ifdef ENABLE_TRITON
+  constexpr int kTriton = 1;
+#else
+  constexpr int kTriton = 0;
+#endif
+  oss << "ENABLE_TRITON=" << kTriton << "|";
+  return oss.str();
 }
 
 std::string CudaTuningResultsValidator::GetDeviceModel() const {
@@ -95,6 +107,20 @@ const TuningResultsManager& CudaTuningContext::GetTuningResultsManager() const {
 
 const TuningResultsValidator& CudaTuningContext::GetTuningResultsValidator() const {
   return validator_;
+}
+
+IAllocatorUniquePtr<void> CudaTuningContext::GetScratchBuffer(
+    size_t num_bytes, Stream* stream, OrtMemType mem_type) const {
+  if (num_bytes == 0) {
+    return nullptr;
+  }
+
+  auto it = allocators_->find(ep_->GetOrtDeviceByMemType(mem_type));
+  if (it == allocators_->end()) {
+    return nullptr;
+  }
+
+  return IAllocator::MakeUniquePtr<void>(it->second, num_bytes, false, stream, WaitCudaNotificationOnDevice);
 }
 
 }  // namespace tunable

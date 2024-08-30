@@ -38,7 +38,7 @@ common::Status TensorProtoToMLValue(const onnx::TensorProto& input, const MemBuf
 
 template <typename T>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
-                  /*out*/ T* p_data, int64_t expected_size);
+                  /*out*/ T* p_data, size_t expected_size);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const onnx::TensorProto& tensor_proto);

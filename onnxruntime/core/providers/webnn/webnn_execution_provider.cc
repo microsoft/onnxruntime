@@ -4,7 +4,6 @@
 
 #include "webnn_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
@@ -18,53 +17,26 @@
 
 namespace onnxruntime {
 
-constexpr const char* WEBNN = "WebNN";
-
-WebNNExecutionProvider::WebNNExecutionProvider(
-    const std::string& webnn_device_flags, const std::string& webnn_power_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(WEBNN, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(WEBNN, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
-  // Create WebNN context and graph builder.
-  const emscripten::val ml = emscripten::val::global("navigator")["ml"];
-  if (!ml.as<bool>()) {
-    ORT_THROW("Failed to get ml from navigator.");
-  }
-  emscripten::val context_options = emscripten::val::object();
-  // Currently WebNN implementation in Chromium temporarily reuses the MLContextOptions
-  // defined in Model Loader API, which uses MLDevicePreference instead of MLDeviceType
-  // defined in WebNN. Because there's an ongoing spec discussion to simplify this API at
-  // https://github.com/webmachinelearning/webnn/issues/302.
-  context_options.set("devicePreference", emscripten::val(webnn_device_flags));
+WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags)
+    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
+    wnn_device_type_ = webnn::WebnnDeviceType::CPU;
   } else {
     preferred_layout_ = DataLayout::NCHW;
+    if (webnn_device_flags.compare("gpu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::GPU;
+    } else if (webnn_device_flags.compare("npu") == 0) {
+      wnn_device_type_ = webnn::WebnnDeviceType::NPU;
+    } else {
+      ORT_THROW("Unknown WebNN deviceType.");
+    }
   }
-  if (webnn_power_flags.compare("default") != 0) {
-    context_options.set("powerPreference", emscripten::val(webnn_power_flags));
-  }
-  wnn_context_ = ml.call<emscripten::val>("createContextSync", context_options);
+
+  wnn_context_ = emscripten::val::module_property("currentContext");
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
-  }
-  wnn_builder_ = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
-  if (!wnn_builder_.as<bool>()) {
-    ORT_THROW("Failed to create WebNN builder.");
   }
 }
 
@@ -75,10 +47,15 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const IKernelLookup& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not run WebNN EP on subgraph, instead we cover this in the control flow nodes.
-  // TODO investigate whether we want to support subgraph using WebNN EP.
-  if (graph_viewer.IsSubgraph()) {
-    return result;
+  // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
+  // ancestor graphs as common initializers shared for other subgraphs. We need to collect all of them used for
+  // identifying the required initializer names and storing into 'meta_def->constant_initializers'.
+  // Thus we are able to get the required initialized tensors for this subgraph via the GetInitializerTensors()
+  // method defined in the model_builder.h file.
+  InitializedTensorSet all_initializers;
+  const bool is_subgraph = graph_viewer.IsSubgraph();
+  if (is_subgraph) {
+    all_initializers = webnn::CollectAllInitializedTensors(graph_viewer);
   }
 
   /*
@@ -100,7 +77,13 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto& logger = *GetLogger();
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, logger);
+  emscripten::val wnn_builder = emscripten::val::global("MLGraphBuilder").new_(wnn_context_);
+  if (!wnn_builder.as<bool>()) {
+    ORT_THROW("Failed to create WebNN builder.");
+  }
+
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, logger);
+  wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
     return result;
@@ -126,18 +109,28 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
+    std::vector<std::string> subgraph_initializers;
     InlinedHashSet<const NodeArg*> node_outputs;
     InlinedHashSet<const NodeArg*> subgraph_inputs;
     InlinedHashSet<const NodeArg*> subgraph_outputs;
     std::vector<const NodeArg*> ordered_subgraph_inputs;
-    std::vector<const NodeArg*> ordered_subgraph_outputs;
+    // Output should be unique. It may be produced as graph output and subgraph output.
+    InlinedHashSet<const NodeArg*> ordered_subgraph_outputs;
 
     for (const auto& index : group) {
       sub_graph->nodes.push_back(index);
       const auto* node = graph_viewer.GetNode(index);
 
       for (const auto* input : node->InputDefs()) {
-        // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        if (!input->Exists()) {
+          // skip the placeholder inputs.
+          continue;
+        }
+        // If it is a subgraph of a control flow node, collect the constant initializer.
+        if (is_subgraph && Contains(all_initializers, input->Name())) {
+          subgraph_initializers.push_back(input->Name());
+        }
+        // If the node input was not produced by this subgraph, add it to the subgraph inputs.
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
             subgraph_inputs.insert(input);
@@ -151,7 +144,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         node_outputs.insert(output_def);
         // if output is overall graph output we need to produce it.
         if (graph_outputs.count(output_def) != 0) {
-          ordered_subgraph_outputs.push_back(output_def);
+          ordered_subgraph_outputs.insert(output_def);
         }
       }
 
@@ -161,7 +154,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           const auto* output_def = output_defs[it->GetSrcArgIndex()];
           if (subgraph_outputs.count(output_def) == 0) {
             subgraph_outputs.insert(output_def);
-            ordered_subgraph_outputs.push_back(output_def);
+            ordered_subgraph_outputs.insert(output_def);
           }
         }
       }
@@ -169,12 +162,18 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+
+    if (is_subgraph) {
+      for (const auto& initializer : subgraph_initializers) {
+        meta_def->constant_initializers.push_back(initializer);
+      }
+    }
 
     for (const auto& input : ordered_subgraph_inputs) {
       meta_def->inputs.push_back(input->Name());
@@ -213,9 +212,11 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_builder_, preferred_layout_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
+                                preferred_layout_, wnn_device_type_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
+
     // Build map from input name to its index in input definitions.
     {
       InlinedHashMap<std::string, size_t> input_map;
@@ -255,7 +256,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       const size_t num_inputs = ctx.GetInputCount();
       const size_t num_outputs = ctx.GetOutputCount();
 
-      // Ort::CustomOpApi ort{*api};
       webnn::Model* model = reinterpret_cast<webnn::Model*>(state);
 
       const auto& model_inputs = model->GetInputs();
@@ -272,13 +272,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         auto input_tensor = ctx.GetInput(input_idx);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
-        // If we have an empty shape, this is a scalar input,
-        // Since all the input output of WebNN EP is MultiArray, we will make the scalar input as a {1} MultiArray.
-        if (shape.empty())
-          shape.push_back(1);
-        std::vector<int> temp(shape.size());
-        transform(shape.begin(), shape.end(), temp.begin(),
-                  [](int64_t dim) -> uint32_t { return SafeInt<int32_t>(dim); });
         const void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
@@ -300,26 +293,14 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           const auto& output_info = model->GetInputOutputInfo(output_name);
           auto output_shape = output_info.shape;
           auto output_type = output_info.data_type;
-
-          // Since WebNN EP use {1} tensor as scalar, if the model output should have empty shape.
-          // We are going to replace the {1} shape of the output back to {}.
-          if (model->IsScalarOutput(output_name))
-            output_shape.clear();
-
           auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
-          void* output_buffer;
-          switch (output_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-              output_buffer = output_tensor.GetTensorMutableRawData();
-              break;
-            default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
-              break;
+          if (!webnn::IsSupportedDataType(output_type, webnn::webnn_supported_data_types)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Unsupported type: ", output_type, " for output: ", output_name);
           }
-
+          void* output_buffer = output_tensor.GetTensorMutableRawData();
           outputs.emplace(output_name,
                           webnn::OnnxTensorData{
                               webnn::OnnxTensorInfo{output_type, output_shape},

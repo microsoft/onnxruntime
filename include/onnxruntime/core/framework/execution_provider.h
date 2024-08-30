@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -26,12 +27,14 @@ class Node;
 
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+
+struct OrtRunOptions;
 
 namespace onnxruntime {
 
@@ -51,6 +54,8 @@ struct NodeComputeInfo {
   DestroyFunctionStateFunc release_state_func;
 };
 
+using RunOptions = ::OrtRunOptions;
+
 enum class DataLayout {
   NCHW,
   NHWC,
@@ -59,14 +64,11 @@ enum class DataLayout {
 
 class IExecutionProvider {
  protected:
-  IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
-      : IExecutionProvider(type, OrtDevice(), use_metadef_id_creator) {}
+  IExecutionProvider(const std::string& type)
+      : IExecutionProvider(type, OrtDevice()) {}
 
-  IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
+  IExecutionProvider(const std::string& type, OrtDevice device)
       : default_device_(device), type_{type} {
-    if (use_metadef_id_creator) {
-      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
-    }
   }
 
   /*
@@ -78,24 +80,25 @@ class IExecutionProvider {
   virtual ~IExecutionProvider() = default;
 
   /**
-     Get all IAllocators for <*this> execution provider.
-  */
-  const std::vector<AllocatorPtr>& GetAllocators() const {
-    return allocator_list_;
-  }
-
-  /**
-   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
-   */
-  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
-
-  /**
    * Returns a data transfer object that implements methods to copy to and
    * from this device.
    * If no copy is required for the successful operation of this provider,
    * return a nullptr.
    */
   virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
+
+  /**
+   * Returns an external data loader object that implements methods to load data from external sources.
+   *
+   * By default, framework will handle external data loading by loading the data into CPU memory and then copying
+   * it to the target device if required. So in most cases, it's not necessary to override this method. Specifically,
+   * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
+   * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
+   * CPU memory usage.
+   */
+  virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
   }
 
@@ -199,7 +202,7 @@ class IExecutionProvider {
      Run may not be finished on device This function should be regarded as the
      point after which a new Run would start to submit commands from CPU
   */
-  virtual common::Status OnRunStart() { return Status::OK(); }
+  virtual common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) { return Status::OK(); }
 
   /**
      Called when InferenceSession::Run ended
@@ -207,25 +210,27 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
+    return Status::OK();
+  }
 
   /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider. Currently only CUDA execution provider supports it.
+     the provider.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
   /**
-     Indicate whether the graph has been captured and instantiated. Currently
-     only CUDA execution provider supports it.
+     Indicate whether the graph has been captured and instantiated.
    */
-  virtual bool IsGraphCaptured() const { return false; }
+  virtual bool IsGraphCaptured(int /*graph_annotation_id*/) const { return false; }
 
   /**
-     Run the instantiated graph. Currently only CUDA execution provider supports
-     it.
+     Run the instantiated graph.
    */
-  virtual common::Status ReplayGraph() { return Status::OK(); }
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+    return Status::OK();
+  }
 
   /**
      Called when session creation is complete
@@ -234,16 +239,13 @@ class IExecutionProvider {
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
-  void InsertAllocator(AllocatorPtr allocator);
-  void ReplaceAllocator(AllocatorPtr allocator);
-
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
-  // Fusion approach that is suppported
+  // Fusion approach that is supported
   // !!! The "Function" FusionStyle is deprecated.
   // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
@@ -289,25 +291,6 @@ class IExecutionProvider {
     return logger_;
   }
 
-  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance.
-   The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
-   @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
-   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model.
-                          This is created using the model path if available,
-                          or the model input names and the output names from all nodes in the main graph.
-   @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
-            compiled kernels, so the name must be unique and deterministic across models and sessions.
-            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and
-                  virtual, and ModelMetadefIdGenerator but be defined in the header as well.
-   */
-  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
-
-  /**
-     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
-     If the EP implements this it should generally delay creating any allocators until this is called.
-  */
-  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
-
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
   }
@@ -318,7 +301,7 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
-  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
@@ -341,33 +324,25 @@ class IExecutionProvider {
     return default_device_;
   };
 
+  /**
+   * Create Preferred allocators for the current Execution Provider
+   * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
+   */
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
+
+  /**
+   * Get the array of pointers for EPContext nodes
+   * EP needs to implement this if has the requirement to generate the context cache model. Otherwise leave it.
+   * Default return an empty vector if not provided by the Execution Provider
+   */
+  virtual const InlinedVector<const Node*> GetEpContextNodes() const {
+    return InlinedVector<const Node*>();
+  }
+
  private:
   const std::string type_;
 
-  // allocator lookup is done by combining the device id and OrtMemType.
-  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
-  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
-  // GPU device.
-  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-  AllocatorMap allocators_;
-
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
-  // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
-  // contains the same instances as allocators_
-  std::vector<AllocatorPtr> allocator_list_;
-
-  // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
-  // multiple sessions.
-  class ModelMetadefIdGenerator {
-   public:
-    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash);
-
-   private:
-    std::unordered_map<HashValue, HashValue> main_graph_hash_;  // map graph instance hash to model contents hash
-    std::unordered_map<HashValue, int> model_metadef_id_;       // current unique id for model
-  };
-
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 }  // namespace onnxruntime

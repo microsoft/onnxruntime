@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {WebGLBackend} from './backends/backend-webgl';
-import {Graph} from './graph';
-import {Operator} from './operators';
-import {OpSet} from './opset';
-import {Session} from './session';
+import { WebGLBackend } from './backends/backend-webgl';
+import { Graph } from './graph';
+import { Operator } from './operators';
+import { OpSet } from './opset';
+import { Session } from './session';
 
 export interface InferenceHandler {
   /**
@@ -61,7 +61,7 @@ export interface Backend {
    * initialize the backend. will be called only once, when the first time the
    * backend it to be used
    */
-  initialize(): boolean|Promise<boolean>;
+  initialize(): boolean | Promise<boolean>;
 
   /**
    * create an instance of SessionHandler to use in a Session object's lifecycle
@@ -77,15 +77,15 @@ export interface Backend {
 // caches all initialized backend instances
 const backendsCache: Map<string, Backend> = new Map();
 
-export const backend: {[name: string]: Backend} = {
-  webgl: new WebGLBackend()
+export const backend: { [name: string]: Backend } = {
+  webgl: new WebGLBackend(),
 };
 
 /**
  * Resolve a reference to the backend. If a hint is specified, the corresponding
  * backend will be used.
  */
-export async function resolveBackend(hint?: string|readonly string[]): Promise<Backend> {
+export async function resolveBackend(hint?: string | readonly string[]): Promise<Backend> {
   if (!hint) {
     return resolveBackend(['webgl']);
   } else {
@@ -107,7 +107,7 @@ export async function resolveBackend(hint?: string|readonly string[]): Promise<B
   throw new Error('no available backend to use');
 }
 
-async function tryLoadBackend(backendHint: string): Promise<Backend|undefined> {
+async function tryLoadBackend(backendHint: string): Promise<Backend | undefined> {
   const backendObj = backend;
 
   if (typeof backendObj[backendHint] !== 'undefined' && isBackend(backendObj[backendHint])) {
@@ -131,9 +131,12 @@ function isBackend(obj: unknown) {
 
   // check if an object is a Backend instance
   if (
-      'initialize' in o && typeof o.initialize === 'function' &&                      // initialize()
-      'createSessionHandler' in o && typeof o.createSessionHandler === 'function' &&  // createSessionHandler()
-      'dispose' in o && typeof o.dispose === 'function'                               // dispose()
+    'initialize' in o &&
+    typeof o.initialize === 'function' && // initialize()
+    'createSessionHandler' in o &&
+    typeof o.createSessionHandler === 'function' && // createSessionHandler()
+    'dispose' in o &&
+    typeof o.dispose === 'function' // dispose()
   ) {
     return true;
   }

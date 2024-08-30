@@ -12,7 +12,8 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static constexpr std::array supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
+static constexpr std::array supported_data_types{
+    "tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -167,7 +168,8 @@ Note: This fusion doesn't consider the following case:
      LayerNormalization
 */
 
-Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                      const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -298,12 +300,15 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     // Assign provider to this new node. Provider should be same as the provider for old node.
     skip_layer_norm_node.SetExecutionProviderType(ln_node.GetExecutionProviderType());
   }
+
   for (const auto& node : nodes_to_remove) {
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.get().Index());
   }
 
-  modified = true;
+  if (!nodes_to_remove.empty()) {
+    modified = true;
+  }
 
   return Status::OK();
 }

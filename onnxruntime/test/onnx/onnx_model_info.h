@@ -13,16 +13,16 @@ class OnnxModelInfo : public TestModelInfo {
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
   std::unordered_map<std::string, int64_t> domain_to_version_;
-  const std::basic_string<PATH_CHAR_TYPE> model_url_;
+  const std::filesystem::path model_url_;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  void InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+  void InitOnnxModelInfo(const std::filesystem::path& model_url);
 #endif
 
-  void InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
+  void InitOrtModelInfo(const std::filesystem::path& model_url);
 
  public:
-  OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model = false);
+  OnnxModelInfo(const std::filesystem::path& path, bool is_ort_model = false);
   bool HasDomain(const std::string& name) const {
     return domain_to_version_.find(name) != domain_to_version_.end();
   }
@@ -32,7 +32,7 @@ class OnnxModelInfo : public TestModelInfo {
     return iter == domain_to_version_.end() ? -1 : iter->second;
   }
 
-  const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
+  const std::filesystem::path& GetModelUrl() const override { return model_url_; }
   std::string GetNominalOpsetVersion() const override { return onnx_nominal_opset_vesion_; }
 
   const std::string& GetNodeName() const override { return node_name_; }

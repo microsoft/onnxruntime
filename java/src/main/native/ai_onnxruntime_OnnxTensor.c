@@ -246,14 +246,7 @@ JNIEXPORT jfloat JNICALL Java_ai_onnxruntime_OnnxTensor_getFloat
   (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
-  if (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    uint16_t* arr = NULL;
-    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
-    if (code == ORT_OK) {
-      jfloat floatVal = convertHalfToFloat(*arr);
-      return floatVal;
-    }
-  } else if (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+  if (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     jfloat* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {
@@ -311,7 +304,10 @@ JNIEXPORT jshort JNICALL Java_ai_onnxruntime_OnnxTensor_getShort
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
   ONNXTensorElementDataType onnxType = convertToONNXDataFormat(onnxTypeInt);
-  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16) || (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16)) {
+  if ((onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16) ||
+      (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16)  ||
+      (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) ||
+      (onnxType == ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16)) {
     uint16_t* arr = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
     if (code == ORT_OK) {

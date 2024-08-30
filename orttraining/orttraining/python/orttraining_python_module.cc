@@ -15,6 +15,12 @@ namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
 
+#if defined(USE_MPI) && defined(ORT_USE_NCCL)
+static constexpr bool HAS_COLLECTIVE_OPS = true;
+#else
+static constexpr bool HAS_COLLECTIVE_OPS = false;
+#endif
+
 using namespace onnxruntime::logging;
 
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
@@ -34,14 +40,14 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 
 void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
-void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
+void addObjectMethodsForTraining(py::module& m);
 void addObjectMethodsForEager(py::module& m);
 #ifdef ENABLE_LAZY_TENSOR
 void addObjectMethodsForLazyTensor(py::module& m);
 #endif
-void InitArray();
+bool InitArray();
 
-bool GetDyanmicExecutionProviderHash(
+bool GetDynamicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options,
     size_t& hash,
@@ -81,13 +87,7 @@ bool GetProviderInstanceHash(const std::string& type,
     if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
       const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                           provider_options_map);
-      hash = static_cast<size_t>(info.device_id) ^
-             info.gpu_mem_limit ^
-             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-             (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
-             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
-             std::hash<cuda::TunableOpInfo>{}(info.tunable_op);
+      hash = std::hash<CUDAExecutionProviderInfo>{}(info);
       return true;
     }
 #endif
@@ -96,13 +96,7 @@ bool GetProviderInstanceHash(const std::string& type,
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
                                                                           provider_options_map);
-      hash = static_cast<size_t>(info.device_id) ^
-             info.gpu_mem_limit ^
-             (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
-             (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
-             (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
-             (static_cast<size_t>(info.has_user_compute_stream) << 22) ^
-             std::hash<rocm::TunableOpInfo>{}(info.tunable_op);
+      hash = std::hash<ROCMExecutionProviderInfo>{}(info);
       return true;
     }
 #endif
@@ -122,7 +116,7 @@ bool GetProviderInstanceHash(const std::string& type,
             provider_options.insert(option);
           }
         }
-        return GetDyanmicExecutionProviderHash(shared_lib_path_it->second, provider_options, hash);
+        return GetDynamicExecutionProviderHash(shared_lib_path_it->second, provider_options, hash);
       }
     }
   }
@@ -219,7 +213,7 @@ class TrainingEnvInitialzer {
 
  private:
   TrainingEnvInitialzer() {
-    InitArray();
+    ORT_ENFORCE(InitArray());
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
   }
@@ -273,15 +267,8 @@ std::unique_ptr<IExecutionProvider> CreateTrainingEP(
     const SessionOptions& session_options,
     const std::string& provider_type,
     const ProviderOptionsMap& provider_options_map) {
-  auto provider = CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
-  // The CPU provider instance created by the factory doesn't create allocators by default. The session registers
-  // the allocators to allow sharing. However, in some training scenarios (particularly eager mode), no session is
-  // created but it (eager mode) relies on the allocator in the CPU provider. Hence the need to call RegisterAllocator.
-  if (provider_type == kCpuExecutionProvider) {
-    AllocatorManager mgr;  // temporary only to call RegisterAllocator
-    provider->RegisterAllocator(mgr);
-  }
-  return provider;
+  // TODO(leca): REVIEW: No allocators are initialized
+  return CreateExecutionProviderInstance(session_options, provider_type, provider_options_map);
 }
 
 std::shared_ptr<IExecutionProvider> GetOrCreateExecutionProvider(const std::string& provider_type,
@@ -340,7 +327,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   }
 #endif
 
-  addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
+  addObjectMethodsForTraining(m);
 
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
@@ -367,6 +354,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
         GetTrainingEnv().ClearExecutionProviderInstances();
       },
       "Clean the execution provider instances used in ort training module.");
+
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
 
   // See documentation for class TrainingEnvInitialzer earlier in this module
   // for an explanation as to why this is needed.

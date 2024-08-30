@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/concat.h"
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/framework/TensorSeq.h"
 
@@ -44,7 +45,7 @@ Status ConcatTraining::Compute(OpKernelContext* ctx) const {
   if (per_input_length_tensor) {
     int64_t* per_input_length = per_input_length_tensor->template MutableData<int64_t>();
     for (int i = 0; i < input_count; ++i) {
-      per_input_length[i] = input_tensors[i]->Shape()[p.axis];
+      per_input_length[i] = input_tensors[i]->Shape()[narrow<size_t>(p.axis)];
     }
   }
   // Compute values to be placed in the output tensor

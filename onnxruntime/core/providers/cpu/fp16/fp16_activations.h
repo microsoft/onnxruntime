@@ -19,7 +19,7 @@ struct Relu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
     Activation.ActivationKind = MlasReluActivation;
     return Status::OK();
   }
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   ElementWiseRangedTransform<MLFloat16>* Copy() const final {
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;  // redundant?
@@ -48,7 +48,7 @@ struct LeakyRelu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
     Activation.ActivationKind = MlasLeakyReluActivation;
     return (GetFloatParam("alpha", attributes, Activation.Parameters.LeakyRelu.alpha));
   }
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   ElementWiseRangedTransform<MLFloat16>* Copy() const final {
     using T1 = typename std::remove_pointer<decltype(this)>::type;
     using T2 = typename std::remove_const<T1>::type;

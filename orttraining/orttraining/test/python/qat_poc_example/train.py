@@ -26,14 +26,10 @@ def _train_epoch(model, optimizer, train_loader):
     model.train()
     cumulative_loss = 0
     for data, target in train_loader:
-        forward_inputs = [
-            data.reshape(len(data), 784).numpy(),
-            target.numpy().astype(np.int32),
-        ]
-        train_loss = model(forward_inputs)
+        train_loss = model(data.reshape(len(data), 784).numpy(), target.numpy().astype(np.int64))
         optimizer.step()
         model.lazy_reset_grad()
-        cumulative_loss += train_loss[0]
+        cumulative_loss += train_loss
 
     return cumulative_loss / len(train_loader)
 
@@ -43,12 +39,8 @@ def _eval(model, test_loader):
     model.eval()
     cumulative_loss = 0
     for data, target in test_loader:
-        forward_inputs = [
-            data.reshape(len(data), 784).numpy(),
-            target.numpy().astype(np.int32),
-        ]
-        test_loss = model(forward_inputs)
-        cumulative_loss += test_loss[0]
+        test_loss = model(data.reshape(len(data), 784).numpy(), target.numpy().astype(np.int64))
+        cumulative_loss += test_loss
 
     return cumulative_loss / len(test_loader)
 
@@ -65,7 +57,7 @@ def train_model(qat_train_model, qat_eval_model, qat_optimizer_model, qat_checkp
     train_loader, test_loader = _get_dataloaders("data", batch_size)
 
     # Load the checkpoint state.
-    state = orttraining.CheckpointState(qat_checkpoint)
+    state = orttraining.CheckpointState.load_checkpoint(qat_checkpoint)
 
     # Create the training module.
     model = orttraining.Module(qat_train_model, state, qat_eval_model)

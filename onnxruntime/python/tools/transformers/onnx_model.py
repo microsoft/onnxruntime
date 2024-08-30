@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import itertools
 import logging
 import os
 import sys
@@ -22,6 +23,7 @@ from onnx import (
     numpy_helper,
     save_model,
 )
+from onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,12 @@ class OnnxModel:
         self.shape_infer_helper: SymbolicShapeInferenceHelper = None
         self.enable_shape_infer: bool = True
         self.all_graphs: Optional[List[GraphProto]] = None
+
+        # Cache of shape and data type from onnx graph to speed up optimization.
+        # Be careful that fusion shall not reuse node output name for different shape/type (in adding/removing nodes)
+        # Note that these do not cache the symbolic shape inference result.
+        self._dtype_dict: Optional[Dict[str, int]] = None
+        self._shape_dict: Optional[Dict[str, List]] = None
 
     def disable_shape_inference(self):
         self.enable_shape_infer = False
@@ -74,11 +82,15 @@ class OnnxModel:
                     output_name_to_node[output_name] = node
         return output_name_to_node
 
+    def functions(self):
+        all_functions = [list(self.model.functions)]
+        return all_functions
+
     def nodes(self):
         all_nodes = []
         for graph in self.graphs():
             for node in graph.node:
-                all_nodes.append(node)
+                all_nodes.append(node)  # noqa: PERF402
         return all_nodes
 
     def graph(self):
@@ -227,7 +239,7 @@ class OnnxModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -335,6 +347,18 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
+    def match_parent_paths_all(self, node, paths, output_name_to_node):
+        match_i, matches, return_indices = [], [], []
+        for i, path in enumerate(paths):
+            assert isinstance(path, (List, Tuple))
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                match_i.append(i)
+                matches.append(matched)
+                return_indices.append(return_indice)
+        return match_i, matches, return_indices
+
     def match_parent_path(
         self,
         node,
@@ -405,6 +429,54 @@ class OnnxModel:
                     dq.appendleft(child)
 
         return None
+
+    def match_child_path(
+        self,
+        node,
+        child_op_types,
+        child_output_index=None,
+        return_indice=None,
+        exclude=[],  # noqa: B006
+    ):
+        """
+        Find a sequence of input edges based on constraints on parent op_type and index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            child_op_types (str): constraint of child node op_type of each input edge.
+            child_output_index (list): constraint of input index of each input edge. None means no constraint.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
+
+        Returns:
+            children: a list of matched children node.
+        """
+        if child_output_index is not None:
+            assert len(child_output_index) == len(child_op_types)
+
+        current_node = node
+        matched_children = []
+        for i, op_type in enumerate(child_op_types):
+            matched_child = None
+            node_children = self.get_children(current_node)
+            for child_i, child in enumerate(node_children):
+                if child.op_type == op_type and child not in exclude:
+                    if child_output_index is not None and child_output_index[i] != child_i:
+                        logger.debug(
+                            f"Failed to match index={i} child_output_index={child_output_index[i]} op_type={op_type}",
+                            stack_info=True,
+                        )
+                        return None
+                    matched_child = child
+            if matched_child is None:
+                logger.debug(f"Failed to match child op_type={op_type}", stack_info=True)
+                return None
+
+            matched_children.append(matched_child)
+            current_node = matched_child
+        return matched_children
 
     def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
         if output_name_to_node is None:
@@ -505,20 +577,60 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
-    def get_dtype(self, input_or_output: str):
-        """Try get data type given a name (could be initializer, graph input or output)."""
-        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
+    def get_dtype(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+        """Try get data type given a name (could be initializer, input or output of graph or node)."""
 
-        if input_or_output in tensor_type_map:
-            return tensor_type_map[input_or_output].tensor_type.elem_type
+        if self._dtype_dict is None:
+            self._dtype_dict = {}
+            for value_info in itertools.chain(
+                self.model.graph.value_info,
+                self.model.graph.input,
+                self.model.graph.output,
+            ):
+                self._dtype_dict[value_info.name] = value_info.type.tensor_type.elem_type
 
-        graph_input = self.find_graph_input(input_or_output)
-        if graph_input:
-            return graph_input.type.tensor_type.elem_type
+            for initializer in self.model.graph.initializer:
+                if initializer.name not in self._dtype_dict:
+                    self._dtype_dict[initializer.name] = initializer.data_type
 
-        graph_output = self.find_graph_output(input_or_output)
-        if graph_output:
-            return graph_output.type.tensor_type.elem_type
+        if name in self._dtype_dict:
+            return self._dtype_dict[name]
+
+        if symbolic_shape_helper is not None and name in symbolic_shape_helper.known_vi_:
+            value_info = symbolic_shape_helper.known_vi_[name]
+            return value_info.type.tensor_type.elem_type
+
+        return None
+
+    def get_shape(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+        """Try get shape given a name (could be initializer, input or output of graph or node)."""
+
+        if self._shape_dict is None:
+            self._shape_dict = {}
+            for value_info in itertools.chain(
+                self.model.graph.value_info,
+                self.model.graph.input,
+                self.model.graph.output,
+            ):
+                if value_info.type.tensor_type.HasField("shape"):
+                    shape = []
+                    for dim in value_info.type.tensor_type.shape.dim:
+                        if dim.dim_param:
+                            shape.append(dim.dim_param)
+                        else:
+                            shape.append(dim.dim_value)
+                    self._shape_dict[value_info.name] = shape
+
+            for initializer in self.model.graph.initializer:
+                if initializer.name not in self._shape_dict:
+                    self._shape_dict[initializer.name] = initializer.dims
+
+        if name in self._shape_dict:
+            return self._shape_dict[name]
+
+        if symbolic_shape_helper is not None and name in symbolic_shape_helper.known_vi_:
+            value_info = symbolic_shape_helper.known_vi_[name]
+            return value_info.type.tensor_type.elem_type
 
         return None
 
@@ -552,23 +664,14 @@ class OnnxModel:
     def remove_useless_cast_nodes(self):
         """Remove cast nodes that are not needed: input and output has same data type."""
         shape_infer = self.infer_runtime_shape(update=True)
-        if shape_infer is None:
-            logger.info("Skip removing useless cast nodes since shape inference failed.")
-            return
-
-        def get_data_type(input_or_output_name):
-            dtype = self.get_dtype(input_or_output_name)
-            if dtype:
-                return dtype
-            if shape_infer.known_vi_[input_or_output_name].type.tensor_type.HasField("elem_type"):
-                return shape_infer.known_vi_[input_or_output_name].type.tensor_type.elem_type
-            return None
+        if self.enable_shape_infer and shape_infer is None:
+            logger.warning("shape inference failed which might impact useless cast node detection.")
 
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == "Cast":
-                input_dtype = get_data_type(node.input[0])
-                output_dtype = get_data_type(node.output[0])
+                input_dtype = self.get_dtype(node.input[0], shape_infer)
+                output_dtype = self.get_dtype(node.output[0], shape_infer)
                 if input_dtype and input_dtype == output_dtype:
                     nodes_to_remove.append(node)
 
@@ -587,7 +690,10 @@ class OnnxModel:
                     self.replace_input_of_all_nodes(node.output[0], node.input[0])
                 self.remove_node(node)
 
-            logger.info("Removed %d Cast nodes with output type same as input", len(nodes_to_remove))
+            logger.info(
+                "Removed %d Cast nodes with output type same as input",
+                len(nodes_to_remove),
+            )
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
         logger.warning(
@@ -608,7 +714,7 @@ class OnnxModel:
 
            When symbolic shape inference is used (even if it failed), ONNX shape inference will be disabled.
 
-           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to eanble
+           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to enable
            symbolic shape inference. If your model is not optimized, you can also use model path to call
            convert_float_to_float16 in float16.py (see https://github.com/microsoft/onnxruntime/pull/15067) to
            avoid the 2GB limit.
@@ -626,6 +732,8 @@ class OnnxModel:
                                            Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                     this script's preference it to keep them in float32.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
@@ -658,7 +766,7 @@ class OnnxModel:
                     for vi in model.graph.value_info:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
-                    for _, vi in name_vi.items():
+                    for vi in name_vi.values():
                         model.graph.value_info.append(vi)
             except Exception:
                 logger.warning(
@@ -676,6 +784,8 @@ class OnnxModel:
                     "op_block_list",
                     "node_block_list",
                     "force_fp16_initializers",
+                    "force_fp16_inputs",
+                    "use_bfloat16_as_blocked_nodes_dtype",
                 ]
                 if key in kwargs
             }
@@ -776,11 +886,9 @@ class OnnxModel:
 
     @staticmethod
     def input_index(node_output, child_node):
-        index = 0
-        for input in child_node.input:
+        for index, input in enumerate(child_node.input):
             if input == node_output:
                 return index
-            index += 1
         return -1
 
     def remove_unused_constant(self):
@@ -811,56 +919,77 @@ class OnnxModel:
         """
 
         if len(self.graphs()) > 1:
+            # TODO(tianleiwu): handle subgraph
             logger.debug("Skip prune_graph since graph has subgraph")
             return
 
-        if outputs is None:
-            outputs = [output.name for output in self.model.graph.output]
+        keep_outputs = [output.name for output in self.model.graph.output] if outputs is None else outputs
 
         output_name_to_node = self.output_name_to_node()
-        all_nodes = []
-        for output in outputs:
+
+        def get_first_output(node):
+            if node.output[0]:
+                return node.output[0]
+            return next(iter([o for o in node.output if o]), None)
+
+        # Keep track of nodes to keep. The key is first output of node, and the value is the node.
+        output_to_node = {}
+
+        # Start from graph outputs, and find parent nodes recursively, and add nodes to the output_to_node dictionary.
+        dq = deque()
+        for output in keep_outputs:
             if output in output_name_to_node:
-                last_node = output_name_to_node[output]
-                if last_node in all_nodes:
-                    continue
-                nodes = self.get_parent_subgraph_nodes(last_node, [])
-                all_nodes.append(last_node)
-                all_nodes.extend(nodes)
+                dq.append(output_name_to_node[output])
+        while len(dq) > 0:
+            node = dq.pop()
+            first_output = get_first_output(node)
+            if first_output and (first_output not in output_to_node):
+                output_to_node[first_output] = node
+                for name in node.input:
+                    if len(name) > 0 and (name in output_name_to_node) and (name not in output_to_node):
+                        dq.appendleft(output_name_to_node[name])
 
-        nodes_to_remove = []
+        # Keep only those nodes in the output_to_node dictionary.
+        nodes_to_keep = []
+        num_nodes_removed = 0
         for node in self.model.graph.node:
-            if node not in all_nodes:
-                nodes_to_remove.append(node)
+            first_output = get_first_output(node)
+            kept_node = output_to_node.get(first_output)
 
-        self.remove_nodes(nodes_to_remove)
+            # Need double check the node since fused node might reuse output name of some nodes to be removed.
+            # It is slow to compare whole node, so we compare op_type first to avoid comparing node in most cases.
+            if kept_node and kept_node.op_type == node.op_type and kept_node == node:
+                nodes_to_keep.append(node)
+            else:
+                num_nodes_removed += 1
+        self.model.graph.ClearField("node")
+        self.model.graph.node.extend(nodes_to_keep)
 
-        # remove outputs not in list
+        # Remove graph outputs not in list
         output_to_remove = []
-        for output in self.model.graph.output:
-            if output.name not in outputs:
-                output_to_remove.append(output)
-        for output in output_to_remove:
-            self.model.graph.output.remove(output)
+        if outputs is not None:
+            for output in self.model.graph.output:
+                if output.name not in outputs:
+                    output_to_remove.append(output)
+            for output in output_to_remove:
+                self.model.graph.output.remove(output)
 
-        # remove inputs not used by any node.
+        # Remove graph inputs not used by any node.
         input_to_remove = []
         if allow_remove_graph_inputs:
             input_name_to_nodes = self.input_name_to_nodes()
-            for input in self.model.graph.input:
-                if input.name not in input_name_to_nodes:
-                    input_to_remove.append(input)
-            for input in input_to_remove:
-                self.model.graph.input.remove(input)
+            input_to_remove = [input for input in self.model.graph.input if input.name not in input_name_to_nodes]
+            for name in input_to_remove:
+                self.model.graph.input.remove(name)
 
-        if input_to_remove or output_to_remove or nodes_to_remove:
+        if input_to_remove or output_to_remove or num_nodes_removed > 0:
             removed = []
             if input_to_remove:
                 removed.append(f"{len(input_to_remove)} inputs")
             if output_to_remove:
                 removed.append(f"{len(output_to_remove)} outputs")
-            if nodes_to_remove:
-                removed.append(f"{len(nodes_to_remove)} nodes")
+            if num_nodes_removed > 0:
+                removed.append(f"{num_nodes_removed} nodes")
             logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
@@ -1020,13 +1149,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existed onnx file: {output_path}")
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
@@ -1088,30 +1217,81 @@ class OnnxModel:
             op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
-        logger.info(f"Operators:{op_count}")
+        # Sorted by count in the descending order, then by key in alphabetical order.
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
+    def to_data_hash(tensor: TensorProto, base_dir: str = "") -> int:
+        """Converts a tensor def object to a hash for data comparison purposes.
+        Args:
+            tensor: a TensorProto object.
+            base_dir: if external tensor exists, base_dir can help to find the path to it
+        Returns:
+            hash: a hash of the data.
+        """
+        if tensor.HasField("segment"):
+            raise ValueError("Currently not supporting loading segments.")
+        if tensor.data_type == TensorProto.UNDEFINED:
+            raise TypeError("The element type in the input tensor is not defined.")
+        tensor_dtype = tensor.data_type
+        storage_field = helper.tensor_dtype_to_field(tensor_dtype)
+
+        if tensor.data_type == TensorProto.STRING:
+            utf8_strings = getattr(tensor, storage_field)
+            return hash(tuple(s.decode("utf-8") for s in utf8_strings))
+        # Load raw data from external tensor if it exists
+        if uses_external_data(tensor):
+            load_external_data_for_tensor(tensor, base_dir)
+        if tensor.HasField("raw_data"):
+            return hash(tensor.raw_data)
+        else:
+            np_data = numpy_helper.to_array(tensor)
+            return hash(np_data.tobytes())
+
+    @staticmethod
+    def has_same_value(
+        tensor1: TensorProto,
+        tensor2: TensorProto,
+        signature_cache1: Optional[dict] = None,
+        signature_cache2: Optional[dict] = None,
+    ) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
         Args:
             tensor1 (TensorProto): initializer 1
             tensor2 (TensorProto): initializer 2
-
+            signature_cache1 (dict): Optional dictionary to store data signatures of tensor1 in order to speed up comparison.
+            signature_cache2 (dict): Optional dictionary to store data signatures of tensor2 in order to speed up comparison.
         Returns:
-            bool: True when two intializers has same value.
+            bool: True when two initializers has same value.
         """
-        if tensor1.data_type != tensor2.data_type or tensor1.dims != tensor2.dims:
-            return False
-        if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
-            return tensor1.raw_data == tensor2.raw_data
-        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
+        sig1 = (
+            signature_cache1[tensor1.name]
+            if signature_cache1 and tensor1.name in signature_cache1
+            else OnnxModel.to_data_hash(tensor1)
+        )
+        sig2 = (
+            signature_cache2[tensor2.name]
+            if signature_cache2 and tensor2.name in signature_cache2
+            else OnnxModel.to_data_hash(tensor2)
+        )
+        if signature_cache1 is not None:
+            signature_cache1[tensor1.name] = sig1
+        if signature_cache2 is not None:
+            signature_cache2[tensor2.name] = sig2
+        if sig1 == sig2 and tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
+            # Same signature, now do the expensive check to confirm the data is the same
+            return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self):
+        return False
+
+    def remove_duplicated_initializer(self, cache: Optional[dict] = None):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
+        If require_raw_data passed, method will only compare raw_data initializers to speed runtime
         Note: this function does not process subgraph.
         """
         if len(self.graphs()) > 1:
@@ -1124,7 +1304,12 @@ class OnnxModel:
             if same[i] >= 0:
                 continue
             for j in range(i + 1, initializer_count):
-                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j]):
+                if OnnxModel.has_same_value(
+                    self.model.graph.initializer[i],
+                    self.model.graph.initializer[j],
+                    cache,
+                    cache,
+                ):
                     same[j] = i
 
         count = 0
@@ -1132,7 +1317,8 @@ class OnnxModel:
             if same[i] >= 0:
                 count += 1
                 self.replace_input_of_all_nodes(
-                    self.model.graph.initializer[i].name, self.model.graph.initializer[same[i]].name
+                    self.model.graph.initializer[i].name,
+                    self.model.graph.initializer[same[i]].name,
                 )
 
         if count > 0:
@@ -1175,3 +1361,164 @@ class OnnxModel:
 
     def clean_shape_infer(self):
         self.model.graph.ClearField("value_info")
+
+    def use_float16(self):
+        """Check whether the model uses float16"""
+        queue = []  # queue for BFS
+        queue.append(self.model.graph)
+        while queue:
+            sub_graphs = []
+            for graph in queue:
+                if not isinstance(graph, GraphProto):
+                    continue
+
+                for v in itertools.chain(graph.input, graph.output, graph.value_info):
+                    if v.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                        return True
+                    if v.type.HasField("sequence_type"):
+                        if v.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
+                            return True
+
+                for t in graph.initializer:
+                    if t.data_type == TensorProto.FLOAT16:
+                        return True
+
+                for node in graph.node:
+                    if node.op_type == "Cast":
+                        for attr in node.attribute:
+                            if attr.name == "to" and attr.i == TensorProto.FLOAT16:
+                                return True
+
+                    for attr in node.attribute:
+                        if attr.type == AttributeProto.GRAPH:
+                            sub_graphs.append(attr.g)
+
+                        for g in attr.graphs:
+                            sub_graphs.append(g)  # noqa: PERF402
+
+                        if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
+                            return True
+
+                        for t in attr.tensors:
+                            if isinstance(t, TensorProto) and t.data_type == TensorProto.FLOAT16:
+                                return True
+
+            queue = sub_graphs
+
+        return False
+
+    def change_graph_input_type(
+        self,
+        graph_input: ValueInfoProto,
+        new_type: int,
+    ):
+        """Change graph input type, and add Cast node if needed.
+
+        Args:
+            graph_input (ValueInfoProto): input of the graph
+            new_type (int): new data type like TensorProto.INT32.
+
+        Returns:
+            NodeProto: a new Cast node that added. None if Cast node is not added.
+            List[NodeProto]: Cast nodes that have been removed.
+        """
+        assert isinstance(graph_input, ValueInfoProto)
+        assert self.find_graph_input(graph_input.name)
+
+        if graph_input.type.tensor_type.elem_type == int(new_type):
+            return None, []
+
+        graph = self.graph()
+        new_cast_node = None
+        nodes_to_remove = []
+
+        input_name_to_nodes = self.input_name_to_nodes()
+        if graph_input.name in input_name_to_nodes:
+            nodes = input_name_to_nodes[graph_input.name]
+
+            # For children that is not Cast node, insert a Cast node to convert int32 to original data type.
+            nodes_not_cast = [node for node in nodes if node.op_type != "Cast"]
+            if nodes_not_cast:
+                node_name = self.create_node_name("Cast")
+                output_name = node_name + "_" + graph_input.name
+                new_value_info = graph.value_info.add()
+                new_value_info.CopyFrom(graph_input)
+                new_value_info.name = output_name
+                new_cast_node = helper.make_node(
+                    "Cast",
+                    [graph_input.name],
+                    [output_name],
+                    to=int(graph_input.type.tensor_type.elem_type),
+                    name=node_name,
+                )
+                graph.node.extend([new_cast_node])
+
+                for node in nodes_not_cast:
+                    OnnxModel.replace_node_input(node, graph_input.name, output_name)
+
+            # For children that is Cast node, no need to insert Cast.
+            # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
+            nodes_cast = [node for node in nodes if node.op_type == "Cast"]
+            for node in nodes_cast:
+                if OnnxModel.get_node_attribute(node, "to") == int(new_type):
+                    self.replace_input_of_all_nodes(node.output[0], graph_input.name)
+                if not self.find_graph_output(node.output[0]):
+                    nodes_to_remove.append(node)
+            if nodes_to_remove:
+                self.remove_nodes(nodes_to_remove)
+
+        graph_input.type.tensor_type.elem_type = int(new_type)
+        return new_cast_node, nodes_to_remove
+
+    def change_graph_output_type(
+        self,
+        graph_output: ValueInfoProto,
+        new_type: int,
+    ):
+        """Change graph input type, and add Cast node if needed.
+
+        Args:
+            graph_input (str | ValueInfoProto): output of the graph
+            new_type (int): new data type.
+
+        Returns:
+            NodeProto: a new Cast node that added. None if Cast node is not added.
+        """
+        assert isinstance(graph_output, ValueInfoProto)
+        assert self.find_graph_output(graph_output.name)
+
+        if graph_output.type.tensor_type.elem_type == int(new_type):
+            return None
+
+        cast_node = None
+        graph = self.graph()
+
+        # Add a cast node
+        node_name = self.create_node_name("Cast")
+        input_name = node_name + "_" + graph_output.name
+        self.replace_input_of_all_nodes(graph_output.name, input_name)
+        new_value_info = graph.value_info.add()
+        new_value_info.CopyFrom(graph_output)
+        new_value_info.name = input_name
+        cast_node = helper.make_node(
+            "Cast",
+            [input_name],
+            [graph_output.name],
+            to=int(new_type),
+            name=node_name,
+        )
+        graph.node.extend([cast_node])
+        graph_output.type.tensor_type.elem_type = int(new_type)
+        return cast_node
+
+    def rename_graph_output(self, old_name: str, new_name: str):
+        if new_name in self.output_name_to_node():
+            raise RuntimeError("{new_name} exists in graph")
+
+        graph = self.graph()
+        for output in graph.output:
+            if output.name == old_name:
+                logger.debug("replace output name from %s to %s", old_name, new_name)
+                self.replace_input_of_all_nodes(old_name, new_name)
+                self.replace_output_of_all_nodes(old_name, new_name)
+                output.name = new_name

@@ -13,8 +13,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 class CublasLtMMAlgoMap {
  public:
   static CublasLtMMAlgoMap& Instance();
@@ -75,8 +73,6 @@ inline Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t str
                          order_weight,
                          pointer_mode);
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

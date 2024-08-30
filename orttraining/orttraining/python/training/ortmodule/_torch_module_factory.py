@@ -6,7 +6,7 @@ from logging import Logger
 
 from ._fallback import _FallbackManager
 from ._torch_module_ort import TorchModuleORT
-from .debug_options import DebugOptions
+from .options import DebugOptions
 
 
 class TorchModuleFactory:

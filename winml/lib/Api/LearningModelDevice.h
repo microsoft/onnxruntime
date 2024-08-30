@@ -18,78 +18,57 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
  public:
   LearningModelDevice() = delete;
 
-  LearningModelDevice(
-      winml::LearningModelDeviceKind const& deviceKind);
+  LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind);
 
-  LearningModelDevice(
-      wgdx::Direct3D11::IDirect3DDevice const& device);
+  LearningModelDevice(wgdx::Direct3D11::IDirect3DDevice const& device);
 
-  LearningModelDevice(
-      ID3D12CommandQueue* queue);
+  LearningModelDevice(ID3D12CommandQueue* queue);
 
   ~LearningModelDevice();
 
-  wg::DisplayAdapterId
-  AdapterId();
+  wg::DisplayAdapterId AdapterId();
 
-  static winml::LearningModelDevice CreateFromDirect3D11Device(
-      wgdx::Direct3D11::IDirect3DDevice const& device);
+  static winml::LearningModelDevice CreateFromDirect3D11Device(wgdx::Direct3D11::IDirect3DDevice const& device);
 
   // internal:
   STDMETHOD(SetMetacommandsEnabled)
-  (
-      boolean enabled) final;
+  (boolean enabled) final;
 
   // internal:
   STDMETHOD_(boolean, SharedHandleInitialized)
   ();
 
-  STDMETHOD(GetThreadPool)(
-        _winml::IThreading** thread_pool);
+  STDMETHOD(GetThreadPool)(_winml::IThreading** thread_pool);
 
-  STDMETHOD(CacheThreadPool)(
-        _winml::IThreading* thread_pool);
+  STDMETHOD(CacheThreadPool)(_winml::IThreading* thread_pool);
 
   // internal:
 
-  winml::LearningModelDeviceKind
-  GetDeviceKind();
+  winml::LearningModelDeviceKind GetDeviceKind();
 
-  bool
-  MetacommandsEnabled();
+  bool MetacommandsEnabled();
 
-  bool
-  IsCpuDevice();
+  bool IsCpuDevice();
 
-  const LUID&
-  GetDeviceLuid();
+  const LUID& GetDeviceLuid();
 
-  _winml::D3DDeviceCache*
-  GetD3DDeviceCache();
+  _winml::D3DDeviceCache* GetD3DDeviceCache();
 
-  wgdx::Direct3D11::IDirect3DDevice
-  Direct3D11Device();
+  wgdx::Direct3D11::IDirect3DDevice Direct3D11Device();
 
-  ID3D12Device*
-  GetD3DDevice();
+  ID3D12Device* GetD3DDevice();
 
-  ID3D12CommandQueue*
-  GetDeviceQueue();
+  ID3D12CommandQueue* GetDeviceQueue();
 
-  static void
-  DllUnload();
+  static void DllUnload();
 
-  std::shared_ptr<_winml::ConverterResourceStore>
-  TensorizerStore();
+  std::shared_ptr<_winml::ConverterResourceStore> TensorizerStore();
 
-  std::shared_ptr<_winml::ConverterResourceStore>
-  DetensorizerStore();
+  std::shared_ptr<_winml::ConverterResourceStore> DetensorizerStore();
 
-  uint32_t
-  NumberOfIntraOpThreads();
+  uint32_t NumberOfIntraOpThreads();
 
-  bool
-  AllowSpinning();
+  bool AllowSpinning();
 
  private:
   // stores the device kind that was originally chosen in the constructor
@@ -109,7 +88,8 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, implementation::LearningModelDevice, ILearningModelDeviceFactoryNative> {
+struct LearningModelDevice
+  : LearningModelDeviceT<LearningModelDevice, implementation::LearningModelDevice, ILearningModelDeviceFactoryNative> {
   HRESULT __stdcall CreateFromD3D12CommandQueue(ID3D12CommandQueue* queue, IUnknown** device) noexcept final;
 };
 }  // namespace WINML::factory_implementation

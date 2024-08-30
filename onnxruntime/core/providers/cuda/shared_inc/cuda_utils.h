@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -35,7 +35,7 @@ enum class BroadcastIndexType : int32_t {
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() {};
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
@@ -167,6 +167,43 @@ struct NumericLimits<double> {
     return HUGE_VAL;
   }
 };
+
+// TODO Where to put this? good places might be
+// core/framework/tensor_shape.h
+// core/util/matrix_layout.h
+
+constexpr bool LAYOUT_NCHW = false;
+constexpr bool LAYOUT_NHWC = true;
+
+template <bool IsNHWC>
+struct Channels;
+
+template <>
+struct Channels<LAYOUT_NHWC> {
+  static constexpr size_t N = 0;
+  static constexpr size_t H = 1;
+  static constexpr size_t W = 2;
+  static constexpr size_t C = 3;
+};
+
+template <>
+struct Channels<LAYOUT_NCHW> {
+  static constexpr size_t N = 0;
+  static constexpr size_t C = 1;
+  static constexpr size_t H = 2;
+  static constexpr size_t W = 3;
+};
+
+// Calculates ceil(a / b). User must be careful to ensure that there
+// is no overflow or underflow in the calculation.
+template <typename T>
+constexpr T divUp(T a, T b) { return (a + b - (T)1) / b; }
+
+// Rounds a up to the next highest multiple of b. User must be careful
+// to ensure that there is no overflow or underflow in the calculation
+// of divUp.
+template <typename T>
+constexpr T roundUp(T a, T b) { return divUp<T>(a, b) * b; }
 
 }  // namespace cuda
 }  // namespace onnxruntime

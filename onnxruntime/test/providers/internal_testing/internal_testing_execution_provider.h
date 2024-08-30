@@ -4,6 +4,7 @@
 #pragma once
 #include <set>
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 namespace onnxruntime {
 namespace internal_testing_ep {
@@ -25,9 +26,6 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
-  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
     debug_output_ = debug_output;
@@ -57,6 +55,8 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
     return *this;
   }
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   const std::string ep_name_;
 
@@ -80,13 +80,10 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
 
   DataLayout preferred_layout_;  // request all nodes
 
-  // used for testing allocator sharing as a few EPs (e.g. CUDA, TRT, TVM) override GetAllocator and have a local
-  // AllocatorPtr that can get out of sync with the allocator lists in the base IExecutionProvider
-  AllocatorPtr local_allocator_;
-
   // per-instance kernel registry so tests using static kernels don't clash.
   // shared_ptr as required by IExecutionProvider::GetKernelRegistry
   std::shared_ptr<KernelRegistry> kernel_registry_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 }  // namespace internal_testing_ep

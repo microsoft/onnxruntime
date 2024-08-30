@@ -143,6 +143,8 @@ static void RunLstmTest(const std::vector<float>& X_data,
     test.AddOptionalOutputEdge<float>();
   }
 
+  test.SetOutputTolerance(0.0001f);
+
   // TensorRT failed on LSTM tests
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -282,7 +284,7 @@ TEST(LSTMTest, MixedSequenceLengths) {
   }
 
   // we don't have numpy output for this, but by testing twice and swapping which batch is smaller
-  // we can largely verify the behaviour by comparing to ForwardSimpleWeightsNoBiasTwoRows output.
+  // we can largely verify the behavior by comparing to ForwardSimpleWeightsNoBiasTwoRows output.
   std::vector<int> seq_lengths{1, 2};
 
   std::vector<float> Y_data{
@@ -331,7 +333,7 @@ TEST(LSTMTest, MixedSequenceLengthsReverse) {
   }
 
   // we don't have numpy output for this, but by testing twice and swapping which batch is smaller
-  // we can largely verify the behaviour by comparing to ReverseSimpleWeightsNoBiasTwoRows output.
+  // we can largely verify the behavior by comparing to ReverseSimpleWeightsNoBiasTwoRows output.
   std::vector<int> seq_lengths{1, 2};
 
   std::vector<float> Y_data{

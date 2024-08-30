@@ -348,6 +348,13 @@ Status launch_lamb_reduction(
 
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
+    if (ctx->GetUseDeterministicCompute()) {
+      static std::once_flag log_warning;
+      std::call_once(log_warning, []() {
+        LOGS_DEFAULT(WARNING) << "Non-deterministic Lamb GPU kernel is called, its outputs may still be nondeterministic.";
+      });
+    }
+
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
@@ -575,7 +582,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     // Allocate a buffer in byte for reduction API calls.
     size_t rbs = compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
-    // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
+    // Enlarge reduction buffer to accommodate multi-tensor reduction kernel as well
     constexpr int tensor_group_size = 4;  // w, d, w_norm, d_norm
     constexpr int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
     constexpr size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);

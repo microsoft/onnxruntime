@@ -14,73 +14,56 @@ enum class ImageColorSpaceGamma {
 };
 
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
-                                    ImageFeatureDescriptor,
-                                    ILearningModelFeatureDescriptorNative,
-                                    _winml::IDescriptorInfoProvider> {
+                                  ImageFeatureDescriptor,
+                                  ILearningModelFeatureDescriptorNative,
+                                  _winml::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
-      const char* name,
-      const char* description,
-      winml::TensorKind tensor_kind,
-      const std::vector<int64_t>& shape,
-      bool is_required,
-      wgi::BitmapPixelFormat pixelformat,
-      wgi::BitmapAlphaMode alphamode,
-      uint32_t width,
-      uint32_t height,
-      winml::LearningModelPixelRange pixelRange,
-      ImageColorSpaceGamma colorSpaceGamma);
+    const char* name,
+    const char* description,
+    winml::TensorKind tensor_kind,
+    const std::vector<int64_t>& shape,
+    bool is_required,
+    wgi::BitmapPixelFormat pixelformat,
+    wgi::BitmapAlphaMode alphamode,
+    uint32_t width,
+    uint32_t height,
+    winml::LearningModelPixelRange pixelRange,
+    ImageColorSpaceGamma colorSpaceGamma
+  );
 
-  wgi::BitmapPixelFormat
-  BitmapPixelFormat();
+  wgi::BitmapPixelFormat BitmapPixelFormat();
 
-  wgi::BitmapAlphaMode
-  BitmapAlphaMode();
+  wgi::BitmapAlphaMode BitmapAlphaMode();
 
-  uint32_t
-  Width();
+  uint32_t Width();
 
-  uint32_t
-  Height();
+  uint32_t Height();
 
-  hstring
-  Name();
+  hstring Name();
 
-  hstring
-  Description();
+  hstring Description();
 
-  winml::LearningModelFeatureKind
-  Kind();
+  winml::LearningModelFeatureKind Kind();
 
-  bool
-  IsRequired();
+  bool IsRequired();
 
-  winml::TensorKind
-  TensorKind();
+  winml::TensorKind TensorKind();
 
-  wfc::IVectorView<int64_t>
-  Shape();
+  wfc::IVectorView<int64_t> Shape();
 
-  winml::LearningModelPixelRange
-  PixelRange();
+  winml::LearningModelPixelRange PixelRange();
 
-  ImageColorSpaceGamma
-  GetColorSpaceGamma();
+  ImageColorSpaceGamma GetColorSpaceGamma();
 
   STDMETHOD(GetName)
-  (
-      const wchar_t** name,
-      uint32_t* cchName) override;
+  (const wchar_t** name, uint32_t* cchName) override;
 
   STDMETHOD(GetDescription)
-  (
-      const wchar_t** description,
-      uint32_t* cchDescription) override;
+  (const wchar_t** description, uint32_t* cchDescription) override;
 
   STDMETHOD(GetDescriptorInfo)
-  (
-      _winml::IEngineFactory* engine_factory,
-      _winml::IDescriptorInfo** info) override;
+  (_winml::IEngineFactory* engine_factory, _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

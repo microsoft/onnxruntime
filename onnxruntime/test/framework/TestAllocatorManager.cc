@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "test/framework/TestAllocatorManager.h"
-#include "core/framework/allocatormgr.h"
 
 namespace onnxruntime {
 namespace test {

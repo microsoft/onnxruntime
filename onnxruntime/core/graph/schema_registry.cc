@@ -161,7 +161,8 @@ void SchemaRegistryManager::RegisterRegistry(std::shared_ptr<IOnnxRuntimeOpSchem
   registries.push_front(registry);
 }
 
-void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map, bool is_onnx_only) const {
+void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMap& domain_version_map,
+                                                               bool is_onnx_only) const {
   // Build the map using each of the registries
   for (auto& registry : registries) {
     DomainToVersionMap latest_opset_versions_in_reg = registry->GetLatestOpsetVersions(is_onnx_only);

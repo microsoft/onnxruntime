@@ -28,6 +28,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      bool causal,
       contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
       std::optional<DeviceArray>& K,
@@ -44,7 +45,6 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     // total_sequence_length == kv_sequence_length
     attn_.kv_sequence_length = total_seqlen;
     attn_.past_sequence_length = 0;
-    attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
     attn_.max_sequence_length = 0;
     attn_.hidden_size = num_heads * head_size;
@@ -52,7 +52,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     attn_.v_hidden_size = attn_.hidden_size;  // Q,K,V hidden size must agree now
     attn_.v_head_size = attn_.head_size;      // Q,K,V hidden size must agree now
     attn_.num_heads = num_heads;
-    attn_.is_unidirectional = false;
+    attn_.is_unidirectional = causal;
     attn_.past_present_share_buffer = false;
     attn_.do_rotary = false;
     attn_.mask_filter_value = -10000.0f;
@@ -149,6 +149,7 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      bool causal,
       contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
       std::optional<DeviceArray>& K,
@@ -157,7 +158,7 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale, qkv_format,
+                                                 num_heads, head_size, mask_dim, scale, causal, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_));
   }
@@ -176,6 +177,33 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 };
 
+template <typename T>
+class GemmSoftmaxGemmPermuteGenericNestedTunable : public GemmSoftmaxGemmPermuteGeneric<T> {
+ public:
+  GemmSoftmaxGemmPermuteGenericNestedTunable(
+      int64_t batch,
+      int64_t seqlen,
+      int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
+      int64_t num_heads,
+      int64_t head_size,
+      int64_t mask_dim,
+      double scale,
+      bool causal,
+      contrib::AttentionQkvFormat qkv_format,
+      DeviceArray& Q,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
+      std::optional<DeviceArray>& attn_bias,
+      std::optional<DeviceArray>& attn_mask,
+      DeviceArray& out)
+      : GemmSoftmaxGemmPermuteGeneric<T>(batch, seqlen, total_seqlen, max_seqlen,
+                                         num_heads, head_size, mask_dim, scale, causal, qkv_format,
+                                         Q, K, V, attn_bias, attn_mask, out) {
+    this->params_.TuningContext()->EnableTunableOpAndTuning();
+  }
+};
+
 #ifdef USE_COMPOSABLE_KERNEL
 template <typename T, bool USE_BIAS, bool USE_MASK>
 class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
@@ -189,6 +217,7 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      bool causal,
       contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
       std::optional<DeviceArray>& K,
@@ -197,7 +226,7 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale, qkv_format,
+                                                 num_heads, head_size, mask_dim, scale, causal, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_));
 
@@ -250,6 +279,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t head_size,
       int64_t mask_dim,
       double scale,
+      bool causal,
       contrib::AttentionQkvFormat qkv_format,
       DeviceArray& Q,
       std::optional<DeviceArray>& K,
@@ -258,7 +288,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
-                                                 num_heads, head_size, mask_dim, scale, qkv_format,
+                                                 num_heads, head_size, mask_dim, scale, causal, qkv_format,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(std::max(
         GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
@@ -276,14 +306,17 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>{}(&this->params_));
+    ORT_THROW_IF_ERROR(op_(&this->params_));
   }
+
+  // NOTE: this op is expensive to construct
+  GemmSoftmaxGemmPermuteTunableOp<T> op_{};
 };
 
 #define REGISTER_COMMON(name, type, ...)                                                          \
   py::class_<type<__VA_ARGS__>>(m, name)                                                          \
       .def(py::init<int64_t, int64_t, int64_t, std::optional<int64_t>, int64_t, int64_t, int64_t, \
-                    float, contrib::AttentionQkvFormat,                                           \
+                    float, bool, contrib::AttentionQkvFormat,                                     \
                     DeviceArray&,                                                                 \
                     std::optional<DeviceArray>&,                                                  \
                     std::optional<DeviceArray>&,                                                  \
@@ -298,6 +331,9 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 
 #define REGISTER_GENERIC(dtype) \
   REGISTER_COMMON("GemmSoftmaxGemmPermuteGeneric_" #dtype, GemmSoftmaxGemmPermuteGeneric, dtype)
+
+#define REGISTER_GENERIC_NESTEDTUNABLE(dtype) \
+  REGISTER_COMMON("GemmSoftmaxGemmPermuteGenericNestedTunable_" #dtype, GemmSoftmaxGemmPermuteGenericNestedTunable, dtype)
 
 #define REGISTER_CK(dtype, biased, masked, mask_bias_suffix) \
   REGISTER_COMMON(                                           \
@@ -316,6 +352,9 @@ KE_REGISTER(m) {
       .export_values();
 
   REGISTER_GENERIC(half);
+  REGISTER_GENERIC(float);
+  REGISTER_GENERIC_NESTEDTUNABLE(half);
+  REGISTER_GENERIC_NESTEDTUNABLE(float);
 
 #ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, false, "");

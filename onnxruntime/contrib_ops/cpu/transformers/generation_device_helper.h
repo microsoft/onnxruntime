@@ -10,7 +10,7 @@
 #endif
 
 #include <vector>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
@@ -33,6 +33,7 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
+#ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,
@@ -42,6 +43,7 @@ using ReorderPastStateFunc = std::function<Status(
 using InitCacheIndirFunc = std::function<Status(
     Tensor& cache_indir,
     Stream* stream)>;
+#endif
 
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
@@ -64,11 +66,13 @@ using CreateGptInputsFunc = std::function<Status(
     OrtValue& expanded_attention_mask)>;
 
 using AddToFeedsFunc = std::function<Status(
-    const IExecutionProvider* provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer)>;
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location)>;
 
 template <typename T>
 using InitBeamStateFunc = std::function<void(
@@ -76,6 +80,12 @@ using InitBeamStateFunc = std::function<void(
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
+    Stream* stream)>;
+
+using CreateBeamScorer = std::function<std::unique_ptr<transformers::IBeamScorer>(
+    const transformers::IGenerationParameters& parameters,
+    AllocatorPtr& allocator,
+    AllocatorPtr& allocator_cpu,
     Stream* stream)>;
 
 template <typename T>
@@ -88,7 +98,6 @@ template <typename T>
 using ProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IBeamSearchState<T>* beam_state,          // state
-    transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -97,7 +106,7 @@ using ProcessLogitsFunc = std::function<Status(
     const transformers::IGenerationParameters* parameters,  // parameters
     int step,                                               // iteration counter
     Stream* stream,                                         // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
+    const IConsoleDumper* dumper)>;                         // tensor dumper
 
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
@@ -112,7 +121,7 @@ using GreedySearchProcessLogitsFunc = std::function<Status(
     bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     Stream* ort_stream,                                     // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
+    const IConsoleDumper* dumper)>;                         // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -173,7 +182,7 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper)>;
+    const IConsoleDumper* dumper)>;
 
 //------------------------------------------------
 //  Modified functions for Whisper Model
@@ -195,6 +204,35 @@ using ExpandBufferFunc = std::function<Status(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length)>;
+
+using UpdateDecoderCrossQKFunc = std::function<Status(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator)>;
+
+using FinalizeDecoderCrossQKFunc = std::function<Status(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices)>;
+
 }  // namespace GenerationDeviceHelper
 
 // These are CPU specific device helper implementations
@@ -208,11 +246,13 @@ Status TopK(
     Tensor& output_indices);
 
 Status AddToFeeds(
-    const IExecutionProvider* execution_provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer);
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
@@ -229,7 +269,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -238,7 +277,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper);            // tensor dumper
+                     const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
@@ -252,7 +291,7 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                                  bool do_sampling,                                       // whether to do sampling
                                  int step,                                               // iteration counter
                                  Stream* stream,                                         // cuda stream (for CUDA only)
-                                 const transformers::IConsoleDumper* dumper);            // tensor dumper
+                                 const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
@@ -328,7 +367,7 @@ Status UpdateDecoderFeeds(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model with float input like Whisper
@@ -357,6 +396,34 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length);
+
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator);
+
+Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices);
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib

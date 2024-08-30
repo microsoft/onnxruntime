@@ -61,7 +61,14 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
     tpool.out->allocator()->init(arm_compute::TensorInfo(ACLTensorShape(Y->Shape(), PREF_DIM), arm_compute::Format::F32));
 
     if (pool_attrs.global_pooling) {
-      layer->configure(tpool.in.get(), tpool.out.get(), arm_compute::PoolingLayerInfo(pool_type));
+      layer->configure(tpool.in.get(),
+                       tpool.out.get(),
+                       arm_compute::PoolingLayerInfo(pool_type
+#ifdef ACL_2308
+                                                     ,
+                                                     arm_compute::DataLayout::NCHW
+#endif
+                                                     ));
     } else {
       TensorShapeVector aclStrides(2);
       aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
@@ -104,11 +111,17 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";
       LOGS_DEFAULT(VERBOSE) << "excludePadding: " << excludePadding;
 
-      arm_compute::PoolingLayerInfo pool_info(pool_type, aclSize, aclPadStride, excludePadding);
+      arm_compute::PoolingLayerInfo pool_info(pool_type,
+                                              aclSize,
+#ifdef ACL_2308
+                                              arm_compute::DataLayout::NCHW,
+#endif
+                                              aclPadStride,
+                                              excludePadding);
       layer->configure(tpool.in.get(), tpool.out.get(), pool_info);
     }
 
-    // allocate space for input tensor to accomodate paddings and strides
+    // allocate space for input tensor to accommodate paddings and strides
     tpool.in->allocator()->allocate();
 
     tpool.layer = std::move(layer);

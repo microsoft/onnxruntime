@@ -11,6 +11,8 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     switch (tensorDataType)
     {
     case MLOperatorTensorDataType::Float: return DML_TENSOR_DATA_TYPE_FLOAT32;
+    case MLOperatorTensorDataType::UInt4: return DML_TENSOR_DATA_TYPE_UINT4;
+    case MLOperatorTensorDataType::Int4: return DML_TENSOR_DATA_TYPE_INT4;
     case MLOperatorTensorDataType::UInt8: return DML_TENSOR_DATA_TYPE_UINT8;
     case MLOperatorTensorDataType::Int8: return DML_TENSOR_DATA_TYPE_INT8;
     case MLOperatorTensorDataType::UInt16: return DML_TENSOR_DATA_TYPE_UINT16;
@@ -30,7 +32,7 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     };
 }
 
-bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
+bool IsSigned(DML_TENSOR_DATA_TYPE dataType) noexcept
 {
     switch (dataType)
     {
@@ -41,10 +43,12 @@ bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
         case DML_TENSOR_DATA_TYPE_UINT32: return false;
         case DML_TENSOR_DATA_TYPE_UINT16: return false;
         case DML_TENSOR_DATA_TYPE_UINT8: return false;
+        case DML_TENSOR_DATA_TYPE_UINT4: return false;
         case DML_TENSOR_DATA_TYPE_INT64: return true;
         case DML_TENSOR_DATA_TYPE_INT32: return true;
         case DML_TENSOR_DATA_TYPE_INT16: return true;
         case DML_TENSOR_DATA_TYPE_INT8: return true;
+        case DML_TENSOR_DATA_TYPE_INT4: return true;
         default:
             assert(false);
             return false;
@@ -69,6 +73,8 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
     switch (tensorDataType)
     {
     case DML_TENSOR_DATA_TYPE_FLOAT32:  return MLOperatorTensorDataType::Float;
+    case DML_TENSOR_DATA_TYPE_UINT4:    return MLOperatorTensorDataType::UInt4;
+    case DML_TENSOR_DATA_TYPE_INT4:     return MLOperatorTensorDataType::Int4;
     case DML_TENSOR_DATA_TYPE_UINT8:    return MLOperatorTensorDataType::UInt8;
     case DML_TENSOR_DATA_TYPE_INT8:     return MLOperatorTensorDataType::Int8;
     case DML_TENSOR_DATA_TYPE_UINT16:   return MLOperatorTensorDataType::UInt16;
@@ -87,9 +93,15 @@ MLOperatorTensorDataType GetMlDataTypeFromDmlDataType(DML_TENSOR_DATA_TYPE tenso
 }
 #pragma warning(pop)
 
+size_t ComputeBitSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
+{
+    auto bitSize = ComputeElementCountFromDimensions(dimensions) * GetBitSizeFromMlDataType(tensorDataType);
+    return bitSize;
+}
+
 size_t ComputeByteSizeFromDimensions(gsl::span<const DimensionType> dimensions, MLOperatorTensorDataType tensorDataType)
 {
-    return ComputeElementCountFromDimensions(dimensions) * GetByteSizeFromMlDataType(tensorDataType);
+    return (ComputeBitSizeFromDimensions(dimensions, tensorDataType) + CHAR_BIT - 1) / CHAR_BIT;
 }
 
 size_t ComputeByteSizeFromTensor(IMLOperatorTensor& tensor)
@@ -109,7 +121,7 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     uint32_t deviceTypeMask = 0u;
 
     // Form the bitmask of all supported data types.
-    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT64; ++i)
+    for (uint32_t i = 0; i <= DML_TENSOR_DATA_TYPE_INT4; ++i)
     {
         DML_FEATURE_QUERY_TENSOR_DATA_TYPE_SUPPORT dataTypeQuery = { static_cast<DML_TENSOR_DATA_TYPE>(i) };
         DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT dataTypeSupport = {};
@@ -128,7 +140,33 @@ uint32_t GetSupportedDeviceDataTypeMask(IDMLDevice* dmlDevice)
     return deviceTypeMask;
 }
 
-void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides)
+uint32_t GetBitMaskFromIndices(gsl::span<const uint32_t> indices) noexcept
+{
+    uint32_t bitMask = 0;
+    for (auto i : indices)
+    {
+        assert(i < 32);
+        bitMask |= (1 << i);
+    }
+    return bitMask;
+}
+
+uint32_t CountLeastSignificantZeros(uint32_t value) noexcept
+{
+    // *Use std::countr_zero instead when codebase updated to C++20.
+    // Use bit twiddling hack rather than for loop.
+    uint32_t count = 32;
+    value &= -int32_t(value);
+    if (value) count--;
+    if (value & 0x0000FFFF) count -= 16;
+    if (value & 0x00FF00FF) count -= 8;
+    if (value & 0x0F0F0F0F) count -= 4;
+    if (value & 0x33333333) count -= 2;
+    if (value & 0x55555555) count -= 1;
+    return count;
+}
+
+void GetDescendingPackedStrides(gsl::span<const uint32_t> sizes, /*out*/ gsl::span<uint32_t> strides) noexcept
 {
     assert(sizes.size() == strides.size());
 

@@ -10,30 +10,31 @@ import onnx
 import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
 
+from .base_quantizer import BaseQuantizer, QuantizationParams
+from .calibrate import TensorData
 from .onnx_model import ONNXModel
 from .quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
     QuantizationMode,
     QuantizedValue,
     QuantizedValueType,
-    QuantType,
     __producer__,
     __version__,
     add_infer_metadata,
     attribute_to_kwarg,
     compute_scale_zp,
+    compute_scale_zp_float8,
     find_by_name,
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
-    model_has_infer_metadata,
-    quantize_data,
-    save_and_reload_model,
+    ms_domain,
+    save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
 )
 from .registry import CreateOpQuantizer
 
 
-class ONNXQuantizer:
+class ONNXQuantizer(BaseQuantizer):
     def __init__(
         self,
         model,
@@ -49,69 +50,42 @@ class ONNXQuantizer:
         op_types_to_quantize,
         extra_options=None,
     ):
-        if not model_has_infer_metadata(model):
-            model = save_and_reload_model(model)
-        self.value_infos = {vi.name: vi for vi in model.graph.value_info}
-        self.value_infos.update({ot.name: ot for ot in model.graph.output})
-        self.value_infos.update({it.name: it for it in model.graph.input})
+        BaseQuantizer.__init__(
+            self,
+            model,
+            per_channel,
+            reduce_range,
+            weight_qType,
+            activation_qType,
+            tensors_range,
+            nodes_to_quantize,
+            nodes_to_exclude,
+            op_types_to_quantize,
+            extra_options,
+        )
 
-        self.model = ONNXModel(model)
         if not static:
             self.model.replace_gemm_with_matmul()
+            # We need to update value_infos.
+            model = save_and_reload_model_with_shape_infer(self.model.model)
+            self.value_infos = {vi.name: vi for vi in model.graph.value_info}
+            self.value_infos.update({ot.name: ot for ot in model.graph.output})
+            self.value_infos.update({it.name: it for it in model.graph.input})
+            self.model = ONNXModel(model)
 
-        self.per_channel = per_channel  # weight-pack per channel
-        self.reduce_range = reduce_range
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
-        self.fuse_dynamic_quant = False
+        self.fuse_dynamic_quant = self.opset_version > 10
 
-        self.extra_options = extra_options if extra_options else {}
-        self.enable_subgraph_quantization = (
-            "EnableSubgraph" in self.extra_options and self.extra_options["EnableSubgraph"]
-        )
-        self.force_quantize_no_input_check = (
-            "ForceQuantizeNoInputCheck" in self.extra_options and self.extra_options["ForceQuantizeNoInputCheck"]
-        )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
-        is_weight_int8 = weight_qType == QuantType.QInt8
-        self.is_weight_symmetric = (
-            is_weight_int8 if "WeightSymmetric" not in self.extra_options else self.extra_options["WeightSymmetric"]
-        )
-        self.is_activation_symmetric = (
-            False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
-        )
 
-        self.activation_qType = (
-            onnx_proto.TensorProto.INT8 if activation_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
-        self.weight_qType = (
-            onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
-        """
-            Dictionary specifying the min and max values for tensors. It has following format:
-                {
-                    "param_name": [min, max]
-                }
-            example:
-                {
-                    'Conv_3:0': [np.float32(0), np.float32(0.5)],
-                    'Conv_4:0': [np.float32(1), np.float32(3.5)]
-                }
-        """
-        self.tensors_range = tensors_range
-        self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
-        self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
-        self.op_types_to_quantize = op_types_to_quantize
         self.new_nodes = []
-        self.parent = None
         self.graph_scope = "/"  # for human readable debug information
         self.tensor_names = {}  # in case the shape inference not totally working
         self.tensor_names.update({ot.name: 1 for ot in model.graph.output})
         self.tensor_names.update({it.name: 1 for it in model.graph.input})
         for node in self.model.model.graph.node:
             self.tensor_names.update({output_name: 1 for output_name in node.output})
-
-        self.opset_version = self.check_opset_version()
 
         if self.mode not in QuantizationMode:
             raise ValueError(f"unsupported quantization mode {self.mode}")
@@ -132,8 +106,6 @@ class ONNXQuantizer:
         # some output from nodes will be quantized, yet itself should be treat as existing so
         # no dequantized will be applied when needed later
         self.generated_value_names = self.model.get_non_initializer_inputs()
-        # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
-        self.used_scale_zp_map = {}
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -148,7 +120,7 @@ class ONNXQuantizer:
             opset_imports=self.model.model.opset_import,
         )
         add_infer_metadata(warped_model)
-        sub_quanitzer = ONNXQuantizer(
+        sub_quantizer = ONNXQuantizer(
             warped_model,
             self.per_channel,
             self.reduce_range,
@@ -162,10 +134,10 @@ class ONNXQuantizer:
             self.op_types_to_quantize,
             self.extra_options,
         )
-        sub_quanitzer.parent = self
-        sub_quanitzer.graph_scope = f"{self.graph_scope}{graph_key}/"
-        sub_quanitzer.quantize_model()
-        return sub_quanitzer.model.model.graph
+        sub_quantizer.parent = self
+        sub_quantizer.graph_scope = f"{self.graph_scope}{graph_key}/"
+        sub_quantizer.quantize_model()
+        return sub_quantizer.model.model.graph
 
     def quantize_node_with_sub_graph(self, node):
         """
@@ -201,35 +173,6 @@ class ONNXQuantizer:
             kwargs.update(kv)
         return onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
 
-    def check_opset_version(self):
-        ai_onnx_domain = [
-            opset for opset in self.model.model.opset_import if not opset.domain or opset.domain == "ai.onnx"
-        ]
-        if len(ai_onnx_domain) != 1:
-            raise ValueError("Failed to find proper ai.onnx domain")
-        opset_version = ai_onnx_domain[0].version
-
-        if opset_version == 10:
-            logging.warning(
-                "The original model opset version is {}, which does not support node fusions. Please update the model to opset >= 11 for better performance.".format(
-                    opset_version
-                )
-            )
-            return 10
-
-        if opset_version < 10:
-            logging.warning(
-                "The original model opset version is {}, which does not support quantization. Please update the model to opset >= 11. Updating the model automatically to opset 11. Please verify the quantized model.".format(
-                    opset_version
-                )
-            )
-            self.model.model.opset_import.remove(ai_onnx_domain[0])
-            self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
-            opset_version = 11
-
-        self.fuse_dynamic_quant = True
-        return opset_version
-
     def has_QDQ_nodes(self):  # noqa: N802
         """
         Detect if model already has QuantizeLinear or DequantizeLinear.
@@ -254,7 +197,7 @@ class ONNXQuantizer:
     def quantize_model(self):
         if self.has_QDQ_nodes():
             logging.warning(
-                "Please check if the model is already quantized."
+                "Please check if the model is already quantized. "
                 "Note you don't need to quantize a QAT model. OnnxRuntime support to run QAT model directly."
             )
 
@@ -285,23 +228,58 @@ class ONNXQuantizer:
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
+        # Add ms domain if needed
+        ms_opset = [opset for opset in self.model.model.opset_import if opset.domain == ms_domain]
+        if not ms_opset:
+            ms_nodes = [node for node in self.new_nodes if node.domain == "com.microsoft"]
+            if ms_nodes:
+                opset = self.model.model.opset_import.add()
+                opset.version = 1
+                opset.domain = ms_domain
 
         return self.model.model
 
-    def is_input_a_initializer(self, input_name):
-        initializer = find_by_name(input_name, self.model.initializer())
-        return initializer is not None
+    def _get_default_tensor_type(self, tensor_name):
+        if "DefaultTensorType" in self.extra_options:
+            logging.info(
+                "get_tensor_type returns DefaultTensorType for tensor name %r, use %d",
+                tensor_name,
+                self.extra_options["DefaultTensorType"],
+            )
+            return self.extra_options["DefaultTensorType"]
+        raise RuntimeError(
+            f"Unable to find data type for weight_name={tensor_name!r}. "
+            f"shape_inference failed to return a type probably this node is "
+            f"from a different domain or using an input produced by such an operator. "
+            f"This may happen if you quantize a model already quantized. "
+            f"You may use extra_options `DefaultTensorType` to indicate "
+            f"the default weight type, usually `onnx.TensorProto.FLOAT`."
+        )
 
-    def is_per_channel(self):
-        return self.per_channel
-
-    def is_valid_quantize_weight(self, weight_name):
-        weight = find_by_name(weight_name, self.model.initializer())
+    def get_tensor_type(self, tensor_name, mandatory=False):
+        weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
-            return weight.data_type == onnx_proto.TensorProto.FLOAT
+            return weight.data_type
+        if tensor_name in self.value_infos:
+            vi = self.value_infos[tensor_name]
+            if vi.type.HasField("tensor_type"):
+                if mandatory and vi.type.tensor_type.elem_type == 0:
+                    return self._get_default_tensor_type(tensor_name)
+                return vi.type.tensor_type.elem_type
         if (not self.enable_subgraph_quantization) or (self.parent is None):
-            return False
-        return self.parent.is_valid_quantize_weight(weight_name)
+            if mandatory:
+                return self._get_default_tensor_type(tensor_name)
+            return None
+        otype = self.parent.is_valid_quantize_weight(tensor_name)
+        if otype is not None:
+            return otype
+        if self.enable_subgraph_quantization and self.parent:
+            res = self.parent.get_tensor_type(tensor_name)
+            if res is not None:
+                return res
+        if mandatory:
+            return self._get_default_tensor_type(tensor_name)
+        return None
 
     def is_float_tensor(self, tensor_name):
         if self.is_input_a_initializer(tensor_name):
@@ -309,52 +287,46 @@ class ONNXQuantizer:
 
         if tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (
+                onnx_proto.TensorProto.FLOAT,
+                onnx_proto.TensorProto.FLOAT16,
+            ):
                 return True
-        elif self.enable_subgraph_quantization and self.parent:
-            return self.parent.is_float_tensor(tensor_name)
-        else:
             logging.warning(
-                "Failed to infer data type of tensor: {}. Please add data type info for this tensor "
-                "if your model has customized operators.".format(tensor_name)
+                f"Inference failed or unsupported type to quantize for tensor {tensor_name!r}, type is {vi.type}."
             )
+            return False
 
+        if self.enable_subgraph_quantization and self.parent:
+            return self.parent.is_float_tensor(tensor_name)
+
+        logging.warning(
+            f"Failed to infer data type of tensor: {tensor_name!r}. Please add data type info for this tensor "
+            f"if your model has customized operators."
+        )
         return False
 
-    def should_quantize_node(self, node):
-        if (
-            self.nodes_to_quantize is not None
-            and len(self.nodes_to_quantize) != 0
-            and node.name not in self.nodes_to_quantize
-        ):
-            return False
-
-        if node.op_type not in self.op_types_to_quantize:
-            return False
-
-        if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
-            return False
-
-        return True
-
-    def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType):
+    def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType, initial_type):
         """
         Create nodes for dynamic quantization of input and add them to nodes_list.
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
             parameter qType: type to quantize to.
+            parameter initial_type: type to quantize from
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
         if qType == onnx_proto.TensorProto.INT8:
-            return self._get_dynamic_input_quantization_params_int8(input_name, nodes_list)
+            return self._get_dynamic_input_quantization_params_int8(input_name, nodes_list, initial_type)
+        if qType == onnx_proto.TensorProto.UINT8:
+            return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list, initial_type)
+        raise ValueError(f"Unexpected value for qType={qType}.")
 
-        return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list)
-
-    def _get_dynamic_input_quantization_params_int8(self, input_name, nodes_list):
+    def _get_dynamic_input_quantization_params_int8(self, input_name, nodes_list, initial_type):
         """
         Create nodes for dynamic quantization of input to int8 and add them to nodes_list
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
+            parameter initial_type: initial weight type (FLOAT or FLOAT16)
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
         qType = onnx_proto.TensorProto.INT8  # noqa: N806
@@ -413,7 +385,7 @@ class ONNXQuantizer:
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
         initializer_div = onnx.helper.make_tensor(
             self.fixed_qrange_int8_name,
-            onnx_proto.TensorProto.FLOAT,
+            initial_type,
             [],
             [get_qrange_for_qType(qType) / 2.0],
         )
@@ -433,11 +405,12 @@ class ONNXQuantizer:
 
         return input_scale_name, self.fixed_zero_zp_name, [], []
 
-    def _get_dynamic_input_quantization_params_uint8(self, input_name, nodes_list):
+    def _get_dynamic_input_quantization_params_uint8(self, input_name, nodes_list, initial_type):
         """
         Create nodes for dynamic quantization of input to uint8 and add them to nodes_list
             parameter input_name: Name of the input.
             parameter nodes_list: new nodes are appended to this list.
+            parameter initial_type: initial weight type (FLAOT or FLOAT16)
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
         qType = onnx_proto.TensorProto.UINT8  # noqa: N806
@@ -468,12 +441,12 @@ class ONNXQuantizer:
         # Add tensors for quantize range and zero value.
         initializer_qrange = onnx.helper.make_tensor(
             self.fixed_qrange_uint8_name,
-            onnx_proto.TensorProto.FLOAT,
+            initial_type,
             [],
             [get_qrange_for_qType(qType)],
         )
         self.model.add_initializer(initializer_qrange)
-        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, onnx_proto.TensorProto.FLOAT, [], [0.0])
+        initializer_qvalue = onnx.helper.make_tensor(self.fixed_zero_name, initial_type, [], [0.0])
         self.model.add_initializer(initializer_qvalue)
 
         # Compute Scale
@@ -533,39 +506,61 @@ class ONNXQuantizer:
             parameter param_name: Name of the quantization parameter.
             return: result, scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
+        zero_point_type = self.activation_qType
+
         if use_scale is None or use_zeropoint is None:
             if self.quantization_params is None or param_name not in self.quantization_params:
                 logging.info(f'Quantization parameters for tensor:"{param_name}" not specified')
                 return False, "", "", "", ""
 
             params = self.quantization_params[param_name]
-            if params is None or len(params) != 2:
+            if not isinstance(params, QuantizationParams):
+                raise TypeError(f"Unexpected type {type(params)} for {param_name!r}.")
+            if params is None or len(params) != 3:
                 raise ValueError(
-                    "Quantization parameters should contain zero point and scale. "
-                    "Specified values for output {}: {}".format(param_name, params)
+                    "Quantization parameters should contain zero point, scale, quant type. "
+                    f"Specified values for output {param_name}: {params}"
                 )
 
-            zero_point_values = [params[0]]
-            scale_values = [params[1]]
+            zero_point_values = np.array([params["zero_point"]])
+            if not hasattr(params["scale"], "dtype") or params["scale"].dtype not in (np.float32, np.float16):
+                raise ValueError(f"Unexpected type {type(params['scale'])} and param_name={param_name!r}")
+            scale_values = np.array([params["scale"]])
+            assert scale_values.dtype != np.float64
+            zero_point_type = params["quant_type"]
         else:
-            zero_point_values = [use_zeropoint]
-            scale_values = [use_scale]
+            zero_point_values = np.array([use_zeropoint])
+            scale_values = np.array([use_scale])
+            params = self.quantization_params[param_name]
+            if "scale" in params:
+                dtype = params["scale"].dtype
+                scale_values = scale_values.astype(dtype)
+            assert scale_values.dtype != np.float64
 
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
-        zero_point_type = self.activation_qType
         scale_shape = []
         scale_name = param_name + "_scale"
 
         # Add initializers
-        init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
+        init_zp = onnx.helper.make_tensor(
+            zero_point_name, zero_point_type, zero_point_shape, zero_point_values.ravel().tolist()
+        )
         self.model.add_initializer(init_zp)
-        init_scale = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, scale_shape, scale_values)
+        if scale_values.dtype == np.float32:
+            scale_type = onnx_proto.TensorProto.FLOAT
+        elif scale_values.dtype == np.float16:
+            scale_type = onnx_proto.TensorProto.FLOAT16
+        else:
+            raise ValueError(f"Unexpected dtype={scale_values.dtype} for param_name={param_name!r}")
+        init_scale = onnx.helper.make_tensor(scale_name, scale_type, scale_shape, scale_values.reshape((-1,)).tolist())
         self.model.add_initializer(init_scale)
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
 
-    def _get_quantize_input_nodes(self, node, input_index, qType, given_scale_name=None, given_zp_name=None):
+    def _get_quantize_input_nodes(
+        self, node, input_index, qType, given_scale_name=None, given_zp_name=None, initial_type=None
+    ):
         """
         Given an input for a node (which is not a initializer), this function
 
@@ -577,9 +572,11 @@ class ONNXQuantizer:
         :param qType: type to quantize to.
         :param given_scale_name: if those inputs need to be quanitzed using this scale tensor.
         :param given_zp_name: if those inputs to be quantized using this zeropoint tensor.
+        :param initial_type: type of the weight to quantize
         :return: List of newly created nodes in NodeProto format.
         """
         input_name = node.input[input_index]
+        assert input_name != "", "Cannot access undefined variable in graph."
         output_name = input_name + TENSOR_NAME_QUANT_SUFFIX
         ql_node_name = input_name + "_QuantizeLinear"
 
@@ -611,12 +608,16 @@ class ONNXQuantizer:
                     ql_node_name,
                 )
             else:
+                assert initial_type is not None, (
+                    f"Cannot quantize input without knowing the initial type, "
+                    f"input_name={input_name!r}, input_index={input_index}, qType={qType}, node={node}"
+                )
                 (
                     scale_name,
                     zp_name,
                     scale_shape,
                     zp_shape,
-                ) = self._get_dynamic_input_quantization_params(input_name, nodes, qType)
+                ) = self._get_dynamic_input_quantization_params(input_name, nodes, qType, initial_type=initial_type)
                 qlinear_node = onnx.helper.make_node(
                     "QuantizeLinear",
                     [input_name, scale_name, zp_name],
@@ -626,18 +627,6 @@ class ONNXQuantizer:
 
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return [*nodes, qlinear_node]
-
-    def set_quant_scale_zp(self, tensor_name, value):
-        assert isinstance(value, tuple) and len(value) == 2, "value must be scale(float) and zeropoint"
-        assert tensor_name not in self.used_scale_zp_map, f"{tensor_name} has been setted before"
-        self.used_scale_zp_map[tensor_name] = value
-
-    def find_quant_scale_zp(self, input_name):
-        if input_name in self.used_scale_zp_map:
-            return self.used_scale_zp_map[input_name]
-        if self.parent is not None:
-            return self.parent.find_quantized_value(input_name)
-        return (None, None)
 
     def find_quantized_value(self, input_name):
         if input_name in self.quantized_value_map:
@@ -660,11 +649,6 @@ class ONNXQuantizer:
         weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
         weight_scale = tensor_proto_to_array(weight_initializer)
 
-        # get bias
-        bias_initializer = find_by_name(bias_name, self.model.initializer())
-        bias_data = tensor_proto_to_array(bias_initializer)
-        quantized_bias_name = bias_name + TENSOR_NAME_QUANT_SUFFIX
-
         # get scale for input
         if input_name in self.quantized_value_map:
             input_scale_name = self.quantized_value_map[input_name].scale_name
@@ -676,38 +660,14 @@ class ONNXQuantizer:
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = tensor_proto_to_array(inputscale_initializer)
 
-        # calcuate scale for bias
-        bias_scale = input_scale * weight_scale * beta
-
-        # quantize bias
-        quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
-
-        # update bias initializer
-        bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
-        packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
-        self.model.initializer().extend([packed_bias_initializer])
-
-        # update scale initializer
-        quantized_bias_scale_name = quantized_bias_name + "_scale"
-        bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
-        if self.is_per_channel():
-            packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
-        else:
-            packed_bias_scale_initializer = onnx.helper.make_tensor(
-                quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data
-            )
-        self.model.initializer().extend([packed_bias_scale_initializer])
-
-        # update zero initializer
-        quantized_bias_zp_name = quantized_bias_name + "_zero_point"
-        bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
-        if self.is_per_channel():
-            packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
-        else:
-            packed_bias_zp_initializer = onnx.helper.make_tensor(
-                quantized_bias_zp_name, onnx_proto.TensorProto.INT32, [], bias_zp_data
-            )
-        self.model.initializer().extend([packed_bias_zp_initializer])
+        (
+            quantized_bias_name,
+            quantized_bias_scale_name,
+            quantized_bias_zp_name,
+            bias_scale_data,
+            node_type,
+            node_qtype,
+        ) = self.quantize_bias_static_impl(bias_name, input_scale, weight_scale, beta)
 
         assert bias_name not in self.quantized_value_map
         quantized_value = QuantizedValue(
@@ -717,6 +677,8 @@ class ONNXQuantizer:
             quantized_bias_zp_name,
             QuantizedValueType.Initializer,
             0 if bias_scale_data.size > 1 else None,
+            node_type=node_type,
+            node_qtype=node_qtype,
         )
         self.quantized_value_map[bias_name] = quantized_value
 
@@ -838,7 +800,23 @@ class ONNXQuantizer:
                     node_input + "_QuantizeLinear", self.new_nodes, self.model.graph()
                 )
                 if qlinear_node is None:
-                    quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.activation_qType)
+                    input_name = node.input[input_index]
+                    if input_name in self.value_infos:
+                        value_info = self.value_infos[input_name]
+                        assert value_info.HasField("type"), f"value_info={value_info} has no type."
+                        assert value_info.type.HasField("tensor_type"), f"value_info={value_info} is not a tensor."
+                        initial_type = value_info.type.tensor_type.elem_type
+                    else:
+                        # Shape inference failed. Fallback to self.tensor_names.
+                        assert input_name in self.tensor_names, (
+                            f"shape inference failed for {input_name!r} and "
+                            f"attribute 'tensor_names' does not have any value for "
+                            f"this tensor."
+                        )
+                        initial_type = self.tensor_names[input_name]
+                    quantize_input_nodes = self._get_quantize_input_nodes(
+                        node, input_index, self.activation_qType, initial_type=initial_type
+                    )
                     if quantize_input_nodes is None:
                         return (None, None, None, None)
                     if from_subgraph:
@@ -896,28 +874,9 @@ class ONNXQuantizer:
                 quantized_value.scale_name,
             )
 
-        q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
-        zp_name = weight.name + "_zero_point"
-        scale_name = weight.name + "_scale"
-
-        # Update packed weight, zero point, and scale initializers
-        weight_data = tensor_proto_to_array(weight)
-        _, _, zero_point, scale, q_weight_data = quantize_data(
-            weight_data.flatten().tolist(),
-            qType,
-            self.is_weight_symmetric,
-            self.reduce_range and reduce_range,
+        q_weight_name, zp_name, scale_name = self.quantize_initializer_impl(
+            weight, qType, reduce_range, keep_float_weight
         )
-        scale_initializer = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, [], [scale])
-        zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
-        self.model.initializer().extend([scale_initializer, zero_initializer])
-
-        if not keep_float_weight:
-            q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
-                weight.dims
-            )
-            q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
-            self.model.initializer().extend([q_weight_initializer])
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(
@@ -929,7 +888,6 @@ class ONNXQuantizer:
             None,
         )
         self.quantized_value_map[weight.name] = quantized_value
-
         return q_weight_name, zp_name, scale_name
 
     def quantize_weight_per_channel(
@@ -949,43 +907,9 @@ class ONNXQuantizer:
                 quantized_value.scale_name,
             )
 
-        initializer = find_by_name(weight_name, self.model.initializer())
-        if initializer is None:
-            raise ValueError("{} is not an initializer", weight_name)
-
-        weights = tensor_proto_to_array(initializer)
-        channel_count = weights.shape[channel_axis]
-        rmin_list = []
-        rmax_list = []
-        zero_point_list = []
-        scale_list = []
-        quantized_per_channel_data_list = []
-        for i in range(channel_count):
-            per_channel_data = weights.take(i, channel_axis)
-            rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(),
-                weight_qType,
-                self.is_weight_symmetric or weight_qType == onnx_proto.TensorProto.INT8,
-                self.reduce_range and reduce_range,
-            )
-            rmin_list.append(rmin)
-            rmax_list.append(rmax)
-            zero_point_list.append(zero_point)
-            scale_list.append(scale)
-            quantized_per_channel_data_list.append(quantized_per_channel_data)
-
-        # combine per_channel_data into one
-        reshape_dims = list(weights.shape)  # deep copy
-        reshape_dims[channel_axis] = 1  # only one per channel for reshape
-        quantized_weights = np.asarray(quantized_per_channel_data_list[0]).reshape(reshape_dims)
-        for i in range(1, len(quantized_per_channel_data_list)):
-            channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
-            quantized_weights = np.concatenate((quantized_weights, channel_weights), channel_axis)
-
-        q_weight_name = weight_name + TENSOR_NAME_QUANT_SUFFIX
-        zp_name = weight_name + "_zero_point"
-        scale_name = weight_name + "_scale"
-
+        q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel_impl(
+            weight_name, weight_qType, channel_axis, reduce_range, keep_float_weight
+        )
         quantized_value = QuantizedValue(
             weight_name,
             q_weight_name,
@@ -996,29 +920,12 @@ class ONNXQuantizer:
         )
         self.quantized_value_map[weight_name] = quantized_value
 
-        # Update packed weight, zero point, and scale initializers
-        zero_scale_shape = [initializer.dims[channel_axis]]
-        scale_initializer = onnx.helper.make_tensor(
-            scale_name, onnx_proto.TensorProto.FLOAT, zero_scale_shape, scale_list
-        )
-        zero_initializer = onnx.helper.make_tensor(zp_name, weight_qType, zero_scale_shape, zero_point_list)
-
-        self.model.initializer().extend([scale_initializer, zero_initializer])
-
-        if not keep_float_weight:
-            quantized_weights = np.asarray(
-                quantized_weights,
-                dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
-            ).reshape(initializer.dims)
-            q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
-            self.model.initializer().extend([q_weight_initializer])
-
         return q_weight_name, zp_name, scale_name
 
     def _dequantize_value(self, value_name):
         """
         Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
-        it back to float32
+        it back to float32 or float16
             parameter value_name: value to dequantize
             parameter new_nodes_list: List of new nodes created before processing current node
             return: None if there is already a DequantizeLinear node that dequantizes it
@@ -1027,6 +934,16 @@ class ONNXQuantizer:
         if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
+
+            scale_init = find_by_name(quantized_value.scale_name, self.model.initializer())
+
+            # In case we are working with subgraphs, the graph `producer_name` is set to `"onnx-quantizer"` in the `quantize_subgraph` method. In this case, the scale initializer may be on the top level graph, so the check below can not be done.
+            if self.model.model.producer_name != "onnx-quantizer" or (
+                self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
+            ):
+                # axis is not specified so scale_init must be a scalar.
+                assert onnx.numpy_helper.to_array(scale_init).size == 1
+
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
             if dqlinear_node is None:
@@ -1058,26 +975,34 @@ class ONNXQuantizer:
 
     def calculate_quantization_params(self):
         if self.tensors_range is None:
-            return
+            return None
 
-        # adjust tensor_ranges for input of Clip and Relu node
-        for node in self.model.nodes():
-            if node.op_type not in ["Clip", "Relu"]:
-                continue
-            if self.is_activation_symmetric:
-                continue
-            if not self.should_quantize_node(node):
-                continue
-            if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:
-                continue
-            if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
-                continue
-            self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+        self.adjust_tensor_ranges()
+
         quantization_params = {}
         for tensor_name in self.tensors_range:
-            rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
+            td = self.tensors_range[tensor_name]
+            if not isinstance(td, TensorData):
+                raise TypeError(f"Unexpected type {type(td)} for {tensor_name!r}.")
 
-            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
+            quant_overrides = self.tensor_quant_overrides.get_per_tensor_overrides(tensor_name, default_val={})
+
+            quant_type = self.activation_qType
+            if "quant_type" in quant_overrides:
+                quant_type = quant_overrides["quant_type"].tensor_type
+
+            if "scale" in quant_overrides and "zero_point" in quant_overrides:
+                zero, scale = quant_overrides["zero_point"], quant_overrides["scale"]
+            elif quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+                zero, scale = compute_scale_zp_float8(quant_type, td.avg_std[1])
+            else:
+                rmin = quant_overrides.get("rmin", td.range_value[0])
+                rmax = quant_overrides.get("rmax", td.range_value[1])
+                symmetric = quant_overrides.get("symmetric", self.is_activation_symmetric)
+                reduce_range = quant_overrides.get("reduce_range", False)
+                qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
+                zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
+
+            quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale, quant_type=quant_type)
 
         return quantization_params

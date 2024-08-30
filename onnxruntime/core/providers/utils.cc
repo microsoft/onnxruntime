@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensorprotoutils.h"
-#include "utils.h"
+#include "core/providers/utils.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -24,5 +24,20 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
 }
 #endif
 
+bool ReciprocalIsAFactorOfN(int64_t n, float scale) {
+  bool is_factor = false;
+  if (scale > 0.f && scale < 1.f) {
+    const double factor = 1.0 / scale;
+    const double factor_rounded = std::round(factor);
+    constexpr double epsilon = 1.0e-4;  // arbitrarily small enough
+    if (std::abs(factor - factor_rounded) < epsilon) {
+      // result is integer. check if a factor of n
+      const int64_t factor_i = static_cast<int64_t>(factor_rounded);
+      is_factor = n % factor_i == 0;
+    }
+  }
+
+  return is_factor;
+}
 }  // namespace utils
 }  // namespace onnxruntime

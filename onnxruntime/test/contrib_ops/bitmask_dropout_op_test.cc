@@ -130,8 +130,8 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
 
     std::vector<OrtValue> dropout_outputs = dropout.GetFetches();
     ASSERT_EQ(dropout_outputs.size(), 2u);
-    const T* output_values = FetchTensor(dropout_outputs[0]).Data<T>();
-    const bool* mask_values = FetchTensor(dropout_outputs[1]).Data<bool>();
+    const T* output_values = dropout_outputs[0].Get<Tensor>().Data<T>();
+    const bool* mask_values = dropout_outputs[1].Get<Tensor>().Data<bool>();
     std::vector<BitmaskElementType> bitmask_values = MasksToBitmasks(input_size, mask_values);
 
     OpTester bitmask_dropout("BitmaskDropout", 1, kMSDomain);

@@ -17,7 +17,7 @@ std::vector<float> ComputeGelu(const std::vector<float>& input_data) {
 
   for (size_t i = 0; i < input_data.size(); i++) {
     float x = input_data[i];
-    float y = x * (0.5f * (1.0f + std::erff(x / 1.41421356237f)));
+    float y = x * (0.5f * (1.0f + std::erff(x / static_cast<float>(M_SQRT2))));
     output.push_back(y);
   }
   return output;
@@ -149,6 +149,20 @@ TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_10240) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t hidden_size = 10240;
+  RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
+}
+
+TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_6144) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t sequence_length = 3;
+  constexpr int64_t hidden_size = 6144;
+  RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
+}
+
+TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_12288) {
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_length = 2;
+  constexpr int64_t hidden_size = 12288;
   RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
 }
 

@@ -26,11 +26,11 @@
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/ort_value.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/greedy_search.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
@@ -198,14 +198,14 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : GenerationCpuDeviceHelper::GreedySearchProcessLogits<float>,
           init_greedy_state_func_ ? init_greedy_state_func_ : GenerationCpuDeviceHelper::InitGreedyState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
-          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          update_gpt_feeds_func_ ? update_gpt_feeds_func_ : GenerationCpuDeviceHelper::UpdateGptFeeds<float>};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -222,14 +222,14 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
           parameters,
           GenerationCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
-          reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           topk_func_ ? topk_func_ : GenerationCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_greedy_state_fp16_func_,
           device_copy_func_,
-          update_gpt_feeds_fp16_func_,
-          cuda_device_prop_,
-          cuda_device_arch_};
+          update_gpt_feeds_fp16_func_};
+#ifdef USE_CUDA
+      ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
+#endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);

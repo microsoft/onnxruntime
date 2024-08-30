@@ -9,21 +9,44 @@
 
 namespace onnxruntime {
 
-CUDAGraph::CUDAGraph(cudaStream_t stream) : stream_(stream) {
-#if (defined(CUDA_VERSION) && CUDA_VERSION < 10000)
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
-#endif
+CudaGraphSet::~CudaGraphSet() {
+  Clear();
 }
 
-void CUDAGraph::SetStream(cudaStream_t stream) {
+void CudaGraphSet::Clear() {
+  for (auto& it : cuda_graphs_) {
+    CUDA_CALL_THROW(cudaGraphExecDestroy(it.second));
+  }
+  cuda_graphs_.clear();
+}
+
+bool CudaGraphSet::Contains(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return cuda_graphs_.find(cuda_graph_annotation_id) != cuda_graphs_.end();
+}
+
+void CudaGraphSet::Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t graph_exec) {
+  ORT_ENFORCE(!Contains(cuda_graph_annotation_id));
+  cuda_graphs_.emplace(cuda_graph_annotation_id, graph_exec);
+}
+
+cudaGraphExec_t CudaGraphSet::Get(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  ORT_ENFORCE(Contains(cuda_graph_annotation_id));
+  return cuda_graphs_.at(cuda_graph_annotation_id);
+}
+
+CUDAGraphManager::CUDAGraphManager(cudaStream_t stream) : stream_(stream) {
+}
+
+void CUDAGraphManager::SetStream(cudaStream_t stream) {
   stream_ = stream;
 }
 
-void CUDAGraph::CaptureBegin() {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  ORT_ENFORCE(!has_graph_exec_,
-              "This cuda graph has already captured a graph. "
-              "Create a new instance to capture a new graph.");
+void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  ORT_ENFORCE(IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id));
+
+  ORT_ENFORCE(!cuda_graph_set_.Contains(cuda_graph_annotation_id),
+              "Trying to capture a graph with annotation id ", cuda_graph_annotation_id,
+              " that already used. Please use a different annotation id.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
   // For now cuda graph can only work with a single thread. In the future, we
@@ -31,57 +54,50 @@ void CUDAGraph::CaptureBegin() {
   // and streams, `cudaStreamCaptureModeGlobal` needs to be changed to
   // `cudaStreamCaptureModeThreadLocal`
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
-#else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
-#endif
 }
 
-void CUDAGraph::CaptureEnd() {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph_));
-  if (graph_ == NULL) {
+void CUDAGraphManager::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  cudaGraph_t graph = NULL;
+  CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph));
+  if (graph == NULL) {
     ORT_THROW("CUDAGraph::CaptureEnd: graph_ is NULL");
   }
 
-  has_graph_ = true;
-  CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec_, graph_, NULL, NULL, 0));
-  has_graph_exec_ = true;
-  CUDA_CALL_THROW(cudaGraphDestroy(graph_));
-  has_graph_ = false;
-#else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
-#endif
+  cudaGraphExec_t graph_exec = NULL;
+  CUDA_CALL_THROW(cudaGraphInstantiate(&graph_exec, graph, NULL, NULL, 0));
+  CUDA_CALL_THROW(cudaGraphDestroy(graph));
+
+  // Currently all the captured graphs will be tied to the session's lifecycle
+  // TODO(wy): Addd an interface to free captured graphs
+  cuda_graph_set_.Put(cuda_graph_annotation_id, graph_exec);
 }
 
-Status CUDAGraph::Replay() {
+Status CUDAGraphManager::Replay(CudaGraphAnnotation_t cuda_graph_annotation_id) {
   // Although this function is not thread safe, the lock is not needed here because
   // CUDA EP maintains a separate cuda graph per thread
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_ << " with cuda_graph_annotation_id "
+                     << cuda_graph_annotation_id;
+
+  cudaGraphExec_t graph_exec = cuda_graph_set_.Get(cuda_graph_annotation_id);
+  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec, stream_));
+
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
-#else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
-#endif
   return Status::OK();
 }
 
-void CUDAGraph::Reset() {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  if (has_graph_) {
-    CUDA_CALL_THROW(cudaGraphDestroy(graph_));
-    has_graph_ = false;
-  }
-  if (has_graph_exec_) {
-    CUDA_CALL_THROW(cudaGraphExecDestroy(graph_exec_));
-    has_graph_exec_ = false;
-  }
-#else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
-#endif
+bool CUDAGraphManager::IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return cuda_graph_annotation_id != kCudaGraphAnnotationSkip;
 }
 
-CUDAGraph::~CUDAGraph() {
+bool CUDAGraphManager::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  return cuda_graph_set_.Contains(cuda_graph_annotation_id);
+}
+
+void CUDAGraphManager::Reset() {
+  cuda_graph_set_.Clear();
+}
+
+CUDAGraphManager::~CUDAGraphManager() {
   Reset();
 }
 

@@ -56,11 +56,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    log.debug(
-        "Dockerfile: {}, context: {}, docker build args: '{}'".format(
-            args.dockerfile, args.context, args.docker_build_args
-        )
-    )
+    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'")
 
     use_container_registry = args.container_registry is not None
 
@@ -86,7 +82,7 @@ def main():
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info(f"Deleting: {str(dest)}")
+            log.info(f"Deleting: {dest!s}")
             shutil.rmtree(str(dest))
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
         src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")
@@ -102,17 +98,19 @@ def main():
         )
 
     if use_container_registry:
+        run(args.docker_path, "buildx", "create", "--driver=docker-container", "--name=container_builder")
         run(
             args.docker_path,
             "--log-level",
             "error",
             "buildx",
             "build",
-            "--push",
+            "--load",
             "--tag",
             full_image_name,
-            "--cache-from",
-            full_image_name,
+            "--cache-from=type=registry,ref=" + full_image_name,
+            "--builder",
+            "container_builder",
             "--build-arg",
             "BUILDKIT_INLINE_CACHE=1",
             *shlex.split(args.docker_build_args),
@@ -120,24 +118,10 @@ def main():
             args.dockerfile,
             args.context,
         )
-    elif args.use_imagecache:
-        log.info("Building image with pipeline cache...")
         run(
             args.docker_path,
-            "--log-level",
-            "error",
-            "buildx",
-            "build",
-            "--tag",
+            "push",
             full_image_name,
-            "--cache-from",
-            full_image_name,
-            "--build-arg",
-            "BUILDKIT_INLINE_CACHE=1",
-            *shlex.split(args.docker_build_args),
-            "-f",
-            args.dockerfile,
-            args.context,
         )
     else:
         log.info("Building image...")

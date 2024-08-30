@@ -5,12 +5,11 @@
 #include <map>
 #include <string>
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/ort_value.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #ifdef USE_CUDA
 #include "core/providers/providers.h"
@@ -31,18 +30,6 @@ class Graph;
 namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
-
-#ifdef USE_NNAPI
-IExecutionProvider* TestNnapiExecutionProvider();
-#endif
-
-#ifdef USE_RKNPU
-IExecutionProvider* TestRknpuExecutionProvider();
-#endif
-
-#ifdef USE_COREML
-IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags);
-#endif
 
 template <typename T>
 inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {

@@ -14,7 +14,7 @@ class DeviceStreamCollectionImpl;
 // this collection may be cached and reused for future iterations.
 class DeviceStreamCollection {
  public:
-  DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
+  DeviceStreamCollection(size_t num_streams, const AllocatorMap& allocators, bool is_main_graph);
   ~DeviceStreamCollection();
   // Add the device stream instance to given index.
   // and set the current collection as the owner of the device stream.
@@ -45,5 +45,17 @@ class DeviceStreamCollection {
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;
 };
+
+struct DeviceStreamCollectionHolder {
+  DeviceStreamCollectionHolder(const SessionState* session_state);
+  DeviceStreamCollectionHolder() = delete;
+  DeviceStreamCollectionHolder(const DeviceStreamCollectionHolder&) = delete;
+
+  ~DeviceStreamCollectionHolder();
+
+  const SessionState* session_state_;
+  std::unique_ptr<DeviceStreamCollection> p_;
+};
+
 }  // namespace onnxruntime
 #endif

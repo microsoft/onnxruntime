@@ -9,11 +9,9 @@ from functools import reduce
 from types import SimpleNamespace
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.training import ortmodule
+from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+from onnxruntime.training.ortmodule.options import DebugOptions, LogLevel, _SaveOnnxOptions, _SkipCheck
 
-from ..._fallback import _FallbackPolicy
-from ..._graph_execution_manager import _SkipCheck
-from ...debug_options import DebugOptions, LogLevel, _SaveOnnxOptions
 from . import JSON_PATH_ENVIRONMENT_KEY
 
 log = logging.getLogger(__name__)
@@ -39,19 +37,19 @@ def _load_propagate_cast_ops(ortmodule_config_accessor, data):
     log.info(f"Found keyword {_load_propagate_cast_ops.loading_key} in json. Loading attributes from file.")
 
     def _update_strategy():
-        ortmodule_config_accessor._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.__members__[
+        ortmodule_config_accessor._runtime_options.propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.__members__[
             data.PropagateCastOps.Strategy
         ]
 
     def _update_level():
-        ortmodule_config_accessor._propagate_cast_ops_level = data.PropagateCastOps.Level
+        ortmodule_config_accessor._runtime_options.propagate_cast_ops_level = data.PropagateCastOps.Level
 
     def _update_allow():
-        ortmodule_config_accessor._propagate_cast_ops_allow = data.PropagateCastOps.Allow
+        ortmodule_config_accessor._runtime_options.propagate_cast_ops_allow = data.PropagateCastOps.Allow
 
     key_to_function_mapping = {"Strategy": _update_strategy, "Level": _update_level, "Allow": _update_allow}
 
-    for key, _ in data.PropagateCastOps.__dict__.items():
+    for key in data.PropagateCastOps.__dict__:
         key_to_function_mapping[key]()
 
 
@@ -64,8 +62,7 @@ def _load_use_external_gpu_allocator(ortmodule_config_accessor, data):
     assert isinstance(
         data.UseExternalGPUAllocator, bool
     ), f"{_load_use_external_gpu_allocator.loading_key} must be a boolean"
-    ortmodule_config_accessor._use_external_gpu_allocator = data.UseExternalGPUAllocator
-    ortmodule_config_accessor._get_torch_gpu_allocator_function_addresses()
+    ortmodule_config_accessor._runtime_options.use_external_gpu_allocator = data.UseExternalGPUAllocator
 
 
 def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
@@ -79,7 +76,11 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
     assert isinstance(
         data.EnableCustomAutogradFunction, bool
     ), f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
-    ortmodule_config_accessor._enable_custom_autograd_function = data.EnableCustomAutogradFunction
+
+    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
+
+    enable_custom_autograd_support(data.EnableCustomAutogradFunction)
+    ortmodule_config_accessor._runtime_options.enable_custom_autograd_function = data.EnableCustomAutogradFunction
 
 
 def _load_enable_grad_acc_optimization(ortmodule_config_accessor, data):
@@ -91,7 +92,7 @@ def _load_enable_grad_acc_optimization(ortmodule_config_accessor, data):
     assert isinstance(
         data.EnableGradAccOptimization, bool
     ), f"{_load_enable_grad_acc_optimization.loading_key} must be a boolean"
-    ortmodule_config_accessor._enable_grad_acc_optimization = data.EnableGradAccOptimization
+    ortmodule_config_accessor._runtime_options.enable_grad_acc_optimization = data.EnableGradAccOptimization
 
 
 def _load_run_symbolic_shape_infer(ortmodule_config_accessor, data):
@@ -103,7 +104,7 @@ def _load_run_symbolic_shape_infer(ortmodule_config_accessor, data):
     assert isinstance(
         data.RunSymbolicShapeInference, bool
     ), f"{_load_run_symbolic_shape_infer.loading_key} must be a boolean"
-    ortmodule_config_accessor._run_symbolic_shape_infer = data.RunSymbolicShapeInference
+    ortmodule_config_accessor._runtime_options.run_symbolic_shape_infer = data.RunSymbolicShapeInference
 
 
 def _load_use_static_shape(ortmodule_config_accessor, data):
@@ -113,7 +114,7 @@ def _load_use_static_shape(ortmodule_config_accessor, data):
     log.info(f"Found keyword {_load_use_static_shape.loading_key} in json. Loading attributes from file.")
 
     assert isinstance(data.UseStaticShape, bool), f"{_load_use_static_shape.loading_key} must be a boolean"
-    ortmodule_config_accessor._use_static_shape = data.UseStaticShape
+    ortmodule_config_accessor._runtime_options.use_static_shape = data.UseStaticShape
 
 
 def _load_skip_check(ortmodule_config_accessor, data):
@@ -124,7 +125,7 @@ def _load_skip_check(ortmodule_config_accessor, data):
 
     skip_check = reduce(lambda x, y: x | y, [_SkipCheck[name] for name in data.SkipCheck])
     if skip_check.value > 0:
-        ortmodule_config_accessor._skip_check = skip_check
+        ortmodule_config_accessor._runtime_options.skip_check = skip_check
 
 
 def _load_debug_options(ortmodule_config_accessor, data):
@@ -161,7 +162,7 @@ def _load_debug_options(ortmodule_config_accessor, data):
         "SaveONNXPath": _update_onnx_path,
     }
 
-    for key, _ in data.DebugOptions.__dict__.items():
+    for key in data.DebugOptions.__dict__:
         key_to_function_mapping[key]()
 
     debug_options = DebugOptions(log_level=log_level, save_onnx=save_onnx, onnx_prefix=onnx_prefix)
@@ -177,7 +178,7 @@ def _load_use_memory_efficient_gradient(ortmodule_config_accessor, data):
     assert isinstance(
         data.UseMemoryEfficientGradient, bool
     ), f"{_load_use_memory_efficient_gradient.loading_key} must be a boolean"
-    ortmodule_config_accessor._use_memory_efficient_gradient = data.UseMemoryEfficientGradient
+    ortmodule_config_accessor._runtime_options.use_memory_efficient_gradient = data.UseMemoryEfficientGradient
 
 
 def _load_fallback_policy(ortmodule_config_accessor, data):
@@ -198,7 +199,7 @@ def _load_onnx_opset_version(ortmodule_config_accessor, data):
     log.info(f"Found keyword {_load_onnx_opset_version.loading_key} in json. Loading attributes from file.")
 
     assert isinstance(data.OnnxOpsetVersion, int), f"{_load_onnx_opset_version.loading_key} must be an int"
-    ortmodule.ONNX_OPSET_VERSION = data.OnnxOpsetVersion
+    ortmodule_config_accessor._runtime_options.onnx_opset_version = data.OnnxOpsetVersion
 
 
 def _define_load_function_keys():
@@ -300,5 +301,5 @@ def load_from_json(ortmodule, path=None):
         # update the debug config for both train and eval modes
         ortmodule_config_accessor = ortmodule._torch_module._execution_manager(training_mode)
         # iterate over the json data instead of checking for keys in json to catch key errors
-        for key, _ in data.__dict__.items():
+        for key in data.__dict__:
             load_functions[key](ortmodule_config_accessor, data)

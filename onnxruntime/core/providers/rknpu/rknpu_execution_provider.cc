@@ -9,7 +9,6 @@
 #include <functional>
 #include "rknpu_execution_provider.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
@@ -29,7 +28,7 @@ constexpr const char* RKNPU = "Rknpu";
 struct RknpuFuncState {
   std::string uniq_input_shape;
 
-  std::unique_ptr<rk::nn::Exection> exector;
+  std::unique_ptr<rk::nn::Execution> exector;
   ONNX_NAMESPACE::ModelProto model_proto;
   std::unordered_map<std::string, int> input_map;
   std::unordered_map<std::string, int> output_map;
@@ -39,20 +38,6 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 RknpuExecutionProvider::~RknpuExecutionProvider() {}
@@ -297,7 +282,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       std::unique_ptr<RknpuFuncState> p =
           std::make_unique<RknpuFuncState>();
       rk::nn::Graph* graph = new rk::nn::Graph();
-      *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)),
+      *p = {"", std::unique_ptr<rk::nn::Execution>(new rk::nn::Execution(graph)),
             model_proto_[context->node_name], input_info_[context->node_name],
             output_info_[context->node_name],
             std::vector<int>{}, std::vector<int>{}};

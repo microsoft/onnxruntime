@@ -92,7 +92,6 @@ class TypeUsageProcessor(ABC):
         Generate a configuration file entry in JSON format with the required types for the operator.
         :return: JSON string with required type information.
         """
-        pass
 
     @abstractmethod
     def from_config_entry(self, entry: str):
@@ -101,7 +100,6 @@ class TypeUsageProcessor(ABC):
         NOTE: Any existing type information should be cleared prior to re-creating from a config file entry.
         :param entry: Configuration file entry
         """
-        pass
 
 
 class DefaultTypeUsageProcessor(TypeUsageProcessor):
@@ -182,9 +180,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
             # Don't know of any ops where the number of outputs changed across versions, so require a valid length
             if o >= node.OutputsLength():
                 raise RuntimeError(
-                    "Node has {} outputs. Tracker for {} incorrectly configured as it requires {}.".format(
-                        node.OutputsLength(), self.name, o
-                    )
+                    f"Node has {node.OutputsLength()} outputs. Tracker for {self.name} incorrectly configured as it requires {o}."
                 )
 
             type_str = value_name_to_typestr(node.Outputs(o), value_name_to_typeinfo)
@@ -193,7 +189,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
     def is_typed_registration_needed(
         self, type_in_registration: str, globally_allowed_types: typing.Optional[typing.Set[str]]
     ):
-        if 0 not in self._input_types.keys():
+        if 0 not in self._input_types:
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
             raise RuntimeError(f"Expected typed registration to use type from input 0. Node:{self.name}")
@@ -514,7 +510,6 @@ class OpTypeImplFilterInterface(ABC):
         :param type_registration_str: Type string from kernel registration
         :return: True is required. False if not.
         """
-        pass
 
     @abstractmethod
     def get_cpp_entries(self):
@@ -522,7 +517,6 @@ class OpTypeImplFilterInterface(ABC):
         Get the C++ code that specifies the operator types to enable.
         :return: List of strings. One line of C++ code per entry.
         """
-        pass
 
 
 class OperatorTypeUsageManager:
@@ -637,16 +631,14 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
     Operator implementation filter which uses globally allowed types.
     """
 
-    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())
+    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())  # noqa: RUF012
 
     def __init__(self, globally_allowed_types: typing.Set[str]):
         self._operator_processors = _create_operator_type_usage_processors()
 
         if not globally_allowed_types.issubset(self._valid_allowed_types):
             raise ValueError(
-                "Globally allowed types must all be valid. Invalid types: {}".format(
-                    sorted(globally_allowed_types - self._valid_allowed_types)
-                )
+                f"Globally allowed types must all be valid. Invalid types: {sorted(globally_allowed_types - self._valid_allowed_types)}"
             )
 
         self._globally_allowed_types = globally_allowed_types

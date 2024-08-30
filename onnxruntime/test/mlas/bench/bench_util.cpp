@@ -22,29 +22,3 @@ std::vector<float> RandomVectorUniform(std::vector<int64_t> shape, float min_val
   }
   return RandomVectorUniform(static_cast<size_t>(sz), min_value, max_value);
 }
-
-// The Benchmark used here do not contains this as in newer version.
-// Use the code from newer version.
-void ArgsProduct(benchmark::internal::Benchmark* bench,
-                 const std::vector<std::vector<int64_t>>& arglists) {
-  std::vector<std::size_t> indices(arglists.size(), 0);
-  const std::size_t total = std::accumulate(
-      std::begin(arglists), std::end(arglists), std::size_t{1},
-      [](const std::size_t res, const std::vector<int64_t>& arglist) {
-        return res * arglist.size();
-      });
-  std::vector<int64_t> args;
-  args.reserve(arglists.size());
-  for (std::size_t i = 0; i < total; i++) {
-    for (std::size_t arg = 0; arg < arglists.size(); arg++) {
-      args.push_back(arglists[arg][indices[arg]]);
-    }
-    bench->Args(args);
-    args.clear();
-
-    std::size_t arg = 0;
-    do {
-      indices[arg] = (indices[arg] + 1) % arglists[arg].size();
-    } while (indices[arg++] == 0 && arg < arglists.size());
-  }
-}

@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -33,7 +34,61 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info) {
+TrtFusedAttention<T>::TrtFusedAttention(const OpKernelInfo& info)
+    : CudaKernel(info) {
+  kernel_options_ = this->GetAttentionKernelOptions();
+  disable_fused_runner_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+}
+
+template <typename T>
+MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_prop,
+                                                bool has_attention_bias,
+                                                const PackedAttentionParameters& parameters) const {
+  MHARunner* fused_runner = nullptr;
+
+  bool use_fused_runner = !disable_fused_runner_ &&
+                          !has_attention_bias &&
+                          parameters.hidden_size == parameters.v_hidden_size;
+
+  if (!use_fused_runner) {
+    return fused_runner;
+  }
+
+  // Check whether we can use fused kernel
+  int sm = device_prop.major * 10 + device_prop.minor;
+  bool is_fMHA_supported = FusedMHARunnerFP16v2::IsSupported(sm,
+                                                             parameters.head_size,
+                                                             parameters.sequence_length,
+                                                             enable_trt_flash_attention_,
+                                                             false /*causal*/);
+
+  if (!is_fMHA_supported) {
+    return fused_runner;
+  }
+
+  // Assuming that num_heads and head_size do not change.
+  if (nullptr == fused_fp16_runner_.get()) {
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, false /*causal*/,
+                                                      enable_trt_flash_attention_, parameters.scale);
+  }
+
+  // In case some kernel not loaded due to shared memory limit, we need to double check here.
+  const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(parameters.sequence_length);
+  if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
+    fused_runner = fused_fp16_runner_.get();
+  }
+
+  return fused_runner;
+}
+
+// template class instantiation
+template class TrtFusedAttention<float>;
+template class TrtFusedAttention<MLFloat16>;
+
+template <typename T>
+PackedAttention<T>::PackedAttention(const OpKernelInfo& info)
+    : TrtFusedAttention<T>(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int32_t>(num_heads);
@@ -43,12 +98,6 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info)
   if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
     qkv_hidden_sizes_.clear();
   }
-
-  disable_fused_runner_ = sizeof(T) != 2 ||
-                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
-
-  enable_trt_flash_attention_ = sizeof(T) == 2 &&
-                                !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 }
 
 template <typename T>
@@ -57,12 +106,12 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                                        const TensorShape& bias_shape,
                                        const TensorShape& token_offset_shape,
                                        const TensorShape& cu_seq_len_shape,
-                                       const Tensor* relative_position_bias,
+                                       const Tensor* attention_bias,
                                        PackedAttentionParameters& parameters) const {
   // Abbreviation and Meanings:
   //   T:    token_count
   //   B:    batch_size
-  //   S:    sequence_length (input sequence length of query)
+  //   S:    sequence_length
   //   N:    num_heads
   //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
   //   H_v:  v_head_size
@@ -76,8 +125,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   token_offset            : (B, S)
   //   cu_seq_len_shape        : (B + 1)
-  //   relative_position_bias  : (B, N, S, S), (1, N, S, S) or NULL
-
+  //   attention_bias          : (B or 1, N or 1, S, S) or NULL
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -124,6 +172,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                            "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
+  const int num_heads = this->GetNumHeads();
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
   int64_t v_hidden_size = k_hidden_size;
@@ -134,7 +183,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
     }
 
     for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
-      if (qkv_hidden_sizes_[i] % num_heads_ != 0) {
+      if (qkv_hidden_sizes_[i] % num_heads != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
       }
@@ -157,98 +206,27 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                            v_hidden_size, "bias_dims[0]=", bias_dims[0]);
   }
 
-  bool broadcast_res_pos_bias = false;
-  if (relative_position_bias != nullptr) {
-    const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
-
-    if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
-    }
-
-    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
-    }
-    if (relative_position_bias_dims[0] == 1) {
-      broadcast_res_pos_bias = true;
-    }
-
-    if (relative_position_bias_dims[1] != num_heads_) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
-    }
-
-    if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
-    }
-
-    if (relative_position_bias_dims[3] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as sequence_length, got ",
-                             relative_position_bias_dims[3]);
-    }
+  gsl::span<const int64_t> attention_bias_dims;
+  if (attention_bias != nullptr) {
+    attention_bias_dims = attention_bias->Shape().GetDims();
+    ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
+        attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
   }
+  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
   parameters.batch_size = static_cast<int>(batch_size);
   parameters.sequence_length = static_cast<int>(sequence_length);
   parameters.input_hidden_size = static_cast<int>(input_hidden_size);
   parameters.hidden_size = static_cast<int>(q_hidden_size);
   parameters.v_hidden_size = static_cast<int>(v_hidden_size);
-  parameters.head_size = static_cast<int>(q_hidden_size) / num_heads_;
-  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
-  parameters.num_heads = num_heads_;
-  parameters.scale = scale_;
+  parameters.head_size = static_cast<int>(q_hidden_size) / num_heads;
+  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
+  parameters.num_heads = num_heads;
+  parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
-  parameters.has_relative_position_bias = nullptr != relative_position_bias;
-  parameters.broadcast_res_pos_bias = broadcast_res_pos_bias;
 
   return Status::OK();
-}
-
-template <typename T>
-MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
-  MHARunner* fused_runner = nullptr;
-
-  bool use_fused_runner = !disable_fused_runner_ &&
-                          !parameters.has_relative_position_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size;
-
-  if (!use_fused_runner) {
-    return fused_runner;
-  }
-
-  // Check whether we can use fused kernel
-  auto& device_prop = GetDeviceProp();
-  int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
-                                                              parameters.head_size,
-                                                              parameters.sequence_length,
-                                                              enable_trt_flash_attention_,
-                                                              false);
-
-  if (!is_fMHA_supported) {
-    return fused_runner;
-  }
-
-  // Assuming that num_heads and head_size do not change.
-  if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                      enable_trt_flash_attention_, parameters.scale);
-  }
-
-  // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-  if (fused_fp16_runner_->isValid(S)) {
-    fused_runner = fused_fp16_runner_.get();
-  }
-
-  return fused_runner;
 }
 
 template <typename T>
@@ -258,35 +236,47 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* token_offset = context->Input<Tensor>(3);
   const Tensor* cumulative_sequence_length = context->Input<Tensor>(4);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
 
   PackedAttentionParameters parameters;
+  parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
                                   token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
-                                  relative_position_bias,
+                                  attention_bias,
                                   parameters));
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = TryGettingFusedRunner(parameters);
+  auto& device_prop = this->GetDeviceProp();
+  MHARunner* fused_runner = this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
 
   bool use_memory_efficient_attention = false;
-  auto& device_prop = GetDeviceProp();
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = is_good_for_rpb &&
-                                     sizeof(T) == 2 &&  // only enable for fp16
-                                     (parameters.head_size & 7) == 0 &&
-                                     (parameters.v_head_size & 7) == 0 &&
-                                     has_memory_efficient_attention(sm, sizeof(T) == 2);
+    use_memory_efficient_attention =
+        (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
+        sizeof(T) == 2 &&  // only enable for fp16
+        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
 #endif
+
+  if (this->kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+    if (fused_runner != nullptr) {
+      debug_info.SetTrtFusedKernel(false /*causal*/, this->enable_trt_flash_attention_, parameters.sequence_length);
+    }
+
+    debug_info.Print("PackedAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -296,19 +286,20 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  cublasHandle_t cublas = GetCublasHandle(context);
+  cublasHandle_t cublas = this->GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-  // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
+  // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, this->UseTF32()));
 
   constexpr size_t element_size = sizeof(T);
+  constexpr bool no_qkv_workspace = false;  // need workspace to add bias
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -316,14 +307,16 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
-                                                   use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+                                                   false,
+                                                   use_memory_efficient_attention,
+                                                   no_qkv_workspace);
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.attention_bias = (nullptr == attention_bias) ? nullptr : reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.token_offset = token_offset->Data<int32_t>();
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
@@ -331,7 +324,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }
 
 }  // namespace cuda

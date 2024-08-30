@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -31,7 +31,7 @@ public class SparseTensorTest {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
-        OnnxTensor denseIdMatrix = makeIdentityMatrix(env, 3);
+        OnnxTensor denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 3);
         long[] shape = new long[] {3, 3};
         /*
          * Sparse matrix:
@@ -152,7 +152,7 @@ public class SparseTensorTest {
         inputMap.clear();
         denseIdMatrix.close();
 
-        denseIdMatrix = makeIdentityMatrix(env, 4);
+        denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 4);
         long[] vectorShape = new long[] {1, 4};
         /*
          * Sparse matrix:
@@ -212,7 +212,7 @@ public class SparseTensorTest {
       try (OrtSession session = env.createSession(modelPath, options)) {
         Map<String, OnnxTensorLike> inputMap = new HashMap<>();
 
-        OnnxTensor denseIdMatrix = makeIdentityMatrix(env, 3);
+        OnnxTensor denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 3);
         long[] shape = new long[] {3, 3};
         /*
          * Sparse matrix:
@@ -341,7 +341,7 @@ public class SparseTensorTest {
         inputMap.clear();
         denseIdMatrix.close();
 
-        denseIdMatrix = makeIdentityMatrix(env, 4);
+        denseIdMatrix = TestHelpers.makeIdentityMatrix(env, 4);
         long[] vectorShape = new long[] {1, 4};
         /*
          * Sparse matrix:
@@ -438,14 +438,5 @@ public class SparseTensorTest {
             new float[] {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f}, data);
       }
     }
-  }
-
-  private static OnnxTensor makeIdentityMatrix(OrtEnvironment env, int size) throws OrtException {
-    float[][] values = new float[size][size];
-    for (int i = 0; i < values.length; i++) {
-      values[i][i] = 1.0f;
-    }
-
-    return OnnxTensor.createTensor(env, values);
   }
 }

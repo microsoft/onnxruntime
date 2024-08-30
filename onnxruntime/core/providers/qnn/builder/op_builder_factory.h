@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "op_builder.h"
 
 namespace onnxruntime {
@@ -50,13 +51,13 @@ const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
 void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
-void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
@@ -84,7 +85,16 @@ void CreateReduceOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 
 void CreateBatchNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateLayerNormOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateHardSigmoidOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace qnn
 }  // namespace onnxruntime

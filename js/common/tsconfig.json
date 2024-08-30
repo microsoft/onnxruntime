@@ -1,9 +1,10 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist/lib",
-    "esModuleInterop": false,
-    "noUnusedParameters": true,
+    "outDir": "./dist/esm",
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": false
   },
   "include": ["lib"]
 }

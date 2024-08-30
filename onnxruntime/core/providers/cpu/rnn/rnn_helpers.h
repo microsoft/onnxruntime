@@ -18,7 +18,7 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace rnn {
@@ -163,7 +163,7 @@ void ComputeGemm(const int M,
 }
 
 struct PackedWeights {
-  BufferUniquePtr buffer_;
+  IAllocatorUniquePtr<void> buffer_;
   size_t buffer_size_;
   size_t weights_size_;
   TensorShape shape_;

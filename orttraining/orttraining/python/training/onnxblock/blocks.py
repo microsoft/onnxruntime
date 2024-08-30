@@ -4,9 +4,11 @@
 import contextlib
 import copy
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
+import numpy as np
 import onnx
 
 import onnxruntime.training.onnxblock._graph_utils as _graph_utils
@@ -27,8 +29,13 @@ class Block(ABC):
         base (onnx.ModelProto): The base model that the subclass can manipulate.
     """
 
-    def __init__(self):
+    def __init__(self, temp_file_name="temp.onnx"):
+        if os.path.isabs(temp_file_name):
+            raise RuntimeError("Please pass in a relative path for the temp_file_name.")
         self.base = None
+        self.temp_onnx_file_path = os.path.join(os.getcwd(), temp_file_name)
+        # onnx.save location parameter requires a relative path to the model path
+        self.temp_external_data_file_name = temp_file_name + ".data"
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -46,9 +53,57 @@ class Block(ABC):
 
         output = self.build(*args, **kwargs)
 
-        onnx.checker.check_model(self.base, True)
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.save(
+                accessor._GLOBAL_ACCESSOR.model,
+                self.temp_onnx_file_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=self.temp_external_data_file_name,
+            )
+
+            onnx.checker.check_model(self.temp_onnx_file_path, True)
+        else:
+            onnx.checker.check_model(self.base, True)
 
         return output
+
+    def infer_shapes_on_base(self):
+        """
+        Performs shape inference on the global model. If a path was used, then uses the
+        infer_shapes_path API to support models with external data.
+
+        Returns the shape-inferenced ModelProto.
+        """
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.save(
+                accessor._GLOBAL_ACCESSOR.model,
+                self.temp_onnx_file_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=self.temp_external_data_file_name,
+            )
+
+            onnx.shape_inference.infer_shapes_path(self.temp_onnx_file_path)
+            # shape inferenced model is saved to original path
+            model = onnx.load(self.temp_onnx_file_path)
+
+            return model
+        else:
+            return onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+
+    def __del__(self):
+        # since the ModelProto does not store the external data parameters themselves, just the metadata
+        # for where the external data can be found, we retain the external data files for the intermediate
+        # calls until the Block no longer needs to be used.
+        if os.path.exists(self.temp_onnx_file_path):
+            os.remove(self.temp_onnx_file_path)
+            # get absolute path for the external data file
+            external_data_file_path = os.path.join(
+                os.path.dirname(self.temp_onnx_file_path), self.temp_external_data_file_name
+            )
+            if os.path.exists(external_data_file_path):
+                os.remove(external_data_file_path)
 
 
 class _BinaryOp(Block):
@@ -143,9 +198,10 @@ class Pow(Block):
 class _UnaryOp(Block):
     """Base class for all nodes that take in a single argument."""
 
-    def __init__(self, op_name):
+    def __init__(self, op_name, **attributes):
         super().__init__()
         self._op_name = op_name
+        self._attributes = attributes
 
     def build(self, input_name):
         # get the model to manipulate
@@ -164,6 +220,7 @@ class _UnaryOp(Block):
             node_input_names,
             node_output_names,
             _graph_utils.generate_graph_name(self._op_name),
+            **self._attributes,
         )
         onnx_model.graph.node.append(node)
 
@@ -173,15 +230,15 @@ class _UnaryOp(Block):
 class ReduceMean(_UnaryOp):
     """Adds ReduceMean node to the onnx model."""
 
-    def __init__(self):
-        super().__init__("ReduceMean")
+    def __init__(self, keepdims=True):
+        super().__init__("ReduceMean", keepdims=keepdims)
 
 
 class ReduceSum(_UnaryOp):
     """Adds ReduceSum node to the onnx model."""
 
-    def __init__(self):
-        super().__init__("ReduceSum")
+    def __init__(self, keepdims=True):
+        super().__init__("ReduceSum", keepdims=keepdims)
 
 
 class Sigmoid(_UnaryOp):
@@ -346,12 +403,12 @@ class InputLike(Block):
     def build(self, input_name: Optional[str] = None):
         cloned_input = None
         with contextlib.suppress(LookupError):
-            # Supress LookupError because we want to try to get the input from the output if it's not found in the inputs
+            # Suppress LookupError because we want to try to get the input from the output if it's not found in the inputs
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
 
         if cloned_input is None:
             with contextlib.suppress(LookupError):
-                # Supress LookupError because we deal with the case where no input or output was found later.
+                # Suppress LookupError because we deal with the case where no input or output was found later.
                 cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
 
         if cloned_input is None:
@@ -427,3 +484,51 @@ class Cast(Block):
         self.base.graph.node.append(cast_node)
 
         return cast_output_name
+
+
+class Linear(Block):
+    def __init__(self, in_features, out_features, bias=True, alpha=1.0, beta=1.0):
+        super().__init__()
+
+        self._in_features = in_features
+        self._bias = bias
+        self._out_features = out_features
+        self._alpha = alpha
+        self._beta = beta
+
+    def build(self, linear_input_name: str):
+        # Weight initializer
+        linear_node_weight_name = _graph_utils.generate_graph_name("linear.weight")
+
+        self.base.graph.initializer.append(
+            onnx.numpy_helper.from_array(
+                np.random.randn(self._in_features, self._out_features).astype(np.float32), linear_node_weight_name
+            )
+        )
+
+        linear_node_input_names = [linear_input_name, linear_node_weight_name]
+
+        # Bias initializer
+        if self._bias:
+            linear_node_bias_name = _graph_utils.generate_graph_name("linear.bias")
+            self.base.graph.initializer.append(
+                onnx.numpy_helper.from_array(
+                    np.random.randn(self._out_features).astype(np.float32), linear_node_bias_name
+                )
+            )
+            linear_node_input_names.append(linear_node_bias_name)
+
+        linear_node_output_name = _graph_utils.generate_graph_name("linear.output")
+        linear_node_output_names = [linear_node_output_name]
+        linear_node = onnx.helper.make_node(
+            "Gemm",
+            linear_node_input_names,
+            linear_node_output_names,
+            _graph_utils.generate_graph_name("linear"),
+            alpha=self._alpha,
+            beta=self._beta,
+        )
+
+        self.base.graph.node.append(linear_node)
+
+        return linear_node_output_name

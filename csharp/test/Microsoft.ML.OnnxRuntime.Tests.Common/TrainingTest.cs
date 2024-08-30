@@ -1,13 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Xunit;
 using Xunit.Abstractions;
+
+#if __TRAINING_ENABLED_NATIVE_BUILD__
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Collections.Generic;
+using System.Linq;
+#endif
 
 // This runs in a separate package built from EndToEndTests
 // and for this reason it can not refer to non-public members
@@ -481,25 +484,136 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestToBuffer()
         {
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
-            using (var cleanUp = new DisposableListTest<IDisposable>())
+            string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+            string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+            string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+            using (var state = CheckpointState.LoadCheckpoint(checkpointPath))
+            using (var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath))
             {
-                var state = CheckpointState.LoadCheckpoint(checkpointPath);
-                cleanUp.Add(state);
                 Assert.NotNull(state);
-                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
-                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
 
-                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
-                cleanUp.Add(trainingSession);
-
-                var buffer = trainingSession.ToBuffer(true);
-                cleanUp.Add(buffer);
+                using (var buffer = trainingSession.ToBuffer(true))
+                {
+                    Assert.NotNull(buffer);
+                    var typeShape = buffer.GetTensorTypeAndShape();
+                    Assert.Equal(1, typeShape.DimensionsCount);
+                    var fetchedShape = typeShape.Shape;
+                    Assert.Equal(397510, fetchedShape[0]);
+                }
             }
         }
 
         [Fact(DisplayName = "TestFromBuffer")]
         public void TestFromBuffer()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+            string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+            string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+            using (var state = CheckpointState.LoadCheckpoint(checkpointPath))
+            using (var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath))
+            {
+                Assert.NotNull(state);
+
+                using (var buffer = trainingSession.ToBuffer(true))
+                {
+                    Assert.NotNull(buffer);
+                    var typeShape = buffer.GetTensorTypeAndShape();
+                    Assert.Equal(1, typeShape.DimensionsCount);
+                    var fetchedShape = typeShape.Shape;
+                    Assert.Equal(397510, fetchedShape[0]);
+
+                    trainingSession.FromBuffer(buffer, true);
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestSetSeed")]
+        public void TestSetSeed()
+        {
+            TrainingUtils.SetSeed(8888);
+        }
+
+        [Fact(DisplayName = "TestGetParameter")]
+        public void TestGetParameter()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+            string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+            string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+            using (var state = CheckpointState.LoadCheckpoint(checkpointPath))
+            using (var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath))
+            using (var parameter = state.GetParameter("fc1.weight"))
+            {
+                Assert.NotNull(state);
+                Assert.NotNull(parameter);
+
+                var typeShape = parameter.GetTensorTypeAndShape();
+                Assert.Equal(2, typeShape.DimensionsCount);
+                var fetchedShape = typeShape.Shape;
+                Assert.Equal(500, fetchedShape[0]);
+                Assert.Equal(784, fetchedShape[1]);
+            }
+        }
+
+        [Fact(DisplayName = "TestUpdateParameter")]
+        public void TestUpdateParameter()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+            string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+            string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+            using (var state = CheckpointState.LoadCheckpoint(checkpointPath))
+            using (var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath))
+            {
+                Assert.NotNull(state);
+
+                using (var parameter = state.GetParameter("fc1.weight"))
+                {
+                    Assert.NotNull(parameter);
+                    var typeShape = parameter.GetTensorTypeAndShape();
+
+                    Assert.Equal(2, typeShape.DimensionsCount);
+                    var fetchedShape = typeShape.Shape;
+                    Assert.Equal(500, fetchedShape[0]);
+                    Assert.Equal(784, fetchedShape[1]);
+
+                    float maxVal = 20;
+                    Random randNum = new Random();
+                    float[] updated_parameter_buffer = Enumerable
+                        .Repeat(0, 500 * 784)
+                        .Select(i => maxVal * (float)randNum.NextDouble())
+                        .ToArray();
+
+                    using (var updated_parameter = OrtValue.CreateTensorValueFromMemory(updated_parameter_buffer, fetchedShape))
+                    {
+                        state.UpdateParameter("fc1.weight", updated_parameter);
+                        using (var current_parameter = state.GetParameter("fc1.weight"))
+                        {
+                            var current_parameter_tensor = current_parameter.GetTensorDataAsSpan<float>().ToArray();
+                            Assert.Equal(updated_parameter_buffer, current_parameter_tensor);
+                            Assert.NotEqual(parameter.GetTensorDataAsSpan<float>().ToArray(), current_parameter_tensor);
+                        }
+
+                        state.UpdateParameter("fc1.weight", parameter);
+
+                        using (var current_parameter = state.GetParameter("fc1.weight"))
+                        {
+                            var current_parameter_tensor = current_parameter.GetTensorDataAsSpan<float>().ToArray();
+                            Assert.Equal(parameter.GetTensorDataAsSpan<float>().ToArray(), current_parameter_tensor);
+                            Assert.NotEqual(updated_parameter_buffer, current_parameter_tensor);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainingSessionTrainStepWithOrtValues")]
+        public void TestTrainingSessionTrainStepWithOrtValues()
         {
             string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
             using (var cleanUp = new DisposableListTest<IDisposable>())
@@ -508,23 +622,69 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(state);
                 Assert.NotNull(state);
                 string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
-                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
                 string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
+                var expectedOutputDimensions = new int[] { 1 };
+                float[] inputData = TestDataLoader.LoadTensorFromFile("input-0.in");
+                long[] inputShape = { 2, 784 };
+                Int32[] labelsData = { 1, 1 };
+                long[] labelsShape = { 2 };
+
+                using OrtValue inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
+                using OrtValue labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
+                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue };
+
+                using (var results = trainingSession.TrainStep(inputValues))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    Assert.True(outputOrtValue.IsTensor);
+                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainingSessionEvalStepWithOrtValues")]
+        public void TestTrainingSessionEvalStepWithOrtValues()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
 
                 var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
                 cleanUp.Add(trainingSession);
 
-                var buffer = trainingSession.ToBuffer(true);
-                cleanUp.Add(buffer);
+                float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
+                var expectedOutputDimensions = new int[] { 1 };
+                float[] inputData = TestDataLoader.LoadTensorFromFile("input-0.in");
+                long[] inputShape = { 2, 784 };
+                Int32[] labelsData = { 1, 1 };
+                long[] labelsShape = { 2 };
 
-                trainingSession.FromBuffer(buffer);
+                using OrtValue inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
+                using OrtValue labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
+                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue };
+
+                using (var results = trainingSession.EvalStep(inputValues))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    Assert.True(outputOrtValue.IsTensor);
+                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                }
             }
-        }
-
-        [Fact(DisplayName = "TestSetSeed")]
-        public void TestSetSeed()
-        {
-            TrainingUtils.SetSeed(8888);
         }
 
         internal class FloatComparer : IEqualityComparer<float>

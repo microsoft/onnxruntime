@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/quantization/fake_quant.h"
+#include "core/common/narrow.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 
@@ -17,7 +18,7 @@ void FakeQuantPerTensor(OpKernelContext* ctx, const int64_t num_elements, const 
   const auto zero_point_int = static_cast<int64_t>(quant_zero_point);
   auto* tp = ctx->GetOperatorThreadPool();
   concurrency::ThreadPool::TryParallelFor(
-      tp, num_elements, /* 1 Read, 2 Writes, 4 Computes */ TensorOpCost{1.0, 2.0, 4.0},
+      tp, narrow<ptrdiff_t>(num_elements), /* 1 Read, 2 Writes, 4 Computes */ TensorOpCost{1.0, 2.0, 4.0},
       [quant_scale, zero_point_int, quant_min, quant_max, &input_data, &fake_quantized_data, &quantization_mask_data](
           std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t index = begin; index != end; ++index) {

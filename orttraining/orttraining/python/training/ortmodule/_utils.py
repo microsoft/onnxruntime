@@ -7,12 +7,13 @@
 import copy
 import functools
 import inspect
+import json
 import logging
 import os
 import random
 import traceback
 import types
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -73,7 +74,7 @@ def _ortvalues_to_torch_tensor(
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
 
     if not isinstance(ortvalues, C.OrtValueVector):
-        raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
+        raise TypeError(f"ortvalues must be an instance of OrtValueVector not {type(ortvalues)!r}.")
 
     res: List[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
     bool_indices = ortvalues.bool_tensor_indices()
@@ -90,7 +91,7 @@ def _ortvalues_to_torch_tensor(
         # Second option makes it impossible to directly use `_from_dlpack` or
         # or `from_dlpack` from torch.
         # The best option would be to add boolean type in DLDataTypeCode.
-        for i in range(0, len(bool_indices)):
+        for i in range(len(bool_indices)):
             j = bool_indices[i]
             res[j] = res[j].to(torch.bool)
 
@@ -152,7 +153,15 @@ def get_device_str(device: Union[str, int, torch.device]) -> str:
     return device
 
 
-def get_device_from_module(module) -> Optional[torch.device]:
+def get_device_from_module_and_inputs(module, inputs, kwargs):
+    """Get the device from the module and save it to self._device"""
+
+    device = _get_device_from_module(module) or _get_device_from_inputs(inputs, kwargs)
+
+    return device
+
+
+def _get_device_from_module(module) -> Optional[torch.device]:
     """Returns the first device found in the `module`'s parameters or None
 
     Args:
@@ -178,7 +187,7 @@ def get_device_from_module(module) -> Optional[torch.device]:
     return device
 
 
-def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
+def _get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
     """Returns device from first PyTorch Tensor within args or kwargs
 
     Args:
@@ -191,9 +200,12 @@ def get_device_from_inputs(args, kwargs) -> Optional[torch.device]:
 
     device = None
     if args:
-        device = torch.device(args[0].device)
+        if args[0] is not None and hasattr(args[0], "device"):
+            device = torch.device(args[0].device)
     elif kwargs:
-        device = torch.device(next(iter(kwargs.values())).device)
+        v = next(iter(kwargs.values()))
+        if v is not None and hasattr(v, "device"):
+            device = torch.device(v.device)
     return device
 
 
@@ -344,13 +356,6 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.Logger):
-    logger.info(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 def patch_torch_module_ort_forward_method(torch_module_ort):
     def _forward(self, *inputs, **kwargs):
         """Forward pass starts here and continues at `_ORTModuleFunction.forward`
@@ -419,3 +424,51 @@ def get_runtime_pytorch_version():
     from packaging import version
 
     return version.parse(torch.__version__.split("+")[0])
+
+
+def check_function_has_param(function: Callable, param_name: str) -> bool:
+    return param_name in inspect.signature(function).parameters
+
+
+def get_fully_qualified_class_name(cls: type) -> str:
+    """Returns the fully qualified class name of the given class."""
+    module = cls.__module__
+    if module == "builtins":
+        return cls.__qualname__  # avoid outputs like 'builtins.str'
+    return module + "." + cls.__qualname__
+
+
+def save_tuning_results(session, is_training, tuning_results_path):
+    """Save the online Op tuning results to a json file in the specified path."""
+
+    os.makedirs(tuning_results_path, exist_ok=True)
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    with open(tuning_result_file, "w", encoding="utf-8") as f:
+        json.dump(session.get_tuning_results(), f, indent=4)
+
+
+def set_tuning_results(session, is_training, tuning_results_path):
+    """Set the offline Op tuning results from a json file in the specified path."""
+
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    if os.path.isfile(tuning_result_file):
+        with open(tuning_result_file, encoding="utf-8") as f:
+            session.set_tuning_results(json.load(f))
+
+
+def get_rank() -> int:
+    """Returns the rank of the current process. If distributed training is not initialized, returns 0."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+
+    return 0
+
+
+def get_world_size() -> int:
+    """Returns the world size of the current process. If distributed training is not initialized, returns 1."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_world_size()
+
+    return 1

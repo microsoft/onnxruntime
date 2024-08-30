@@ -27,7 +27,13 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
   runtimeclass LearningModelSessionOptionsExperimental {
+    LearningModelSessionOptionsExperimental(ROOT_NS.AI.MachineLearning.LearningModelSessionOptions options);
+
+    //! The GetNamedDimensionOverrides method retrieves the named dimension overrides configured on the session options.
     Windows.Foundation.Collections.IMapView<String, UINT32> GetNamedDimensionOverrides();
+
+    //! The RegisterCustomOpsLibrary method registers an onnxruntime custom operator library into session creation.
+    void RegisterCustomOpsLibrary(String path);
   }
 
   [threading(both)]
@@ -122,7 +128,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
       Boolean CloseModelOnJoin { get; set; };
 
       //! The JoinedNodePrefix property specifies whether the nodes of the second model should have a specific prefixed in the joined model.
-      //! Node names must be unique or empty. By enabling this, the engine can specifiy the prefix, or eliminate it entirely in cases
+      //! Node names must be unique or empty. By enabling this, the engine can specify the prefix, or eliminate it entirely in cases
       //! where the model is known to contain no duplicate node names.
       //! The default value for CloseModelOnJoin is a new random GUID.
       String JoinedNodePrefix { get; set; };
@@ -139,7 +145,7 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     //! The Save method serializes the model as an ONNX model to a specified path.
     void Save(String file_name);
 
-    //! The JoinModel fuses two models by linking  outputs from the first model, to inupts of the second. 
+    //! The JoinModel fuses two models by linking outputs from the first model, to inupts of the second.
     ROOT_NS.AI.MachineLearning.LearningModel JoinModel(ROOT_NS.AI.MachineLearning.LearningModel other, LearningModelJoinOptions options);
 
     //! The SetName function changes the model name to the specified string

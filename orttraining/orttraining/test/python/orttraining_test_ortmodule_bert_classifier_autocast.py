@@ -218,7 +218,7 @@ def load_dataset(args):
 
     # Load the dataset into a pandas dataframe.
     df = pd.read_csv(
-        os.path.join(args.data_dir, "in_domain_train.tsv"),
+        os.path.join(args.data_dir if os.path.exists(args.data_dir) else "cola_public/raw", "in_domain_train.tsv"),
         delimiter="\t",
         header=None,
         names=["sentence_source", "label", "label_notes", "sentence"],
@@ -385,7 +385,7 @@ def main():
     # Set log level
     numeric_level = getattr(logging, args.log_level.upper(), None)
     if not isinstance(numeric_level, int):
-        raise ValueError("Invalid log level: %s" % args.log_level)
+        raise ValueError(f"Invalid log level: {args.log_level}")
     logging.basicConfig(level=numeric_level)
 
     # 2. Dataloader
@@ -420,7 +420,7 @@ def main():
         )
 
         model = ORTModule(model, debug_options)
-        model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+        model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:
@@ -446,7 +446,7 @@ def main():
 
     # 4. Train loop (fine-tune)
     total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
-    for epoch_i in range(0, args.epochs):
+    for epoch_i in range(args.epochs):
         total_training_time += train(model, optimizer, scaler, scheduler, train_dataloader, epoch_i, device, args)
         if not args.pytorch_only and epoch_i == 0:
             epoch_0_training = total_training_time

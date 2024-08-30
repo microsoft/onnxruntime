@@ -25,13 +25,15 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention);
+    bool use_flash_attention,
+    bool use_memory_efficient_attention,
+    bool no_qkv_workspace);
 
 template <typename T>
 struct PackedAttentionData {
   T* gemm_buffer;
   const T* bias;
-  const T* relative_position_bias;
+  const T* attention_bias;
   const int32_t* token_offset;
   const int32_t* cumulative_sequence_length;
 
@@ -50,6 +52,13 @@ Status QkvToContext(
     cudaStream_t stream,
     contrib::PackedAttentionParameters& parameters,
     PackedAttentionData<T>& data);
+
+template <typename T>
+Status LaunchTransposeRemovePadding(
+    T* output, const T* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

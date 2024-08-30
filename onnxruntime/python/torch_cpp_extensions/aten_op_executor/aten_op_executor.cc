@@ -34,18 +34,23 @@ struct ATenOperator {
   std::vector<bool> is_optional_arguments;
   std::vector<c10::optional<c10::IValue>> default_values;
   size_t return_size;
+  std::vector<c10::TypeKind> ret_kinds;
 
-  c10::IValue ToIValueArgument(const DLManagedTensor* dlpack, size_t index) const {
+  c10::IValue ToIValueArgument(DLManagedTensor* dlpack, size_t index) const {
     TORCH_INTERNAL_ASSERT(index < argument_size);
     bool is_optional = is_optional_arguments[index];
-    TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index]);
+    TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index] ||
+                          elem_kinds[index] == c10::TypeKind::TensorType);
     if (!dlpack) {
       if (is_optional) {
         // Optional argument always has no default value.
         return c10::IValue(c10::nullopt);
       }
-
-      return *default_values[index];
+      if (default_values[index]) {
+        return *default_values[index];
+      }
+      // Fow bw func, it's possible that input is an undefined tensor from fw outputs, dlpack is nullptr for such case.
+      return c10::IValue(at::Tensor());
     }
 
     bool is_list = is_list_arguments[index];
@@ -142,7 +147,10 @@ class ATenOperatorCache {
       }
       aten_op.return_size = schema.returns().size();
       for (const auto& ret : schema.returns()) {
-        TORCH_INTERNAL_ASSERT(ret.type()->kind() == c10::TypeKind::TensorType);
+        c10::TypeKind ret_type = ret.type()->kind();
+        // Support tensor or int only for now.
+        TORCH_INTERNAL_ASSERT(ret_type == c10::TypeKind::TensorType || ret_type == c10::TypeKind::IntType);
+        aten_op.ret_kinds.emplace_back(ret_type);
       }
       ops_.emplace(key, aten_op);
     }
@@ -154,11 +162,15 @@ class ATenOperatorCache {
   std::unordered_map<std::pair<std::string, std::string>, ATenOperator, PairHash> ops_;
 };
 
-// Backend uses this function to check if an argument is CPU input (non-tensor argument) or not.
-bool IsTensorArgument(const char* op_name, const char* overload_name, size_t index) {
+// Backend uses this function to check if an argument is tensor type or not.
+bool IsTensorArgument(const char* op_name, const char* overload_name, size_t index, bool is_input) {
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
-  TORCH_INTERNAL_ASSERT(index < aten_op.argument_size);
-  return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
+  if (is_input) {
+    TORCH_INTERNAL_ASSERT(index < aten_op.argument_size);
+    return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
+  }
+  TORCH_INTERNAL_ASSERT(index < aten_op.return_size);
+  return aten_op.ret_kinds[index] == c10::TypeKind::TensorType;
 }
 
 void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t input_size,
@@ -195,8 +207,16 @@ void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t 
   TORCH_INTERNAL_ASSERT(output_size == aten_op.return_size);
   size_t output_index = 0;
   for (const auto& ret : torch::jit::pop(stack, output_size)) {
-    const auto& tensor = ret.toTensor();
-    dlpack_outputs[output_index++] = at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous());
+    if (ret.isTensor()) {
+      const auto& tensor = ret.toTensor();
+      dlpack_outputs[output_index++] =
+          tensor.defined() ? at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()) : nullptr;
+    } else if (ret.isInt()) {
+      at::Tensor scalar = at::scalar_to_tensor(at::Scalar(ret.toInt()));
+      dlpack_outputs[output_index++] = at::toDLPack(scalar);
+    } else {
+      TORCH_INTERNAL_ASSERT(false);
+    }
   }
 }
 

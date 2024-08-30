@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gtest/gtest.h"
+
 #include "core/common/common.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
-#include "gtest/gtest.h"
-#include "file_util.h"
+#include "test/util/include/file_util.h"
+#include "test/util/include/asserts.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -30,13 +32,14 @@ TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
   std::vector<float> output(1);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
-  // check the result
-  ASSERT_FALSE(st.IsOK());
+
+  ASSERT_STATUS_NOT_OK(
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
+                                   MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
+                                   value));
 }
 
-TEST(CApiTensorTest, load_simple_float_tensor) {
+TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
   // construct a tensor proto
   onnx::TensorProto p;
   p.mutable_float_data()->Add(1.0f);
@@ -51,9 +54,10 @@ TEST(CApiTensorTest, load_simple_float_tensor) {
   std::vector<float> output(3);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  ASSERT_STATUS_OK(
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
+                                   MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
+                                   value));
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
   ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
@@ -64,6 +68,34 @@ TEST(CApiTensorTest, load_simple_float_tensor) {
   g_ort->ReleaseStatus(ort_st);
 }
 
+TEST(CApiTensorTest, load_simple_float_tensor_allocator) {
+  // construct a tensor proto
+  onnx::TensorProto p;
+  p.mutable_float_data()->Add(1.0f);
+  p.mutable_float_data()->Add(2.2f);
+  p.mutable_float_data()->Add(3.5f);
+  p.mutable_dims()->Add(3);
+  p.set_data_type(onnx::TensorProto_DataType_FLOAT);
+  std::string s;
+  // save it to a buffer
+  ASSERT_TRUE(p.SerializeToString(&s));
+  // deserialize it
+  AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
+  OrtValue value;
+
+  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p, tmp_allocator, value));
+
+  float* real_output;
+  auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
+  ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
+  // check the result
+  ASSERT_EQ(real_output[0], 1.0f);
+  ASSERT_EQ(real_output[1], 2.2f);
+  ASSERT_EQ(real_output[2], 3.5f);
+  g_ort->ReleaseStatus(ort_st);
+}
+
+#if !defined(__wasm__)
 template <bool use_current_dir>
 static void run_external_data_test() {
   FILE* fp;
@@ -72,6 +104,18 @@ static void run_external_data_test() {
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
                                                                          DeleteFileFromDisk);
   float test_data[] = {1.0f, 2.2f, 3.5f};
+  if constexpr (endian::native != endian::little) {
+    const int element_size = sizeof(float);
+    char* bytes = reinterpret_cast<char*>(test_data);
+    const size_t num_elements = std::size(test_data);
+    for (size_t i = 0; i < num_elements; ++i) {
+      char* start_byte = bytes + i * element_size;
+      char* end_byte = start_byte + element_size - 1;
+      for (size_t count = 0; count < element_size / 2; ++count) {
+        std::swap(*start_byte++, *end_byte--);
+      }
+    }
+  }
   ASSERT_EQ(sizeof(test_data), fwrite(test_data, 1, sizeof(test_data), fp));
   ASSERT_EQ(0, fclose(fp));
   // construct a tensor proto
@@ -97,7 +141,11 @@ static void run_external_data_test() {
     ASSERT_NE(len, (DWORD)0);
     cwd.append(ORT_TSTR("\\fake.onnx"));
 #else
+#if defined(_AIX)
+    char* p = getcwd(nullptr, PATH_MAX);
+#else
     char* p = getcwd(nullptr, 0);
+#endif
     ASSERT_NE(p, nullptr);
     cwd = p;
     free(p);
@@ -106,9 +154,9 @@ static void run_external_data_test() {
   }
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value);
-  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(
+      Env::Default(), std::filesystem::path(), p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value));
+
   float* real_output;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&real_output);
   ASSERT_EQ(ort_st, nullptr) << g_ort->GetErrorMessage(ort_st);
@@ -123,6 +171,7 @@ TEST(CApiTensorTest, load_float_tensor_with_external_data) {
   run_external_data_test<true>();
   run_external_data_test<false>();
 }
+#endif
 
 #if defined(__amd64__) || defined(_M_X64)
 #ifndef __ANDROID__
@@ -156,11 +205,10 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   std::vector<int> output(total_ele_count);
   OrtValue value;
   OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
-  auto st = utils::TensorProtoToMLValue(Env::Default(), nullptr, p,
-                                        MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value);
+  ASSERT_STATUS_OK(
+      utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
+                                   MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));
 
-  // check the result
-  ASSERT_TRUE(st.IsOK()) << "Error from TensorProtoToMLValue: " << st.ErrorMessage();
   int* buffer;
   auto ort_st = g_ort->GetTensorMutableData(&value, (void**)&buffer);
   ASSERT_EQ(ort_st, nullptr) << "Error from OrtGetTensorMutableData: " << g_ort->GetErrorMessage(ort_st);

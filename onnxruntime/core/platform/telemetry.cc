@@ -12,6 +12,21 @@ void LogRuntimeError(uint32_t sessionId, const common::Status& status, const cha
   env.GetTelemetryProvider().LogRuntimeError(sessionId, status, file, function, line);
 }
 
+bool Telemetry::IsEnabled() const {
+  return false;
+}
+
+// Get the current logging level
+// The Level defined as uchar is coming from the ETW Enable callback in TraceLoggingRegisterEx.
+unsigned char Telemetry::Level() const {
+  return 0;
+}
+
+// Get the current keyword
+uint64_t Telemetry::Keyword() const {
+  return 0;
+}
+
 void Telemetry::EnableTelemetryEvents() const {
 }
 
@@ -40,7 +55,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
                                    const std::string& model_graph_name,
                                    const std::unordered_map<std::string, std::string>& model_metadata,
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
-                                   bool use_fp16) const {
+                                   bool use_fp16, bool captureState) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ir_version);
   ORT_UNUSED_PARAMETER(model_producer_name);
@@ -52,6 +67,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(loadedFrom);
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(use_fp16);
+  ORT_UNUSED_PARAMETER(captureState);
 }
 
 void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,

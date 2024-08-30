@@ -37,18 +37,19 @@ struct TVMFuncState {
 TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
     : IExecutionProvider{kTvmExecutionProvider},
       options_{options} {
-  AllocatorCreationInfo default_memory_info = {[](int) {
-                                                 return std::make_unique<TVMAllocator>();
-                                               },
-                                               0, false};
-  allocator_ = CreateAllocator(default_memory_info);
-  InsertAllocator(allocator_);
-
   // Get environment variables
   const Env& env_instance = Env::Default();
 
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
   ORT_ENFORCE(dump_subgraphs_env.empty(), "TVM EP processing shared lib does not support subgraphs");
+}
+
+std::vector<AllocatorPtr> TvmSoExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info = {[](int) {
+                                                 return std::make_unique<TVMAllocator>();
+                                               },
+                                               0, false};
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info)};
 }
 
 TvmSoExecutionProvider::~TvmSoExecutionProvider() {}
@@ -142,10 +143,6 @@ std::unique_ptr<IDataTransfer> TvmSoExecutionProvider::GetDataTransfer() const {
   } else {
     ORT_NOT_IMPLEMENTED("TVM GetDataTransfer is not implemented for target ", options_.target);
   }
-}
-
-AllocatorPtr TvmSoExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  return allocator_;
 }
 
 void TvmSoExecutionProvider::printOptions() {

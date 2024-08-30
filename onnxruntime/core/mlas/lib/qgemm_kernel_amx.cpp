@@ -16,6 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm.h"
+#include "amx_common.h"
 
 
 #define TMM0 0
@@ -202,7 +203,7 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
 
     static thread_local struct tileconfig_t tc = {0};
     struct tileconfig_t current_tc = {0};
-    _tile_storeconfig(&current_tc);
+    tile_storeconfig(&current_tc);
 
     if (tc.palette_id == 0 || (std::memcmp(&current_tc.colb, &tc.colb, sizeof(uint16_t) * 8) != 0 &&
                                std::memcmp(&current_tc.rows, &tc.rows, sizeof(uint8_t) * 8) != 0)) {
@@ -212,7 +213,8 @@ MlasGemmQuantThreadInit<MLAS_GEMM_U8S8_KERNEL_AMX>()
             tc.rows[t] = 16;
             tc.colb[t] = 64;
         }
-        _tile_loadconfig(&tc);
+
+        tile_loadconfig(&tc);
     }
 }
 
@@ -238,14 +240,14 @@ InitHalfTileWithRowColSums(
     row6 = _mm512_add_epi32(colsum, _mm512_set1_epi32(rowsum_ptr[6]));
     row7 = _mm512_add_epi32(colsum, _mm512_set1_epi32(rowsum_ptr[7]));
     if (!ZeroMode){
-        row0 = _mm512_add_epi32(row0, _mm512_loadu_epi32(c_ptr));
-        row1 = _mm512_add_epi32(row1, _mm512_loadu_epi32(c_ptr+ldc));
-        row2 = _mm512_add_epi32(row2, _mm512_loadu_epi32(c_ptr+ldc*2));
-        row3 = _mm512_add_epi32(row3, _mm512_loadu_epi32(c_ptr+ldc*3));
-        row4 = _mm512_add_epi32(row4, _mm512_loadu_epi32(c_ptr+ldc*4));
-        row5 = _mm512_add_epi32(row5, _mm512_loadu_epi32(c_ptr+ldc*5));
-        row6 = _mm512_add_epi32(row6, _mm512_loadu_epi32(c_ptr+ldc*6));
-        row7 = _mm512_add_epi32(row7, _mm512_loadu_epi32(c_ptr+ldc*7));
+        row0 = _mm512_add_epi32(row0, _mm512_loadu_si512(c_ptr));
+        row1 = _mm512_add_epi32(row1, _mm512_loadu_si512(c_ptr+ldc));
+        row2 = _mm512_add_epi32(row2, _mm512_loadu_si512(c_ptr+ldc*2));
+        row3 = _mm512_add_epi32(row3, _mm512_loadu_si512(c_ptr+ldc*3));
+        row4 = _mm512_add_epi32(row4, _mm512_loadu_si512(c_ptr+ldc*4));
+        row5 = _mm512_add_epi32(row5, _mm512_loadu_si512(c_ptr+ldc*5));
+        row6 = _mm512_add_epi32(row6, _mm512_loadu_si512(c_ptr+ldc*6));
+        row7 = _mm512_add_epi32(row7, _mm512_loadu_si512(c_ptr+ldc*7));
     }
     _mm512_storeu_si512(Tile, row0);
     _mm512_storeu_si512(Tile+16, row1);
@@ -290,14 +292,14 @@ InitHalfTileWithRowColSumsZeroPoints(
     row6 = _mm512_add_epi32(colsum, row6);
     row7 = _mm512_add_epi32(colsum, row7);
     if (!ZeroMode){
-        row0 = _mm512_add_epi32(row0, _mm512_loadu_epi32(c_ptr));
-        row1 = _mm512_add_epi32(row1, _mm512_loadu_epi32(c_ptr+ldc));
-        row2 = _mm512_add_epi32(row2, _mm512_loadu_epi32(c_ptr+ldc*2));
-        row3 = _mm512_add_epi32(row3, _mm512_loadu_epi32(c_ptr+ldc*3));
-        row4 = _mm512_add_epi32(row4, _mm512_loadu_epi32(c_ptr+ldc*4));
-        row5 = _mm512_add_epi32(row5, _mm512_loadu_epi32(c_ptr+ldc*5));
-        row6 = _mm512_add_epi32(row6, _mm512_loadu_epi32(c_ptr+ldc*6));
-        row7 = _mm512_add_epi32(row7, _mm512_loadu_epi32(c_ptr+ldc*7));
+        row0 = _mm512_add_epi32(row0, _mm512_loadu_si512(c_ptr));
+        row1 = _mm512_add_epi32(row1, _mm512_loadu_si512(c_ptr+ldc));
+        row2 = _mm512_add_epi32(row2, _mm512_loadu_si512(c_ptr+ldc*2));
+        row3 = _mm512_add_epi32(row3, _mm512_loadu_si512(c_ptr+ldc*3));
+        row4 = _mm512_add_epi32(row4, _mm512_loadu_si512(c_ptr+ldc*4));
+        row5 = _mm512_add_epi32(row5, _mm512_loadu_si512(c_ptr+ldc*5));
+        row6 = _mm512_add_epi32(row6, _mm512_loadu_si512(c_ptr+ldc*6));
+        row7 = _mm512_add_epi32(row7, _mm512_loadu_si512(c_ptr+ldc*7));
     }
     _mm512_storeu_si512(Tile, row0);
     _mm512_storeu_si512(Tile+16, row1);
@@ -435,58 +437,58 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
 
         size_t n = CountN;
         for (; n >= 2 * TILE_N; n -= 2 * TILE_N) {
-            __m512i colsum = _mm512_loadu_epi32(col_sum_ptr);
+            __m512i colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
             if (ZeroPointB != nullptr){
-                __m512i zeropoint = _mm512_loadu_epi32(zp_ptr);
+                __m512i zeropoint = _mm512_loadu_si512(zp_ptr);
                 zp_ptr += TILE_N;
                 InitTileWithRowColSumsZeroPoints(
                     Tile4, m0, FullMask, RowSumBuffer, colsum,
                     zeropoint, ZeroMode, c_blk, ldc);
-                _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
                 if (m1 != 0){
                     InitTileWithRowColSumsZeroPoints(
                         Tile5, m1, FullMask, RowSumBuffer + TILE_M, colsum,
                         zeropoint, ZeroMode, c16_blk, ldc);
-                    _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 }
             } else {
                 InitTileWithRowColSums(
                     Tile4, m0, FullMask, RowSumBuffer, colsum,
                     ZeroMode, c_blk, ldc);
-                _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
                 if (m1 != 0){
                     InitTileWithRowColSums(
                         Tile5, m1, FullMask, RowSumBuffer + TILE_M, colsum,
                         ZeroMode, c16_blk, ldc);
-                    _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 }
             }
-            colsum = _mm512_loadu_epi32(col_sum_ptr);
+            colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
             if (ZeroPointB != nullptr) {
-                __m512i zeropoint = _mm512_loadu_epi32(zp_ptr);
+                __m512i zeropoint = _mm512_loadu_si512(zp_ptr);
                 zp_ptr += TILE_N;
                 InitTileWithRowColSumsZeroPoints(
                     Tile6, m0, FullMask, RowSumBuffer, colsum,
                     zeropoint, ZeroMode, c_blk + TILE_N, ldc);
-                _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                 if (m1 != 0){
                     InitTileWithRowColSumsZeroPoints(
                         Tile7, m1, FullMask, RowSumBuffer + TILE_M, colsum,
                         zeropoint, ZeroMode, c16_blk + TILE_N, ldc);
-                    _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
                 }
             } else {
                 InitTileWithRowColSums(
                     Tile6, m0, FullMask, RowSumBuffer, colsum,
                     ZeroMode, c_blk + TILE_N, ldc);
-                _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                 if (m1 != 0){
                     InitTileWithRowColSums(
                         Tile7, m1, FullMask, RowSumBuffer + TILE_M, colsum,
                         ZeroMode, c16_blk + TILE_N, ldc);
-                    _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
                 }
             }
 
@@ -494,33 +496,36 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_blk = A;
             const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_next_blk = A + PackedCountK * TILE_M;
             for (size_t k = PackedCountK; k > 0; k -=TILE_K) {
-                _tile_loadd(TMM0, b_blk, TILE_K);
-                _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-                _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                _tile_dpbusd(TMM4, TMM2, TMM0);
-                _tile_dpbusd(TMM6, TMM2, TMM1);
+		tile_loadd(TMM0, b_blk, TILE_K);
+                tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+                tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+
+                tile_dpbusd(TMM4, TMM2, TMM0);
+                tile_dpbusd(TMM6, TMM2, TMM1);
                 if (m1 > 0){
-                    _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-                    _tile_dpbusd(TMM5, TMM3, TMM0);
-                    _tile_dpbusd(TMM7, TMM3, TMM1);
+                    tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+                    tile_dpbusd(TMM5, TMM3, TMM0);
+                    tile_dpbusd(TMM7, TMM3, TMM1);
                 }
                 b_blk += TILE_N * TILE_K;
                 a_blk += TILE_K;
                 a_next_blk += TILE_K;
             }
             if (m0 == TILE_M) {
-                _tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
-                _tile_stored(TMM6, (void*)(c_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
+		tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
+		tile_stored(TMM6, (void*)(c_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
+
             } else {
-                _tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
-                _tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
+		tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
+
                 MoveTile(Tile4, m0, FullMask, c_blk, ldc);
                 MoveTile(Tile6, m0, FullMask, c_blk + TILE_N, ldc);
             }
             if (m1 != 0){
-                _tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 MoveTile(Tile5, m1, FullMask, c16_blk, ldc);
-                _tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
                 MoveTile(Tile7, m1, FullMask, c16_blk + TILE_N, ldc);
             }
             c_blk += 2 * TILE_N;
@@ -539,23 +544,23 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
                 InitTileWithRowColSumsZeroPoints(
                     Tile4, m0, static_cast<uint16_t>(nmasks), RowSumBuffer, colsum,
                     zeropoint, ZeroMode, c_blk, ldc);
-                _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
                 if (m1 > 0){
                     InitTileWithRowColSumsZeroPoints(
                         Tile5, m1, static_cast<uint16_t>(nmasks), RowSumBuffer + TILE_M, colsum,
                         zeropoint, ZeroMode, c16_blk, ldc);
-                    _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 }
             } else {
                 InitTileWithRowColSums(
                     Tile4, m0, static_cast<uint16_t>(nmasks), RowSumBuffer, colsum,
                     ZeroMode, c_blk, ldc);
-                _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
                 if (m1 > 0){
                     InitTileWithRowColSums(
                         Tile5, m1, static_cast<uint16_t>(nmasks), RowSumBuffer + TILE_M, colsum,
                         ZeroMode, c16_blk, ldc);
-                    _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 }
             }
             if (nmask_high != 0){
@@ -565,23 +570,23 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
                     InitTileWithRowColSumsZeroPoints(
                         Tile6, m0, nmask_high, RowSumBuffer, colsum,
                         zeropoint, ZeroMode, c_blk + TILE_N, ldc);
-                    _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                     if (m1 > 0){
                         InitTileWithRowColSumsZeroPoints(
                             Tile7, m1, nmask_high, RowSumBuffer + TILE_M, colsum,
                             zeropoint, ZeroMode, c16_blk + TILE_N, ldc);
-                        _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                        tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
                     }
                 } else {
                     InitTileWithRowColSums(
                         Tile6, m0, nmask_high, RowSumBuffer, colsum,
                         ZeroMode, c_blk + TILE_N, ldc);
-                    _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                    tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                     if (m1 > 0){
                         InitTileWithRowColSums(
                             Tile7, m1, nmask_high, RowSumBuffer + TILE_M, colsum,
                             ZeroMode, c16_blk + TILE_N, ldc);
-                        _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                        tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
                     }
                 }
             }
@@ -589,18 +594,19 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_blk = A;
             const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_next_blk = A + PackedCountK * TILE_M;
             for (size_t k = PackedCountK; k > 0; k -=TILE_K) {
-                _tile_loadd(TMM0, b_blk, TILE_K);
-                _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-                _tile_dpbusd(TMM4, TMM2, TMM0);
+		tile_loadd(TMM0, b_blk, TILE_K);
+                tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+
+                tile_dpbusd(TMM4, TMM2, TMM0);
                 if (m1 > 0){
-                    _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-                    _tile_dpbusd(TMM5, TMM3, TMM0);
+                    tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+                    tile_dpbusd(TMM5, TMM3, TMM0);
                 }
                 if (nmask_high != 0){
-                    _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                    _tile_dpbusd(TMM6, TMM2, TMM1);
+                    tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+                    tile_dpbusd(TMM6, TMM2, TMM1);
                     if (m1 > 0){
-                        _tile_dpbusd(TMM7, TMM3, TMM1);
+                        tile_dpbusd(TMM7, TMM3, TMM1);
                     }
                 }
                 b_blk += TILE_N * TILE_K;
@@ -608,20 +614,20 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
                 a_next_blk += TILE_K;
             }
             if ((static_cast<uint16_t>(nmasks) & 0x8000) != 0 && m0 == TILE_M){
-                _tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
+                tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
             } else {
-                _tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
+                tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
                 MoveTile(Tile4, m0, static_cast<uint16_t>(nmasks), c_blk, ldc);
             }
             if (m1 > 0){
-                _tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
+                tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
                 MoveTile(Tile5, m1, static_cast<uint16_t>(nmasks), c16_blk, ldc);
             }
             if (nmask_high != 0){
-                _tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
                 MoveTile(Tile6, m0, nmask_high, c_blk + TILE_N, ldc);
                 if (m1 > 0){
-                    _tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                    tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
                     MoveTile(Tile7, m1, nmask_high, c16_blk + TILE_N, ldc);
                 }
             }
@@ -643,76 +649,78 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
         const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_next_blk = A + PackedCountK * TILE_M;
 
         if (ZeroPointB != nullptr){
-            __m512i colsum = _mm512_loadu_epi32(col_sum_ptr);
+            __m512i colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
-            __m512i zeropoint = _mm512_loadu_epi32(zp_ptr);
+            __m512i zeropoint = _mm512_loadu_si512(zp_ptr);
             zp_ptr += TILE_N;
-            _tile_loadd(TMM0, b_blk, TILE_K);
+            tile_loadd(TMM0, b_blk, TILE_K);
             InitHalfTileWithRowColSumsZeroPoints(Tile4, RowSumBuffer, colsum, zeropoint, c_blk, ldc, ZeroMode);
-            _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
             InitHalfTileWithRowColSumsZeroPoints(Tile4+128, RowSumBuffer+8, colsum, zeropoint, c_blk+ldc*8, ldc, ZeroMode);
-            _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
             InitHalfTileWithRowColSumsZeroPoints(Tile5, RowSumBuffer+TILE_M, colsum, zeropoint, c16_blk, ldc, ZeroMode);
-            _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
             InitHalfTileWithRowColSumsZeroPoints(Tile5+128, RowSumBuffer+TILE_M+8, colsum, zeropoint, c16_blk+ldc*8, ldc, ZeroMode);
-            _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
-            colsum = _mm512_loadu_epi32(col_sum_ptr);
+            tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+            colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
-            zeropoint = _mm512_loadu_epi32(zp_ptr);
+            zeropoint = _mm512_loadu_si512(zp_ptr);
             zp_ptr += TILE_N;
             InitHalfTileWithRowColSumsZeroPoints(Tile6, RowSumBuffer, colsum, zeropoint, c_blk+TILE_N, ldc, ZeroMode);
-            _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+            tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
             InitHalfTileWithRowColSumsZeroPoints(Tile6+128, RowSumBuffer+8, colsum, zeropoint, c_blk+ldc*8+TILE_N, ldc, ZeroMode);
-            _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
-            _tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+            tile_dpbusd(TMM4, TMM2, TMM0);
             InitHalfTileWithRowColSumsZeroPoints(Tile7, RowSumBuffer+TILE_M, colsum, zeropoint, c16_blk+TILE_N, ldc, ZeroMode);
             InitHalfTileWithRowColSumsZeroPoints(Tile7+128, RowSumBuffer+TILE_M+8, colsum, zeropoint, c16_blk+ldc*8+TILE_N, ldc, ZeroMode);
         } else {
-            __m512i colsum = _mm512_loadu_epi32(col_sum_ptr);
+            __m512i colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
-            _tile_loadd(TMM0, b_blk, TILE_K);
+            tile_loadd(TMM0, b_blk, TILE_K);
             InitHalfTileWithRowColSums(Tile4, RowSumBuffer, colsum, c_blk, ldc, ZeroMode);
-            _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
             InitHalfTileWithRowColSums(Tile4+128, RowSumBuffer+8, colsum, c_blk+ldc*8, ldc, ZeroMode);
-            _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
             InitHalfTileWithRowColSums(Tile5, RowSumBuffer+TILE_M, colsum, c16_blk, ldc, ZeroMode);
-            _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
             InitHalfTileWithRowColSums(Tile5+128, RowSumBuffer+TILE_M+8, colsum, c16_blk+ldc*8, ldc, ZeroMode);
-            _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
-            colsum = _mm512_loadu_epi32(col_sum_ptr);
+            tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+            colsum = _mm512_loadu_si512(col_sum_ptr);
             col_sum_ptr += TILE_N;
             InitHalfTileWithRowColSums(Tile6, RowSumBuffer, colsum, c_blk+TILE_N, ldc, ZeroMode);
-            _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+            tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
             InitHalfTileWithRowColSums(Tile6+128, RowSumBuffer+8, colsum, c_blk+ldc*8+TILE_N, ldc, ZeroMode);
-            _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
-            _tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+            tile_dpbusd(TMM4, TMM2, TMM0);
             InitHalfTileWithRowColSums(Tile7, RowSumBuffer+TILE_M, colsum, c16_blk+TILE_N, ldc, ZeroMode);
             InitHalfTileWithRowColSums(Tile7+128, RowSumBuffer+TILE_M+8, colsum, c16_blk+ldc*8+TILE_N, ldc, ZeroMode);
         }
-        _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+        tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
 
         for (size_t k = PackedCountK - TILE_K; k > 0; k -= TILE_K) {
             b_blk += TILE_N * TILE_K;
             a_blk += TILE_K;
             a_next_blk += TILE_K;
-            _tile_dpbusd(TMM5, TMM3, TMM0);
-            _tile_loadd(TMM0, b_blk, TILE_K);
-            _tile_dpbusd(TMM6, TMM2, TMM1);
-            _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-            _tile_dpbusd(TMM7, TMM3, TMM1);
-            _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-            _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-            _tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_dpbusd(TMM5, TMM3, TMM0);
+            tile_loadd(TMM0, b_blk, TILE_K);
+            tile_dpbusd(TMM6, TMM2, TMM1);
+            tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+            tile_dpbusd(TMM7, TMM3, TMM1);
+            tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+            tile_dpbusd(TMM4, TMM2, TMM0);
         }
-        _tile_dpbusd(TMM5, TMM3, TMM0);
-        _tile_dpbusd(TMM6, TMM2, TMM1);
-        _tile_dpbusd(TMM7, TMM3, TMM1);
+	tile_dpbusd(TMM5, TMM3, TMM0);
+        tile_dpbusd(TMM6, TMM2, TMM1);
+        tile_dpbusd(TMM7, TMM3, TMM1);
+
         b_blk += PackedCountK * TILE_N + TILE_N * TILE_K;
-        _tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
-        _tile_stored(TMM5, c16_blk, static_cast<int>(ldc * sizeof(int32_t)));
-        _tile_stored(TMM6, (void*)(c_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
+	tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
+        tile_stored(TMM5, c16_blk, static_cast<int>(ldc * sizeof(int32_t)));
+        tile_stored(TMM6, (void*)(c_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
+
         c_blk += 2 * TILE_N;
-        _tile_stored(TMM7, (void*)(c16_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
+        tile_stored(TMM7, (void*)(c16_blk + TILE_N), static_cast<int>(ldc * sizeof(int32_t)));
         c16_blk += 2 * TILE_N;
     }
 
@@ -726,20 +734,20 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             InitTileWithRowColSumsZeroPoints(
                 Tile4, TILE_M, static_cast<uint16_t>(nmasks), RowSumBuffer, colsum,
                 zeropoint, ZeroMode, c_blk, ldc);
-            _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
             InitTileWithRowColSumsZeroPoints(
                 Tile5, TILE_M, static_cast<uint16_t>(nmasks), RowSumBuffer + TILE_M, colsum,
                 zeropoint, ZeroMode, c16_blk, ldc);
-            _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
         } else {
             InitTileWithRowColSums(
                 Tile4, TILE_M, static_cast<uint16_t>(nmasks), RowSumBuffer, colsum,
                 ZeroMode, c_blk, ldc);
-            _tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM4, Tile4, TILE_N * sizeof(int32_t));
             InitTileWithRowColSums(
                 Tile5, TILE_M, static_cast<uint16_t>(nmasks), RowSumBuffer + TILE_M, colsum,
                 ZeroMode, c16_blk, ldc);
-            _tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
+            tile_loadd(TMM5, Tile5, TILE_N * sizeof(int32_t));
         }
         if (nmask_high != 0){
             colsum = _mm512_maskz_loadu_epi32(nmask_high, col_sum_ptr);
@@ -748,52 +756,58 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
                 InitTileWithRowColSumsZeroPoints(
                     Tile6, TILE_M, nmask_high, RowSumBuffer, colsum,
                     zeropoint, ZeroMode, c_blk + TILE_N, ldc);
-                _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                 InitTileWithRowColSumsZeroPoints(
                     Tile7, TILE_M, nmask_high, RowSumBuffer + TILE_M, colsum,
                     zeropoint, ZeroMode, c16_blk + TILE_N, ldc);
-                _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
             } else {
                 InitTileWithRowColSums(
                     Tile6, TILE_M, nmask_high, RowSumBuffer, colsum,
                     ZeroMode, c_blk + TILE_N, ldc);
-                _tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
                 InitTileWithRowColSums(
                     Tile7, TILE_M, nmask_high, RowSumBuffer + TILE_M, colsum,
                     ZeroMode, c16_blk + TILE_N, ldc);
-                _tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
+                tile_loadd(TMM7, Tile7, TILE_N * sizeof(int32_t));
             }
         }
 
         const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_blk = A;
         const MLAS_GEMM_U8S8_KERNEL_AMX::PackedAType* a_next_blk = A + PackedCountK * TILE_M;
         for (size_t k = PackedCountK; k > 0; k -=TILE_K) {
-            _tile_loadd(TMM0, b_blk, TILE_K);
-            _tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-            _tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-            _tile_dpbusd(TMM4, TMM2, TMM0);
-            _tile_dpbusd(TMM5, TMM3, TMM0);
+	    tile_loadd(TMM0, b_blk, TILE_K);
+            tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
+            tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
+
+	    tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_dpbusd(TMM5, TMM3, TMM0);
+
             if (nmask_high != 0){
-                _tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                _tile_dpbusd(TMM6, TMM2, TMM1);
-                _tile_dpbusd(TMM7, TMM3, TMM1);
+                tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
+		tile_dpbusd(TMM6, TMM2, TMM1);
+                tile_dpbusd(TMM7, TMM3, TMM1);
+
             }
             b_blk += TILE_N * TILE_K;
             a_blk += TILE_K;
             a_next_blk += TILE_K;
         }
         if ((static_cast<uint16_t>(nmasks) & 0x8000) != 0){
-            _tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
-            _tile_stored(TMM5, c16_blk, static_cast<int>(ldc * sizeof(int32_t)));
+	    tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
+            tile_stored(TMM5, c16_blk, static_cast<int>(ldc * sizeof(int32_t)));
+
         } else {
-            _tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
-            _tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
+	    tile_stored(TMM4, Tile4, TILE_N * sizeof(int32_t));
+            tile_stored(TMM5, Tile5, TILE_N * sizeof(int32_t));
+
             MoveTile(Tile4, TILE_M, static_cast<uint16_t>(nmasks), c_blk, ldc);
             MoveTile(Tile5, TILE_M, static_cast<uint16_t>(nmasks), c16_blk, ldc);
         }
         if (nmask_high != 0){
-            _tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
-            _tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
+	    tile_stored(TMM6, Tile6, TILE_N * sizeof(int32_t));
+            tile_stored(TMM7, Tile7, TILE_N * sizeof(int32_t));
+
             MoveTile(Tile6, TILE_M, nmask_high, c_blk + TILE_N, ldc);
             MoveTile(Tile7, TILE_M, nmask_high, c16_blk + TILE_N, ldc);
         }

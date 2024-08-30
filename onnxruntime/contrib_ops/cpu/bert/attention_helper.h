@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
@@ -14,6 +15,47 @@ using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 namespace contrib {
+
+template <typename T>
+void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
+  ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    for (std::ptrdiff_t j = begin; j != end; ++j) {
+      float* x = reinterpret_cast<T*>(score) + j * D;
+      float* y = x;
+
+      float max = -std::numeric_limits<float>::infinity();
+      for (int i = 0; i < D; i++) {
+        if (max < x[i])
+          max = x[i];
+      }
+
+      if (max < 0.0f) {
+        max = 0.0f;
+      }
+
+      for (int i = 0; i < D; i++) {
+        y[i] = expf(x[i] - max);
+      }
+
+      double sum = 0.0;
+
+      for (int i = 0; i < D; i++) {
+        sum += x[i];
+      }
+
+      sum += exp(static_cast<double>(-max));
+
+      for (int i = 0; i < D; i++) {
+        y[i] = x[i] / (float)sum;
+      }
+    }
+  });
+}
+
+template <>
+inline void ComputeSmoothSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+}
 
 template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
@@ -57,14 +99,14 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, false, tp);
 }
 
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,
-                 bool is_unidirectional,
+                 bool causal,
                  int batch_size,
                  int sequence_length,
                  int past_sequence_length,
@@ -85,11 +127,11 @@ void PrepareMask(const int32_t* mask_index,
       p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(mask_filter_value);
     }
 
-    if (is_unidirectional) {
+    if (causal) {
       for (int b_i = 0; b_i < batch_size; b_i++) {
         for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
           for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
+            p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
           }
         }
         p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
@@ -139,13 +181,14 @@ void PrepareMask(const int32_t* mask_index,
     }
 
     // Apply unidirectional mask.
-    if (is_unidirectional) {
+    if (causal) {
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
         for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-          p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
+          p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
         }
       }
     }
+
     ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
     p_mask += mask_to_advance;
   }
@@ -170,6 +213,33 @@ T* ConcatStateChunk(const T* past,
   }
 
   memcpy(p, chunk, (present_chunk_length - past_chunk_length) * sizeof(T));
+  return start;
+}
+
+// GQA version of ConcatStateChunk
+template <typename T>
+T* ConcatStateChunkGQA(const T* past,
+                       const T* chunk,
+                       T* present,
+                       size_t present_buff_chunk_length,
+                       size_t past_buff_chunk_length,
+                       size_t past_chunk_length,
+                       size_t new_chunk_length,
+                       bool is_prompt,
+                       bool past_present_share_buffer,
+                       std::ptrdiff_t i) {
+  T* start = present + i * present_buff_chunk_length;
+
+  T* p = start;
+  if (!is_prompt) {
+    if (!past_present_share_buffer) {
+      const T* src_past = past + i * past_buff_chunk_length;
+      memcpy(p, src_past, past_chunk_length * sizeof(T));
+    }
+    p += past_chunk_length;
+  }
+
+  memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;
 }
 

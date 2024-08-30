@@ -1,36 +1,27 @@
 // Copyright (c) Shukant Pal.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-
-#ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
-#endif
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/optimizer/initializer.h"
-
-#include "base_op_builder.h"
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace coreml {
 
 class ReductionOpBuilder : public BaseOpBuilder {
-#ifdef __APPLE__
- public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
- private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
-#endif
- private:
+
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
-#ifdef __APPLE__
 namespace {
 template <typename T>
 void AddReductionParams(T* params, const std::vector<int64_t>& axes, bool keepdims, bool noop_with_empty_axes) {
@@ -76,7 +67,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   const bool keepdims = helper.Get("keepdims", 1) != 0;
   const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
 
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
   if (op_type == "ReduceSum") {
     AddReductionParams(layer->mutable_reducesum(), axes, keepdims, noop_with_empty_axes);
@@ -93,7 +84,6 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
-#endif
 
 bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                            const logging::Logger& logger) const {

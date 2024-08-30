@@ -2,36 +2,43 @@ name: Windows_CI
 on:
   push:
     branches:
-      - master
       - main
+      - rel-*
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  AZCOPY_AUTO_LOGIN_TYPE: MSI
+  AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
 jobs:
-  Onnxruntime-TVM:
-    runs-on: windows-latest
+  Windows-CUDA-12:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: true
-      - uses: actions/setup-python@v3
+          submodules: false
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.8.x'
+          python-version: '3.11.x'
           architecture: 'x64'
-      - uses: conda-incubator/setup-miniconda@v2
+
+      - uses: actions/setup-node@v4
         with:
-          activate-environment: ""
-      - name: 'Install LLVM-Dev'
-        shell: pwsh
+          node-version: 18
+
+      - name: Download cuda
+        run: azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" cuda_sdk
+
+
+      - name: Delete build folder
         run: |
-          conda install llvmdev=12.0.0
-          conda info
-          conda list
-      - name: 'Add LLVM-Dev binaries to the PATH'
-        run: |
-          echo "C:/Miniconda/Library/bin" >> $GITHUB_PATH
-      - name: 'Setup TVM EP Python requirements'
-        run: |
-          python3 -m pip install -r ${{ github.workspace }}/tools/ci_build/github/linux/tvm/requirements.txt
-      - name: 'Build and Test'
-        run: |
-          python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm
+          if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
+          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
+
+      # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
+      - name: Build code
+        run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75

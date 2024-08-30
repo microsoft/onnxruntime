@@ -16,6 +16,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "orttraining/training_ops/cpu/nn/conv_grad.h"
+#include "core/common/narrow.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -72,23 +73,24 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  BufferUniquePtr col_buffer(alloc->Alloc(sizeof(T) * col_buffer_size), BufferDeleter(alloc));
+  BufferUniquePtr col_buffer(alloc->Alloc(narrow<size_t>(sizeof(T) * col_buffer_size)), BufferDeleter(alloc));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
   const T* Xdata = X->template Data<T>();
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
-  BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
+  BufferUniquePtr bias_multiplier(alloc->Alloc(narrow<size_t>(sizeof(T) * output_image_size)), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
   Tensor* dB = context->Output(2, {M});
   T* dBdata = nullptr;
   if (dB) {
     dBdata = dB->template MutableData<T>();
-    math::Set<T, CPUMathUtil>(dB->Shape().Size(), static_cast<T>(0), dBdata, &CPUMathUtil::Instance());
+    math::Set<T, CPUMathUtil>(narrow<ptrdiff_t>(dB->Shape().Size()),
+                              static_cast<T>(0), dBdata, &CPUMathUtil::Instance());
 
     bias_multiplier_data = static_cast<T*>(bias_multiplier.get());
-    math::Set<T, CPUMathUtil>(output_image_size,
+    math::Set<T, CPUMathUtil>(narrow<ptrdiff_t>(output_image_size),
                               static_cast<T>(1),
                               bias_multiplier_data,
                               &CPUMathUtil::Instance());
@@ -98,7 +100,7 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   if (dW) {
     dWdata = dW->template MutableData<T>();
     // Pre-setting the gradients to zero.
-    math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, dWdata, &CPUMathUtil::Instance());
+    math::Set<T, CPUMathUtil>(narrow<ptrdiff_t>(dW->Shape().Size()), 0, dWdata, &CPUMathUtil::Instance());
   }
 
   bool skip_im2col = (kernel_size == 1) && conv_attrs_.HasStridesOneAndNoPadding();
@@ -159,9 +161,9 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
         math::Gemm<T>(
             CblasNoTrans,
             CblasTrans,
-            M / conv_attrs_.group,
-            kernel_dim,
-            output_image_size,
+            narrow<ptrdiff_t>(M / conv_attrs_.group),
+            narrow<ptrdiff_t>(kernel_dim),
+            narrow<ptrdiff_t>(output_image_size),
             1,
             dYdata + group_id * Y_offset,
             skip_im2col ? Xdata + group_id * X_offset : col_buffer_data,
@@ -197,9 +199,9 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
         math::Gemm<T>(
             CblasTrans,
             CblasNoTrans,
-            kernel_dim,
-            output_image_size,
-            M / conv_attrs_.group,
+            narrow<ptrdiff_t>(kernel_dim),
+            narrow<ptrdiff_t>(output_image_size),
+            narrow<ptrdiff_t>(M / conv_attrs_.group),
             1,
             Wdata + group_id * W_offset,
             dYdata,

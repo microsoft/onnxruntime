@@ -47,8 +47,8 @@ TEST(LoggingTests, TestEtwSink) {
 /// </summary>
 TEST(LoggingTests, TestEtwSinkCtor) {
   CompositeSink* sinks = new CompositeSink();
-  sinks->AddSink(std::unique_ptr<ISink>(new EtwSink()))
-      .AddSink(std::unique_ptr<ISink>(new EtwSink()));
+  sinks->AddSink(std::unique_ptr<ISink>(new EtwSink()), Severity::kWARNING)
+      .AddSink(std::unique_ptr<ISink>(new EtwSink()), Severity::kWARNING);
 
   LoggingManager manager{std::unique_ptr<ISink>{sinks},
                          Severity::kWARNING,

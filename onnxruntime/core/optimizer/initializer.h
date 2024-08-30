@@ -7,9 +7,9 @@
 #include <functional>
 #include <vector>
 #include <cmath>
-
+#include <filesystem>
 #include "core/common/common.h"
-#include "core/common/path.h"
+#include "core/common/narrow.h"
 #include "core/framework/allocator.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/tensor_shape.h"
@@ -27,7 +27,7 @@ class Initializer final {
               gsl::span<const int64_t> dims);
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const Path& model_path = {});
+              const std::filesystem::path& model_path = {});
 
   ~Initializer() = default;
 
@@ -70,7 +70,7 @@ class Initializer final {
     return data_.Shape().GetDims();
   }
 
-  int64_t size() const { return data_.Shape().Size(); }
+  size_t size() const { return narrow<size_t>(data_.Shape().Size()); }
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   Initializer& add(float value);
@@ -85,7 +85,7 @@ class Initializer final {
 
   Initializer& sqrt();
 
-  void scale_by_axis(const Initializer& other, int axis);
+  void scale_by_axis(const Initializer& other, int axis, bool column_major = false);
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
   std::string name_;

@@ -29,7 +29,7 @@
 
 namespace onnxruntime {
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_TRAINING_OPS)
 #define BATCHNORM_INCLUDE_TRAINING_SUPPORT
 #endif
 

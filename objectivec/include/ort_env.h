@@ -16,7 +16,7 @@ extern "C" {
  *
  * Available since 1.15.
  */
-NSString* ORTVersion(void);
+NSString* _Nullable ORTVersion(void);
 
 #ifdef __cplusplus
 }
@@ -24,6 +24,9 @@ NSString* ORTVersion(void);
 
 /**
  * The ORT environment.
+ * It maintains shared state including the default logger.
+ *
+ * @note One ORTEnv should be created before and destroyed after other ORT API usage.
  */
 @interface ORTEnv : NSObject
 

@@ -2,7 +2,7 @@
   "name": "wasm-test-adapter",
   "private": true,
   "scripts": {
-    "test": "karma start --browsers EdgeTest --single-run"
+    "test": "karma start --browsers ChromeHeadlessTest --single-run"
   },
   "devDependencies": {
     "@chiragrupani/karma-chromium-edge-launcher": "^2.2.2",

@@ -89,13 +89,14 @@ class ConvInteger(QuantOperatorBase):
         nodes.append(conv_integer_node)
 
         # Add cast operation to cast convInteger output to float.
+        onnx_type = self.quantizer.get_tensor_type(node.output[0], mandatory=True)
         cast_op_output = conv_integer_output + "_cast_output"
         cast_node = onnx.helper.make_node(
             "Cast",
             [conv_integer_output],
             [cast_op_output],
             conv_integer_output + "_cast",
-            to=onnx_proto.TensorProto.FLOAT,
+            to=onnx_type,  # TODO: FLOAT ot FLOAT16
         )
         nodes.append(cast_node)
 
@@ -157,7 +158,7 @@ class QLinearConv(QuantOperatorBase):
                 nodes,
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
-                node.input[1], onnx_proto.TensorProto.INT8, 0
+                node.input[1], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
             )
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])
@@ -187,11 +188,13 @@ class QLinearConv(QuantOperatorBase):
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
+            if self.quantizer.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+                raise RuntimeError("Quantization to FLOAT8E4M3FN for operator Conv is not supported.")
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
 
         qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name else ""
+        qlinear_conv_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
@@ -243,10 +246,13 @@ class QDQConv(QDQOperatorBase):
         if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_activation_tensor(node.output[0])
 
-        if self.quantizer.is_per_channel():
-            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0)
+        is_weight_per_channel, weight_axis = self.quantizer.is_tensor_per_channel(
+            node.input[1], default_axis=0 if node.op_type == "Conv" else 1
+        )
+        if is_weight_per_channel:
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], weight_axis)
         else:
             self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
-            self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])
+            self.quantizer.quantize_bias_tensor(node.name, node.input[2], node.input[0], node.input[1])

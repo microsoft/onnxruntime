@@ -6,6 +6,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
@@ -25,7 +26,7 @@ struct NchwcTestHelper {
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const ONNX_NAMESPACE::TypeProto& type_proto) {
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape,
+    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape,
                      FillRandomData<T>(shape), &input_value);
     std::string name = graph_.GenerateNodeArgName("input");
     feeds_.insert(std::make_pair(name, input_value));
@@ -62,7 +63,7 @@ struct NchwcTestHelper {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
-    tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
+    utils::SetRawDataInTensorProto(tensor_proto, data.data(), data.size() * sizeof(T));
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);

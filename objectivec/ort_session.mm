@@ -7,6 +7,7 @@
 #include <vector>
 
 #import "cxx_api.h"
+#import "cxx_utils.h"
 #import "error_utils.h"
 #import "ort_enums_internal.h"
 #import "ort_env_internal.h"
@@ -23,6 +24,7 @@ enum class NamedValueType {
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTSession {
+  ORTEnv* _env;  // keep a strong reference so the ORTEnv doesn't get destroyed before this does
   std::optional<Ort::Session> _session;
 }
 
@@ -44,6 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
       }
     }
 
+    _env = env;
     _session = Ort::Session{[env CXXAPIOrtEnv],
                             path.UTF8String,
                             [sessionOptions CXXAPIOrtSessionOptions]};
@@ -66,22 +69,26 @@ NS_ASSUME_NONNULL_BEGIN
     }
 
     std::vector<const char*> inputNames, outputNames;
-    std::vector<const OrtValue*> inputValues;
-    std::vector<OrtValue*> outputValues;
+    std::vector<const OrtValue*> inputCAPIValues;
+    std::vector<OrtValue*> outputCAPIValues;
 
+    inputNames.reserve(inputs.count);
+    inputCAPIValues.reserve(inputs.count);
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
+      inputCAPIValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
     }
 
+    outputNames.reserve(outputs.count);
+    outputCAPIValues.reserve(outputs.count);
     for (NSString* outputName in outputs) {
       outputNames.push_back(outputName.UTF8String);
-      outputValues.push_back(static_cast<OrtValue*>([outputs[outputName] CXXAPIOrtValue]));
+      outputCAPIValues.push_back(static_cast<OrtValue*>([outputs[outputName] CXXAPIOrtValue]));
     }
 
     Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
-                                        inputNames.data(), inputValues.data(), inputNames.size(),
-                                        outputNames.data(), outputNames.size(), outputValues.data()));
+                                        inputNames.data(), inputCAPIValues.data(), inputNames.size(),
+                                        outputNames.data(), outputNames.size(), outputCAPIValues.data()));
 
     return YES;
   }
@@ -103,30 +110,39 @@ NS_ASSUME_NONNULL_BEGIN
     NSArray<NSString*>* outputNameArray = outputNameSet.allObjects;
 
     std::vector<const char*> inputNames, outputNames;
-    std::vector<const OrtValue*> inputValues;
-    std::vector<OrtValue*> outputValues;
+    std::vector<const OrtValue*> inputCAPIValues;
+    std::vector<OrtValue*> outputCAPIValues;
 
+    inputNames.reserve(inputs.count);
+    inputCAPIValues.reserve(inputs.count);
     for (NSString* inputName in inputs) {
       inputNames.push_back(inputName.UTF8String);
-      inputValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
+      inputCAPIValues.push_back(static_cast<const OrtValue*>([inputs[inputName] CXXAPIOrtValue]));
     }
 
+    outputNames.reserve(outputNameArray.count);
+    outputCAPIValues.reserve(outputNameArray.count);
     for (NSString* outputName in outputNameArray) {
       outputNames.push_back(outputName.UTF8String);
-      outputValues.push_back(nullptr);
+      outputCAPIValues.push_back(nullptr);
     }
 
     Ort::ThrowOnError(Ort::GetApi().Run(*_session, [runOptions CXXAPIOrtRunOptions],
-                                        inputNames.data(), inputValues.data(), inputNames.size(),
-                                        outputNames.data(), outputNames.size(), outputValues.data()));
+                                        inputNames.data(), inputCAPIValues.data(), inputNames.size(),
+                                        outputNames.data(), outputNames.size(), outputCAPIValues.data()));
 
     NSMutableDictionary<NSString*, ORTValue*>* outputs = [[NSMutableDictionary alloc] init];
     for (NSUInteger i = 0; i < outputNameArray.count; ++i) {
-      ORTValue* outputValue = [[ORTValue alloc] initWithCAPIOrtValue:outputValues[i] externalTensorData:nil error:error];
+      // Wrap the C OrtValue in a C++ Ort::Value to automatically handle its release.
+      // Then, transfer that C++ Ort::Value to a new ORTValue.
+      Ort::Value outputCXXAPIValue{outputCAPIValues[i]};
+      ORTValue* outputValue = [[ORTValue alloc] initWithCXXAPIOrtValue:std::move(outputCXXAPIValue)
+                                                    externalTensorData:nil
+                                                                 error:error];
       if (!outputValue) {
-        // clean up remaining C API OrtValues which haven't been wrapped by an ORTValue yet
-        for (NSUInteger j = i; j < outputNameArray.count; ++j) {
-          Ort::GetApi().ReleaseValue(outputValues[j]);
+        // clean up remaining C OrtValues which haven't been wrapped by a C++ Ort::Value yet
+        for (NSUInteger j = i + 1; j < outputNameArray.count; ++j) {
+          Ort::GetApi().ReleaseValue(outputCAPIValues[j]);
         }
         return nil;
       }
@@ -183,8 +199,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     for (size_t i = 0; i < nameCount; ++i) {
       auto name = getName(i, allocator);
-      NSString* nameNsstr = [NSString stringWithUTF8String:name.get()];
-      NSAssert(nameNsstr != nil, @"nameNsstr must not be nil");
+      NSString* nameNsstr = utils::toNSString(name.get());
       [result addObject:nameNsstr];
     }
 
@@ -291,6 +306,27 @@ NS_ASSUME_NONNULL_BEGIN
                                  error:(NSError**)error {
   try {
     _sessionOptions->RegisterCustomOpsUsingFunction(registrationFuncName.UTF8String);
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)registerCustomOpsUsingFunctionPointer:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
+                                        error:(NSError**)error {
+  try {
+    if (!registerCustomOpsFn) {
+      ORT_CXX_API_THROW("registerCustomOpsFn must not be null", ORT_INVALID_ARGUMENT);
+    }
+    Ort::ThrowOnError((*registerCustomOpsFn)(static_cast<OrtSessionOptions*>(*_sessionOptions),
+                                             OrtGetApiBase()));
+    return YES;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
+}
+
+- (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error {
+  try {
+    _sessionOptions->EnableOrtCustomOps();
     return YES;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)

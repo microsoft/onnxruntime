@@ -29,7 +29,7 @@ common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_
     // It may copy the data instead of copying the pointer.
     // When OrtValue is empty, the pointer is copied. When it is not
     // (if feeds_[index] is not for example),
-    // CopyOneInputAcrossDevices has a different behaviour.
+    // CopyOneInputAcrossDevices has a different behavior.
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
     add_or_replace(new_mlvalue);
   } else {
@@ -128,14 +128,13 @@ AllocatorPtr IOBinding::GetCPUAllocator(onnxruntime::ProviderType provider_type)
   auto& exec_providers = session_state_.GetExecutionProviders();
   auto* p_provider = exec_providers.Get(provider_type);
   ORT_ENFORCE(p_provider);
-  auto allocator = p_provider->GetAllocator(OrtMemTypeCPU);
+  auto allocator = session_state_.GetAllocator(p_provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
 
   // if the provider does not implement CPU allocator, fall back to CPU
   if (allocator)
     return allocator;
 
-  auto* cpu_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-  return cpu_provider->GetAllocator(OrtMemTypeDefault);
+  return session_state_.GetAllocator(OrtDevice());
 }
 
 }  // namespace onnxruntime

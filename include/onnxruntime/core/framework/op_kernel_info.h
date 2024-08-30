@@ -8,7 +8,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 
@@ -27,7 +27,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr);
+                        const DataTransferManager& data_transfer_mgr,
+                        const AllocatorMap& allocators,
+                        const ConfigOptions& config_options);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -47,6 +49,10 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
 
+  const AllocatorMap& GetAllocators() const { return allocators_; }
+
+  const ConfigOptions& GetConfigOptions() const { return config_options_; }
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -60,6 +66,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+  const AllocatorMap& allocators_;
+  const ConfigOptions& config_options_;
 };
 
 }  // namespace onnxruntime

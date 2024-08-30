@@ -31,7 +31,7 @@ $TARGET=$Args[2] # "node" or "web" or "react_native"
 
 Function Generate-Package-Version-Number {
     pushd $ORT_ROOT
-    $version_base=Get-Content .\VERSION_NUMBER
+    $version_base=Get-Content ./VERSION_NUMBER
     $version_timestamp=git show -s --format=%ct HEAD
     $version_commit=git rev-parse HEAD
     $version_commit_short=git rev-parse --short HEAD
@@ -51,8 +51,8 @@ Function Generate-Package-Version-Number {
     return @{ version = $version_number; commit = $version_commit }
 }
 
-$JS_COMMON_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js\common"
-$JS_TARGET_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js\$TARGET"
+$JS_COMMON_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/common"
+$JS_TARGET_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js/$TARGET"
 
 if ($MODE -eq "dev") {
     # For @dev builds, we compares the following 2 package versions for onnxruntime-common:
@@ -73,7 +73,7 @@ if ($MODE -eq "dev") {
 
     # download package latest@dev
     Invoke-WebRequest $ort_common_latest_dist_tarball -OutFile ./latest.tgz
-    if ($(Get-FileHash -Algorithm SHA1 .\latest.tgz).Hash -ne "$ort_common_latest_dist_shasum") {
+    if ($(Get-FileHash -Algorithm SHA1 ./latest.tgz).Hash -ne "$ort_common_latest_dist_shasum") {
         throw "SHASUM mismatch"
     }
     Write-Host "Tarball downloaded"
@@ -85,6 +85,11 @@ if ($MODE -eq "dev") {
     pushd $JS_COMMON_DIR
     npm version --allow-same-version $ort_common_latest_version
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+    # update version.ts of common
+    pushd ..
+    npm run update-version common
+    npm run format
+    popd
     npm pack
     popd
 
@@ -114,8 +119,8 @@ if ($MODE -eq "dev") {
     npm install "dir-compare-cli@1.0.1" "json-diff@0.5.4"
 
     Write-Host "Compare package.json"
-    $latest_package_json=Join-Path -Path ".." -ChildPath "latest\package\package.json"
-    $current_package_json=Join-Path -Path ".." -ChildPath "current\package\package.json"
+    $latest_package_json=Join-Path -Path ".." -ChildPath "latest/package/package.json"
+    $current_package_json=Join-Path -Path ".." -ChildPath "current/package/package.json"
     npx json-diff $latest_package_json $current_package_json
     $use_latest=$?
     Write-Host "Result: $use_latest"
@@ -123,8 +128,8 @@ if ($MODE -eq "dev") {
         # package.json matches. now check package contents.
 
         # do not compare commit number
-        $latest_package_commit=Join-Path -Path ".." -ChildPath "latest\package\__commit.txt"
-        $current_package_commit=Join-Path -Path ".." -ChildPath "current\package\__commit.txt"
+        $latest_package_commit=Join-Path -Path ".." -ChildPath "latest/package/__commit.txt"
+        $current_package_commit=Join-Path -Path ".." -ChildPath "current/package/__commit.txt"
         if (test-path $latest_package_commit) { rm $latest_package_commit }
         if (test-path $current_package_commit) { rm $current_package_commit }
         # skip package.json, we already checked them
@@ -132,8 +137,8 @@ if ($MODE -eq "dev") {
         rm $current_package_json
 
         Write-Host "Compare package contents"
-        $latest_package_dir=Join-Path -Path ".." -ChildPath "latest\package"
-        $current_package_dir=Join-Path -Path ".." -ChildPath "current\package"
+        $latest_package_dir=Join-Path -Path ".." -ChildPath "latest/package"
+        $current_package_dir=Join-Path -Path ".." -ChildPath "current/package"
         npx dircompare -c $latest_package_dir $current_package_dir
         $use_latest=$?
         Write-Host "Result: $use_latest"
@@ -147,6 +152,13 @@ if ($MODE -eq "dev") {
         pushd $JS_COMMON_DIR
         npm version --allow-same-version $($version_number.version)
         # file __commit.txt is already generated
+
+        # update version.ts of common
+        pushd ..
+        npm run update-version common
+        npm run format
+        popd
+
         npm pack
         popd
     }
@@ -155,6 +167,13 @@ if ($MODE -eq "dev") {
     pushd $JS_TARGET_DIR
     npm version --allow-same-version $($version_number.version)
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+
+    # update version.ts of TARGET
+    pushd ..
+    npm run update-version $TARGET
+    npm run format
+    popd
+
     npm pack
     popd
 } elseif ($MODE -eq "release") {
@@ -171,11 +190,25 @@ if ($MODE -eq "dev") {
 
     pushd $JS_COMMON_DIR
     npm version --allow-same-version $($version_number.version)
+
+    # update version.ts of common
+    pushd ..
+    npm run update-version common
+    npm run format
+    popd
+
     npm pack
     popd
 
     pushd $JS_TARGET_DIR
     npm version --allow-same-version $($version_number.version)
+
+    # update version.ts of TARGET
+    pushd ..
+    npm run update-version $TARGET
+    npm run format
+    popd
+
     npm pack
     popd
 }

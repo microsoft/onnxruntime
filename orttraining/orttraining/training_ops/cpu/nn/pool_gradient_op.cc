@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/pool_gradient_op.h"
+#include "core/common/narrow.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include <algorithm>
@@ -51,7 +52,7 @@ Status MaxPoolGrad<T>::Compute(OpKernelContext* context) const {
   const int64_t* indices_data = indices->template Data<int64_t>();
   T* dX_data = dX->template MutableData<T>();
 
-  EigenVectorMap<T>(dX_data, dX_shape.Size()).setZero();
+  EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_shape.Size())).setZero();
 
   for (int64_t i = 0; i < dY->Shape().Size(); ++i) {
     T* p_dX_data = dX_data + indices_data[i];
@@ -85,27 +86,32 @@ Status AveragePoolGrad<T>::Compute3DAveragePoolGrad(OpKernelContext* context) co
   int64_t dY_elements_in_each_channel = dY_shape[2] * dY_shape[3] * dY_shape[4];
 
   for (int cur_channel = 0; cur_channel < channels; cur_channel++) {
-    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_data, dY_shape[3], dY_shape[2] * dY_shape[4]);
-    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_data, dX_shape[3], dX_shape[2] * dX_shape[4]);
+    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_data, narrow<Eigen::Index>(dY_shape[3]),
+                                                         narrow<Eigen::Index>(dY_shape[2] * dY_shape[4]));
+    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_data, narrow<Eigen::Index>(dX_shape[3]),
+                                               narrow<Eigen::Index>(dX_shape[2] * dX_shape[4]));
 
     for (int d = 0; d < dY_shape[4]; ++d) {
       const int64_t p = std::max<int64_t>(d * stride_third_dim - pads_[2], 0);
       const int64_t a = std::min<int64_t>(d * stride_third_dim - pads_[2] + kernel_third_dim, dX_shape[4]);
 
       for (int h = 0; h < dY_shape[2]; ++h) {
-        const int64_t t = std::max<int64_t>(h * stride_first_dim - pads_[0], 0);
-        const int64_t b = std::min<int64_t>(h * stride_first_dim - pads_[0] + kernel_first_dim, dX_shape[2]);
+        const Eigen::Index t = narrow<Eigen::Index>(std::max<int64_t>(h * stride_first_dim - pads_[0], 0));
+        const Eigen::Index b =
+            narrow<Eigen::Index>(std::min<int64_t>(h * stride_first_dim - pads_[0] + kernel_first_dim, dX_shape[2]));
 
         for (int w = 0; w < dY_shape[3]; ++w) {
-          const int64_t l = std::max<int64_t>(w * stride_second_dim - pads_[1], 0);
-          const int64_t r = std::min<int64_t>(w * stride_second_dim - pads_[1] + kernel_second_dim, dX_shape[3]);
-          const int64_t dy_index = d * dY_shape[2] * dY_shape[3] + h * dY_shape[3] + w;
+          const Eigen::Index l = narrow<Eigen::Index>(std::max<int64_t>(w * stride_second_dim - pads_[1], 0));
+          const Eigen::Index r =
+              narrow<Eigen::Index>(std::min<int64_t>(w * stride_second_dim - pads_[1] + kernel_second_dim,
+                                                     dX_shape[3]));
+          const Eigen::Index dy_index = narrow<Eigen::Index>(d * dY_shape[2] * dY_shape[3] + h * dY_shape[3] + w);
           const T scale = T(1.0f) /
                           static_cast<T>(count_include_pad_ ? kernel_first_dim * kernel_second_dim * kernel_third_dim
                                                             : (a - p) * (b - t) * (r - l));
 
           for (int64_t i = p; i < a; ++i) {
-            dX_arr.block(l, i * dX_shape[2] + t, r - l, b - t) = dY_arr(dy_index) * scale;
+            dX_arr.block(l, narrow<Eigen::Index>(i * dX_shape[2] + t), r - l, b - t) = dY_arr(dy_index) * scale;
           }
         }
       }
@@ -143,18 +149,22 @@ Status AveragePoolGrad<T>::Compute2DAveragePoolGrad(OpKernelContext* context) co
   const T* dY_ptr = dY_data;
 
   for (int cur_channel = 0; cur_channel < channels; cur_channel++) {
-    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_ptr, dY_shape[3], dY_shape[2]);
-    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_ptr, dX_shape[3], dX_shape[2]);
+    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_ptr, narrow<Eigen::Index>(dY_shape[3]),
+                                                         narrow<Eigen::Index>(dY_shape[2]));
+    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_ptr, narrow<Eigen::Index>(dX_shape[3]),
+                                               narrow<Eigen::Index>(dX_shape[2]));
 
     for (int h = 0; h < dY_shape[2]; ++h) {
-      const int64_t t = std::max<int64_t>(h * stride_first_dim - pads_[0], 0);
-      const int64_t b = std::min<int64_t>(h * stride_first_dim - pads_[0] + kernel_first_dim, dX_shape[2]);
+      const Eigen::Index t = narrow<Eigen::Index>(std::max<int64_t>(h * stride_first_dim - pads_[0], 0));
+      const Eigen::Index b =
+          narrow<Eigen::Index>(std::min<int64_t>(h * stride_first_dim - pads_[0] + kernel_first_dim, dX_shape[2]));
 
       for (int w = 0; w < dY_shape[3]; ++w) {
-        const int64_t l = std::max<int64_t>(w * stride_second_dim - pads_[1], 0);
-        const int64_t r = std::min<int64_t>(w * stride_second_dim - pads_[1] + kernel_second_dim, dX_shape[3]);
+        const Eigen::Index l = narrow<Eigen::Index>(std::max<int64_t>(w * stride_second_dim - pads_[1], 0));
+        const Eigen::Index r =
+            narrow<Eigen::Index>(std::min<int64_t>(w * stride_second_dim - pads_[1] + kernel_second_dim, dX_shape[3]));
 
-        const int64_t dy_index = h * dY_shape[3] + w;
+        const Eigen::Index dy_index = narrow<Eigen::Index>(h * dY_shape[3] + w);
         const T scale = T(1.0f) / static_cast<T>(count_include_pad_ ? kernel_first_dim * kernel_second_dim : (b - t) * (r - l));
         dX_arr.block(l, t, r - l, b - t) += dY_arr(dy_index) * scale;
       }
@@ -185,12 +195,13 @@ Status AveragePoolGrad<T>::Compute1DAveragePoolGrad(OpKernelContext* context) co
   const float* dY_ptr = dY_data;
 
   for (int cur_channel = 0; cur_channel < channels; cur_channel++) {  // for every channel group
-    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_ptr, dY_shape[2], 1);
-    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_ptr, dX_shape[2], 1);
+    ConstEigenArrayMap<T> dY_arr = ConstEigenArrayMap<T>(dY_ptr, narrow<Eigen::Index>(dY_shape[2]), 1);
+    EigenArrayMap<T> dX_arr = EigenArrayMap<T>(dX_ptr, narrow<Eigen::Index>(dX_shape[2]), 1);
 
     for (int dy_index = 0; dy_index < dY_shape[2]; ++dy_index) {
-      const int64_t left_index = std::max<int64_t>(dy_index * stride_size - pads_[0], 0);
-      const int64_t right_index = std::min<int64_t>(dy_index * stride_size - pads_[0] + kernel_size, dX_shape[2]);
+      const auto left_index = narrow<Eigen::Index>(std::max<int64_t>(dy_index * stride_size - pads_[0], 0));
+      const auto right_index = narrow<Eigen::Index>(std::min<int64_t>(dy_index * stride_size - pads_[0] + kernel_size,
+                                                                      dX_shape[2]));
 
       const T scale = T(1.0f) / static_cast<T>(count_include_pad_ ? kernel_size : right_index - left_index);
 
@@ -217,7 +228,7 @@ Status AveragePoolGrad<T>::Compute(OpKernelContext* context) const {
   const TensorShape dX_shape = TensorShape::FromExistingBuffer(output_tensor_shapes_[0]);
   Tensor* dX = context->Output(0, dX_shape);
   T* dX_data = dX->template MutableData<T>();
-  EigenVectorMap<T>(dX_data, dX_shape.Size()).setZero();
+  EigenVectorMap<T>(dX_data, narrow<Eigen::Index>(dX_shape.Size())).setZero();
 
   switch (dX_shape.NumDimensions()) {
     case 3:

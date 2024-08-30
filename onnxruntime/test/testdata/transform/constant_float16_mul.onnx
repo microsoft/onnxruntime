@@ -1,0 +1,17 @@
+onnxruntime_test:°
+2c1c1_node"Constant*
+value*
+*€xBc1v 
+3c2c2_node"Constant*
+value*
+*€€Bc2v 
+
+c1
+c2
+mul_outputmul"Mulfloat16_mulb
+
+mul_output
+
+
+
+B

@@ -15,8 +15,7 @@ repo_root = _script_dir.parents[3]
 
 class PackageVariant(enum.Enum):
     Full = 0  # full ORT build with all opsets, ops, and types
-    Mobile = 1  # minimal ORT build with reduced ops
-    Test = -1  # for testing purposes only
+    Training = 1  # full ORT build with all opsets, ops, and types, plus training APIs
 
     @classmethod
     def release_variant_names(cls):
@@ -70,6 +69,27 @@ def gen_file_from_template(
         output.write(content)
 
 
+def filter_files(all_file_patterns: List[str], excluded_file_patterns: List[str]):
+    """
+    Filters file paths based on inclusion and exclusion patterns
+
+    :param all_file_patterns The list of file paths to filter.
+    :param excluded_file_patterns The list of exclusion patterns.
+
+    :return The filtered list of file paths
+    """
+    # get all files matching the patterns in all_file_patterns
+    all_files = [str(path.relative_to(repo_root)) for pattern in all_file_patterns for path in repo_root.glob(pattern)]
+
+    # get all files matching the patterns in excluded_file_patterns
+    exclude_files = [
+        str(path.relative_to(repo_root)) for pattern in excluded_file_patterns for path in repo_root.glob(pattern)
+    ]
+
+    # return the difference
+    return list(set(all_files) - set(exclude_files))
+
+
 def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
     """
     Copies file paths relative to the repo root to a directory.
@@ -96,6 +116,44 @@ def load_json_config(json_config_file: pathlib.Path):
     """
     with open(json_config_file) as config:
         return json.load(config)
+
+
+def get_podspec_values(framework_info):
+    """
+    Get the podspec deployement targets and weak framework info from the dictionary that load_json_config returned.
+    Looks for iphonesimulator, iphoneos and macos settings.
+    Handles missing platforms and checks consistency.
+    Returns empty string for deployment target if that platofrm is not enabled.
+
+    :return (ios_deployment_target, macos_deployment_target, weak_framework)
+    """
+    ios_deployment_target = ""
+    macos_deployment_target = ""
+    weak_framework = ""  # should be the same for all platforms
+    # get info, allowing for a subset of platforms to be specified
+    for framework in ("iphonesimulator", "iphoneos", "macosx"):
+        if framework not in framework_info:
+            continue
+
+        target = framework_info[framework]["APPLE_DEPLOYMENT_TARGET"]
+        weak = framework_info[framework]["WEAK_FRAMEWORK"]
+
+        if not weak_framework:
+            weak_framework = weak
+        else:
+            # should be consistent
+            assert weak == weak_framework
+
+        if framework == "macosx":
+            macos_deployment_target = target
+        else:
+            if not ios_deployment_target:
+                ios_deployment_target = target
+            else:
+                # should be consistent
+                assert ios_deployment_target == target
+
+    return (ios_deployment_target, macos_deployment_target, weak_framework)
 
 
 def get_ort_version():

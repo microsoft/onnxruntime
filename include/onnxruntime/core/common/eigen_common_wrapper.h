@@ -41,6 +41,14 @@
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
+// eigen-src/unsupported/Eigen/CXX11/src/ThreadPool/EventCount.h:231:56: error: implicit conversion loses integer
+//   precision: 'uint64_t' (aka 'unsigned long long') to 'size_t' (aka 'unsigned long') [-Werror,-Wshorten-64-to-32]
+// next = wnext == kStackMask ? nullptr : &waiters_[wnext];
+//                                         ~~~~~~~~ ^~~~~
+#ifdef HAS_SHORTEN_64_TO_32
+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
+#endif
+
 #elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence

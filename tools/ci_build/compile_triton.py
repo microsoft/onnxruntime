@@ -102,7 +102,7 @@ def convert_and_save(metadata, header_file, out_dir, out_obj_file):
         # convert constants
         constants = []
         for k, v in m["constants"].items():
-            constants.append(f'{{ "{k}", {str(v)}}}')
+            constants.append(f'{{ "{k}", {v!s}}}')
         meta_ele.append(f"{{ { ', '.join(constants) } }}")
 
         c_metadata.append(f"{{ { ', '.join(meta_ele) } }}")
@@ -145,7 +145,7 @@ def main(args):
         spec = importlib.util.spec_from_file_location(f"module_{i}", f)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        func_tb = module.get_funcion_table()
+        func_tb = module.get_function_table()
         m = compile(func_tb, out_dir)
         metadata.extend(m)
 

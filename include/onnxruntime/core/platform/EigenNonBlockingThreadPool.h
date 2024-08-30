@@ -27,6 +27,13 @@
 #ifdef HAS_CLASS_MEMACCESS
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
+// eigen-src/unsupported/Eigen/CXX11/src/ThreadPool/EventCount.h:231:56: error: implicit conversion loses integer
+//   precision: 'uint64_t' (aka 'unsigned long long') to 'size_t' (aka 'unsigned long') [-Werror,-Wshorten-64-to-32]
+// next = wnext == kStackMask ? nullptr : &waiters_[wnext];
+//                                         ~~~~~~~~ ^~~~~
+#ifdef HAS_SHORTEN_64_TO_32
+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
+#endif
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
@@ -212,18 +219,18 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler(int, const CHAR_TYPE*){};
+  ThreadPoolProfiler(int, const CHAR_TYPE*) {};
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
-  void Start(){};
+  void Start() {};
   std::string Stop() { return "not available for minimal build"; }
-  void LogStart(){};
+  void LogStart() {};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
   void LogStartAndCoreAndBlock(std::ptrdiff_t){};
   void LogCoreAndBlock(std::ptrdiff_t){};
-  void LogThreadId(int){};
-  void LogRun(int){};
+  void LogThreadId(int) {};
+  void LogRun(int) {};
   std::string DumpChildThreadStat() { return {}; }
 };
 #else
@@ -271,7 +278,7 @@ class ThreadPoolProfiler {
   int num_threads_;
 #ifdef _MSC_VER
 #pragma warning(push)
-// C4324: structure was padded due to alignment specifier
+  // C4324: structure was padded due to alignment specifier
 #pragma warning(disable : 4324)
 #endif  // _MSC_VER
   struct ORT_ALIGN_TO_AVOID_FALSE_SHARING ChildThreadStat {
@@ -750,7 +757,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       return v_;
     }
 
-    bool operator==(Tag& other) const {
+    bool operator==(const Tag& other) const {
       return v_ == other.v_;
     }
 
@@ -1122,7 +1129,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //
   // Ensure that the ThreadPoolParallelSection has sufficient workers to
   // execute a loop with degree of parallelism n.  We track the number
-  // of workers already avaiable to the parallel section, prior to
+  // of workers already available to the parallel section, prior to
   // submitting tasks to the work queues to make up the total.
   //
   // Each worker will call in to worker_fn(idx) with a per-worker thread

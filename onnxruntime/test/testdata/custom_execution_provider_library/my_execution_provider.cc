@@ -20,7 +20,6 @@ MyExecutionProvider::MyExecutionProvider(const MyProviderInfo& info)
       device_id_,
       true,
       {0, 1, -1, -1, -1, -1L}};
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 }  // namespace onnxruntime

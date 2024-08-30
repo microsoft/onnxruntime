@@ -32,8 +32,8 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
       probb_(info.GetAttrsOrDefault<float>("prob_b")),
       support_vectors_(info.GetAttrsOrDefault<float>("support_vectors")),
       post_transform_(MakeTransform(info.GetAttrOrDefault<std::string>("post_transform", "NONE"))) {
-  ORT_ENFORCE(info.GetAttrs<float>("rho", rho_).IsOK());
-  ORT_ENFORCE(info.GetAttrs<float>("coefficients", coefficients_).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("rho", rho_));
+  ORT_THROW_IF_ERROR(info.GetAttrs<float>("coefficients", coefficients_));
 
   // prob_a and prob_b are optional for Z output
   ORT_ENFORCE(proba_.size() == probb_.size());
@@ -47,7 +47,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   class_count_ = 0;
   for (size_t i = 0; i < vectors_per_class_.size(); i++) {
     starting_vector_.push_back(vector_count_);
-    vector_count_ += vectors_per_class_[i];
+    vector_count_ += narrow<ptrdiff_t>(vectors_per_class_[i]);
   }
 
   using_strings_ = false;

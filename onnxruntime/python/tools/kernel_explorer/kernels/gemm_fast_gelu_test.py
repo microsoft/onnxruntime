@@ -3,20 +3,21 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
 from dataclasses import dataclass
 from itertools import product
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
-
-
-def fast_gelu(x, bias):
-    x = x + bias
-    y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
-    return y
+from utils import (
+    dtype_to_suffix,
+    fast_gelu,
+    get_gemm_basic_sizes,
+    get_gemm_bert_sizes,
+    get_gemm_bound,
+    matmul,
+    transab_to_suffix,
+)
 
 
 # TODO The test method needs update.
@@ -30,7 +31,7 @@ def _test_gemmfastgelu(my_func, dtype: str, m: int, n: int, k: int, transa=False
     a = (np.random.rand(*a_shape)).astype(dtype).astype("float64")
     b = (np.random.rand(*b_shape)).astype(dtype).astype("float64")
     bias = (np.random.rand(n)).astype(dtype)
-    temp_c = (a.T if transa else a) @ (b.T if transb else b)
+    temp_c = matmul(a, b, transa, transb)
 
     bound = get_gemm_bound(dtype, a, b, temp_c, transa, transb, a_b_positive=True)
 
@@ -111,15 +112,14 @@ class GemmFastGeluMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-        if self.duration > 0:
-            return (
-                prefix
-                + f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
-            )
-        return prefix + "not supported"
+        transab = transab_to_suffix((self.transa, self.transb))
+        common = f"{self.dtype} m={self.m:<4} n={self.n:<4} k={self.k:<4} {transab}, {self.name}"
+        if self.duration <= 0:
+            return "not supported          " + common
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -153,10 +153,11 @@ def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, trans
         ke.report(GemmFastGeluMetric(impl, dtype, duration_ms, floating_point_operations, transa, transb, m, n, k))
 
 
-def profile_with_args(transa, transb, dtype, m, n, k, sort):
+@ke.dispatchable
+def profile_with_args(transa, transb, dtype, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluUnfused" + dtype_suffix), dtype, m, n, k, transa, transb)
         profile_gemmfastgelu_func(
             getattr(ke, "CKGemmFastGelu" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
@@ -164,30 +165,31 @@ def profile_with_args(transa, transb, dtype, m, n, k, sort):
         profile_gemmfastgelu_func(
             getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
         )
-        profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix), dtype, m, n, k, transa, transb)
+        if ke.is_hipblaslt_available():
+            profile_gemmfastgelu_func(
+                getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
+            )
 
 
 def profile():
     for dtype in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(False, False, dtype, m, n, k, True)
+            profile_with_args(False, False, dtype, m, n, k)
             print()
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("transa", choices="NT")
     group.add_argument("transb", choices="NT")
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
-    group.add_argument("--sort", action="store_true")
-    if len(sys.argv) == 1:
+
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k, args.sort)
+        args.dispatch(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)

@@ -11,8 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
 __global__ void
 BuildTableForSoftmaxPowerOfKernel(const double base, float* table) {
   int g = threadIdx.x - 255;
@@ -153,7 +151,7 @@ QOrderBatchInt8MatrixTransposeKernel(const int8_t* src, const int8_t* dst, const
   }
 }
 
-Status QOrderBatchTransposeInt8Matrix(cudaStream_t stream, const cudaDeviceProp& device_prop,
+Status QOrderBatchTransposeInt8Matrix(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/,
                                       const int batch_size, const int rows, const int cols,
                                       const int8_t* input, int8_t* output) {
   ORT_ENFORCE(rows % 4 == 0 && cols % 4 == 0, "Matrix rows and cols must be divisible by 4!");
@@ -163,8 +161,6 @@ Status QOrderBatchTransposeInt8Matrix(cudaStream_t stream, const cudaDeviceProp&
   QOrderBatchInt8MatrixTransposeKernel<<<grid, block, 0, stream>>>(input, output, rows, cols);
   return CUDA_CALL(cudaGetLastError());
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib

@@ -4,16 +4,16 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_pch.h"
-
 namespace onnxruntime {
 
 // -----------------------------------------------------------------------
 // Error handling
 // -----------------------------------------------------------------------
 
-template <typename ERRTYPE, bool THRW>
+template <typename ERRTYPE, bool THRW, typename SUCCTYPE = ERRTYPE>
 std::conditional_t<THRW, void, Status> CudaCall(
-    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg, const char* file, const int line);
+    ERRTYPE retCode, const char* exprString, const char* libName, SUCCTYPE successCode, const char* msg,
+    const char* file, const int line);
 
 #define CUDA_CALL(expr) (CudaCall<cudaError, false>((expr), #expr, "CUDA", cudaSuccess, "", __FILE__, __LINE__))
 #define CUBLAS_CALL(expr) (CudaCall<cublasStatus_t, false>((expr), #expr, "CUBLAS", CUBLAS_STATUS_SUCCESS, "", __FILE__, __LINE__))

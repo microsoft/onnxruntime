@@ -23,7 +23,7 @@ def get_section_sizes(binary_path, readelf_path, dump_to_file=None):
     """
 
     cmd = [readelf_path, "--sections", "--wide", binary_path]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)  # noqa: PLW1510
     result.check_returncode()
     output = result.stdout.decode("utf-8")
 
@@ -66,8 +66,8 @@ def diff_sections_total_size(base_binary_path, binary_path, readelf_path="readel
     results = collections.OrderedDict()
 
     for section in sorted(merged_keys):
-        base_size = base_section_sizes[section] if section in base_section_sizes else 0
-        size = section_sizes[section] if section in section_sizes else 0
+        base_size = base_section_sizes.get(section, 0)
+        size = section_sizes.get(section, 0)
 
         base_total += base_size
         total += size

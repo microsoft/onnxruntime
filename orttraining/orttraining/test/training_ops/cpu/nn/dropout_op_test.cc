@@ -54,7 +54,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     ratio = 0.5f;
   } else {
     if (use_float16_ratio) {
-      t.AddInput("ratio", {}, {MLFloat16(math::floatToHalf(ratio))});
+      t.AddInput("ratio", {}, {MLFloat16(ratio)});
     } else {
       t.AddInput("ratio", {}, {ratio});
     }
@@ -78,8 +78,8 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-    ASSERT_GE(fetches.size(), 1);
-    const auto& output_tensor = FetchTensor(fetches[0]);
+    ASSERT_GE(fetches.size(), size_t{1});
+    const auto& output_tensor = fetches[0].Get<Tensor>();
     auto output_span = output_tensor.DataAsSpan<float>();
 
     const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), 0.0f);
@@ -99,8 +99,8 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     }
 
     if (use_mask) {
-      ASSERT_GE(fetches.size(), 2);
-      const auto& mask_tensor = FetchTensor(fetches[1]);
+      ASSERT_GE(fetches.size(), size_t{2});
+      const auto& mask_tensor = fetches[1].Get<Tensor>();
       auto mask_span = mask_tensor.DataAsSpan<bool>();
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
 
