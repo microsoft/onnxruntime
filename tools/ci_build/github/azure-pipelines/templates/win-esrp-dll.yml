@@ -65,27 +65,33 @@ steps:
     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
     MaxConcurrency: 25
 - task: PowerShell@2
-  displayName: 'Signature validation for dll file(s)'
+  displayName: 'Signature validation for signed file(s)'
   inputs:
     targetType: 'inline'
     script: |
-      Write-Host "FolderPath: ${{ parameters.FolderPath }}"
-      Write-Host "Pattern(s): ${{ parameters.Pattern }}"
+      Write-Host "FolderPath: $FolderPath"
+      Write-Host "Pattern(s): $Pattern"
+
+      if ($null -eq $Pattern -Or $Pattern -eq "")
+      {
+          Write-Host "Pattern is empty."
+          exit 0
+      }
 
       $valid_flag=$true
       $normal_sign_status="Valid"
 
-      $patterns=${{ parameters.Pattern }} -split ','
+      $patterns=$Pattern -split ','
 
       foreach($pattern in $patterns)
       {
-          Write-Host "Pattern:" $pattern
+          Write-Host "Validating pattern:" $pattern
 
-          $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name
+          $file_names=Get-ChildItem -Path $FolderPath .\$pattern -Name
 
           foreach($file in $file_names)
           {
-              $file_path=Join-Path ${{ parameters.FolderPath }} -ChildPath $file
+              $file_path=Join-Path $FolderPath -ChildPath $file
               $sign=Get-AuthenticodeSignature -FilePath $file_path
               $sign_status=$sign.Status.ToString()
               Write-Host "File:" $file
