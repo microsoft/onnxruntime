@@ -137,7 +137,7 @@ std::string ShaderHelper::GetFinalSourceCode() {
                   program_.UniformVariables().cend(),
                   [](const ProgramUniformVariableValue& x) { return x.length > 0; })) {
     bool first = true;
-    ss << "struct Uniforms {\n";
+    ss << "struct Uniforms {";
 
     size_t uniform_count = program_.UniformVariables().size();
     for (size_t i = 0; i < uniform_count; i++) {
@@ -151,11 +151,11 @@ std::string ShaderHelper::GetFinalSourceCode() {
       if (first) {
         first = false;
       } else {
-        ss << ",\n";
+        ss << ",";
       }
 
       auto alignment = (data_type == ProgramUniformVariableDataType::Float16 && length > 4) ? "@align(16) " : "";
-      ss << "  " << alignment << name << ": ";
+      ss << "\n  " << alignment << name << ": ";
       if (length > 4) {
         if (data_type == ProgramUniformVariableDataType::Float16) {
           size_t array_size = (length + 7) / 8;
@@ -171,7 +171,7 @@ std::string ShaderHelper::GetFinalSourceCode() {
       }
     }
 
-    ss << "};\n"
+    ss << "\n};\n"
           "@group(0) @binding("
        << variable_count << ") var<uniform> uniforms: Uniforms;\n";
   }
