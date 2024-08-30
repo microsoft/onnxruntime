@@ -81,7 +81,7 @@ steps:
       $valid_flag=$true
       $normal_sign_status="Valid"
 
-      $patterns=${{ parameters.Pattern }} -split ','
+      $patterns="${{ parameters.Pattern }}" -split ','
 
       foreach($pattern in $patterns)
       {
@@ -102,7 +102,7 @@ steps:
                   Write-Host "Signature status:" $sign.status
                   Write-Host "Signature message:" $sign.StatusMessage
                   $valid_flag=$false
-                  # break
+                  break
               }
           }
       }
