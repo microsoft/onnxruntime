@@ -2732,6 +2732,11 @@ static constexpr OrtApi ort_api_1_to_20 = {
     // End of Version 18 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
+    &OrtApis::CreateWGPUProviderOptions,
+    &OrtApis::SetWGPUCustomDevice,
+    &OrtApis::SetWGPUDawnProcTable,
+    &OrtApis::SetWGPUProviderOptions,
+    &OrtApis::ReleaseWGPUProviderOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

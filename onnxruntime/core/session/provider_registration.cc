@@ -158,17 +158,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_WGPU,
-                    [[maybe_unused]] _In_ OrtSessionOptions* options,
-                    [[maybe_unused]] _In_ const OrtWGPUProviderOptions* wgpu_options,
-                    [[maybe_unused]] _In_reads_(num_keys) const char* const* string_options_keys,
-                    [[maybe_unused]] _In_reads_(num_keys) const char* const* string_options_values,
-                    [[maybe_unused]] _In_ size_t num_keys) {
-  API_IMPL_BEGIN
-  ORT_NOT_IMPLEMENTED("SessionOptionsAppendExecutionProvider_WGPU is not implemented yet.");
-  API_IMPL_END
-}
-
 #if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
@@ -214,6 +203,56 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(settings);
   return CreateNotEnabledStatus("Tvm");
+}
+#endif
+
+#ifndef USE_WEBGPU
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_WGPU,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const OrtWGPUProviderOptions* wgpu_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(wgpu_options);
+  return CreateNotEnabledStatus("WebGPU");
+}
+ORT_API_STATUS_IMPL(CreateWGPUProviderOptions, _Outptr_ OrtWGPUProviderOptions** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("WebGPU");
+}
+ORT_API_STATUS_IMPL(SetWGPUCustomDevice,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_ int device_id,
+                    _In_ const void* const instance_handle,
+                    _In_ const void* const adapter_handle,
+                    _In_ const void* const device_handle) {
+  ORT_UNUSED_PARAMETER(wgpu_options);
+  ORT_UNUSED_PARAMETER(device_id);
+  ORT_UNUSED_PARAMETER(instance_handle);
+  ORT_UNUSED_PARAMETER(adapter_handle);
+  ORT_UNUSED_PARAMETER(device_handle);
+  return CreateNotEnabledStatus("WebGPU");
+}
+ORT_API_STATUS_IMPL(SetWGPUDawnProcTable,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_ const void* const dawn_proc_table) {
+  ORT_UNUSED_PARAMETER(wgpu_options);
+  ORT_UNUSED_PARAMETER(dawn_proc_table);
+  return CreateNotEnabledStatus("WebGPU");
+}
+
+ORT_API_STATUS_IMPL(SetWGPUProviderOptions,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  ORT_UNUSED_PARAMETER(wgpu_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("WebGPU");
+}
+
+ORT_API(void, ReleaseWGPUProviderOptions, _Frees_ptr_opt_ OrtWGPUProviderOptions* options) {
+  ORT_UNUSED_PARAMETER(options);
 }
 #endif
 

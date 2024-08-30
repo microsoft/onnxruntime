@@ -304,6 +304,7 @@ ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
 ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(WGPUProviderOptions);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -623,38 +624,6 @@ typedef struct OrtMIGraphXProviderOptions {
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
-
-/** \brief WebGPU Execution Provider Options
- *
- * When a user wants to use WebGPU as the execution provider, there are 2 ways to specify the WebGPU device:
- *
- * 1. Use the default WebGPU device. The default WebGPU device is managed by WebGPU EP internally. The user doesn't
- *    need to provide any device information in this case. All the fields should be set to nullptr or 0.
- *
- * 2. Use a custom WebGPU device. The user should create their own handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` and use arbitrary number in [1..65536) as the device id. The user should provide the handles
- *    and the device id in the options.
- *
- *    When specifying an existing Device ID, the user should provide the handles of `WGPUInstance`, `WGPUAdapter`, and
- *    `WGPUDevice` in the options. The device id should be the same as the one used previously.
- *
- *    It's user's responsibility to manage the lifecycle of the handles and ensure the handles are valid during the
- *    lifetime of the inference session.
- *
- * About DawnProcTable:
- *
- * When using an ONNX Runtime build that is not directly linked dawn during the build, a pointer to the runtime memory
- * address of the DawnProcTable should be provided. Otherwise, keep it as nullptr.
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_WGPU
- */
-typedef struct OrtWGPUProviderOptions {
-  int device_id;          // WebGPU device id.
-  void* instance_handle;  // WebGPU instance handle.
-  void* adapter_handle;   // WebGPU adapter handle.
-  void* device_handle;    // WebGPU device handle.
-  void* dawn_proc_table;  // DawnProcTable pointer.
-} OrtWGPUProviderOptions;
 
 /** \brief OpenVINO Provider Options
  *
@@ -4705,9 +4674,85 @@ struct OrtApi {
    * If WebGPU is not available, this function will return failure.
    *
    * \param[in] options
-   * \param[in] wgpu_options - specify the WebGPU provider options.
-   * \param[in] string_options_keys - keys to configure the string options
-   * \param[in] string_options_values - values to configure the string options
+   * \param[in] wgpu_options specify the WebGPU provider options.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_WGPU,
+                  _In_ OrtSessionOptions* options,
+                  _In_ const OrtWGPUProviderOptions* wgpu_options);
+
+  /** \brief Create an instance of WebGPU provider options
+   *
+   * The newly created instance is empty. The user can use the following APIs to set:
+   * - SetWGPUCustomDevice: set to use a custom WebGPU device
+   * - SetWGPUDawnProcTable: set the proc table for the Dawn functions
+   * - SetWGPUProviderOptions: set the string provider options
+   *
+   * \param[out] out Newly created ::OrtWGPUProviderOptions. Must be released with OrtApi::ReleaseWGPUProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(CreateWGPUProviderOptions, _Outptr_ OrtWGPUProviderOptions** out);
+
+  /** \brief Set custom device in the WebGPU provider options
+   *
+   * When a user wants to use WebGPU as the execution provider, there are 2 ways to specify the WebGPU device:
+   *
+   * 1. Use the default WebGPU device. The default WebGPU device is managed by WebGPU EP internally. In this case, the
+   *    user does not need to call this API.
+   *
+   * 2. Use a custom WebGPU device. The user should create their own handles of `WGPUInstance`, `WGPUAdapter`, and
+   *    `WGPUDevice` and use arbitrary number in [1..65536) as the device id. In this case, the user should provide the
+   *    handles and the device id in the options.
+   *
+   *    When specifying an existing Device ID, the user should provide the handles of `WGPUInstance`, `WGPUAdapter`, and
+   *    `WGPUDevice` in the options. The device id should be the same as the one used previously.
+   *
+   *    It's user's responsibility to manage the lifecycle of the handles and ensure the handles are valid during the
+   *    lifetime of the inference session.
+   *
+   * \param[in] wgpu_options specify the WebGPU provider options.
+   * \param[in] device_id specify the WebGPU device ID.
+   * \param[in] instance_handle specify the WebGPU instance handle (WGPUInstance).
+   * \param[in] adapter_handle specify the WebGPU adapter handle (WGPUAdapter).
+   * \param[in] device_handle specify the WebGPU device handle (WGPUDevice).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(SetWGPUCustomDevice,
+                  _In_ OrtWGPUProviderOptions* wgpu_options,
+                  _In_ int device_id,
+                  _In_ const void* const instance_handle,
+                  _In_ const void* const adapter_handle,
+                  _In_ const void* const device_handle);
+
+  /** \brief Set the DawnProcTable in the WebGPU provider options
+   *
+   * The DawnProcTable is a structure that contains pointers to the Dawn functions. When using an ONNX Runtime build
+   * that is not directly linked dawn during the build, a pointer to the runtime memory address of the DawnProcTable
+   * should be provided. Otherwise, do not call this API.
+   *
+   * \param[in] wgpu_options specify the WebGPU provider options.
+   * \param[in] dawn_proc_table specify the DawnProcTable pointer.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SetWGPUDawnProcTable,
+                  _In_ OrtWGPUProviderOptions* wgpu_options,
+                  _In_ const void* const dawn_proc_table);
+
+  /** \brief Set the WebGPU provider options
+   *
+   * \param[in] wgpu_options specify the WebGPU provider options.
+   * \param[in] provider_options_keys - keys to configure the string options
+   * \param[in] provider_options_values - values to configure the string options
    * \param[in] num_keys - number of keys passed in
    *
    * Supported keys are listed as below. All entries are optional.
@@ -4725,11 +4770,17 @@ struct OrtApi {
    *
    * \since Version 1.20.
    */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_WGPU,
-                  _In_ OrtSessionOptions* options, _In_ const OrtWGPUProviderOptions* wgpu_options,
-                  _In_reads_(num_keys) const char* const* string_options_keys,
-                  _In_reads_(num_keys) const char* const* string_options_values,
+  ORT_API2_STATUS(SetWGPUProviderOptions,
+                  _In_ OrtWGPUProviderOptions* wgpu_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
+
+  /** \brief Release an ::OrtWGPUProviderOptions
+   *
+   * \since Version 1.20.
+   */
+  void(ORT_API_CALL* ReleaseWGPUProviderOptions)(_Frees_ptr_opt_ OrtWGPUProviderOptions* options);
 };
 
 /*

@@ -386,10 +386,28 @@ ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_WGPU,
                     _In_ OrtSessionOptions* options,
-                    _In_ const OrtWGPUProviderOptions* wgpu_options,
-                    _In_reads_(num_keys) const char* const* string_options_keys,
-                    _In_reads_(num_keys) const char* const* string_options_values,
+                    _In_ const OrtWGPUProviderOptions* wgpu_options);
+
+ORT_API_STATUS_IMPL(CreateWGPUProviderOptions, _Outptr_ OrtWGPUProviderOptions** out);
+
+ORT_API_STATUS_IMPL(SetWGPUCustomDevice,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_ int device_id,
+                    _In_ const void* const instance_handle,
+                    _In_ const void* const adapter_handle,
+                    _In_ const void* const device_handle);
+
+ORT_API_STATUS_IMPL(SetWGPUDawnProcTable,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_ const void* const dawn_proc_table);
+
+ORT_API_STATUS_IMPL(SetWGPUProviderOptions,
+                    _In_ OrtWGPUProviderOptions* wgpu_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys);
+
+ORT_API(void, ReleaseWGPUProviderOptions, _Frees_ptr_opt_ OrtWGPUProviderOptions* options);
 
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
                     _In_ OrtSessionOptions* options,
