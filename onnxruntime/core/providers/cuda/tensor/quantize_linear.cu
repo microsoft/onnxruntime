@@ -231,7 +231,7 @@ template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typen
 __global__ void QuantizeLinearKernelStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
                                             const OutT* zero_point_ptr, CUDA_LONG N,
                                             RoundStdInt4<InT, OutT> round) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   InT scale = *scale_ptr;
   int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
   int i = 0;
@@ -272,7 +272,7 @@ __global__ void QuantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, 
                                                 const OutT* zero_point_ptr, CUDA_LONG num_element,
                                                 size_t batch_size, size_t n_scales,
                                                 RoundStdInt4<InT, OutT> round) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   // Process continuous NumElementsPerThread int4 per thread.
   int i = 0;
   // The scale needs to change every n_same_scale.
@@ -314,7 +314,7 @@ __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output,
                                                  size_t N, size_t scale_KN, size_t block_size,
                                                  RoundStdInt4<InT, OutT> round) {
   // Process continuous NumElementsPerThread int4 per thread.
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   int i = 0;
   constexpr int step = NumThreadsPerBlock << 1;
 
@@ -560,7 +560,7 @@ __global__ void DequantizeLinearKernelStd(const InT* input, OutT* output, const 
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                               const InT* zero_point_ptr, CUDA_LONG num_element) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
 
   OutT scale = *scale_ptr;
   int zero_point = zero_point_ptr ? ExtractInt4FromByte(*zero_point_ptr, 0) : 0;
@@ -602,7 +602,7 @@ template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThrea
 __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                                   const InT* zero_point_ptr, CUDA_LONG num_element,
                                                   size_t batch_size, size_t n_scales) {
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   // The scale needs to change every n_same_scale.
   CUDA_LONG n_same_scale = num_element / (batch_size * n_scales);
   int i = 0;
@@ -638,7 +638,7 @@ __global__ void DequantizeLinearKernelBlockStdInt4(const InT* input, OutT* outpu
                                                    const InT* zero_point_ptr, CUDA_LONG num_element,
                                                    size_t KN, size_t N, size_t scale_KN, size_t block_size) {
   // Process continuous NumElementsPerThread int4 per thread.
-  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   int i = 0;
   constexpr int step = NumThreadsPerBlock << 1;
 
