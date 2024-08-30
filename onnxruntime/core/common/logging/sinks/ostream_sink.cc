@@ -48,7 +48,7 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
 #endif
 
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id.c_str() << ", "
-      << message.Location().ToString().c_str() << "] " << message.Message();
+      << message.Location().ToString().c_str() << "] " << message.Message().c_str();
 
 #ifndef ORT_MINIMAL_BUILD
   if (message.Severity() == Severity::kWARNING ||
