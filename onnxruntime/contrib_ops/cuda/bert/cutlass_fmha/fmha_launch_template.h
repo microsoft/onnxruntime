@@ -214,6 +214,8 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.v_strideB = params.num_heads * params.v_head_size * params.max_sequence_length;
       p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
     }
+
+    p.use_smooth_softmax = params.use_smooth_softmax;
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;

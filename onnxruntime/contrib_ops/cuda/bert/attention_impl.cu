@@ -297,7 +297,7 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, data.q, data.k, data.v, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16,
+      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional, is_bf16, false,
       parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
       data.qkv_format == AttentionQkvFormat::Q_K_V_BSNH));
 
@@ -345,17 +345,18 @@ Status EfficientAttention(
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
-  p.seqlen_k_ptr = nullptr == data.mask_index
-                       ? nullptr
-                       : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
-  p.seqstart_q_ptr = nullptr == data.mask_index
-                         ? nullptr
-                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(
-                               data.mask_index + parameters.batch_size));
-  p.seqstart_k_ptr = nullptr == data.mask_index
-                         ? nullptr
-                         : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(
-                               data.mask_index + 2 * parameters.batch_size + 1));
+  p.use_smooth_softmax = false;
+
+  if (nullptr == data.mask_index) {
+    p.seqlen_k_ptr = nullptr;
+    p.seqstart_q_ptr = nullptr;
+    p.seqstart_k_ptr = nullptr;
+  } else {
+    p.seqlen_k_ptr = const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqstart_q_ptr = p.seqlen_k_ptr + parameters.batch_size;
+    p.seqstart_k_ptr = p.seqlen_k_ptr + 2 * parameters.batch_size + 1;
+  }
+
   p.query = data.q;
   p.key = data.k;
   p.value = data.v;

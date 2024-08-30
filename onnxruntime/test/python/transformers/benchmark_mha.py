@@ -535,8 +535,8 @@ class OrtMultiHeadAttention:
         self.ort_session = create_session(config, session_options, use_tf32=use_tf32)
         self.feed_dict = config.random_inputs()
 
-    def infer(self):
-        return self.ort_session.infer(self.feed_dict)
+    def infer(self, run_options=None, synchronize=True):
+        return self.ort_session.infer(self.feed_dict, run_options=run_options, synchronize=synchronize)
 
 
 def measure_latency(cuda_session: CudaSession, input_dict):
@@ -1119,7 +1119,6 @@ if __name__ == "__main__":
         assert args.causal, "--has_past need --causal specified"
 
     if args.use_gpu:
-        assert args.torch or not args.causal, "no causal cuda kernel in MHA op"
         assert torch.cuda.is_available()
         if not args.torch:
             assert "CUDAExecutionProvider" in get_available_providers()
