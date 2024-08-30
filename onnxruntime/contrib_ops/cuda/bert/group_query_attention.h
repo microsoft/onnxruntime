@@ -28,6 +28,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool is_past_bsnh_;
   bool do_rotary_;
   bool rotary_interleaved_;
+  bool use_smooth_softmax_;
   float scale_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;

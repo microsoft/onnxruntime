@@ -61,6 +61,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_cpu_execution_provider)));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -69,7 +70,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm,
+  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
                  DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -159,6 +160,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   ASSERT_TRUE(status.IsOK()) << status;
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -167,7 +169,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm,
+  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
                              DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   GraphPartitioner partitioner(krm, execution_providers);
@@ -239,6 +241,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     ASSERT_TRUE(status.IsOK()) << status;
 
     DataTransferManager dtm;
+    ExternalDataLoaderManager edlm;
     profiling::Profiler profiler;
 
     SessionOptions sess_options;
@@ -250,7 +253,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers,
                                                                 "1"));
 
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
+    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
     // Partition the graph
@@ -300,6 +303,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     ASSERT_TRUE(status.IsOK()) << status;
 
     DataTransferManager dtm;
+    ExternalDataLoaderManager edlm;
     profiling::Profiler profiler;
 
     SessionOptions sess_options;
@@ -308,7 +312,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     sess_options.use_deterministic_compute = false;
     sess_options.enable_mem_reuse = true;
 
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
+    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
     // Partition the graph
@@ -545,6 +549,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   std::unordered_map<std::string, int> domain_to_version;
@@ -573,6 +578,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
                              tp.get(),
                              nullptr, /*inter_op_thread_pool*/
                              dtm,
+                             edlm,
                              DefaultLoggingManager().DefaultLogger(),
                              profiler,
                              sess_options);
@@ -604,6 +610,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   ExecutionProviders execution_providers;
   std::unordered_map<std::string, int> domain_to_version;
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
@@ -661,6 +668,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options);
@@ -687,6 +695,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options);
@@ -734,6 +743,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options);
@@ -760,6 +770,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options);
@@ -809,6 +820,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options,
@@ -840,6 +852,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options,
@@ -895,6 +908,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options,
@@ -945,6 +959,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
+                               edlm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
                                sess_options,

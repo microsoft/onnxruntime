@@ -66,6 +66,7 @@ SessionState::SessionState(Graph& graph,
                            concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
+                           const ExternalDataLoaderManager& external_data_loader_mgr,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
@@ -78,6 +79,7 @@ SessionState::SessionState(Graph& graph,
       thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
+      external_data_loader_mgr_(external_data_loader_mgr),
       sess_options_(sess_options),
       prepacked_weights_container_(prepacked_weights_container)
 #ifdef ORT_ENABLE_STREAM
@@ -1046,7 +1048,7 @@ Status SessionState::CreateSubgraphSessionState() {
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_,
+                                         external_data_loader_mgr_, logger_, profiler_, sess_options_,
                                          prepacked_weights_container_, allocators_);
 
       // Pass fused function manager to subgraph
@@ -1486,8 +1488,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             }
             return Status::OK();
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func,
-          name_to_buffered_tensor_));
+          logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
+          memory_profile_func, name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device

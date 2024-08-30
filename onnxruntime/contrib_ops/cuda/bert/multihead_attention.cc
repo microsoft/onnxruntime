@@ -46,8 +46,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-  ORT_ENFORCE(!is_unidirectional_,
-              "MHA support CUDA kernel does not Unidirectional. Consider using Attention or GQA instead.");
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -173,7 +171,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention) {
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
     parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
@@ -208,13 +206,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_cross_attention =
       kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_cross_attention_ &&
+      !is_unidirectional_ &&
       nullptr == key_padding_mask &&
       nullptr == attention_bias &&
       nullptr == past_key && nullptr == present_key &&
       (parameters.qkv_format == Q_K_V_BSNH || (parameters.qkv_format == Q_KV_BSNH_BSN2H && bias == nullptr)) &&
       parameters.hidden_size == parameters.v_hidden_size &&
-      has_fused_cross_attention_kernel(sm, parameters.head_size,
-                                       parameters.kv_sequence_length);
+      has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
   if (use_fused_cross_attention) {
     if (fused_fp16_cross_attention_kernel_ == nullptr) {
       std::call_once(fused_cross_init_once_flag_, [&]() {
@@ -233,6 +231,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_runner =
       kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_fused_self_attention_ &&
+      !is_unidirectional_ &&
       nullptr == attention_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
       nullptr == past_key && nullptr == present_key &&
@@ -240,13 +239,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                        enable_trt_flash_attention_, false);
+                                        enable_trt_flash_attention_, is_unidirectional_);
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
-      constexpr bool is_unidirectional = false;
       std::call_once(fused_fp16_runner_created_, [&]() {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional,
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
                                                           enable_trt_flash_attention_, parameters.scale);
       });
     }

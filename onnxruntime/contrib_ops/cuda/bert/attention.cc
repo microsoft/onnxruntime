@@ -123,7 +123,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (use_flash_attention) {
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
     parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;

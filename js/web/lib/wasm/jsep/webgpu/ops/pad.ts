@@ -165,8 +165,10 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
     { type: DataType.uint32, data: outputSize },
     { type: DataType.int32, data: attributes.pads },
   ];
+
+  const isValueFromInput = inputs.length >= 3 && inputs[2].data;
   if (attributes.mode === 0) {
-    programUniforms.push({ type: inputs[0].dataType, data: attributes.value });
+    programUniforms.push({ type: isValueFromInput ? inputs[2].dataType : DataType.float, data: attributes.value });
   }
 
   programUniforms.push(...createTensorShapeVariables(inputs[0].dims, outputShape));
@@ -182,7 +184,7 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
       { name: 'pads', type: 'i32', length: attributes.pads.length },
     ];
     if (attributes.mode === 0) {
-      uniforms.push({ name: 'constant_value', type: dataType as UniformDataElementType });
+      uniforms.push({ name: 'constant_value', type: (isValueFromInput ? dataType : 'f32') as UniformDataElementType });
     }
 
     return `
@@ -200,7 +202,7 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
 
   return {
     name: 'Pad',
-    shaderCache: { hint: `${attributes.mode}`, inputDependencies },
+    shaderCache: { hint: `${attributes.mode}${isValueFromInput}`, inputDependencies },
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
       dispatchGroup: { x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */) },
@@ -213,7 +215,12 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
 const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes: PadAttributes): PadAttributes => {
   if (inputs.length > 1) {
     const bigInt64Pads = inputs[1].getBigInt64Array();
-    const value = inputs.length >= 3 && inputs[2].data ? inputs[2].getFloat32Array()[0] : 0.0;
+    const value =
+      inputs.length >= 3 && inputs[2].data
+        ? inputs[2].dataType === DataType.float16
+          ? inputs[2].getUint16Array()[0]
+          : inputs[2].getFloat32Array()[0]
+        : 0.0;
 
     const inputRank = inputs[0].dims.length;
     const updatePads = new Int32Array(2 * inputRank).fill(0);

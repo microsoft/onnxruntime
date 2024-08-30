@@ -22,6 +22,7 @@ enum class MoEParallelType {
 enum class MoEQuantType {
   None = 0,
   UINT4 = 1,
+  UINT8 = 2,
 };
 
 struct MoEParameters {
@@ -225,9 +226,15 @@ class MoEBase {
     }
 
     normalize_routing_weights_ = op_kernel_info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0) == 1;
+
+    use_sparse_mixer_ = op_kernel_info.GetAttrOrDefault<int64_t>("use_sparse_mixer", 0) == 1;
+    if (use_sparse_mixer_) {
+      ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
+    }
   }
 
   bool normalize_routing_weights_;
+  bool use_sparse_mixer_;
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
 };
