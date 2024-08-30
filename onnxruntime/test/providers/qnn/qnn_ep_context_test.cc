@@ -932,7 +932,7 @@ static void GetModelInputNames(const std::string& model_path,
 }
 
 // 1. Create 2 QDQ models
-// 2. Initialise 2 Ort sessions which share the same QNN EP from these 2 QDQ models
+// 2. Initialize 2 Ort sessions which share the same QNN EP from these 2 QDQ models
 // with EpContextEnable = 1, to dump the context binary
 // so, the 2nd context binary contains the graph from the 1st model
 // 3. Change the 1st context model to point to the 2nd context binary file
@@ -1023,7 +1023,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
 }
 
 // 1. Create 2 QDQ models
-// 2. Initialise 2 Ort sessions which share the same QNN EP from these 2 QDQ models
+// 2. Initialize 2 Ort sessions which share the same QNN EP from these 2 QDQ models
 // with EpContextEnable = 1, to dump the context binary
 // so, the 2nd context binary contains the graph from the 1st model
 // 3. Change the 1st context model to point to a context binary file which is not exist

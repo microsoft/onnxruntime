@@ -397,7 +397,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     } else if ("0" == htp_weight_sharing_enabled_pos->second) {
       enable_htp_weight_sharing_ = false;
     } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing_ << " only 0 or 1 allowed. Set to 0.";
+      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing_
+                            << " only 0 or 1 allowed. Set to 0.";
     }
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
@@ -635,8 +636,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
 
   const auto& logger = *GetLogger();
-  bool has_main_context_node = false;
-  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer, has_main_context_node);
+  bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
@@ -646,7 +646,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // share ep contexts is enabled
   // check the ep_shared_contexts to see if it contains all the graphs in the context model
-  // directly use the resource from ep_shared_contexts if it has all the graphs needed by the currect session
+  // directly use the resource from ep_shared_contexts if it has all the graphs needed by the current session
   // no need to setup QNN backend
   if (is_qnn_ctx_model && share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
     if (EpSharedContextsHasAllGraphs(graph_viewer, logger)) {
@@ -866,8 +866,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
 
-  bool has_main_context_node = false;
-  bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, has_main_context_node);
+  bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
 
   onnxruntime::PathString context_cache_path;
   bool is_ctx_file_exist = false;
@@ -910,11 +909,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     qnn::QnnModelLookupTable qnn_models;
 
     std::vector<int> main_context_pos_list;
-    std::unordered_map<std::string, std::string> graph_name_to_externa_file_name;
-    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs,
-                                                main_context_pos_list,
-                                                share_ep_contexts_,
-                                                graph_name_to_externa_file_name));
+    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, main_context_pos_list));
 
     for (auto main_context_pos : main_context_pos_list) {
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
@@ -945,7 +940,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
     }
 
-    if (share_ep_contexts_ && qnn_models.size() > 0 && has_main_context_node) {
+    if (share_ep_contexts_ && qnn_models.size() > 0) {
       std::vector<std::shared_ptr<qnn::QnnModel>> shared_qnn_models;
       for (auto& [key, value] : qnn_models) {
         shared_qnn_models.push_back(std::move(qnn_models[key]));
