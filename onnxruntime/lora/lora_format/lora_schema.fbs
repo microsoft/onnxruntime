@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-namespace onnxruntime.lora_format;
+namespace onnxruntime.lora;
 
 // Tensor
 enum TensorDataType : int32 {

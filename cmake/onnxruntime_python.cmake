@@ -186,6 +186,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
+    onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
