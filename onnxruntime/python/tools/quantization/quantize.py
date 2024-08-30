@@ -699,9 +699,8 @@ def quantize(
     Args:
         model_input (str | Path | ModelProto): Path to the model or ModelProto to quantize.
         model_output (str | Path): Path to save the quantized model.
-        quant_config (QuantConfig): Quantization Configuration.
+        quant_config (QuantConfig | WeightOnlyQuantConfig): Quantization Configuration.
     """
-
     if isinstance(quant_config, StaticQuantConfig):
         quantize_static(
             model_input,
@@ -734,4 +733,16 @@ def quantize(
             extra_options=quant_config.extra_options,
         )
     else:
-        raise TypeError("Invalid quantization config type, it must be either StaticQuantConfig or DynamicQuantConfig.")
+        # training package doesn't has quantize_matmul_4bits, avoid global import
+        from .matmul_4bits_quantizer import MatMul4BitsQuantizer, WeightOnlyQuantConfig
+
+        if isinstance(quant_config, WeightOnlyQuantConfig):
+            model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load(model_input)
+            quant = MatMul4BitsQuantizer(model, algo_config=quant_config)
+            quant.process()
+            quant.model.save_model_to_file(model_output, True)
+        else:
+            raise TypeError(
+                "Invalid quantization config type, it must be either StaticQuantConfig, "
+                "DynamicQuantConfig, or WeightOnlyQuantConfig."
+            )

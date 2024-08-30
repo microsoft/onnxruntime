@@ -198,6 +198,7 @@ struct Module {
 
   bool accumulate_gradient_ = false;
   std::optional<std::string> eval_model_path_;
+  std::optional<gsl::span<const uint8_t>> eval_model_buffer_;
   size_t eval_user_input_count_{0U};
 };
 

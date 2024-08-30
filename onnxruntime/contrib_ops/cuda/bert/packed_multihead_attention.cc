@@ -10,6 +10,7 @@
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -54,7 +55,7 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
                                                 const Tensor* bias,
                                                 const TensorShape& token_offset_shape,
                                                 const TensorShape& cu_seq_len_shape,
-                                                const Tensor* relative_position_bias,
+                                                const Tensor* attention_bias,
                                                 PackedAttentionParameters& parameters) const {
   // Shapes of inputs and output:
   // When Q, K and V are not packed:
@@ -67,7 +68,7 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   //   Input 'value':                      None
   // Input 'token_offset':                 (batch_size, sequence_length)
   // Input 'cumulative_sequence_length':   (batch_size + 1)
-  // Input 'relative_position_bias':       (batch_size or 1, num_heads, sequence_length, sequence_length) or None
+  // Input 'attention_bias':               (batch_size or 1, num_heads or 1, sequence_length, sequence_length) or None
   // Output 'output':                      (token_count, v_hidden_size)
 
   const auto& query_dims = query_shape.GetDims();
@@ -147,45 +148,16 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
         "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
-  // TODO(tianleiwu): move relative position bias shape checker to a helper function. It is shared by multiple ops.
   const int num_heads = this->GetNumHeads();
-  bool broadcast_res_pos_bias = false;
-  if (relative_position_bias != nullptr) {
-    const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
-    if (relative_position_bias_dims.size() != 4) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
-                             relative_position_bias_dims.size());
-    }
-
-    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
-                             relative_position_bias_dims[0]);
-    }
-    if (relative_position_bias_dims[0] == 1 && 1 != batch_size) {
-      broadcast_res_pos_bias = true;
-    }
-
-    if (relative_position_bias_dims[1] != num_heads) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
-                             relative_position_bias_dims[1]);
-    }
-
-    if (relative_position_bias_dims[2] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
-                             relative_position_bias_dims[2]);
-    }
-
-    if (relative_position_bias_dims[3] != sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 3 should be same as sequence_length, got ",
-                             relative_position_bias_dims[3]);
-    }
+  gsl::span<const int64_t> attention_bias_dims;
+  if (attention_bias != nullptr) {
+    attention_bias_dims = attention_bias->Shape().GetDims();
+    ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
+        attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
   }
+  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
+  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
   parameters.batch_size = static_cast<int>(batch_size);
   parameters.sequence_length = static_cast<int>(sequence_length);
@@ -197,8 +169,6 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
   parameters.num_heads = num_heads;
   parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
-  parameters.has_relative_position_bias = (nullptr != relative_position_bias);
-  parameters.broadcast_res_pos_bias = broadcast_res_pos_bias;
 
   return Status::OK();
 }
@@ -211,7 +181,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* token_offset = context->Input<Tensor>(4);
   const Tensor* cumulative_sequence_length = context->Input<Tensor>(5);
-  const Tensor* relative_position_bias = context->Input<Tensor>(6);
+  const Tensor* attention_bias = context->Input<Tensor>(6);
 
   PackedAttentionParameters parameters;
   parameters.use_tf32 = this->UseTF32();
@@ -221,7 +191,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                   bias,
                                   token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
-                                  relative_position_bias,
+                                  attention_bias,
                                   parameters));
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
@@ -232,7 +202,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   bool use_flash_attention = false;
 #if USE_FLASH_ATTENTION
   if (!disable_flash_attention_) {
-    use_flash_attention = !parameters.has_relative_position_bias &&
+    use_flash_attention = nullptr == attention_bias &&
                           parameters.head_size == parameters.v_head_size &&
                           onnxruntime::flash::is_supported(device_prop,
                                                            parameters.head_size,
@@ -247,16 +217,17 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   }
 #endif
 
-  MHARunner* fused_runner = use_flash_attention ? nullptr : this->GetFusedRunner(device_prop, parameters);
+  MHARunner* fused_runner = use_flash_attention
+                                ? nullptr
+                                : this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
 
   bool use_memory_efficient_attention = false;
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (!use_flash_attention && nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
-    bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention =
-        is_good_for_rpb &&
+        (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
         has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
   }
@@ -304,9 +275,9 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.key = (key == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = (value == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.bias = (bias == nullptr) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.relative_position_bias = (nullptr == relative_position_bias)
-                                    ? nullptr
-                                    : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.attention_bias = (nullptr == attention_bias)
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.token_offset = token_offset->Data<int32_t>();
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();

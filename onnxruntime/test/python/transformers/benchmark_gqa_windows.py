@@ -19,6 +19,7 @@ def save_results(results, filename):
             "Max Sequence Length",
             "Sequence Length",
             "Past Sequence Length",
+            "Smooth Softmax",
             "Model Name",
         ],
     )
@@ -36,6 +37,7 @@ def benchmark(
     sequence_length: int = 1,
     past_sequence_length: int = 0,
     local_window_size: Optional[int] = None,
+    use_smooth_softmax: bool = False,
     model_name: str = "Llama3-8B",
 ):
     warmup = 15
@@ -50,6 +52,7 @@ def benchmark(
         kv_num_heads=kv_num_heads,
         head_size=head_size,
         local_window_size=local_window_size if local_window_size else -1,
+        use_smooth_softmax=use_smooth_softmax,
         do_rotary=True,  # Most models use rotary positional embeddings
         is_packed_qkv=model_name in ["Phi-3-mini-128k", "Phi-3-small-128k"],
         device="cuda",
@@ -93,6 +96,8 @@ def run_performance_tests(args):
     # Reduce max sequence length when GPU memory is not enough.
     threshold = 131072 if memory_in_gb > 24 else 65536 if memory_in_gb > 12 else 32768
 
+    smooth_softmax = args.use_smooth_softmax
+
     all_metrics = []
     for num_heads, head_size, kv_num_heads, max_seq_len, local_window_size, model_name in configures:
         prompt_metrics_model = []
@@ -131,6 +136,7 @@ def run_performance_tests(args):
                     sequence_length=sequence_length,
                     max_seq_len=min(threshold, max_seq_len),
                     local_window_size=local_window_size,
+                    use_smooth_softmax=smooth_softmax,
                     model_name=model_name,
                 )
                 metrics = [*metrics, batch_size, max_seq_len, sequence_length, 0, model_name]
@@ -169,9 +175,10 @@ def run_performance_tests(args):
                     past_sequence_length=past_sequence_length,
                     max_seq_len=min(threshold, max_seq_len),
                     local_window_size=local_window_size,
+                    use_smooth_softmax=smooth_softmax,
                     model_name=model_name,
                 )
-                metrics = [*metrics, batch_size, max_seq_len, 1, past_sequence_length, model_name]
+                metrics = [*metrics, batch_size, max_seq_len, 1, past_sequence_length, smooth_softmax, model_name]
                 token_metrics_model.append(metrics)
                 all_metrics.append(metrics)
         # Calculate average inference interval and throughput for each model
@@ -209,6 +216,15 @@ if __name__ == "__main__":
         default="flash_attention",
         help="GQA Kernel to use for benchmarking. Options: flash_attention, memory_efficient",
     )
+
+    parser.add_argument(
+        "--use_smooth_softmax",
+        required=False,
+        action="store_true",
+        help="test smooth softmax",
+    )
+    parser.set_defaults(use_smooth_softmax=False)
+
     args = parser.parse_args()
 
     if args.kernel == "memory_efficient":

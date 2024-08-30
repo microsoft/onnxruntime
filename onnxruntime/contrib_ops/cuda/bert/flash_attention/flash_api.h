@@ -53,6 +53,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const float softcap,
                bool is_causal,
                bool is_bf16,
+               bool use_smooth_softmax,
                int num_splits = 0,
                void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
@@ -108,6 +109,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        const float softcap,
                        bool is_causal,
                        bool is_bf16,
+                       bool use_smooth_softmax,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits = 0,
                        void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads

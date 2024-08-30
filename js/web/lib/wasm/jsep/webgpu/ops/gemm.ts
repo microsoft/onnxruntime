@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {GemmUtil, ShapeUtil} from '../../util';
-import {AttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { GemmUtil, ShapeUtil } from '../../util';
+import { AttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {
+  createTensorShapeVariables,
+  IndicesHelper,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  UniformsArrayType,
+} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -22,8 +29,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Invalid input shape of C');
   }
 
-  if ((inputs[0].dataType !== inputs[1].dataType) ||
-      (inputs.length === 3 && inputs[0].dataType !== inputs[2].dataType)) {
+  if (inputs[0].dataType !== inputs[1].dataType || (inputs.length === 3 && inputs[0].dataType !== inputs[2].dataType)) {
     throw new Error('Input types are mismatched');
   }
 };
@@ -39,16 +45,24 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   const aShape = inputs[0].dims.slice();
   const bShape = inputs[1].dims.slice();
   const [M, N, K] = GemmUtil.getShapeOfGemmResult(
-      aShape, attributes.transA, bShape, attributes.transB, inputs.length === 3 ? inputs[2].dims : undefined);
+    aShape,
+    attributes.transA,
+    bShape,
+    attributes.transB,
+    inputs.length === 3 ? inputs[2].dims : undefined,
+  );
   const outputShape = [M, N];
   if (!outputShape) {
-    throw new Error('Can\'t use gemm on the given tensors');
+    throw new Error("Can't use gemm on the given tensors");
   }
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] = [
-    {type: DataType.uint32, data: outputSize}, {type: DataType.uint32, data: M}, {type: DataType.uint32, data: N},
-    {type: DataType.uint32, data: K}, {type: DataType.float, data: attributes.alpha},
-    {type: DataType.float, data: attributes.beta}
+    { type: DataType.uint32, data: outputSize },
+    { type: DataType.uint32, data: M },
+    { type: DataType.uint32, data: N },
+    { type: DataType.uint32, data: K },
+    { type: DataType.float, data: attributes.alpha },
+    { type: DataType.float, data: attributes.beta },
   ];
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
   if (inputs.length === 3) {
@@ -73,7 +87,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     const a = inputVariable('a', inputs[0].dataType, inputs[0].dims);
     const b = inputVariable('b', inputs[1].dataType, inputs[1].dims);
     const dataType = a.type.value;
-    let c: IndicesHelper|null = null;
+    let c: IndicesHelper | null = null;
     const variables = [a, b];
     if (inputs.length === 3) {
       c = inputVariable('c', inputs[2].dataType, inputs[2].dims.length);
@@ -82,8 +96,12 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     const output = outputVariable('output', inputs[0].dataType, outputShape.length);
     variables.push(output);
     const uniforms: UniformsArrayType = [
-      {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'},
-      {name: 'alpha', type: 'f32'}, {name: 'beta', type: 'f32'}
+      { name: 'output_size', type: 'u32' },
+      { name: 'M', type: 'u32' },
+      { name: 'N', type: 'u32' },
+      { name: 'K', type: 'u32' },
+      { name: 'alpha', type: 'f32' },
+      { name: 'beta', type: 'f32' },
     ];
     return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...variables)}
@@ -103,7 +121,8 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     ${(() => {
       if (c != null) {
         return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += ${
-            dataType}(uniforms.beta) * ${c.getByOffset('cOffset')};`;
+          dataType
+        }(uniforms.beta) * ${c.getByOffset('cOffset')};`;
       }
       return '';
     })()}
@@ -113,11 +132,11 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
 
   return {
     name: 'Gemm',
-    shaderCache: {hint: `${attributes.cacheKey}`, inputDependencies},
+    shaderCache: { hint: `${attributes.cacheKey}`, inputDependencies },
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms,
     }),
     getShaderSource,
   };
@@ -128,7 +147,13 @@ export const parseGemmAttributes = (attributes: Record<string, unknown>): GemmAt
   const transB = attributes.transB as boolean;
   const alpha = attributes.alpha as number;
   const beta = attributes.beta as number;
-  return {transA, transB, alpha, beta, cacheKey: `${attributes.transA};${attributes.transB};${attributes.alpha === 1}`};
+  return {
+    transA,
+    transB,
+    alpha,
+    beta,
+    cacheKey: `${attributes.transA};${attributes.transB};${attributes.alpha === 1}`,
+  };
 };
 
 export const gemm = (context: ComputeContext, attributes: GemmAttributes): void => {

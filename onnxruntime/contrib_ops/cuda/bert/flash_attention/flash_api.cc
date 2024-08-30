@@ -38,6 +38,7 @@ void set_params_fprop(Flash_fwd_params& params,
                       float softcap,
                       bool is_causal,
                       bool is_bf16,
+                      bool use_smooth_softmax,
                       bool kv_bsnh = true,
                       int window_size_left = -1,
                       int window_size_right = -1) {
@@ -48,6 +49,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.o_ptr = out;
 
   params.is_bf16 = is_bf16;
+  params.smooth_softmax = use_smooth_softmax;
 
   // All stride are in elements, not bytes.
   if (kv_bsnh) {
@@ -277,6 +279,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                const float softcap,
                bool is_causal,
                bool is_bf16,
+               bool use_smooth_softmax,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
@@ -304,6 +307,7 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softcap,
                    is_causal,
                    is_bf16,
+                   use_smooth_softmax,
                    kv_bsnh,
                    local_window_size,
                    is_causal ? 0 : -1);
@@ -378,6 +382,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    softcap,
                    is_causal,
                    is_bf16,
+                   false,
                    true,
                    -1,
                    is_causal ? 0 : -1);
@@ -438,6 +443,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        const float softcap,
                        bool is_causal,
                        bool is_bf16,
+                       bool use_smooth_softmax,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
@@ -471,6 +477,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    softcap,
                    is_causal,
                    is_bf16,
+                   use_smooth_softmax,
                    past_bsnh,
                    local_window_size,
                    is_causal ? 0 : -1);

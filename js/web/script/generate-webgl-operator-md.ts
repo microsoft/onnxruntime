@@ -3,19 +3,19 @@
 
 import * as assert from 'assert';
 import * as fs from 'fs';
-import {EOL} from 'os';
+import { EOL } from 'os';
 import * as path from 'path';
 
-import {Attribute} from '../lib/onnxjs/attribute';
-import {WEBGL_OP_RESOLVE_RULES} from '../lib/onnxjs/backends/webgl/op-resolve-rules';
-import {OpSet, resolveOperator} from '../lib/onnxjs/opset';
-import {Tensor} from '../lib/onnxjs/tensor';
+import { Attribute } from '../lib/onnxjs/attribute';
+import { WEBGL_OP_RESOLVE_RULES } from '../lib/onnxjs/backends/webgl/op-resolve-rules';
+import { OpSet, resolveOperator } from '../lib/onnxjs/opset';
+import { Tensor } from '../lib/onnxjs/tensor';
 
 function checkSupport(type: string, range: [number, number], rules: readonly OpSet.ResolveRule[]) {
-  const node = {name: '', opType: type, inputs: [], outputs: [], attributes: new Attribute(undefined)};
+  const node = { name: '', opType: type, inputs: [], outputs: [], attributes: new Attribute(undefined) };
   for (let i = range[0]; i <= range[1]; i++) {
     try {
-      resolveOperator(node, [{domain: '', version: i}], rules);
+      resolveOperator(node, [{ domain: '', version: i }], rules);
     } catch (_e) {
       return false;
     }
@@ -36,34 +36,35 @@ function dummyOpImpl(): Tensor[] {
 }
 
 const ops = new Map<string, Map<string, number[]>>();
-const webglCheckOnlyRules =
-    WEBGL_OP_RESOLVE_RULES.map(rule => [rule[0], rule[1], rule[2], dummyOpImpl] as OpSet.ResolveRule);
+const webglCheckOnlyRules = WEBGL_OP_RESOLVE_RULES.map(
+  (rule) => [rule[0], rule[1], rule[2], dummyOpImpl] as OpSet.ResolveRule,
+);
 
 fs.readFileSync(path.join(__dirname, '../../../cmake/external/onnx/onnx/defs/operator_sets.h'), 'utf8')
-    .split(/\r?\n/)
-    .forEach(line => {
-      const matcher = /class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME\(\s*(\w+),\s*(\d+),\s*(\w+)\)/;
-      const matches = matcher.exec(line);
-      if (matches) {
-        const opset = matches[1];
-        const version = Number.parseInt(matches[2], 10);
-        const opType = matches[3];
+  .split(/\r?\n/)
+  .forEach((line) => {
+    const matcher = /class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME\(\s*(\w+),\s*(\d+),\s*(\w+)\)/;
+    const matches = matcher.exec(line);
+    if (matches) {
+      const opset = matches[1];
+      const version = Number.parseInt(matches[2], 10);
+      const opType = matches[3];
 
-        let currentSet = ops.get(opset);
-        if (currentSet === undefined) {
-          currentSet = new Map<string, number[]>();
-          ops.set(opset, currentSet);
-        }
-
-        let currentOp = currentSet.get(opType);
-        if (currentOp === undefined) {
-          currentOp = [];
-          currentSet.set(opType, currentOp);
-        }
-
-        currentOp.push(version);
+      let currentSet = ops.get(opset);
+      if (currentSet === undefined) {
+        currentSet = new Map<string, number[]>();
+        ops.set(opset, currentSet);
       }
-    });
+
+      let currentOp = currentSet.get(opType);
+      if (currentOp === undefined) {
+        currentOp = [];
+        currentSet.set(opType, currentOp);
+      }
+
+      currentOp.push(version);
+    }
+  });
 
 const opsets = Array.from(ops.keys());
 assert.ok(opsets.length === 1 && opsets[0] === 'Onnx');
@@ -84,8 +85,8 @@ doc.write(`| Operator | WebGl Backend |${EOL}`);
 doc.write(`|:--------:|:-------------:|${EOL}`);
 
 let VERSION_MAX = 0;
-onnxOpset.forEach(versions => {
-  versions.forEach(version => VERSION_MAX = Math.max(VERSION_MAX, version));
+onnxOpset.forEach((versions) => {
+  versions.forEach((version) => (VERSION_MAX = Math.max(VERSION_MAX, version)));
 });
 
 for (const type of opTypes) {
@@ -99,7 +100,10 @@ for (const type of opTypes) {
     webgl.push(formatDesc(type, versionRange, checkSupport(type, versionRange, webglCheckOnlyRules), last));
   }
 
-  doc.write(`| [${type}](https://github.com/onnx/onnx/blob/main/docs/Operators.md#${type}) | ${
-      webgl.filter(d => d.length > 0).join(', ')} |${EOL}`);
+  doc.write(
+    `| [${type}](https://github.com/onnx/onnx/blob/main/docs/Operators.md#${type}) | ${webgl
+      .filter((d) => d.length > 0)
+      .join(', ')} |${EOL}`,
+  );
 }
 doc.end();
