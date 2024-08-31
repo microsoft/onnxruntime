@@ -141,7 +141,18 @@ This section is WIP.
 
 use `build.bat --use_webgpu --skip_tests` to build the WebGPU EP. For Release build, append `--config Release` or `--config RelWithDebInfo` to the command line.
 
-to test, find the "onnx_test_runner.exe" in your build folder. run it like:
+to test, find the "test_webgpu.bat" in your build folder. run it for tests:
+```
+# run all tests
+test_webgpu.bat
+
+# run a specific test
+test_webgpu.bat test_abs
+```
+
+
+
+to test or debug a single test, find the "onnx_test_runner.exe" in your build folder. run it like:
 ```
 onnx_test_runner.exe -v -e webgpu -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```
