@@ -54,6 +54,9 @@ struct ProgramUniformVariableValue {
 
 // represents a uniform variable definition
 struct ProgramUniformVariableDefinition {
+  constexpr ProgramUniformVariableDefinition(std::string_view name, ProgramUniformVariableDataType data_type)
+      : name{name}, data_type{data_type} {}
+
   std::string_view name;
   ProgramUniformVariableDataType data_type;
 };
@@ -337,26 +340,31 @@ class ProgramWrapper : public ProgramBase {
 #error "macro ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK is already defined"
 #endif
 
-#define ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(identifier, element_type)                                                                    \
- private:                                                                                                                                                 \
-  template <typename U>                                                                                                                                   \
-  static auto test_has_##identifier(int)->decltype(U::identifier, std::true_type{}); /* checks if member exists */                                        \
-  template <typename...>                                                                                                                                  \
-  static auto test_has_##identifier(...)->std::false_type;                                                                                                \
-                                                                                                                                                          \
-  template <typename U,                                                                                        /* The following type check uses SFINAE */ \
-            typename = std::enable_if_t<                                                                       /* to ensure the specific member:       */ \
-                                        std::is_array_v<decltype(U::identifier)> &&                            /*  - is array                          */ \
-                                        std::is_const_v<decltype(U::identifier)> &&                            /*  - has "const" modifier              */ \
-                                        std::is_convertible_v<decltype(U::identifier), const element_type*> && /*  - can convert to a const pointer    */ \
-                                        !std::is_member_pointer_v<decltype(&U::identifier)>>>                  /*  - is static                         */ \
-  static auto test_has_##identifier##_with_correct_type(int)->std::true_type;                                                                             \
-  template <typename...>                                                                                                                                  \
-  static auto test_has_##identifier##_with_correct_type(...)->std::false_type;                                                                            \
-                                                                                                                                                          \
- public:                                                                                                                                                  \
-  static constexpr bool has_##identifier = decltype(test_has_##identifier<T>(0))::value;                                                                  \
+#define ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(identifier, element_type)                                                   \
+ private:                                                                                                                                \
+  template <typename U>                                                                                                                  \
+  static auto test_has_##identifier(int)->decltype(U::identifier, std::true_type{}); /* checks if member exists */                       \
+  template <typename...>                                                                                                                 \
+  static auto test_has_##identifier(...)->std::false_type;                                                                               \
+                                                                                                                                         \
+  template <typename U,                                                                       /* The following type check uses SFINAE */ \
+            typename = std::enable_if_t<                                                      /* to ensure the specific member:       */ \
+                                        is_const_std_array<decltype(U::identifier)>::value && /*  - is a const std::array             */ \
+                                        std::is_const_v<decltype(U::identifier)> &&           /*  - has "const" modifier              */ \
+                                        !std::is_member_pointer_v<decltype(&U::identifier)>>> /*  - is static                         */ \
+  static auto test_has_##identifier##_with_correct_type(int)->std::true_type;                                                            \
+  template <typename...>                                                                                                                 \
+  static auto test_has_##identifier##_with_correct_type(...)->std::false_type;                                                           \
+                                                                                                                                         \
+ public:                                                                                                                                 \
+  static constexpr bool has_##identifier = decltype(test_has_##identifier<T>(0))::value;                                                 \
   static constexpr bool has_##identifier##_with_correct_type = decltype(test_has_##identifier##_with_correct_type<T>(0))::value
+
+// the following template class checks whether the type is a const std::array
+template <typename T>
+struct is_const_std_array : std::false_type {};
+template <typename T, size_t N>
+struct is_const_std_array<const std::array<T, N>> : std::true_type {};
 
 // the following template class checks whether certain static members exist in the derived class (SFINAE)
 template <typename T>
@@ -367,52 +375,90 @@ class DerivedProgramClassTypeCheck {
 };
 
 // compile-time tests for the type check
+//
+// TODO: move this to test folder
 namespace test {
-
-struct TestClass_Empty {};
-struct TestClass_0 {
-  int b;
-};
-struct TestClass_1 {
-  int a;
-};
-struct TestClass_2 {
-  const int a;
-};
-struct TestClass_3 {
-  const int a[2];
-};
-struct TestClass_4 {
-  static constexpr int a[] = {0};
-};
-struct TestClass_5 {
-  static int a[];
-};
-struct TestClass_6 {
-  static const int a[];
-};
 
 template <typename T>
 class TestTypeCheck {
   ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(a, int);
 };
 
+struct TestClass_Empty {};
 static_assert(!TestTypeCheck<TestClass_Empty>::has_a);
 static_assert(!TestTypeCheck<TestClass_Empty>::has_a_with_correct_type);
-static_assert(!TestTypeCheck<TestClass_0>::has_a);
-static_assert(!TestTypeCheck<TestClass_0>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_1>::has_a);
-static_assert(!TestTypeCheck<TestClass_1>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_2>::has_a);
-static_assert(!TestTypeCheck<TestClass_2>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_3>::has_a);
-static_assert(!TestTypeCheck<TestClass_3>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_4>::has_a);
-static_assert(TestTypeCheck<TestClass_4>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_5>::has_a);
-static_assert(!TestTypeCheck<TestClass_5>::has_a_with_correct_type);
-static_assert(TestTypeCheck<TestClass_6>::has_a);
-static_assert(TestTypeCheck<TestClass_6>::has_a_with_correct_type);
+
+struct TestClass_NotArray_0 {
+  int b;
+};
+static_assert(!TestTypeCheck<TestClass_NotArray_0>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotArray_0>::has_a_with_correct_type);
+
+struct TestClass_NotArray_1 {
+  int a;
+};
+static_assert(TestTypeCheck<TestClass_NotArray_1>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotArray_1>::has_a_with_correct_type);
+
+struct TestClass_NotArray_2 {
+  const int a;
+};
+static_assert(TestTypeCheck<TestClass_NotArray_2>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotArray_2>::has_a_with_correct_type);
+
+struct TestClass_NotStdArray_0 {
+  const int a[2];
+};
+static_assert(TestTypeCheck<TestClass_NotStdArray_0>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotStdArray_0>::has_a_with_correct_type);
+
+struct TestClass_NotStdArray_1 {
+  static constexpr int a[] = {0};
+};
+static_assert(TestTypeCheck<TestClass_NotStdArray_1>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotStdArray_1>::has_a_with_correct_type);
+
+struct TestClass_NotStdArray_2 {
+  static int a[];
+};
+static_assert(TestTypeCheck<TestClass_NotStdArray_2>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotStdArray_2>::has_a_with_correct_type);
+
+struct TestClass_NotStdArray_3 {
+  static const int a[];
+};
+static_assert(TestTypeCheck<TestClass_NotStdArray_3>::has_a);
+static_assert(!TestTypeCheck<TestClass_NotStdArray_3>::has_a_with_correct_type);
+
+struct TestClass_StdArray_0 {
+  std::array<int, 1> a = {1};
+};
+static_assert(TestTypeCheck<TestClass_StdArray_0>::has_a);
+static_assert(!TestTypeCheck<TestClass_StdArray_0>::has_a_with_correct_type);
+
+struct TestClass_StdArray_1 {
+  static constexpr std::array<int, 2> a = {1, 2};
+};
+static_assert(TestTypeCheck<TestClass_StdArray_1>::has_a);
+static_assert(TestTypeCheck<TestClass_StdArray_1>::has_a_with_correct_type);
+
+struct TestClass_StdArray_2 {
+  static const std::array<int, 3> a;
+};
+static_assert(TestTypeCheck<TestClass_StdArray_2>::has_a);
+static_assert(TestTypeCheck<TestClass_StdArray_2>::has_a_with_correct_type);
+
+struct TestClass_StdArray_3 {
+  static constexpr const std::array<int, 4> a = {1, 2, 3, 4};
+};
+static_assert(TestTypeCheck<TestClass_StdArray_3>::has_a);
+static_assert(TestTypeCheck<TestClass_StdArray_3>::has_a_with_correct_type);
+
+struct TestClass_StdArray_4 {
+  static std::array<int, 5> a;
+};
+static_assert(TestTypeCheck<TestClass_StdArray_4>::has_a);
+static_assert(!TestTypeCheck<TestClass_StdArray_4>::has_a_with_correct_type);
 
 }  // namespace test
 
@@ -435,13 +481,12 @@ class Program : public detail::ProgramWrapper {
   virtual ProgramMetadata GetMetadata() const final {
     ProgramMetadata metadata;
     if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_constants) {
-      constexpr const ProgramConstant* ptr = T::constants;
-      constexpr size_t len = sizeof(T::constants) / sizeof(ProgramConstant);
+      constexpr const ProgramConstant* ptr = T::constants.data();
+      constexpr size_t len = T::constants.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_constants_with_correct_type &&
-                        sizeof(T::constants) % sizeof(ProgramConstant) == 0,
+      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_constants_with_correct_type,
                     "Derived class of \"Program\" has member \"constants\" but its type is incorrect. "
-                    "Please use macro WEBGPU_PROGRAM_DEFINE_CONSTANTS() to declare constants.");
+                    "Please use macro WEBGPU_PROGRAM_DEFINE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_CONSTANTS() to declare constants.");
 
       metadata.constants = {ptr, len};
     } else {
@@ -449,13 +494,12 @@ class Program : public detail::ProgramWrapper {
     }
 
     if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_overridable_constants) {
-      constexpr const ProgramOverridableConstantDefinition* ptr = T::overridable_constants;
-      constexpr size_t len = sizeof(T::overridable_constants) / sizeof(ProgramOverridableConstantDefinition);
+      constexpr const ProgramOverridableConstantDefinition* ptr = T::overridable_constants.data();
+      constexpr size_t len = T::overridable_constants.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_overridable_constants_with_correct_type &&
-                        sizeof(T::overridable_constants) % sizeof(ProgramOverridableConstantDefinition) == 0,
+      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_overridable_constants_with_correct_type,
                     "Derived class of \"Program\" has member \"overridable_constants\" but its type is incorrect. "
-                    "Please use macro WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS() to declare overridable constants.");
+                    "Please use macro WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS() or WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS() to declare overridable constants.");
 
       metadata.overridable_constants = {ptr, len};
     } else {
@@ -463,13 +507,12 @@ class Program : public detail::ProgramWrapper {
     }
 
     if constexpr (detail::DerivedProgramClassTypeCheck<T>::has_uniform_variables) {
-      constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables;
-      constexpr size_t len = sizeof(T::uniform_variables) / sizeof(ProgramUniformVariableDefinition);
+      constexpr const ProgramUniformVariableDefinition* ptr = T::uniform_variables.data();
+      constexpr size_t len = T::uniform_variables.size();
 
-      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_uniform_variables_with_correct_type &&
-                        sizeof(T::uniform_variables) % sizeof(ProgramUniformVariableDefinition) == 0,
+      static_assert(detail::DerivedProgramClassTypeCheck<T>::has_uniform_variables_with_correct_type,
                     "Derived class of \"Program\" has member \"uniform_variables\" but its type is incorrect. "
-                    "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() to declare uniform variables.");
+                    "Please use macro WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES() or WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES() to declare uniform variables.");
 
       metadata.uniform_variables = {ptr, len};
     } else {
@@ -480,14 +523,64 @@ class Program : public detail::ProgramWrapper {
   }
 };
 
+namespace detail {
+// helper function to convert a C-style array to std::array
+//
+// This is basically the same as std::to_array in C++20.
+//
+template <typename T, size_t N, size_t... Idx>
+constexpr auto _to_std_array_impl(T (&arr)[N], std::index_sequence<Idx...>) -> std::array<std::remove_cv_t<T>, N> {
+  return {{arr[Idx]...}};
+}
+
+template <typename T, size_t N>
+constexpr auto _to_std_array(T (&arr)[N]) -> std::array<std::remove_cv_t<T>, N> {
+  return _to_std_array_impl(arr, std::make_index_sequence<N>{});
+}
+
+// helper function to concatenate a std::array and a C-style array to a std::array
+//
+template <typename T, size_t L, size_t... IdxL, size_t R, size_t... IdxR>
+constexpr std::array<std::remove_cv_t<T>, L + R> _concat2_impl(const std::array<T, L>& lhs,
+                                                               T (&rhs)[R],
+                                                               std::index_sequence<IdxL...>,
+                                                               std::index_sequence<IdxR...>) {
+  return {{lhs[IdxL]..., rhs[IdxR]...}};
+}
+
+template <typename T, size_t L, size_t R>
+constexpr std::array<std::remove_cv_t<T>, L + R> _concat2(const std::array<T, L>& lhs, T (&rhs)[R]) {
+  return _concat2_impl(lhs, rhs, std::make_index_sequence<L>{}, std::make_index_sequence<R>{});
+}
+
+}  // namespace detail
+#define WEBGPU_PROGRAM_DEFINE_(identifier, T, ...)             \
+  static constexpr const T identifier##_own[] = {__VA_ARGS__}; \
+  static constexpr const auto identifier =                     \
+      onnxruntime::webgpu::detail::_to_std_array(identifier##_own)
+
+#define WEBGPU_PROGRAM_EXTEND_(identifier, T, BASE, ...)       \
+  static constexpr const T identifier##_own[] = {__VA_ARGS__}; \
+  static constexpr const auto identifier =                     \
+      onnxruntime::webgpu::detail::_concat2(BASE::identifier, identifier##_own)
+
 #define WEBGPU_PROGRAM_DEFINE_CONSTANTS(...) \
-  static constexpr const onnxruntime::webgpu::ProgramConstant constants[] = {__VA_ARGS__}
+  WEBGPU_PROGRAM_DEFINE_(constants, onnxruntime::webgpu::ProgramConstant, __VA_ARGS__)
+
+#define WEBGPU_PROGRAM_EXTEND_CONSTANTS(BASE, ...) \
+  WEBGPU_PROGRAM_EXTEND_(constants, onnxruntime::webgpu::ProgramConstant, BASE, __VA_ARGS__)
 
 #define WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS(...) \
-  static constexpr const onnxruntime::webgpu::ProgramOverridableConstantDefinition overridable_constants[] = {__VA_ARGS__}
+  WEBGPU_PROGRAM_DEFINE_(overridable_constants, onnxruntime::webgpu::ProgramOverridableConstantDefinition, __VA_ARGS__)
+
+#define WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS(BASE, ...) \
+  WEBGPU_PROGRAM_EXTEND_(overridable_constants, onnxruntime::webgpu::ProgramOverridableConstantDefinition, BASE, __VA_ARGS__)
 
 #define WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(...) \
-  static constexpr const onnxruntime::webgpu::ProgramUniformVariableDefinition uniform_variables[] = {__VA_ARGS__}
+  WEBGPU_PROGRAM_DEFINE_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, __VA_ARGS__)
+
+#define WEBGPU_PROGRAM_EXTEND_UNIFORM_VARIABLES(BASE, ...) \
+  WEBGPU_PROGRAM_EXTEND_(uniform_variables, onnxruntime::webgpu::ProgramUniformVariableDefinition, BASE, __VA_ARGS__)
 
 }  // namespace webgpu
 }  // namespace onnxruntime

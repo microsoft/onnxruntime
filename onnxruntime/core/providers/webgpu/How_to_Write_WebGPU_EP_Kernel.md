@@ -37,7 +37,7 @@ constants are declaration of values that are never changes in the shader code. T
 const A : u32 = 64;
 ```
 
-Use macro `WEBGPU_PROGRAM_DEFINE_CONSTANTS` to define constants in your Program class.
+Use macro `WEBGPU_PROGRAM_DEFINE_CONSTANTS` to define constants in your Program class, or use `WEBGPU_PROGRAM_EXTEND_CONSTANTS` to extend the constants defined in the base class.
 
 #### **overridable constants**
 
@@ -48,13 +48,13 @@ override B : u32 = 64;
 override C : f32;
 ```
 
-Use macro `WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS` to define overridable constants in your Program class.
+Use macro `WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS` to define overridable constants in your Program class, or use `WEBGPU_PROGRAM_EXTEND_OVERRIDABLE_CONSTANTS` to extend the overridable constants defined in the base class.
 
 #### **uniform definitions**
 
 uniform definitions are declaration of uniform varables. Their names and type must be defined and cannot be changed. Their values(including length) can be set at runtime.
 
-Use macro `WEBGPU_PROGRAM_DEFINE_UNIFORMS` to define uniform definitions in your Program class.
+Use macro `WEBGPU_PROGRAM_DEFINE_UNIFORMS_VARIABLES` to define uniform definitions in your Program class, or use `WEBGPU_PROGRAM_EXTEND_UNIFORMS_VARIABLES` to extend the uniform definitions defined in the base class.
 
 ### 2.3. The Program class should override the `GenerateShaderCode` method:
 
