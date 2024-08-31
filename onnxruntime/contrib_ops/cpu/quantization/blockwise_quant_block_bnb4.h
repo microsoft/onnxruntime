@@ -7,17 +7,21 @@
 #include <algorithm>
 #include <cmath>
 
-#include "core/util/force_inline.h"
-
 namespace onnxruntime {
 namespace contrib {
+
+#if defined(_MSC_VER)
+#define FORCEINLINE __forceinline
+#else
+#define FORCEINLINE __attribute__((always_inline)) inline
+#endif
 
 typedef enum Bnb_DataType_t {
   FP4 = 0,
   NF4 = 1,
 } Bnb_DataType_t;
 
-ORT_FORCEINLINE uint8_t QuantizeOneFP4(float x) {
+FORCEINLINE uint8_t QuantizeOneFP4(float x) {
   // FP4 with bias of 3
   // first bit is a sign
   // subnormals
@@ -65,7 +69,7 @@ ORT_FORCEINLINE uint8_t QuantizeOneFP4(float x) {
   }
 }
 
-ORT_FORCEINLINE uint8_t QuantizeOneNF4(float x) {
+FORCEINLINE uint8_t QuantizeOneNF4(float x) {
   if (x > 0.03979014977812767f) {
     if (x > 0.3893125355243683f) {      // 1
       if (x > 0.6427869200706482f) {    // 11
@@ -116,7 +120,7 @@ ORT_FORCEINLINE uint8_t QuantizeOneNF4(float x) {
 }
 
 template <int32_t DATA_TYPE>
-ORT_FORCEINLINE uint8_t QuantizeOneBnb4(float x) {
+FORCEINLINE uint8_t QuantizeOneBnb4(float x) {
   if constexpr (DATA_TYPE == FP4)
     return QuantizeOneFP4(x);
   else
@@ -124,7 +128,7 @@ ORT_FORCEINLINE uint8_t QuantizeOneBnb4(float x) {
 }
 
 template <typename T, int32_t block_size, int32_t DATA_TYPE>
-ORT_FORCEINLINE void QuantizeBlockBnb4(const T* src, uint8_t* dst, T& absmax_block, int32_t block_idx, int32_t numel) {
+FORCEINLINE void QuantizeBlockBnb4(const T* src, uint8_t* dst, T& absmax_block, int32_t block_idx, int32_t numel) {
   float local_absmax = 0.0f;
 
   int32_t block_len = std::min(block_size, numel - block_idx * block_size);
@@ -173,7 +177,7 @@ static float nf4_qaunt_map[16] = {-1.0f,
                                   1.0f};
 
 template <typename T, int32_t DATA_TYPE>
-ORT_FORCEINLINE T DequantizeOneBnb4(uint8_t x) {
+FORCEINLINE T DequantizeOneBnb4(uint8_t x) {
   if constexpr (DATA_TYPE == FP4)
     return static_cast<T>(fp4_qaunt_map[x]);
   else
@@ -181,7 +185,7 @@ ORT_FORCEINLINE T DequantizeOneBnb4(uint8_t x) {
 }
 
 template <typename T, int32_t block_size, int32_t DATA_TYPE>
-ORT_FORCEINLINE void DequantizeBlockBnb4(const uint8_t* src, T* dst, T absmax_block, int32_t block_idx, int32_t numel) {
+FORCEINLINE void DequantizeBlockBnb4(const uint8_t* src, T* dst, T absmax_block, int32_t block_idx, int32_t numel) {
   int32_t block_len = std::min(block_size, numel - block_idx * block_size);
   int32_t src_offset = block_idx * block_size / 2;
   int32_t dst_offset = block_idx * block_size;

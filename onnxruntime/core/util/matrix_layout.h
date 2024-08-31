@@ -17,7 +17,11 @@
 #include <cstdint>
 #include <gsl/gsl>
 
-#include "core/util/force_inline.h"
+#if defined(_MSC_VER)
+#define ORT_FORCEINLINE __forceinline
+#else
+#define ORT_FORCEINLINE __attribute__((always_inline)) inline
+#endif
 
 namespace onnxruntime {
 
