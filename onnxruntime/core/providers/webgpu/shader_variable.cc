@@ -72,7 +72,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       SS("fn o2i_", name_, "(offset : u32)->", indices_t, " {\n");
       SS("  var indices: ", indices_t, ";\n");
       SS("  var current = offset;\n");
-      for (size_t i = 0; i < rank_ - 1; i++) {
+      for (int i = 0; i < rank_ - 1; i++) {
         auto current_stride = GetElementAt(stride, i, rank_);
         SS("  let dim", i, " = current / ", current_stride, ";\n");
         SS("  let rest", i, " = current % ", current_stride, ";\n");
@@ -90,7 +90,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
     if (rank_ >= 2) {
       SS("fn i2o_", name_, "(indices : ", indices_t, ")->u32 {\n");
       SS("  return ");
-      for (size_t i = 0; i < rank_ - 1; i++) {
+      for (int i = 0; i < rank_ - 1; i++) {
         SS("indices[", i, "] * ", GetElementAt(stride, i, rank_), " + ");
       }
       SS("indices[", rank_ - 1, "];\n");
@@ -108,7 +108,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
         SS("  return 0;\n");
       } else {
         SS("  return ");
-        for (size_t i = 0; i < rank_ - 1; i++) {
+        for (int i = 0; i < rank_ - 1; i++) {
           auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
           SS(IndicesGet(stride, i), " * (", idx, " % ", IndicesGet(shape, i), ") + ");
         }
@@ -122,12 +122,12 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   if (usage_ & UseSet) {
     if (rank_ >= 2) {
       SS("fn set_", name_, "(d0: u32");
-      for (size_t i = 1; i < rank_; i++) {
+      for (int i = 1; i < rank_; i++) {
         SS(", d", i, ": u32");
       }
       SS(", value: ", value_t, ") {\n");
       SS("  set_", name_, "_by_indices(d0");
-      for (size_t i = 1; i < rank_; i++) {
+      for (int i = 1; i < rank_; i++) {
         SS(", d", i);
       }
       SS(", value);\n");
@@ -148,12 +148,12 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   if (usage_ & UseGet) {
     if (rank_ >= 2) {
       SS("fn get_", name_, "(d0: u32");
-      for (size_t i = 1; i < rank_; i++) {
+      for (int i = 1; i < rank_; i++) {
         SS(", d", i, ": u32");
       }
       SS(")->", value_t, " {\n");
       SS("  return get_", name_, "_by_indices(d0");
-      for (size_t i = 1; i < rank_; i++) {
+      for (int i = 1; i < rank_; i++) {
         SS(", d", i);
       }
       SS(");\n");

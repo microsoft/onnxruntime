@@ -220,6 +220,7 @@ class ProgramBase {
   template <typename... CacheHintArgs>
   ProgramBase& CacheHint(CacheHintArgs&&... args) {
     cache_hint_ = absl::StrJoin(std::forward_as_tuple(std::forward<CacheHintArgs>(args)...), "|");
+    return *this;
   }
 
   // set one or more program inputs

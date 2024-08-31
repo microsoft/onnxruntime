@@ -93,7 +93,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequestDeviceCallbackInfo req_device_callback_info = {};
       req_device_callback_info.mode = wgpu::CallbackMode::WaitAnyOnly;
       req_device_callback_info.callback = [](WGPURequestDeviceStatus status, WGPUDevice device, char const* message, void* userdata) {
-        ORT_ENFORCE(status == WGPURequestAdapterStatus_Success, "Failed to get a WebGPU device: ", message);
+        ORT_ENFORCE(status == WGPURequestDeviceStatus_Success, "Failed to get a WebGPU device: ", message);
         *static_cast<wgpu::Device*>(userdata) = wgpu::Device::Acquire(device);
       };
       req_device_callback_info.userdata = &device_;

@@ -47,7 +47,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
     }
   }
 
-  ss << ":" D("DispatchDim=") << is_1d_dispatch ? "1" : "3";
+  ss << ":" D("DispatchDim=") << (is_1d_dispatch ? "1" : "3");
   ss << ":" D("UniformSizes=");
   bool first = true;
   for (const auto& uniform : program.UniformVariables()) {

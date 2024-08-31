@@ -4,8 +4,6 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
-static int xx = 1;
-
 namespace onnxruntime {
 namespace webgpu {
 
