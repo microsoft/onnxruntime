@@ -15,4 +15,4 @@ optimum==1.20.0
 safetensors
 invisible_watermark
 # newer version of opencv-python migth encounter module 'cv2.dnn' has no attribute 'DictValue' error
-opencv-python==4.8.0.74
+opencv-python==4.8.1.78
