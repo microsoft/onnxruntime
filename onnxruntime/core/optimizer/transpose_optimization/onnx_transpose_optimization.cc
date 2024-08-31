@@ -351,7 +351,7 @@ class DQToLookPast {
     return quant_info_.mode;
   }
 
-  inline void DisconectInput0() {
+  inline void DisconnectInput0() {
     dq_node_->SetInput(0, "");
   }
 
@@ -359,11 +359,11 @@ class DQToLookPast {
     dq_node_->SetInput(0, input_name);
   }
 
-  inline std::string_view GetInput0() {
+  inline std::string_view GetInput0() const {
     return dq_node_->Inputs()[0];
   }
 
-  inline std::string_view GetOutput() {
+  inline std::string_view GetOutput() const {
     return dq_node_->Outputs()[0];
   }
 
@@ -374,15 +374,11 @@ class DQToLookPast {
   /// <param name="new_input">name of new transposed input[0]</param>
   /// <param name="perm_inv">inverse transpose permutation used to update the DQ's axis</param>
   void SetTransposedInput(api::GraphRef& graph, std::string_view new_input, gsl::span<const int64_t> perm_inv) {
-    int64_t axis = quant_info_.norm_axis;
     if (quant_info_.mode == QuantizationMode::kPerAxis) {
-      axis = perm_inv[gsl::narrow_cast<size_t>(axis)];
+      quant_info_.norm_axis = perm_inv[gsl::narrow_cast<size_t>(quant_info_.norm_axis)];
     }
 
-    dq_node_->SetInput(0, new_input);
-    dq_node_->SetAttributeInt("axis", axis);
-    auto new_shape = *graph.GetValueInfo(new_input)->Shape();
-    graph.GetValueInfo(dq_node_->Outputs()[0])->SetShape(&new_shape);
+    this->SetUpdatedInputAndShape(graph, new_input);
   }
 
   /// <summary>
@@ -394,15 +390,11 @@ class DQToLookPast {
   /// <param name="perm_inv">positive unsqueeze axes used to update the DQ's axis</param>
   void SetUnsqueezedInput(api::GraphRef& graph, std::string_view new_input,
                           gsl::span<const int64_t> positive_unsqueeze_axes) {
-    int64_t axis = quant_info_.norm_axis;
     if (quant_info_.mode == QuantizationMode::kPerAxis) {
-      axis = UnsqueezeAxis(positive_unsqueeze_axes, axis);
+      quant_info_.norm_axis = UnsqueezeAxis(positive_unsqueeze_axes, quant_info_.norm_axis);
     }
 
-    dq_node_->SetInput(0, new_input);
-    dq_node_->SetAttributeInt("axis", axis);
-    auto new_shape = *graph.GetValueInfo(new_input)->Shape();
-    graph.GetValueInfo(dq_node_->Outputs()[0])->SetShape(&new_shape);
+    this->SetUpdatedInputAndShape(graph, new_input);
   }
 
   /// <summary>
@@ -423,6 +415,15 @@ class DQToLookPast {
   }
 
  private:
+  // Called by SetTransposedInput() and SetUnsqueezedInput() to update the DQ's input,
+  // axis, and output shape.
+  void SetUpdatedInputAndShape(api::GraphRef& graph, std::string_view new_input) {
+    dq_node_->SetInput(0, new_input);
+    dq_node_->SetAttributeInt("axis", quant_info_.norm_axis);
+    auto new_shape = *graph.GetValueInfo(new_input)->Shape();
+    graph.GetValueInfo(dq_node_->Outputs()[0])->SetShape(&new_shape);
+  }
+
   std::unique_ptr<api::NodeRef> dq_node_;
   QuantizationInfo quant_info_;
 };
@@ -1028,7 +1029,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
       constant_dq_input = dq_to_look_past->GetInput0();
       constant = ctx.graph.GetLocalConstant(constant_dq_input);
       // remove the DQ node as a consumer of the initializer while we modify things
-      dq_to_look_past->DisconectInput0();
+      dq_to_look_past->DisconnectInput0();
     }
   }
 
@@ -1187,7 +1188,7 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
       constant_dq_input = dq_to_look_past->GetInput0();
       constant = graph.GetLocalConstant(constant_dq_input);
       // remove the DQ node as a consumer of the initializer while we modify things
-      dq_to_look_past->DisconectInput0();
+      dq_to_look_past->DisconnectInput0();
     }
   }
 
@@ -1224,38 +1225,14 @@ static void TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
     // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is removed only if
     // there are no other consumers.
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
-      // TODO(adrianlizarraga): Remove handling of a DQ node from this special case.
       // A quantized (roi/scales/sizes) input for Resize or a quantized pads input for Pad would be unlikely.
-      // HandleResize/HandlePad permute these kinds of inputs directly and do not try to call TransposeInput on them.
-      // So, we should not have a DQ to look past at this point, but we can handle it until verified.
-      if (dq_to_look_past) {
-        QuantizationMode quant_mode = dq_to_look_past->GetQuantMode();
-        std::unique_ptr<api::NodeRef> dq_node = DQToLookPast::TakeDQNode(dq_to_look_past);
-        assert(dq_node != nullptr);  // Checked by GetDQWithConstInitializerInputAndSingleConsumer()
-
-        Permute1DConstant(graph, *dq_node, *constant, /*input_index*/ 0, constant_to_modify, perm);
-
-        if (quant_mode == QuantizationMode::kPerAxis) {
-          // A per-axis quantized input would be even less common. Nonetheless, the DQ axis, which is 0, does not
-          // need updating because the DQ's input[0] will not be transposed (only permuted).
-          // However, the scale and zero-point inputs for per-axis DQ do need to be permuted.
-          auto dq_inputs = dq_node->Inputs();
-          auto dq_scale_input = dq_inputs[1];
-          auto dq_scale_constant = graph.GetConstant(dq_scale_input);
-          assert(dq_scale_constant != nullptr);  // Checked by GetDQWithConstInitializerInputAndSingleConsumer()
-          Permute1DConstant(graph, *dq_node, *dq_scale_constant, 1, dq_scale_input, perm);
-
-          if (dq_inputs.size() > 2) {  // zero-point input is optional
-            auto dq_zp_input = dq_inputs[2];
-            auto dq_zp_constant = graph.GetConstant(dq_zp_input);
-            assert(dq_zp_constant != nullptr);  // Checked by GetDQWithConstInitializerInputAndSingleConsumer()
-            Permute1DConstant(graph, *dq_node, *dq_zp_constant, 2, dq_zp_input, perm);
-          }
-        }
-
-        constant_dq_input = "";  // unset so reconnect_nodes doesn't change it back.
-        return;
-      }
+      // Even if it occurred, HandleResize()/HandlePad() permute these kinds of inputs directly and do not try to
+      // call TransposeInput() on them. Also, WrapTransposesAroundNode() does not call TransposeInput() on non-const
+      // inputs of this kind. So, we should not have a DQ to look past at this point.
+      //
+      // In the event that we decide to handle a DQ in the future, note that the DQ axis should not be
+      // changed (remains 0), but all DQ inputs should be permuted.
+      assert(!dq_to_look_past);
 
       Permute1DConstant(graph, node, *constant, i, constant_to_modify, perm);
 
