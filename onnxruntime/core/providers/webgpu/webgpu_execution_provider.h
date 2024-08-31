@@ -23,12 +23,12 @@ enum class BufferCacheMode;
 
 struct WebGpuExecutionProviderInfo {
   WebGpuExecutionProviderInfo(DataLayout data_layout1, bool enable_graph_capture1)
-    : data_layout{data_layout1}
-    , enable_graph_capture{enable_graph_capture1}
-    , storage_buffer_cache_mode{}
-    , uniform_buffer_cache_mode{}
-    , query_resolve_buffer_cache_mode{}
-    , default_buffer_cache_mode{} {}
+      : data_layout{data_layout1},
+        enable_graph_capture{enable_graph_capture1},
+        storage_buffer_cache_mode{},
+        uniform_buffer_cache_mode{},
+        query_resolve_buffer_cache_mode{},
+        default_buffer_cache_mode{} {}
   DataLayout data_layout;
   bool enable_graph_capture;
   webgpu::BufferCacheMode storage_buffer_cache_mode;
