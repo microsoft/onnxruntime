@@ -169,10 +169,9 @@ struct AttentionKernel {
     scalar_t* key_ptr = nullptr;        // [num_keys, num_heads, head_dim]
     scalar_t* value_ptr = nullptr;      // [num_keys, num_heads, head_dim_value]
     scalar_t* attn_bias_ptr = nullptr;  // [num_heads, num_queries, num_keys]
-    int32_t* seqstart_q_ptr = nullptr;
-    int32_t* seqstart_k_ptr = nullptr;
-
-    int32_t* seqlen_k_ptr = nullptr;
+    const int32_t* seqstart_q_ptr = nullptr;
+    const int32_t* seqstart_k_ptr = nullptr;
+    const int32_t* seqlen_k_ptr = nullptr;
     uint32_t causal_diagonal_offset = 0;
 
     // Output tensors

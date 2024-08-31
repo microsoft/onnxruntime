@@ -422,7 +422,7 @@ Status EfficientAttention(
     p.seqstart_q_ptr = nullptr;
     p.seqstart_k_ptr = nullptr;
   } else {
-    p.seqlen_k_ptr = const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqlen_k_ptr = reinterpret_cast<const int32_t*>(data.mask_index);
     p.seqstart_q_ptr = p.seqlen_k_ptr + parameters.batch_size;
     p.seqstart_k_ptr = p.seqlen_k_ptr + 2 * parameters.batch_size + 1;
   }
