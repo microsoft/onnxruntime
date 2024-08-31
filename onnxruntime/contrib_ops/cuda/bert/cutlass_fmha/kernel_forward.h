@@ -186,6 +186,8 @@ struct AttentionKernel {
     // Scale
     accum_t scale = 0.0;
 
+    accum_t softcap = 0.0;
+
     // Dimensions/strides
     int32_t head_dim = 0;
     int32_t head_dim_value = 0;
@@ -646,7 +648,6 @@ struct AttentionKernel {
         p.custom_mask_type < NumCustomMaskTypes,
         "invalid value for `custom_mask_type`");
     if (p.window_size > 0) {
-      printf("window_size: %d\n", p.window_size);
       XFORMERS_CHECK(
           p.custom_mask_type == CausalFromTopLeft ||
               p.custom_mask_type == CausalFromBottomRight,
@@ -829,6 +830,15 @@ struct AttentionKernel {
       if (kSupportsBias) {
         accum =
             cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.scale, accum);
+      }
+
+      // apply softcap if applicable
+      if (p.softcap > 0.0) {
+        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0 / p.softcap, accum);
+        for (int i = 0; i < accum.size(); ++i) {
+          accum[i] = cutlass::fast_tanh(accum[i]);
+        }
+        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.softcap, accum);
       }
 
       // apply attention bias if applicable

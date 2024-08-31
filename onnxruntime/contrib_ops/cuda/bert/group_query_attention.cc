@@ -51,6 +51,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
   kernel_options_ = this->GetAttentionKernelOptions();
@@ -96,6 +97,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 total_seqlen,
                                                                 is_past_bsnh_,
                                                                 scale_,
+                                                                softcap_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;

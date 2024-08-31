@@ -31,6 +31,7 @@ struct MemoryEfficientAttentionParams {
   bool broadcast_attn_bias_dim_1 = false;
   bool has_custom_right_padding = false;
   float scale = 1.0f;
+  float softcap = 0.0;
 
   cudaStream_t stream = nullptr;
   const int32_t* seqstart_q_ptr = nullptr;  // [B + 1], cumulated sequence lengths of queries
