@@ -9,6 +9,7 @@
 #include "tensorrt_execution_provider_utils.h"
 #include "tensorrt_cuda_allocator.h"
 #include "onnx_ctx_model_helper.h"
+#include "onnx/onnx_pb.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -3617,6 +3618,59 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       if (group.second) {
         nodes_list_output.push_back(group);
       } else {
+        onnx::ModelProto m;
+        m.set_ir_version(3);
+        onnx::OperatorSetIdProto* p = m.add_opset_import();
+        p->set_domain("");
+        p->set_version(10);
+        onnx::GraphProto* g = m.mutable_graph();
+        for (size_t i = 0; i < nodes_count; i++) {
+          onnx::NodeProto* n = g->add_node();
+          const OrtNode* node = nullptr;
+          api_->OrtGraph_GetOrtNode(graph, i, &node);
+
+          const char* op_type = nullptr;
+          api_->OrtNode_GetOpType(node, &op_type);
+          n->set_op_type(op_type);
+
+          const char* name = nullptr;
+          api_->OrtNode_GetName(node, &name);
+          n->set_name(name);
+
+          // TODO(leca): Implicit input? & attributes
+          size_t input_size = 0;
+          api_->OrtNode_GetInputSize(node, &input_size);
+          for (size_t j = 0; j < input_size; j++) {
+            const char* jth_input_name = nullptr;
+            api_->OrtNode_GetIthInputName(node, j, &jth_input_name);
+            n->add_input(jth_input_name, strlen(jth_input_name));
+          }
+
+          size_t output_size = 0;
+          api_->OrtNode_GetOutputSize(node, &output_size);
+          for (size_t j = 0; j < output_size; j++) {
+            const char* jth_output_name = nullptr;
+            api_->OrtNode_GetIthOutputName(node, j, &jth_output_name);
+            n->add_output(jth_output_name, strlen(jth_output_name));
+          }
+        }
+
+        // TODO(leca): set_elem_type, set_dim_value for graph input and output
+        size_t graph_inputs = 0;
+        const char** graph_input_names = nullptr;
+        api_->OrtGraph_GetInputsIncludingInitializers(graph, &graph_inputs, &graph_input_names);
+        for (size_t i = 0; i < graph_inputs; i++) {
+          onnx::ValueInfoProto* input = g->add_input();
+          input->set_name(graph_input_names[i]);
+        }
+
+        size_t graph_outputs = api_->OrtGraph_GetOutputSize(graph);
+        for (size_t i = 0; i < graph_outputs; i++) {
+          onnx::ValueInfoProto* output = g->add_output();
+          output->set_name(api_->OrtGraph_GetIthOutputName(graph, i));
+          output->mutable_type()->mutable_tensor_type()->set_elem_type(api_->OrtGraph_GetIthOutputElemType(graph, i));
+        }
+
 //        auto model_build = graph.CreateModel(*GetLogger());
 //        auto& graph_build = model_build->MainGraph();
 //        bool has_control_flow_op = false;

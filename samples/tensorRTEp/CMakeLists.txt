@@ -18,19 +18,19 @@ target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "/usr/local/cuda/include"
                                              "/home/leca/TensorRT-10.0.1.6/include"
                                              "../../build/Linux/Debug/_deps/flatbuffers-src/include"
-                                             "../../build/Linux/Debug/_deps/gsl-src/include")
-#                                        "../../build/Linux/Debug/_deps/onnx-src"
-#                                        "../../build/Linux/Debug/_deps/onnx-build"
-#                                        "../../build/Linux/Debug/_deps/protobuf-src/src")
-#
+                                             "../../build/Linux/Debug/_deps/gsl-src/include"
+                                             "../../build/Linux/Debug/_deps/onnx-src"
+                                             "../../build/Linux/Debug/_deps/onnx-build"
+                                             "../../build/Linux/Debug/_deps/protobuf-src/src")
+
 ## looks we need libonnxruntime.so in Win as in Windows you cannot build shared library with undefined symbol
 target_link_libraries(TensorRTEp PUBLIC #"/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so"
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer.so"
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvinfer_plugin.so"
                                      "/home/leca/TensorRT-10.0.1.6/lib/libnvonnxparser.so"
                                      "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/flatbuffers-build/libflatbuffers.a"
-                                     CUDA::cudart)
-#                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
-#                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
-#                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"
-#                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotocd.a")
+                                     CUDA::cudart
+                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
+                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
+                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"
+                                    "/home/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotocd.a")
