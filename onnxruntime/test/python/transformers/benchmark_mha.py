@@ -926,14 +926,11 @@ def run_tflops_test(
                             print(f"skip input_format for {vars(config)}")
                         continue
 
+                actual_kernel = request_kernel
                 if use_gpu:
                     actual_kernel = sdpa_kernel_from_debug_info(config, attention_kernel, sess_options)
                     if actual_kernel is None:
-                        print(f"Warning: skip {config} since kernel from debug info is None")
-                        continue
-                else:
-                    # CPU has no debug info for now.
-                    actual_kernel = request_kernel
+                        actual_kernel = request_kernel
 
                 session = create_session(config, sess_options, attention_kernel=attention_kernel)
                 input_dict = config.random_inputs()
