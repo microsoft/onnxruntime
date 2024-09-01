@@ -176,6 +176,8 @@ class BucketCacheManager : public IBufferCacheManager {
         wgpuBufferRelease(buffer);
       }
     }
+
+    pending_buffers_.clear();
   }
 
  protected:
