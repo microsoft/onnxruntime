@@ -182,13 +182,13 @@ To add more tests to the suite list, edit the file at `C:\code\onnxruntime\onnxr
 to test or debug a single test, find the "onnx_test_runner.exe" in your build folder. run it like:
 
 ```
-onnx_test_runner.exe -v -e webgpu -a 0.0001 -t 0.0001 -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
+onnx_test_runner.exe -v -e webgpu -a 0.001 -t 0.001 -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```
 
 The `-C` flag is split by space for each key-value pair. Each key-value pair is separated by `|`. The key is the option name and the value is the option value. See `onnxruntime\core\providers\webgpu\webgpu_provider_options.h` for available WebGPU EP options.
 
 The `-a` and `-t` flags are used to specify the absolute and relative tolerance for the test.
-- currently the value is set to `0.0001` for both absolute and relative tolerance for the WebGPU EP.
+- currently the value is set to `0.001` for both absolute and relative tolerance for the WebGPU EP.
 - `onnx_test_runner` will try to load file `<cwd>\testdata\onnx_backend_test_series_overrides.jsonc>` if available to set the default tolerance values. It is recommended to set the tolerance values in the command line to ensure consistent behavior.
   > This is why the following command may have different results:
   >
@@ -208,5 +208,5 @@ Some features are useful but if you are troubleshooting and want to rule out the
 
 Example:
 ```
-onnx_test_runner.exe -v -A -M -j 1 -e webgpu -a 0.0001 -t 0.0001 -C "session.disable_cpu_ep_fallback|1 storageBufferCacheMode|disabled" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
+onnx_test_runner.exe -v -A -M -j 1 -e webgpu -a 0.001 -t 0.001 -C "session.disable_cpu_ep_fallback|1 storageBufferCacheMode|disabled" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```

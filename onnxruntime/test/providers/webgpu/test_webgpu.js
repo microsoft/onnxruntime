@@ -1122,8 +1122,8 @@ if (!test_data_ready) {
     fs.writeFileSync(test_list_json_filepath, test_list_json_data);
 }
 
-// const args = ['-A', '-M', '-j', '1', '-t', '0.0001', '-a', '0.0001', '-e', 'webgpu', '-C', '"session.disable_cpu_ep_fallback|1 storageBufferCacheMode|disabled"', 'webgpu_test_root'];
-const args = ['-j', '1', '-t', '0.0001', '-a', '0.0001', '-e', 'webgpu', '-C', '"session.disable_cpu_ep_fallback|1"', 'webgpu_test_root'];
+// const args = ['-A', '-M', '-j', '1', '-t', '0.001', '-a', '0.001', '-e', 'webgpu', '-C', '"session.disable_cpu_ep_fallback|1 storageBufferCacheMode|disabled"', 'webgpu_test_root'];
+const args = ['-j', '1', '-t', '0.001', '-a', '0.001', '-e', 'webgpu', '-C', '"session.disable_cpu_ep_fallback|1"', 'webgpu_test_root'];
 if (VERBOSE) {
     args.unshift('-v');
 }
