@@ -119,6 +119,7 @@ Status ComputeInternal(ComputeContext& context) const override;
 ```
 
 Usually, in the implementation, we do 3 things:
+
 - Create a local variable of the Program class.
 - Set a few runtime info of the Program instance.
 - Call `context.RunProgram(program)` to run the program and return the status.
@@ -130,6 +131,7 @@ Complicated operators may do more things. Check header files and existing implem
 Register the operator just like any EP does. Check existing implementations for more details.
 
 Please note that registration is composed of 2 parts:
+
 - Use macros like `ONNX_OPERATOR_KERNEL_EX` or `ONNX_OPERATOR_VERSIONED_KERNEL_EX` (or wrap a new macro as what we usually do) to register the operator in kernel source code file.
 - Add the operator to onnxruntime/core/providers/webgpu/webgpu_execution_provider.cc
 
@@ -139,29 +141,59 @@ This section is WIP.
 
 ## 6. Build and test
 
+### Build
+
 use `build.bat --use_webgpu --skip_tests` to build the WebGPU EP. For Release build, append `--config Release` or `--config RelWithDebInfo` to the command line.
 
-to test, find the "test_webgpu.bat" in your build folder. run it for tests:
+### Prepare test data
+
+Assume `C:\code\onnxruntime` is the root of your onnxruntime repo in all documents below.
+
+if folder `C:\code\onnxruntime\js\test\data` does not exist, run the following in your onnxruntime repo root:
+
+```
+cd js
+npm ci
+npm run prepare-node-tests
+```
+
+### Run Suite test (temporary: this may change recently)
+
+to do suite test, find the "test_webgpu.bat" in your build folder (It's usually in `build\Windows\Debug\Debug`). run it for tests:
+
 ```
 # run all tests
 test_webgpu.bat
 
-# run a specific test
-test_webgpu.bat test_abs
+# run a test list from args
+test_webgpu.bat -m=test_abs;test_cos
 ```
 
+To add more tests to the suite list, edit the file at `C:\code\onnxruntime\onnxruntime\test\providers\webgpu\test_webgpu.js`. After editing, run build again otherwise this file will not be copied to the build folder.
 
+> How does it work?
+>
+> The `test_webgpu.bat` calls `test_webgpu.js` with nodejs.
+>
+> The `test_webgpu.js` use the test list (either the suite list or from cmd args) to prepare a temporary folder and creates symbolic links to the test data folder (under `C:\code\onnxruntime\js\test\data`). Then it runs `onnx_test_runner` on the temporary folder.
+
+### Run single test / debug
 
 to test or debug a single test, find the "onnx_test_runner.exe" in your build folder. run it like:
+
 ```
 onnx_test_runner.exe -v -e webgpu -C "session.disable_cpu_ep_fallback|1" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
 ```
 
-> Assume `C:\code\onnxruntime` is the root of your onnxruntime repo
->
-> if folder `C:\code\onnxruntime\js\test\data` does not exist, run the following in your onnxruntime repo root:
-> ```
-> cd js
-> npm ci
-> npm run prepare-node-tests
-> ```
+The `-C` flag is split by space for each key-value pair. Each key-value pair is separated by `|`. The key is the option name and the value is the option value.
+
+Some features are useful but if you are troubleshooting and want to rule out the cause, you can:
+
+- set `storageBufferCacheMode` to `disabled` to disable the storage buffer cache.
+- set `-M` and `-A` to disable memory pattern and memory arena.
+- set `-j 1` to disable parallel execution (if you have multiple models to test).
+
+Example:
+```
+onnx_test_runner.exe -v -A -M -j 1 -e webgpu -C "session.disable_cpu_ep_fallback|1 storageBufferCacheMode|disabled" C:\code\onnxruntime\js\test\data\node\opset17\test_abs
+```
