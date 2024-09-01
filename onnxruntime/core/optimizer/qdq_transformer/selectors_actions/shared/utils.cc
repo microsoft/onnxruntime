@@ -313,7 +313,7 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     const auto& versions = op_versions_and_selector.op_versions_map.find(node->OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
-        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType() << node->SinceVersion();
         continue;
       }
     }
