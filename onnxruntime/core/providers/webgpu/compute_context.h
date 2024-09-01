@@ -14,6 +14,7 @@
 #include "core/framework/execution_provider.h"
 
 #include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {

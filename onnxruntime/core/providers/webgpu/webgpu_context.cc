@@ -6,6 +6,7 @@
 
 #include "core/common/common.h"
 
+#include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
@@ -124,7 +125,7 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(const ComputeContext& /*context*/, const ProgramBase& program) {
+Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -199,6 +200,8 @@ Status WebGpuContext::Run(const ComputeContext& /*context*/, const ProgramBase& 
   bool is_1d_dispatch = (y == 1 && z == 1);
 
   auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
+
+  LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
   const auto* program_artifact = program_mgr_->Get(key);
   if (program_artifact == nullptr) {
