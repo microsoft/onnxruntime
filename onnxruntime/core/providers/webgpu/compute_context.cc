@@ -13,25 +13,5 @@ ComputeContext::ComputeContext(OpKernelContext& kernel_context)
       kernel_context_{kernel_context} {
 }
 
-const wgpu::AdapterInfo& ComputeContext::AdapterInfo() const {
-  return webgpu_context_.AdapterInfo();
-}
-
-const wgpu::Limits& ComputeContext::DeviceLimits() const {
-  return webgpu_context_.DeviceLimits();
-}
-
-int ComputeContext::InputCount() const {
-  return kernel_context_.InputCount();
-}
-
-int ComputeContext::OutputCount() const {
-  return kernel_context_.OutputCount();
-}
-
-Status ComputeContext::RunProgram(const ProgramBase& program) {
-  return webgpu_context_.Run(*this, program);
-}
-
 }  // namespace webgpu
 }  // namespace onnxruntime

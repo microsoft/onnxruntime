@@ -34,34 +34,49 @@ class ComputeContext {
   // Get various information from the context.
   //
 
-  const wgpu::AdapterInfo& AdapterInfo() const;
-  const wgpu::Limits& DeviceLimits() const;
+  inline const wgpu::AdapterInfo& AdapterInfo() const {
+    return webgpu_context_.AdapterInfo();
+  }
+  inline const wgpu::Limits& DeviceLimits() const {
+    return webgpu_context_.DeviceLimits();
+  }
+
+  //
+  // Get the logger
+  //
+  inline const logging::Logger& Logger() const {
+    return kernel_context_.Logger();
+  }
 
   //
   // Get input tensor.
   //
   template <typename T = onnxruntime::Tensor>
-  const T* Input(int index) const {
+  inline const T* Input(int index) const {
     return kernel_context_.Input<T>(index);
   }
 
   //
   // Get input count.
   //
-  int InputCount() const;
+  inline int InputCount() const {
+    return kernel_context_.InputCount();
+  }
 
   //
   // Set output tensor.
   //
   template <typename TensorShapeType>
-  Tensor* Output(int index, TensorShapeType&& shape) {
+  inline Tensor* Output(int index, TensorShapeType&& shape) {
     return kernel_context_.Output(index, std::forward<TensorShapeType>(shape));
   }
 
   //
   // Get output count.
   //
-  int OutputCount() const;
+  inline int OutputCount() const {
+    return kernel_context_.OutputCount();
+  }
 
   //
   // Create CPU tensor.
@@ -86,7 +101,9 @@ class ComputeContext {
   //
   // Run a compute shader program.
   //
-  Status RunProgram(const ProgramBase& program);
+  inline Status RunProgram(const ProgramBase& program) {
+    return webgpu_context_.Run(*this, program);
+  }
 
  protected:
   WebGpuContext& webgpu_context_;
