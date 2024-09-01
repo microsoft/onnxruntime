@@ -86,9 +86,14 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       wgpu::RequiredLimits required_limits = GetAvailableRequiredLimits(adapter_);
       device_desc.requiredLimits = &required_limits;
 
-      // TODO: temporary error handling
+      // TODO: revise temporary error handling
       device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, const char* message) {
         LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << message;
+      });
+      // TODO: revise temporary device lost handling
+      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, const char* message) {
+        // cannot use ORT logger because it may be already destroyed
+        std::cerr << "WebGPU device lost (" << int(reason) << "): " << message;
       });
 
       wgpu::RequestDeviceCallbackInfo req_device_callback_info = {};
