@@ -314,7 +314,7 @@ struct BytesHash {
 };
 
 // Use thread local caches because cuDNN execution plans are not guaranteed to be thread safe.
-// TODO(tianleiwu): since we the key includes sequence lengths, we may want to limit the cache size.
+// TODO(tianleiwu): since the key includes sequence lengths, we may want to limit the cache size.
 thread_local
 std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
 

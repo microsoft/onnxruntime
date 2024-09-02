@@ -6,7 +6,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0fde04880048f743056bed17cb0543a42e040fae",
+          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -360,6 +360,16 @@
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

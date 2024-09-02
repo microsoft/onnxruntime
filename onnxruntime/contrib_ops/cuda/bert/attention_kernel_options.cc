@@ -128,45 +128,23 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << " DataType=fp32";
   }
 
+  sstream << " SdpaKernel=";
   if (use_flash_attention.has_value() && use_flash_attention.value()) {
-    sstream << " FLASH_ATTENTION=" << int(use_flash_attention.value());
-  }
-
-  if (use_efficient_attention.has_value() && use_efficient_attention.value()) {
-    sstream << " EFFICIENT_ATTENTION=" << int(use_efficient_attention.value());
-  }
-
-  if (use_trt_fused_attention.has_value() && use_trt_fused_attention.value()) {
-    sstream << " TRT_FUSED_ATTENTION=" << int(use_trt_fused_attention.value());
-  }
-
-  if (use_cudnn_flash_attention.has_value() && use_cudnn_flash_attention.value()) {
-    sstream << " CUDNN_FLASH_ATTENTION=" << int(use_cudnn_flash_attention.value());
-  }
-
-  if (use_trt_flash_attention.has_value() && use_trt_flash_attention.value()) {
-    sstream << " TRT_FLASH_ATTENTION=" << int(use_trt_flash_attention.value());
-  }
-
-  if (use_trt_cross_attention.has_value() && use_trt_cross_attention.value()) {
-    sstream << " TRT_CROSS_ATTENTION=" << int(use_trt_cross_attention.value());
-  }
-
-  if (use_trt_causal_attention.has_value() && use_trt_causal_attention.value()) {
-    sstream << " TRT_CAUSAL_ATTENTION=" << int(use_trt_causal_attention.value());
-  }
-
-  bool use_fused = (use_flash_attention.has_value() && use_flash_attention.value()) ||
-                   (use_efficient_attention.has_value() && use_efficient_attention.value()) ||
-                   (use_trt_fused_attention.has_value() && use_trt_fused_attention.value()) ||
-                   (use_cudnn_flash_attention.has_value() && use_cudnn_flash_attention.value()) ||
-                   (use_trt_flash_attention.has_value() && use_trt_flash_attention.value()) ||
-                   (use_trt_cross_attention.has_value() && use_trt_cross_attention.value()) ||
-                   (use_trt_causal_attention.has_value() && use_trt_causal_attention.value());
-
-  // Fall back to unfused when no fused kernel is enabled.
-  if (!use_fused) {
-    sstream << " MATH=1";
+    sstream << "FLASH_ATTENTION";
+  } else if (use_efficient_attention.has_value() && use_efficient_attention.value()) {
+    sstream << "EFFICIENT_ATTENTION";
+  } else if (use_trt_fused_attention.has_value() && use_trt_fused_attention.value()) {
+    sstream << "TRT_FUSED_ATTENTION";
+  } else if (use_cudnn_flash_attention.has_value() && use_cudnn_flash_attention.value()) {
+    sstream << "CUDNN_FLASH_ATTENTION";
+  } else if (use_trt_flash_attention.has_value() && use_trt_flash_attention.value()) {
+    sstream << "TRT_FLASH_ATTENTION";
+  } else if (use_trt_cross_attention.has_value() && use_trt_cross_attention.value()) {
+    sstream << "TRT_CROSS_ATTENTION";
+  } else if (use_trt_causal_attention.has_value() && use_trt_causal_attention.value()) {
+    sstream << "TRT_CAUSAL_ATTENTION";
+  } else {
+    sstream << "MATH";
   }
 
   // Output text in Cyan color to make it easier to spot.

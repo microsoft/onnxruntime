@@ -20,6 +20,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -93,6 +94,7 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
+               const ExternalDataLoaderManager& external_data_loader_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
@@ -295,6 +297,8 @@ class SessionState {
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
+
+  const ExternalDataLoaderManager& GetExternalDataLoaderMgr() const noexcept { return external_data_loader_mgr_; }
 
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
@@ -512,6 +516,8 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   const DataTransferManager& data_transfer_mgr_;
+
+  const ExternalDataLoaderManager& external_data_loader_mgr_;
 
   const SessionOptions& sess_options_;
 

@@ -182,6 +182,7 @@ export const createConv2DMatMulProgramInfo = (
   dimInner: number,
   hasBias: boolean,
   sequentialAccessByThreads: boolean,
+  squeezeOutputShapeFunction?: (shape: readonly number[]) => number[],
 ): ProgramInfo => {
   const isChannelsLast = attributes.format === 'NHWC';
   const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
@@ -309,13 +310,16 @@ export const createConv2DMatMulProgramInfo = (
   return {
     name: 'Conv2DMatMul',
     shaderCache: {
-      hint: `${attributes.cacheKey};${innerElementSize};${isVec4};${fitAOuter};${fitBOuter};${fitInner};${
-        tileAOuter
-      };${tileBOuter};${tileInner}`,
+      hint: `${attributes.cacheKey};${innerElementSize};${isVec4};${fitAOuter};${fitBOuter};${fitInner};${tileAOuter};${tileBOuter};${tileInner}`,
       inputDependencies,
     },
     getRunData: () => ({
-      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      outputs: [
+        {
+          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+          dataType: inputs[0].dataType,
+        },
+      ],
       dispatchGroup: { x: dispatch[0], y: dispatch[1], z: dispatch[2] },
       programUniforms,
     }),
