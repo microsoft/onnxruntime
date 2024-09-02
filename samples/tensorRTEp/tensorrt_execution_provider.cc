@@ -1468,19 +1468,22 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
 
 
             if (all_subgraphs_are_supported) {
-                // for (const auto& group : supported_nodes_vector) {
-                //     if (!group.first.empty()) {
-                //         *cnt = group.first.size();
-                //         *indexed_sub_graph = new OrtIndexedSubGraph* [group.first.size()];
-                //         int i = 0;
-                //         for (const auto& index : group.first) {
-                //             (*indexed_sub_graph)[i]->node_index_len = 1;
-                //             (*indexed_sub_graph)[i]->node_index = new size_t [(*indexed_sub_graph)[i]->node_index_len];
-                //             (*indexed_sub_graph)[i]->node_index[0] = node_index[index];
-                //             i++;
-                //         }
-                //     }
-                // }
+                for (const auto& group : supported_nodes_vector) {
+                    if (!group.first.empty()) {
+                        for (const auto& index : group.first) {
+                            std::unique_ptr<OrtIndexedSubGraph> sub_graph = std::make_unique<OrtIndexedSubGraph>();
+                            sub_graph->node_index_len = 1;
+                            sub_graph->node_index = new size_t [sub_graph->node_index_len];
+                            sub_graph->node_index[0] = nodes_index[index];
+                            cache.push_back(sub_graph.release());
+                        }
+                    }
+                }
+                *cnt = cache.size();
+                *indexed_sub_graph = new OrtIndexedSubGraph* [*cnt];
+                for (size_t i = 0; i < *cnt; i++) {
+                    (*indexed_sub_graph)[i] = cache[i];
+                }
                 // LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
                 return;
             }
