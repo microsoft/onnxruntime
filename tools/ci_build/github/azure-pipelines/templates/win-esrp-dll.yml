@@ -64,6 +64,7 @@ steps:
     SessionTimeout: 90
     ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2'
     MaxConcurrency: 25
+
 - task: PowerShell@2
   displayName: 'Signature validation for signed file(s)'
   inputs:
