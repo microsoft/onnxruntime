@@ -55,9 +55,15 @@ def check_distro_info():
             warnings.warn(
                 f"Unsupported macOS version ({__my_distro_ver__}). ONNX Runtime supports macOS 11.0 or later."
             )
+    elif __my_system__ == "aix":
+        import subprocess
+
+        returned_output = subprocess.check_output("oslevel")
+        __my_distro_ver__str = returned_output.decode("utf-8")
+        __my_distro_ver = __my_distro_ver__str[:3]
     else:
         warnings.warn(
-            f"Unsupported platform ({__my_system__}). ONNX Runtime supports Linux, macOS and Windows platforms, only."
+            f"Unsupported platform ({__my_system__}). ONNX Runtime supports Linux, macOS, AIX and Windows platforms, only."
         )
 
 

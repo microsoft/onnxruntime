@@ -119,6 +119,7 @@ struct GroupQueryAttentionParameters {
   bool rotary_interleaved;
   bool use_smooth_softmax;
   float scale;
+  float softcap;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
