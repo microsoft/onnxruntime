@@ -83,8 +83,9 @@ steps:
 
       $patterns="${{ parameters.Pattern }}" -split ','
 
-      foreach($pattern in $patterns)
+      foreach($pattern_original in $patterns)
       {
+          $pattern=$pattern_original.Trim()
           Write-Host "Validating pattern:" $pattern
 
           $file_names=Get-ChildItem -Path ${{ parameters.FolderPath }} .\$pattern -Name -Recurse -Force
