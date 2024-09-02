@@ -36,6 +36,15 @@ WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
 InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
 
+inline std::vector<int64_t> convertAxesFromNCHWtoNHWC(const std::vector<int64_t>& axes) {
+  std::map<int64_t, int64_t> nchw_to_nhwc = {{0, 0}, {1, 3}, {2, 1}, {3, 2}};
+  std::vector<int64_t> new_axes;
+  for (int64_t axis : axes) {
+    new_axes.push_back(nchw_to_nhwc[axis]);
+  }
+  return new_axes;
+}
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 template <typename T>
@@ -142,6 +151,16 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
       break;
   }
   return true;
+}
+
+inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::string name) {
+  if (name.empty() || !Contains(initializers, name)) {
+    return true;
+  }
+
+  const auto& tensor = *initializers.at(name);
+  const auto dims = tensor.dims();
+  return dims.empty() || (dims.size() == 1 && dims[0] == 0);
 }
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
