@@ -271,26 +271,6 @@ struct QuantizationInfo {
   int64_t norm_axis;  // 'normalized' axis is in the range [0, Input0Rank - 1]
 };
 
-// Returns the shape of a Q or DQ node's scale input, or std::nullopt if unable to get the shape.
-static std::optional<std::vector<int64_t>> GetQOrDQScaleShape(const api::GraphRef& graph,
-                                                              const api::NodeRef& q_or_dq_node) {
-  // Try to get the shape from ValueInfo.
-  std::string_view scale_input = q_or_dq_node.Inputs()[1];
-  const std::unique_ptr<api::ValueInfoRef> scale_value_info = graph.GetValueInfo(scale_input);
-  std::optional<std::vector<int64_t>> scale_shape = scale_value_info->Shape();
-  if (scale_shape) {
-    return scale_shape;
-  }
-
-  // ValueInfo is not available. Try to get shape from Tensor if scale is a constant.
-  const std::unique_ptr<api::TensorRef> dq_scale_constant = graph.GetConstant(scale_input);
-  if (dq_scale_constant) {
-    return dq_scale_constant->Shape();
-  }
-
-  return std::nullopt;
-}
-
 // Returns quantization information (quantization mode, normalized axis).
 // Returns std::nullopt if unable to get the quantization info or if the axis attribute is invalid.
 static std::optional<QuantizationInfo> GetQuantizationInfo(const api::GraphRef& graph,
@@ -299,7 +279,9 @@ static std::optional<QuantizationInfo> GetQuantizationInfo(const api::GraphRef& 
 
   // Need to use the scale input's shape to determine the quantization mode. Can't just use the presence of the axis
   // attribute because even per-tensor Q/DQ have a default axis of 1.
-  std::optional<std::vector<int64_t>> scale_shape = GetQOrDQScaleShape(graph, q_or_dq_node);
+  std::string_view scale_input = q_or_dq_node.Inputs()[1];
+  const std::unique_ptr<api::ValueInfoRef> scale_value_info = graph.GetValueInfo(scale_input);
+  std::optional<std::vector<int64_t>> scale_shape = scale_value_info->Shape();
   if (!scale_shape) {
     return std::nullopt;
   }
@@ -311,23 +293,19 @@ static std::optional<QuantizationInfo> GetQuantizationInfo(const api::GraphRef& 
     quant_info.mode = QuantizationMode::kPerTensor;
     quant_info.norm_axis = 1;  // 1 is the default 'axis' even for per-tensor quantization (axis is ignored).
   } else {
+    // This is either per-axis or blocked quantization. A non-zero block_size attribute indicates blocked quantization.
     int64_t axis = q_or_dq_node.GetAttributeIntDefault("axis", 1);
     const auto input0_info = graph.GetValueInfo(inputs[0]);
     auto input0_rank = input0_info->ShapeRank();
     if (!input0_rank.has_value() || !NormalizeAndValidateAxis(axis, *input0_rank)) {
-      return std::nullopt;  // Unable to normalize the DQ's axis.
+      // Unable to normalize the DQ's axis.
+      // TODO(adrianlizarraga): Should look into a logging facility to make it easier to inspect issues.
+      return std::nullopt;
     }
 
     int64_t block_size = q_or_dq_node.GetAttributeIntDefault("block_size", 0);
-    if (block_size != 0) {
-      // A block size indicates blocked quantization.
-      quant_info.mode = QuantizationMode::kBlocked;
-      quant_info.norm_axis = axis;
-    } else {
-      // A block size of 0 indicates per-axis quantization.
-      quant_info.mode = QuantizationMode::kPerAxis;
-      quant_info.norm_axis = axis;
-    }
+    quant_info.norm_axis = axis;
+    quant_info.mode = block_size != 0 ? QuantizationMode::kBlocked : QuantizationMode::kPerAxis;
   }
 
   return quant_info;
@@ -378,7 +356,7 @@ class DQToLookPast {
       quant_info_.norm_axis = perm_inv[gsl::narrow_cast<size_t>(quant_info_.norm_axis)];
     }
 
-    this->SetUpdatedInputAndShape(graph, new_input);
+    this->SetUpdatedInput(graph, new_input);
   }
 
   /// <summary>
@@ -394,7 +372,7 @@ class DQToLookPast {
       quant_info_.norm_axis = UnsqueezeAxis(positive_unsqueeze_axes, quant_info_.norm_axis);
     }
 
-    this->SetUpdatedInputAndShape(graph, new_input);
+    this->SetUpdatedInput(graph, new_input);
   }
 
   /// <summary>
@@ -417,7 +395,7 @@ class DQToLookPast {
  private:
   // Called by SetTransposedInput() and SetUnsqueezedInput() to update the DQ's input,
   // axis, and output shape.
-  void SetUpdatedInputAndShape(api::GraphRef& graph, std::string_view new_input) {
+  void SetUpdatedInput(api::GraphRef& graph, std::string_view new_input) {
     dq_node_->SetInput(0, new_input);
     dq_node_->SetAttributeInt("axis", quant_info_.norm_axis);
     auto new_shape = *graph.GetValueInfo(new_input)->Shape();
@@ -452,26 +430,10 @@ static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsum
         break;
       }
 
-      // Scale input to DQ must be a constant initializer.
-      std::string_view dq_scale_input = dq_inputs[1];
-      auto dq_scale_constant = graph.GetConstant(dq_scale_input);
-      if (!dq_scale_constant) {
-        break;
-      }
-
-      // Zero-point input (if present) must be a constant initializer.
-      if (dq_inputs.size() > 2) {
-        std::string_view dq_zp_input = dq_inputs[2];
-        auto dq_zp_constant = graph.GetConstant(dq_zp_input);
-        if (!dq_zp_constant) {
-          break;
-        }
-      }
-
       // Get the quantization mode (per-tensor, per-channel) and the normalized quantization axis.
       // To keep things simple, do not support blocked quantization for now (added in opset 21).
       quant_info = GetQuantizationInfo(graph, *dq_node);
-      if (!quant_info.has_value() || !IsSupportedQuantizationMode(quant_info->mode)) {
+      if (!quant_info || !IsSupportedQuantizationMode(quant_info->mode)) {
         break;
       }
 
