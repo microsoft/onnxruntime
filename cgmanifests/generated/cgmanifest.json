@@ -361,6 +361,16 @@
         },
         "comments": "cudnn_frontend"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
+      }
     }
   ]
 }
