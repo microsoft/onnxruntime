@@ -157,7 +157,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
     return Status::OK();
   }
 
-  ProgramMetadata metadata = program.GetMetadata();
+  const ProgramMetadata metadata = program.GetMetadata();
 
   // validate program metadata
   {
@@ -227,35 +227,55 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
 #endif
   }
 
-  WGPUBuffer uniform_buffer = nullptr;
-  auto uniform_buffer_size = program_artifact->uniform_total_size;
-  if (uniform_buffer_size > 0) {
-    auto num_uniforms = program.UniformVariables().size();
-    ORT_ENFORCE(program_artifact->uniforms.size() == num_uniforms,
-                "Uniforms size mismatch. Artifact: ", program_artifact->uniforms.size(), ", Current: ", num_uniforms);
+  // prepare uniform info
+  const auto& uniforms = program.UniformVariables();
+  size_t current_offset = 0;
+  std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;
+  uniform_and_offsets.reserve(uniforms.size());
+  for (const auto& uniform : uniforms) {
+    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
+    size_t length = uniform.length;
 
-    std::vector<uint8_t> uniform_data(uniform_buffer_size);
-
-    for (size_t i = 0; i < num_uniforms; ++i) {
-      const auto& uniform = program.UniformVariables()[i];
-      const auto& artifact_uniform = program_artifact->uniforms[i];
-
-      ORT_ENFORCE(uniform.data_type == artifact_uniform.data_type,
-                  "Uniform[", i, "] data type mismatch. Artifact: ", artifact_uniform.data_type,
-                  ", Current: ", uniform.data_type);
-      ORT_ENFORCE(uniform.length == artifact_uniform.length,
-                  "Uniform[", i, "] elements number mismatch. Artifact: ", artifact_uniform.length, ", Current: ", uniform.length);
-      ORT_ENFORCE(uniform.data.size() == artifact_uniform.length * ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)],
-                  "Uniform[", i, "] data size mismatch. Artifact: ", artifact_uniform.length * ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)],
-                  ", Current: ", uniform.data.size());
-
-      auto offset = artifact_uniform.offset;
-      auto size = uniform.data.size();
-      memcpy(uniform_data.data() + offset, uniform.data.data(), size);
+    // skip zero-length uniform
+    if (length == 0) {
+      continue;
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    device_.GetQueue().WriteBuffer(uniform_buffer, 0, uniform_data.data(), uniform_buffer_size);
+    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
+    // https://www.w3.org/TR/WGSL/#alignof
+    size_t base_alignment = is_f16
+                                ? (length > 4 ? 16 : length > 2 ? 8
+                                                                : length * element_size)
+                                : (length > 2 ? 16 : length * element_size);
+    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
+
+    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
+    uniform_and_offsets.emplace_back(uniform, current_offset);
+
+    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
+    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
+    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
+    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
+    size_t element_per_struct = is_f16 ? 8 : 4;
+    current_offset +=
+        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
+  }
+
+  // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
+  // max_alignment_of_field to 16 since the underlying buffer has been rounded up to 16.
+  const size_t max_alignment_of_field = 16;
+  const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
+
+  WGPUBuffer uniform_buffer = nullptr;
+  if (uniform_buffer_total_size > 0) {
+    std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
+
+    for (auto const& [uniform, offset] : uniform_and_offsets) {
+      memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
+    }
+
+    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    device_.GetQueue().WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
   const auto& compute_pass_encoder = GetComputePassEncoder();

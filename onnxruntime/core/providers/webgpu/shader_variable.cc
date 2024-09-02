@@ -12,12 +12,12 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ShaderVariable::ShaderVariable(const std::string& name, ProgramVariableDataType type, int rank)
+ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, int rank)
     : name_(name), type_(type), rank_(rank), usage_(UseUniform) {
   Init();
 }
 
-ShaderVariable::ShaderVariable(const std::string& name, ProgramVariableDataType type, const TensorShape& dims)
+ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, const TensorShape& dims)
     : name_(name), type_(type), rank_(static_cast<int>(dims.NumDimensions())), dims_(dims), usage_(None) {
   Init();
 }
@@ -171,7 +171,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   }
 }
 
-std::string ShaderVariable::GetByOffsetImpl(const std::string& offset) const {
+std::string ShaderVariable::GetByOffsetImpl(std::string_view offset) const {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
 
@@ -199,7 +199,7 @@ std::string ShaderVariable::GetByOffsetImpl(const std::string& offset) const {
   return ss.str();
 }
 
-std::string ShaderVariable::SetByOffsetImpl(const std::string& offset, const std::string& value) const {
+std::string ShaderVariable::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
 

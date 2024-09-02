@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 template <typename TIdx>
-std::string GetElementAt(const std::string& var, const TIdx& idx, int rank, bool is_f16 = false) {
+std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool is_f16 = false) {
   // "std::string::rfind(str, 0) == 0" is equivalent to "std::string::starts_with(str)" before C++20.
   if (var.rfind("uniform.", 0) == 0) {
     if (rank > 4) {
@@ -31,34 +31,32 @@ std::string GetElementAt(const std::string& var, const TIdx& idx, int rank, bool
           return MakeStringWithClassicLocale(var, "[(", idx, ") / 4][(", idx, ") % 4]");
         }
       }
-    } else {
-      return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : var;
     }
-  } else {
-    return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : var;
   }
+
+  return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
 }
 
 class ShaderVariable {
  public:
-  ShaderVariable(const std::string& name, ProgramVariableDataType type, int rank);
-  ShaderVariable(const std::string& name, ProgramVariableDataType type, const TensorShape& dims);
+  ShaderVariable(std::string_view name, ProgramVariableDataType type, int rank);
+  ShaderVariable(std::string_view name, ProgramVariableDataType type, const TensorShape& dims);
 
   ShaderVariable(ShaderVariable&&) = default;
   ShaderVariable& operator=(ShaderVariable&&) = default;
 
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
-  inline std::string OffsetToIndices(const std::string& offset_expr) const;
+  inline std::string OffsetToIndices(std::string_view offset_expr) const;
 
   // create a WGSL expression (u32) for getting offset from indices.
   // \param indices: a WGSL expression ({varname}_indices_t) representing the indices.
-  inline std::string IndicesToOffset(const std::string& indices_expr) const;
+  inline std::string IndicesToOffset(std::string_view indices_expr) const;
 
   // create a WGSL expression (u32) for getting original offset from broadcasted indices.
   // \param indices: a WGSL expression ({broadcasted_result_varname}_indices_t) representing the broadcasted indices.
   // \param broadcasted_result: the broadcasted result variable.
-  inline std::string BroadcastedIndicesToOffset(const std::string& indices_expr, const ShaderVariable& broadcasted_result) const;
+  inline std::string BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const;
 
   // create a WGSL expression ({varname}_indices_t) as an indices literal
   // \param init: a list of indices values.
@@ -70,13 +68,13 @@ class ShaderVariable {
   // \param idx: the index (i32|u32) of the dimension to set.
   // \param value: the value (u32) to set.
   template <typename TIdx, typename TVal>
-  inline std::string IndicesSet(const std::string& indices_var, const TIdx& idx_expr, const TVal& value) const;
+  inline std::string IndicesSet(std::string_view indices_var, const TIdx& idx_expr, const TVal& value) const;
 
   // create a WGSL expression (u32) for getting value of the specified dimension of the indices.
   // \param indices_var: name of the indices variable ({varname}_indices_t).
   // \param idx: the index (i32|u32) of the dimension to get.
   template <typename TIdx>
-  inline std::string IndicesGet(const std::string& indices_var, const TIdx& idx_expr) const;
+  inline std::string IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const;
 
   // create a WGSL statement for setting data at the given indices.
   // \param args: a list of indices values (u32) followed by a value ({varname}_value_t).
@@ -86,7 +84,7 @@ class ShaderVariable {
   // create a WGSL statement for setting data at the given indices.
   // \param indices_var: name of the indices variable ({varname}_indices_t).
   // \param value: the value ({varname}_value_t) to set.
-  inline std::string SetByIndices(const std::string& indices_var, const std::string& value) const;
+  inline std::string SetByIndices(std::string_view indices_var, std::string_view value) const;
 
   // create a WGSL statement for setting data at the given offset.
   // \param offset: a WGSL expression (u32) representing the offset.
@@ -101,7 +99,7 @@ class ShaderVariable {
 
   // create a WGSL expression ({varname}_value_t) for getting data at the given indices.
   // \param indices_var: name of the indices variable ({varname}_indices_t).
-  inline std::string GetByIndices(const std::string& indices_var) const;
+  inline std::string GetByIndices(std::string_view indices_var) const;
 
   // create a WGSL expression ({varname}_value_t) for getting data at the given offset.
   // \param offset: a WGSL expression (u32) representing the offset.
@@ -131,8 +129,8 @@ class ShaderVariable {
   void Init();
   void Impl(std::ostringstream& ss) const;
 
-  std::string GetByOffsetImpl(const std::string& offset) const;
-  std::string SetByOffsetImpl(const std::string& offset, const std::string& value) const;
+  std::string GetByOffsetImpl(std::string_view offset) const;
+  std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
 
   std::string_view StorageType() const;
   std::string_view ValueType() const;
@@ -167,23 +165,29 @@ template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 std::string pass_as_string(T&& v) {
   return std::to_string(std::forward<T>(v));
 }
+template <typename...>
+std::string_view pass_as_string(std::string_view sv) {
+  return sv;
+}
 template <typename T>
-std::string pass_as_string(const T& v) {
-  return v;
+std::string pass_as_string(T&& v) {
+  return std::forward<T>(v);
 }
 }  // namespace detail
 
-inline std::string ShaderVariable::OffsetToIndices(const std::string& offset_expr) const {
+inline std::string ShaderVariable::OffsetToIndices(std::string_view offset_expr) const {
   usage_ |= UseOffsetToIndices;
-  return rank_ < 2 ? offset_expr : MakeStringWithClassicLocale("o2i_", name_, '(', offset_expr, ')');
+  return rank_ < 2 ? std::string{offset_expr}
+                   : MakeStringWithClassicLocale("o2i_", name_, '(', offset_expr, ')');
 }
 
-inline std::string ShaderVariable::IndicesToOffset(const std::string& indices_expr) const {
+inline std::string ShaderVariable::IndicesToOffset(std::string_view indices_expr) const {
   usage_ |= UseIndicesToOffset;
-  return rank_ < 2 ? indices_expr : MakeStringWithClassicLocale("i2o_", name_, '(', indices_expr, ')');
+  return rank_ < 2 ? std::string{indices_expr}
+                   : MakeStringWithClassicLocale("i2o_", name_, '(', indices_expr, ')');
 }
 
-inline std::string ShaderVariable::BroadcastedIndicesToOffset(const std::string& indices_expr, const ShaderVariable& broadcasted_result) const {
+inline std::string ShaderVariable::BroadcastedIndicesToOffset(std::string_view indices_expr, const ShaderVariable& broadcasted_result) const {
   usage_ |= UseBroadcastedIndicesToOffset;
   broadcasted_to_.push_back(broadcasted_result);
   return MakeStringWithClassicLocale(broadcasted_result.name_, "_bi2o_", name_, '(', indices_expr, ')');
@@ -199,14 +203,15 @@ inline std::string ShaderVariable::Indices(TIndices&&... indices_args) const {
 }
 
 template <typename TIdx, typename TVal>
-inline std::string ShaderVariable::IndicesSet(const std::string& indices_var, const TIdx& idx_expr, const TVal& value) const {
+inline std::string ShaderVariable::IndicesSet(std::string_view indices_var, const TIdx& idx_expr, const TVal& value) const {
   return rank_ < 2 ? MakeStringWithClassicLocale(indices_var, '=', value, ';')
                    : MakeStringWithClassicLocale(GetElementAt(indices_var, idx_expr, rank_), '=', value, ';');
 }
 
 template <typename TIdx>
-inline std::string ShaderVariable::IndicesGet(const std::string& indices_var, const TIdx& idx_expr) const {
-  return rank_ < 2 ? indices_var : GetElementAt(indices_var, idx_expr, rank_);
+inline std::string ShaderVariable::IndicesGet(std::string_view indices_var, const TIdx& idx_expr) const {
+  return rank_ < 2 ? std::string{indices_var}
+                   : GetElementAt(indices_var, idx_expr, rank_);
 }
 
 template <typename TOffset, typename TValue>
@@ -229,7 +234,7 @@ inline std::string ShaderVariable::Set(TIndicesAndValue&&... args) const {
   }
 }
 
-inline std::string ShaderVariable::SetByIndices(const std::string& indices_var, const std::string& value) const {
+inline std::string ShaderVariable::SetByIndices(std::string_view indices_var, std::string_view value) const {
   if (rank_ < 2) {
     return SetByOffset(indices_var, value);
   } else {
@@ -258,7 +263,7 @@ inline std::string ShaderVariable::Get(TIndices&&... indices) const {
   }
 }
 
-inline std::string ShaderVariable::GetByIndices(const std::string& indices_var) const {
+inline std::string ShaderVariable::GetByIndices(std::string_view indices_var) const {
   if (rank_ < 2) {
     return GetByOffset(indices_var);
   } else {

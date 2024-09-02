@@ -21,20 +21,12 @@ class Tensor;
 
 namespace webgpu {
 
-struct ProgramUniformInfo {
-  ProgramUniformVariableDataType data_type;
-  size_t offset;
-  size_t length;
-};
-
 class ProgramArtifact {
  public:
   ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline);
 
   std::string name;
   wgpu::ComputePipeline compute_pipeline;
-  std::vector<ProgramUniformInfo> uniforms;
-  size_t uniform_total_size;
 
   ProgramArtifact(ProgramArtifact&&) = default;
   ProgramArtifact& operator=(ProgramArtifact&&) = default;

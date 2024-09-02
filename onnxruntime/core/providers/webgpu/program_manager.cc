@@ -14,37 +14,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline)
-    : name{program.Name()}, compute_pipeline{compute_pipeline} {
-  // prepare uniform info
-  size_t current_offset = 0;
-  for (const auto& uniform : program.UniformVariables()) {
-    bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
-    size_t length = uniform.length;
-    size_t element_size = ProgramUniformVariableDataTypeSize[static_cast<int>(uniform.data_type)];
-    // https://www.w3.org/TR/WGSL/#alignof
-    size_t base_alignment = is_f16
-                                ? (length > 4 ? 16 : length > 2 ? 8
-                                                                : length * element_size)
-                                : (length > 2 ? 16 : length * element_size);
-    size_t struct_size = is_f16 && length <= 4 ? length * element_size : 16;
-
-    current_offset = (current_offset + base_alignment - 1) / base_alignment * base_alignment;
-    uniforms.push_back({uniform.data_type, current_offset, length});
-
-    // For non-float16 type, when length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
-    // N = ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N * SizeOf(vec4<i32|u32|f32>).
-    // For float16 type, when length > 4, the uniform variable is of type array<mat2x4<f16>,N>, where
-    // N = ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte length is N * SizeOf(mat2x4<f16>).
-    size_t element_per_struct = is_f16 ? 8 : 4;
-    current_offset +=
-        length > 4 ? (length + element_per_struct - 1) / element_per_struct * struct_size : length * element_size;
-  }
-
-  // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
-  // max_alignment_of_field to 16 since the underlying buffer has been rounded up to 16.
-  const int max_alignment_of_field = 16;
-  uniform_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
-}
+    : name{program.Name()}, compute_pipeline{compute_pipeline} {}
 
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
@@ -107,6 +77,22 @@ Status ProgramManager::Build(const ProgramBase& program,
   descriptor.nextInChain = &wgsl_descriptor;
 
   auto shader_module = device_.CreateShaderModule(&descriptor);
+
+  // TODO: a new cache hierarchy for constants.
+  //
+  // Explaination:
+  // Currently, we use Uniforms for dynamic data. This helps to reduce the number of program artifacts.
+  //
+  // "dynamic data" here means the data the determined at runtime, such as the shape of the input tensor.
+  //
+  // However, some programs may not necessarily depend on dynamic data. For example, "Clip" may depend on the value of "min" and "max".
+  // We are using uniforms for the value of "min" and "max" in the current implementation, but usually "min" and "max" are determined
+  // earlier because they are either from Attributes or from the initializers of the model.
+  //
+  // Questions:
+  // - can we use one instance of ShaderModule to create multiple ComputePipeline?
+  // - is there any benefit to do so compared to the current implementation?
+  //
 
   // process overridable constants if available
   size_t constant_count = program.OverridableConstants().size();

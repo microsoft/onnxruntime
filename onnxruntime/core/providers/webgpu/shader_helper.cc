@@ -148,6 +148,10 @@ std::string ShaderHelper::GetFinalSourceCode() {
       const auto& data_type = uniform_def.data_type;
       const auto length = uniform_value.length;
 
+      if (length == 0) {
+        continue;
+      }
+
       if (first) {
         first = false;
       } else {
