@@ -2412,7 +2412,6 @@ static bool ConvTransposeNeedFallbackToCPU([[maybe_unused]] const onnxruntime::N
                                            [[maybe_unused]] const logging::Logger& logger,
                                            [[maybe_unused]] const GraphViewer& graph_viewer,
                                            [[maybe_unused]] const bool prefer_nhwc) {
-#if CUDNN_MAJOR < 9
   const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
@@ -2459,7 +2458,6 @@ static bool ConvTransposeNeedFallbackToCPU([[maybe_unused]] const onnxruntime::N
       }
     }
   }
-#endif
 
 #ifdef ENABLE_CUDA_NHWC_OPS
   if (prefer_nhwc) {
