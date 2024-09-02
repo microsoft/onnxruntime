@@ -56,7 +56,8 @@ Status ProgramManager::Build(const ProgramBase& program,
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
 
   // code is a large std::string that contains the final shader code
-  auto code = shader_helper.GetFinalSourceCode();
+  std::string code;
+  ORT_RETURN_IF_ERROR(shader_helper.GetFinalSourceCode(code));
 
   LOGS_DEFAULT(VERBOSE) << "\n=== WebGPU Shader code [" << program.Name()
 #ifndef NDEBUG  // if debug build

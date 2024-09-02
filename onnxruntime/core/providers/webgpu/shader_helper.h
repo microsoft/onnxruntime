@@ -77,12 +77,13 @@ class ShaderHelper final {
 
   Status Init();
 
-  const ShaderVariable& AddVariable(ProgramVariableScope scope, const std::string& name, ProgramVariableDataType type, int rank = 1) {
-    return AddVariableImpl(scope, name, type, rank);
-  }
-  const ShaderVariable& AddVariable(ProgramVariableScope scope, const std::string& name, ProgramVariableDataType type, const TensorShape& dims) {
-    return AddVariableImpl(scope, name, type, dims);
-  }
+  const ShaderVariable& AddInput(const std::string& name,
+                                 ProgramVariableDataType type,
+                                 ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
+
+  const ShaderVariable& AddOutput(const std::string& name,
+                                  ProgramVariableDataType type,
+                                  ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
 
   template <typename... Strs>
   inline std::ostringstream& AppendImplementation(Strs&&... impl) {
@@ -91,8 +92,8 @@ class ShaderHelper final {
   }
 
   template <typename... Strs>
-  inline std::ostringstream& MainFunctionBody(Strs&&... body) {
-    onnxruntime::detail::MakeStringImpl(body_, std::forward<Strs>(body)...);
+  inline std::ostringstream& MainFunctionBody(const Strs&... body) {
+    onnxruntime::detail::MakeStringImpl(body_, std::forward<onnxruntime::detail::if_char_array_make_ptr_t<Strs const&>>(body)...);
     return body_;
   }
 
@@ -101,19 +102,6 @@ class ShaderHelper final {
   }
 
  private:
-  template <typename T>  // T is one of {int, const TensorShape&}
-  const ShaderVariable& AddVariableImpl(ProgramVariableScope scope, const std::string& name, ProgramVariableDataType type, T&& arg) {
-    ORT_ENFORCE((scope == ProgramVariableScope::Input || scope == ProgramVariableScope::Output) &&
-                    vars_[static_cast<int>(ProgramVariableScope::Input)].size() + vars_[static_cast<int>(ProgramVariableScope::Output)].size() < limits_.maxStorageBuffersPerShaderStage,
-                "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
-
-    if (type == ProgramVariableDataType::Float16 || type == ProgramVariableDataType::Vec2Float16 || type == ProgramVariableDataType::Vec4Float16) {
-      use_f16_ = true;
-    }
-
-    return vars_[static_cast<int>(scope)].emplace_back(name, type, std::forward<T>(arg));
-  }
-
   template <typename ConstantType>  // ConstantType is one of {ProgramConstant, ProgramOverridableConstantValue, ProgramOverridableConstantDefinition}
   void WriteConstantValue(std::ostringstream& ss, const ConstantType& constant) const {
     switch (constant.type) {
@@ -137,7 +125,18 @@ class ShaderHelper final {
     }
   }
 
-  std::string GetFinalSourceCode();
+  const ShaderVariable& AddVariableImpl(ProgramVariableScope scope,
+                                        const std::string& name,
+                                        ProgramVariableDataType type,
+                                        ShaderVariable::Usage usage,
+                                        const TensorShape& dims);
+
+#ifndef NDEBUG  // if debug build
+  Status ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const;
+  Status ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const;
+#endif
+
+  Status GetFinalSourceCode(std::string& code);
   friend class ProgramManager;
 
   const wgpu::Device& device_;

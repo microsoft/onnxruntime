@@ -5,6 +5,7 @@
 #include <string>
 #include <sstream>
 
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/shader_variable.h"
 
 #include "core/providers/webgpu/shader_macros.h"
@@ -12,18 +13,15 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, int rank)
-    : name_(name), type_(type), rank_(rank), usage_(UseUniform) {
-  Init();
-}
-
-ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, const TensorShape& dims)
-    : name_(name), type_(type), rank_(static_cast<int>(dims.NumDimensions())), dims_(dims), usage_(None) {
-  Init();
-}
-
-void ShaderVariable::Init() {
+ShaderVariable::ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims)
+    : name_(name),
+      type_(type),
+      num_components_{NumberOfComponents(type)},
+      rank_{SafeInt<int>(dims.NumDimensions())},
+      dims_{dims},
+      usage_(usage) {
   ORT_ENFORCE(type_ != ProgramVariableDataType::InvalidType, "Invalid type for variable ", name_);
+  ORT_ENFORCE(num_components_ > 0, "Invalid number of components for variable ", name_);
 }
 
 void ShaderVariable::Impl(std::ostringstream& ss) const {
@@ -31,17 +29,27 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
 
   const std::string value_t = name_ + "_value_t";
   const std::string indices_t = name_ + "_indices_t";
+  const std::string element_t = name_ + "_element_t";
 
   const std::string shape = (usage_ & UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
   const std::string stride = (usage_ & UseUniform) ? "uniforms." + name_ + "_stride" : name_ + "_stride";
 
   // Types
-  SS("alias ", value_t, " = ", ValueType(), ";\n");
-  SS("alias ", indices_t, " = ", IndicesType(), ";\n");
+  std::string_view value_type = (usage_ & UseValueTypeAlias) ? value_t : ValueType();
+  if (usage_ & UseValueTypeAlias) {
+    SS("alias ", name_, "_value_t = ", ValueType(), ";\n");
+  }
+  std::string_view indices_type = (usage_ & UseIndicesTypeAlias) ? indices_t : IndicesType();
+  if (usage_ & UseIndicesTypeAlias) {
+    SS("alias ", name_, "_indices_t = ", IndicesType(), ";\n");
+  }
+  if (usage_ & UseElementTypeAlias) {
+    SS("alias ", name_, "_element_t = ", ElementType(), ";\n");
+  }
 
   // Need shape and strides when (not use uniform) and (any other usage is enabled)
   if (!(usage_ & UseUniform) && (usage_ & ~UseUniform)) {
-    SS("const ", shape, " = ", indices_t, "(");
+    SS("const ", shape, " = ", indices_type, "(");
 
     bool first = true;
     for (auto dim : dims_.GetDims()) {
@@ -54,7 +62,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
     }
     ss << ");\n";
 
-    SS("const ", stride, " = ", indices_t, "(");
+    SS("const ", stride, " = ", indices_type, "(");
     first = true;
     for (int i = rank_ - 1; i >= 0; i--) {
       if (!first) {
@@ -69,8 +77,8 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Implementation of "fn o2i_{name}"
   if (usage_ & UseOffsetToIndices) {
     if (rank_ >= 2) {
-      SS("fn o2i_", name_, "(offset : u32)->", indices_t, " {\n");
-      SS("  var indices: ", indices_t, ";\n");
+      SS("fn o2i_", name_, "(offset : u32)->", indices_type, " {\n");
+      SS("  var indices: ", indices_type, ";\n");
       SS("  var current = offset;\n");
       for (int i = 0; i < rank_ - 1; i++) {
         auto current_stride = GetElementAt(stride, i, rank_);
@@ -88,7 +96,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Implementation of "fn i2o_{name}"
   if (usage_ & UseIndicesToOffset) {
     if (rank_ >= 2) {
-      SS("fn i2o_", name_, "(indices : ", indices_t, ")->u32 {\n");
+      SS("fn i2o_", name_, "(indices : ", indices_type, ")->u32 {\n");
       SS("  return ");
       for (int i = 0; i < rank_ - 1; i++) {
         SS("indices[", i, "] * ", GetElementAt(stride, i, rank_), " + ");
@@ -125,7 +133,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       for (int i = 1; i < rank_; i++) {
         SS(", d", i, ": u32");
       }
-      SS(", value: ", value_t, ") {\n");
+      SS(", value: ", value_type, ") {\n");
       SS("  set_", name_, "_by_indices(d0");
       for (int i = 1; i < rank_; i++) {
         SS(", d", i);
@@ -138,7 +146,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Implementation of "fn set_{name}_by_indices"
   if (usage_ & UseSetByIndices) {
     if (rank_ >= 2) {
-      SS("fn set_", name_, "_by_indices(indices: ", indices_t, ", value: ", value_t, ") {\n");
+      SS("fn set_", name_, "_by_indices(indices: ", indices_type, ", value: ", value_type, ") {\n");
       SS("  ", SetByOffset("i2o_" + name_ + "(indices)", "value"), "\n");
       SS("}\n");
     }
@@ -151,7 +159,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
       for (int i = 1; i < rank_; i++) {
         SS(", d", i, ": u32");
       }
-      SS(")->", value_t, " {\n");
+      SS(")->", value_type, " {\n");
       SS("  return get_", name_, "_by_indices(d0");
       for (int i = 1; i < rank_; i++) {
         SS(", d", i);
@@ -164,7 +172,7 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Implementation of "fn get_{name}_by_indices"
   if (usage_ & UseGetByIndices) {
     if (rank_ >= 2) {
-      SS("fn get_", name_, "_by_indices(indices: ", indices_t, ")->", value_t, " {\n");
+      SS("fn get_", name_, "_by_indices(indices: ", indices_type, ")->", value_type, " {\n");
       SS("  return ", GetByOffset("i2o_" + name_ + "(indices)"), ";\n");
       SS("}\n");
     }
@@ -248,23 +256,45 @@ std::string_view ShaderVariable::StorageType() const {
 std::string_view ShaderVariable::ValueType() const {
   constexpr static const std::string_view VALUE_TYPE[] = {
       "f32",         // f32
-      "f32",         // vec2f32
-      "f32",         // vec4f32
+      "vec2<f32>",   // vec2f32
+      "vec4<f32>",   // vec4f32
       "f16",         // f16
-      "f16",         // vec2f16
-      "f16",         // vec4f16
+      "vec2<f16>",   // vec2f16
+      "vec4<f16>",   // vec4f16
       "i32",         // i32
-      "i32",         // vec2i32
-      "i32",         // vec4i32
+      "vec2<i32>",   // vec2i32
+      "vec4<i32>",   // vec4i32
       "u32",         // u32
-      "u32",         // vec2u32
-      "u32",         // vec4u32
+      "vec2<u32>",   // vec2u32
+      "vec4<u32>",   // vec4u32
       "i32",         // int64 (trancated to i32)
       "u32",         // uint64 (trancated to u32)
       "vec4<bool>",  // vec4bool
   };
 
   return VALUE_TYPE[static_cast<int>(type_)];
+}
+
+std::string_view ShaderVariable::ElementType() const {
+  constexpr static const std::string_view ELEMENT_TYPE[] = {
+      "f32",   // f32
+      "f32",   // vec2f32
+      "f32",   // vec4f32
+      "f16",   // f16
+      "f16",   // vec2f16
+      "f16",   // vec4f16
+      "i32",   // i32
+      "i32",   // vec2i32
+      "i32",   // vec4i32
+      "u32",   // u32
+      "u32",   // vec2u32
+      "u32",   // vec4u32
+      "i32",   // int64
+      "u32",   // uint64
+      "bool",  // vec4bool
+  };
+
+  return ELEMENT_TYPE[static_cast<int>(type_)];
 }
 
 std::string ShaderVariable::IndicesType() const {

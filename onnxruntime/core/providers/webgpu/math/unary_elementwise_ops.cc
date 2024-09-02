@@ -2,20 +2,17 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
-#include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
 Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddVariable(ProgramVariableScope::Input,
-                                         "x",
-                                         ToProgramVariableDataType(Inputs()[0].tensor->GetElementType(), 4),
-                                         1);
-  const auto& output = shader.AddVariable(ProgramVariableScope::Output,
-                                          "y",
-                                          ToProgramVariableDataType(Outputs()[0]->GetElementType(), 4),
-                                          1);
+  const auto& input = shader.AddInput("x",
+                                      ToProgramVariableDataType(Inputs()[0].tensor->GetElementType(), 4),
+                                      ShaderVariable::UseUniform | additional_usage_);
+  const auto& output = shader.AddOutput("y",
+                                        ToProgramVariableDataType(Outputs()[0].tensor->GetElementType(), 4),
+                                        ShaderVariable::UseUniform);
   shader.AppendImplementation(additional_impl_);
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
                           "let a = ", input.GetByOffset("global_idx"), ";\n",
@@ -27,11 +24,12 @@ Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   auto* output_tensor = context.Output(0, input_tensor->Shape());
-  SafeInt<uint32_t> vec_size = (input_tensor->Shape().Size() + 3) / 4;
-  UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_};
+  int64_t size = input_tensor->Shape().Size();
+  SafeInt<uint32_t> vec_size = (size + 3) / 4;
+  UnaryElementwiseProgram program{kernel_name_, expression_, additional_impl_, additional_usage_};
   program
-      .Inputs({{input_tensor, ProgramInputTensorDependency::Type}})
-      .Outputs({output_tensor})
+      .Inputs({{input_tensor, ProgramTensorMetadataDependency::Type, {vec_size}}})
+      .Outputs({{output_tensor, ProgramTensorMetadataDependency::None, {vec_size}}})
       .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
           {static_cast<uint32_t>(vec_size)},
@@ -91,21 +89,21 @@ WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Exp, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Exp, 13, WebGpuSupportedFloatTypes())
 
 constexpr char ErfImpl[] = R"(
-const r0: x_value_t = 0.3275911;
-const r1: x_value_t = 0.254829592;
-const r2: x_value_t = -0.284496736;
-const r3: x_value_t = 1.421413741;
-const r4: x_value_t = -1.453152027;
-const r5: x_value_t = 1.061405429;
+const r0 = 0.3275911;
+const r1 = 0.254829592;
+const r2 = -0.284496736;
+const r3 = 1.421413741;
+const r4 = -1.453152027;
+const r5 = 1.061405429;
 
-fn erf_v(v: vec4<x_value_t>) -> vec4<x_value_t> {
+fn erf_v(v: x_value_t) -> x_value_t {
   let absv = abs(v);
   let x = 1.0 / (1.0 + r0 * absv);
   return sign(v) * (1.0 - ((((r5 * x + r4) * x + r3) * x + r2) * x + r1) * x * exp(-absv * absv));
 }
 )";
 
-WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl)
+WEBGPU_ELEMENTWISE_IMPL(Erf, "erf_v(a)", ErfImpl, ShaderVariable::UseValueTypeAlias)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Erf, 9, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Erf, 13, WebGpuSupportedFloatTypes())
 
@@ -117,15 +115,19 @@ WEBGPU_ELEMENTWISE_IMPL(Sigmoid, "1.0 / (1.0 + exp(-a))")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sigmoid, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sigmoid, 13, WebGpuSupportedFloatTypes())
 
+constexpr char HardSigmoidImpl[] = R"(
+fn hard_sigmoid_v(v: x_value_t) -> x_value_t {
+  let alpha = x_element_t(uniforms.f32_attr[0]);
+  let beta_v = vec4<x_element_t>(uniforms.f32_attr[1]);
+  return max(vec4<x_element_t>(0.0),
+             min(vec4<x_element_t>(1.0), alpha * v + beta_v));
+}
+)";
 class HardSigmoid final : public UnaryElementwise {
  public:
   HardSigmoid(const OpKernelInfo& info)
-      : UnaryElementwise{
-            info,
-            "HardSigmoid",
-            // alpha = uniforms.f32_attr[0]
-            // beta = uniforms.f32_attr[1]
-            "max(vec4<x_value_t>(0.0), min(vec4<x_value_t>(1.0), x_value_t(uniforms.f32_attr[0]) * a + vec4<x_value_t>(uniforms.f32_attr[1])))"} {
+      : UnaryElementwise{info, "HardSigmoid", "hard_sigmoid_v(a)", HardSigmoidImpl, ShaderVariable::UseElementTypeAlias | ShaderVariable::UseValueTypeAlias} {
+    // attr[0] is alpha, attr[1] is beta
     info.GetAttrOrDefault("alpha", attr, 0.2f);
     info.GetAttrOrDefault("beta", attr + 1, 0.5f);
   }

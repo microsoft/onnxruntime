@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include <type_traits>
 
 #include "core/session/onnxruntime_c_api.h"
 
@@ -49,27 +50,27 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(ProgramUniformVariableD
 }
 
 std::ostream& operator<<(std::ostream& os, ProgramUniformVariableDataType type) {
-  os << ProgramUniformVariableDataTypeName[static_cast<int32_t>(type)];
+  os << ProgramUniformVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
   return os;
 }
 
 std::ostream& operator<<(std::ostream& os, ProgramConstantDataType type) {
-  os << ProgramConstantDataTypeName[static_cast<int32_t>(type)];
+  os << ProgramConstantDataTypeName[std::underlying_type<decltype(type)>::type(type)];
   return os;
 }
 
-std::ostream& operator<<(std::ostream& os, ProgramInputTensorDependency dep) {
+std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) {
   bool first = true;
-  if ((dep & ProgramInputTensorDependency::Type) == ProgramInputTensorDependency::Type) {
+  if ((dep & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
     os << "Type";
     first = false;
   }
-  if ((dep & ProgramInputTensorDependency::Rank) == ProgramInputTensorDependency::Rank) {
+  if ((dep & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
     if (!first) os << "|";
     os << "Rank";
     first = false;
   }
-  if ((dep & ProgramInputTensorDependency::Shape) == ProgramInputTensorDependency::Shape) {
+  if ((dep & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
     if (!first) os << "|";
     os << "Shape";
     first = false;
@@ -79,6 +80,31 @@ std::ostream& operator<<(std::ostream& os, ProgramInputTensorDependency dep) {
   }
 
   return os;
+}
+
+int NumberOfComponents(ProgramVariableDataType type) {
+  switch (type) {
+    case ProgramVariableDataType::Float32:
+    case ProgramVariableDataType::Int32:
+    case ProgramVariableDataType::Uint32:
+    case ProgramVariableDataType::Int64:
+    case ProgramVariableDataType::Uint64:
+    case ProgramVariableDataType::Float16:
+      return 1;
+    case ProgramVariableDataType::Vec2Float32:
+    case ProgramVariableDataType::Vec2Int32:
+    case ProgramVariableDataType::Vec2Uint32:
+    case ProgramVariableDataType::Vec2Float16:
+      return 2;
+    case ProgramVariableDataType::Vec4Float32:
+    case ProgramVariableDataType::Vec4Int32:
+    case ProgramVariableDataType::Vec4Uint32:
+    case ProgramVariableDataType::Vec4Float16:
+    case ProgramVariableDataType::Vec4Bool:
+      return 4;
+    default:
+      return -1;
+  }
 }
 
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component /* = 1 */) {
@@ -147,7 +173,7 @@ ProgramBase& ProgramBase::Inputs(std::initializer_list<ProgramInput> inputs) {
   return *this;
 }
 
-ProgramBase& ProgramBase::Outputs(std::initializer_list<Tensor*> outputs) {
+ProgramBase& ProgramBase::Outputs(std::initializer_list<ProgramOutput> outputs) {
   outputs_.assign(outputs.begin(), outputs.end());
   return *this;
 }

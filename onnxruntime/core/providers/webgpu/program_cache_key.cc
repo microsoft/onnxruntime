@@ -8,6 +8,29 @@
 namespace onnxruntime {
 namespace webgpu {
 
+namespace {
+void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramTensorMetadataDependency dependency, bool& first) {
+  if (first) {
+    first = false;
+  } else {
+    ss << "|";
+  }
+  if ((dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
+#ifndef NDEBUG  // if debug build
+    ss << DataTypeImpl::ToString(tensor.DataType());
+#else
+    ss << output.tensor->GetElementType();
+#endif
+  }
+  ss << ";";
+  if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
+    ss D("Rank=") << tensor.Shape().NumDimensions();
+  } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
+    ss D("Dims=") << tensor.Shape().ToString();
+  }
+}
+}  // namespace
+
 std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_dispatch) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
@@ -34,6 +57,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
       x != 0 || y != 0 || z != 0) {
     ss << ":" D("WorkgroupSize=");
     // only append non-zero values. zero values are considered as use default
+    // todo: this is actually not working correctly. revisit this logic. currently even if it's default, the value is not zero and will be appended
     if (x > 0) {
       ss << x;
     }
@@ -60,27 +84,17 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
       ss << uniform.length;
     }
   }
+
   ss << ":" D("Inputs=");
   first = true;
   for (const auto& input : program.Inputs()) {
-    if (first) {
-      first = false;
-    } else {
-      ss << "|";
-    }
-    if ((input.dependency & ProgramInputTensorDependency::Type) == ProgramInputTensorDependency::Type) {
-#ifndef NDEBUG  // if debug build
-      ss << DataTypeImpl::ToString(input.tensor->DataType());
-#else
-      ss << input.tensor->GetElementType();
-#endif
-    }
-    ss << ";";
-    if ((input.dependency & ProgramInputTensorDependency::Rank) == ProgramInputTensorDependency::Rank) {
-      ss D("Rank=") << input.tensor->Shape().NumDimensions();
-    } else if ((input.dependency & ProgramInputTensorDependency::Shape) == ProgramInputTensorDependency::Shape) {
-      ss D("Dims=") << input.tensor->Shape().ToString();
-    }
+    AppendTensorInfo(ss, *input.tensor, input.dependency, first);
+  }
+
+  ss << ":" D("Outputs=");
+  first = true;
+  for (const auto& output : program.Outputs()) {
+    AppendTensorInfo(ss, *output.tensor, output.dependency, first);
   }
 
   return ss.str();

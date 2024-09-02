@@ -4,10 +4,12 @@
 #include <memory>
 #include <string>
 #include <sstream>
+#include <variant>
 
 #include "core/session/onnxruntime_c_api.h"
 
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -79,7 +81,145 @@ Status ShaderHelper::Init() {
   return Status::OK();
 }
 
-std::string ShaderHelper::GetFinalSourceCode() {
+const ShaderVariable& ShaderHelper::AddInput(const std::string& name, ProgramVariableDataType type, ShaderVariable::Usage usage) {
+  const size_t input_index = vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Input)].size();
+  ORT_ENFORCE(input_index < program_.Inputs().size(),
+              "Too many inputs in the program (", program_.Inputs().size(), ")");
+
+  const auto& dims = program_.Inputs()[input_index].use_override_shape ? program_.Inputs()[input_index].override_shape
+                                                                       : program_.Inputs()[input_index].tensor->Shape();
+  return AddVariableImpl(ProgramVariableScope::Input, name, type, usage, dims);
+}
+
+const ShaderVariable& ShaderHelper::AddOutput(const std::string& name, ProgramVariableDataType type, ShaderVariable::Usage usage) {
+  const size_t output_index = vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Output)].size();
+  ORT_ENFORCE(output_index < program_.Outputs().size(),
+              "Too many outputs in the program (", program_.Outputs().size(), ")");
+
+  const auto& dims = program_.Outputs()[output_index].use_override_shape ? program_.Outputs()[output_index].override_shape
+                                                                         : program_.Outputs()[output_index].tensor->Shape();
+  return AddVariableImpl(ProgramVariableScope::Output, name, type, usage, dims);
+}
+
+#ifndef NDEBUG  // if debug build
+namespace {
+Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType var_type) {
+  switch (element_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float32 ||
+                            var_type == ProgramVariableDataType::Vec2Float32 ||
+                            var_type == ProgramVariableDataType::Vec4Float32,
+                        "Unexpected program variable type ", int(var_type), " for float32 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Float16 ||
+                            var_type == ProgramVariableDataType::Vec2Float16 ||
+                            var_type == ProgramVariableDataType::Vec4Float16,
+                        "Unexpected program variable type ", int(var_type), " for float16 tensor");
+
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
+                            var_type == ProgramVariableDataType::Vec2Int32 ||
+                            var_type == ProgramVariableDataType::Vec4Int32,
+                        "Unexpected program variable type ", int(var_type), " for int32 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint32 ||
+                            var_type == ProgramVariableDataType::Vec2Uint32 ||
+                            var_type == ProgramVariableDataType::Vec4Uint32,
+                        "Unexpected program variable type ", int(var_type), " for uint32 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int64,
+                        "Unexpected program variable type ", int(var_type), " for int64 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Uint64,
+                        "Unexpected program variable type ", int(var_type), " for uint64 tensor");
+      break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+      ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Vec4Bool,
+                        "Unexpected program variable type ", int(var_type), " for bool tensor");
+      break;
+    default:
+      ORT_RETURN_IF(true, "Unsupported data type: ", element_type);
+      // todo: add int4/uint4
+  }
+  return Status::OK();
+}
+
+using RankOrShape = std::variant<int, std::reference_wrapper<const TensorShape>>;
+
+Status ValidateVariableShape(const TensorShape& origin_shape,
+                             bool use_override_shape,
+                             const TensorShape& override_shape,
+                             int num_components) {
+  if (use_override_shape) {
+    // if override shape specified, assert override_size == ceil( origin_size / 4 )
+    ORT_RETURN_IF_NOT((origin_shape.Size() + num_components - 1) / num_components == override_shape.Size(),
+                      "Tensor original shape ", origin_shape, " cannot reshape to ", override_shape, " with component number ", num_components);
+  } else if (num_components > 1) {
+    // if shape is not overriden, assert origin_shape[-1] % 4 == 0
+    ORT_RETURN_IF_NOT(origin_shape.Size() > 0 && origin_shape[origin_shape.Size() - 1] % num_components == 0,
+                      "Tensor original shape ", origin_shape, " cannot be divided by component number ", num_components);
+  }
+
+  // if (use_uniform) {
+  //   const auto& rank = std::get<int>(rank_or_shape);
+  //   ORT_RETURN_IF_NOT(rank == SafeInt<int>(override_shape.NumDimensions()),
+  //                     "Shader variable rank ", rank, " does not match the tensor shape ", override_shape);
+  // } else {
+  //   const auto& shape = std::get<std::reference_wrapper<const TensorShape>>(rank_or_shape).get();
+  //   ORT_RETURN_IF(use_override_shape, "Cannot specify both variable shape and program input/output shape override");
+  //   ORT_RETURN_IF_NOT(origin_shape.Size() == shape.Size() * num_components,
+  //                     "Tensor original shape ", origin_shape, " cannot reshape to ", shape, " with component number ", num_components);
+  // }
+  return Status::OK();
+}
+}  // namespace
+
+const ShaderVariable& ShaderHelper::AddVariableImpl(ProgramVariableScope scope,
+                                                    const std::string& name,
+                                                    ProgramVariableDataType type,
+                                                    ShaderVariable::Usage usage,
+                                                    const TensorShape& dims) {
+  if (scope == ProgramVariableScope::Input || scope == ProgramVariableScope::Output) {
+    ORT_ENFORCE(vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Input)].size() +
+                        vars_[std::underlying_type<ProgramVariableScope>::type(ProgramVariableScope::Output)].size() <
+                    limits_.maxStorageBuffersPerShaderStage,
+                "Too many storage buffers in shader. Max is ", limits_.maxStorageBuffersPerShaderStage);
+  }
+
+  if (type == ProgramVariableDataType::Float16 || type == ProgramVariableDataType::Vec2Float16 || type == ProgramVariableDataType::Vec4Float16) {
+    use_f16_ = true;
+  }
+
+  if (scope == ProgramVariableScope::Local) {
+    ORT_NOT_IMPLEMENTED("Local variables are not supported yet.");
+  }
+
+  return vars_[std::underlying_type<decltype(scope)>::type(scope)].emplace_back(name, type, usage, dims);
+}
+
+Status ShaderHelper::ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const {
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(input.tensor->GetElementType(), var.type_));
+  ORT_RETURN_IF_ERROR(ValidateVariableShape(input.tensor->Shape(),
+                                            input.use_override_shape,
+                                            input.use_override_shape ? input.override_shape : input.tensor->Shape(),
+                                            var.num_components_));
+
+  return Status::OK();
+}
+Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const {
+  ORT_RETURN_IF_ERROR(ValidateVariableDataType(output.tensor->GetElementType(), var.type_));
+
+  // todo: add reshaped shape and check
+  return Status::OK();
+}
+#endif
+
+Status ShaderHelper::GetFinalSourceCode(std::string& code) {
   std::ostringstream ss;
   ss.imbue(std::locale::classic());
 
@@ -87,14 +227,14 @@ std::string ShaderHelper::GetFinalSourceCode() {
   // Section feature enabling
   //
   if (use_f16_) {
-    ORT_ENFORCE(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
+    ORT_RETURN_IF_NOT(device_.HasFeature(wgpu::FeatureName::ShaderF16), "Program ", program_.Name(), " requires f16 but the device does not support it.");
     ss << "enable f16;\n";
   }
 
   //
   // Section constants
   //
-  ss << "\nconst workgroup_size_x: u32 = " << program_.WorkgroupSizeX()
+  ss << "const workgroup_size_x: u32 = " << program_.WorkgroupSizeX()
      << ";\nconst workgroup_size_y: u32 = " << program_.WorkgroupSizeY()
      << ";\nconst workgroup_size_z: u32 = " << program_.WorkgroupSizeZ() << ";\n";
 
@@ -122,11 +262,23 @@ std::string ShaderHelper::GetFinalSourceCode() {
   //
   // Input/output variables
   //
-  int variable_count = 0;
-  for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
+  size_t variable_count = 0;
+  const auto& input_vars = vars_[static_cast<int>(ProgramVariableScope::Input)];
+  ORT_RETURN_IF_NOT(input_vars.size() == program_.Inputs().size(),
+                    "Mismatched input variable count. Shader: ", variable_count, ", Program: ", program_.Inputs().size());
+  for (const auto& input : input_vars) {
+#ifndef NDEBUG  // if debug build
+    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Inputs()[variable_count], input));
+#endif
     ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read> " << input.name_ << ": array<" << input.StorageType() << ">;\n";
   }
-  for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
+  const auto& output_vars = vars_[static_cast<int>(ProgramVariableScope::Output)];
+  ORT_RETURN_IF_NOT(output_vars.size() == program_.Outputs().size(),
+                    "Mismatched output variable count. Shader: ", variable_count, ", Program: ", program_.Outputs().size());
+  for (const auto& output : output_vars) {
+#ifndef NDEBUG  // if debug build
+    ORT_RETURN_IF_ERROR(ValidateVariable(program_.Outputs()[variable_count - input_vars.size()], output));
+#endif
     ss << "@group(0) @binding(" << variable_count++ << ") var<storage, read_write> " << output.name_ << ": array<" << output.StorageType() << ">;\n";
   }
 
@@ -188,8 +340,8 @@ std::string ShaderHelper::GetFinalSourceCode() {
     for (const auto& var : var_group) {
       var.Impl(ss);
     }
-    ss << "\n";
   }
+  ss << "\n";
 
   //
   // Additional Implementation
@@ -205,7 +357,8 @@ std::string ShaderHelper::GetFinalSourceCode() {
   ss << "\n"
         "}\n";
 
-  return ss.str();
+  code = ss.str();
+  return Status::OK();
 }
 
 }  // namespace webgpu

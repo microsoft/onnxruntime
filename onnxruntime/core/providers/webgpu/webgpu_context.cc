@@ -144,7 +144,8 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
               }),
               "All inputs must be tensors on WebGPU buffers.");
 
-  ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](Tensor* tensor) {
+  ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
+                const auto* tensor = output.tensor;
                 return tensor != nullptr &&
                        tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                        tensor->Location().device.Type() == OrtDevice::GPU &&
@@ -288,7 +289,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
     bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw()))});
   }
   for (const auto& output : outputs) {
-    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output->MutableDataRaw())});
+    bind_group_entries.push_back({nullptr, entry_index++, reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw())});
   }
   if (uniform_buffer) {
     bind_group_entries.push_back({nullptr, entry_index++, uniform_buffer});

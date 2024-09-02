@@ -140,7 +140,7 @@ struct ProgramOverridableConstantDefinition {
 };
 
 // represents whether the program shader depends on the type, rank, or shape of an input/output tensor
-enum class ProgramInputTensorDependency : int {
+enum class ProgramTensorMetadataDependency : int {
   None = 0,
   Type = 1,
   Rank = 2,
@@ -148,24 +148,47 @@ enum class ProgramInputTensorDependency : int {
   TypeAndRank = Type | Rank,
   TypeAndShape = Type | Shape,
 };
-std::ostream& operator<<(std::ostream& os, ProgramInputTensorDependency);
+std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency);
 
-inline ProgramInputTensorDependency operator|(ProgramInputTensorDependency a, ProgramInputTensorDependency b) {
-  return (ProgramInputTensorDependency)((int&)a | (int&)b);
+inline ProgramTensorMetadataDependency operator|(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
+  return (ProgramTensorMetadataDependency)((int&)a | (int&)b);
 }
-inline ProgramInputTensorDependency operator&(ProgramInputTensorDependency a, ProgramInputTensorDependency b) {
-  return (ProgramInputTensorDependency)((int&)a & (int&)b);
+inline ProgramTensorMetadataDependency operator&(ProgramTensorMetadataDependency a, ProgramTensorMetadataDependency b) {
+  return (ProgramTensorMetadataDependency)((int&)a & (int&)b);
 }
-inline ProgramInputTensorDependency& operator|=(ProgramInputTensorDependency& a, ProgramInputTensorDependency b) {
-  return (ProgramInputTensorDependency&)((int&)a |= (int&)b);
+inline ProgramTensorMetadataDependency& operator|=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
+  return (ProgramTensorMetadataDependency&)((int&)a |= (int&)b);
 }
-inline ProgramInputTensorDependency& operator&=(ProgramInputTensorDependency& a, ProgramInputTensorDependency b) {
-  return (ProgramInputTensorDependency&)((int&)a &= (int&)b);
+inline ProgramTensorMetadataDependency& operator&=(ProgramTensorMetadataDependency& a, ProgramTensorMetadataDependency b) {
+  return (ProgramTensorMetadataDependency&)((int&)a &= (int&)b);
 }
 
 struct ProgramInput {
+  ProgramInput(const Tensor* tensor)
+      : ProgramInput{tensor, ProgramTensorMetadataDependency::TypeAndRank} {}
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency)
+      : tensor{tensor}, dependency{dependency}, use_override_shape{false}, override_shape{} {}
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape)
+      : tensor{tensor}, dependency{dependency}, use_override_shape{true}, override_shape{override_shape} {}
+
   const Tensor* tensor;
-  ProgramInputTensorDependency dependency;
+  ProgramTensorMetadataDependency dependency;
+  bool use_override_shape;
+  TensorShape override_shape;
+};
+
+struct ProgramOutput {
+  ProgramOutput(Tensor* tensor)
+      : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency)
+      : tensor{tensor}, dependency{dependency}, use_override_shape{false}, override_shape{} {}
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape)
+      : tensor{tensor}, dependency{dependency}, use_override_shape{true}, override_shape{override_shape} {}
+
+  Tensor* tensor;
+  ProgramTensorMetadataDependency dependency;
+  bool use_override_shape;
+  TensorShape override_shape;
 };
 
 constexpr SafeInt<uint32_t> WORKGROUP_SIZE = 64;
@@ -205,6 +228,8 @@ enum class ProgramVariableDataType {
   Vec4Bool,
 };
 
+int NumberOfComponents(ProgramVariableDataType type);
+
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
 namespace detail {
@@ -229,7 +254,7 @@ class ProgramBase {
   // set one or more program inputs
   ProgramBase& Inputs(std::initializer_list<ProgramInput> inputs);
   // set one or more program outputs
-  ProgramBase& Outputs(std::initializer_list<Tensor*> outputs);
+  ProgramBase& Outputs(std::initializer_list<ProgramOutput> outputs);
 
   // set the size of dispatch groups. Y and Z are 1 if not specified.
   ProgramBase& DispatchGroupSize(uint32_t x);
@@ -289,7 +314,7 @@ class ProgramBase {
   inline const std::string& Name() const { return name_; }
   inline const std::string& CacheHint() const { return cache_hint_; }
   inline const std::vector<ProgramInput>& Inputs() const { return inputs_; }
-  inline const std::vector<Tensor*>& Outputs() const { return outputs_; }
+  inline const std::vector<ProgramOutput>& Outputs() const { return outputs_; }
   inline uint32_t DispatchGroupSizeX() const { return dispatch_group_size_x_; }
   inline uint32_t DispatchGroupSizeY() const { return dispatch_group_size_y_; }
   inline uint32_t DispatchGroupSizeZ() const { return dispatch_group_size_z_; }
@@ -310,7 +335,7 @@ class ProgramBase {
   std::string name_;
   std::string cache_hint_;
   std::vector<ProgramInput> inputs_;
-  std::vector<Tensor*> outputs_;
+  std::vector<ProgramOutput> outputs_;
 
   uint32_t dispatch_group_size_x_;
   uint32_t dispatch_group_size_y_;

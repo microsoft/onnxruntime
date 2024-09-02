@@ -5,7 +5,6 @@
 
 #include <sstream>
 
-#include "core/common/safeint.h"
 #include "core/framework/tensor_shape.h"
 
 #include "core/providers/webgpu/program.h"
@@ -39,8 +38,22 @@ std::string GetElementAt(std::string_view var, const TIdx& idx, int rank, bool i
 
 class ShaderVariable {
  public:
-  ShaderVariable(std::string_view name, ProgramVariableDataType type, int rank);
-  ShaderVariable(std::string_view name, ProgramVariableDataType type, const TensorShape& dims);
+  enum Usage : uint32_t {
+    None = 0,                            // no usage. this means no additional implementation code will be generated.
+    UseIndicesTypeAlias = 1,             // use type alias "{name}_indices_t" for indices (eg. u32, vec2<u32>, vec3<u32>, vec4<u32>, ...)
+    UseValueTypeAlias = 2,               // use type alias "{name}_value_t" for value (eg. f32, vecT<f32>, vec4<bool>, ...)
+    UseElementTypeAlias = 4,             // use type alias "{name}_element_t" for element (eg. f32, bool, ...)
+    UseOffsetToIndices = 8,              // use implementation of fn o2i_{name}
+    UseIndicesToOffset = 16,             // use implementation of fn i2o_{name}
+    UseBroadcastedIndicesToOffset = 32,  // use implementation of fn {broadcasted_result_name}_bi2o_{name}
+    UseSet = 64,                         // use implementation of fn set_{name}
+    UseSetByIndices = 128,               // use implementation of fn set_{name}_by_indices
+    UseGet = 256,                        // use implementation of fn get_{name}
+    UseGetByIndices = 512,               // use implementation of fn get_{name}_by_indices
+    UseUniform = 1024,                   // use uniform for shape and stride
+  };
+
+  ShaderVariable(std::string_view name, ProgramVariableDataType type, Usage usage, const TensorShape& dims);
 
   ShaderVariable(ShaderVariable&&) = default;
   ShaderVariable& operator=(ShaderVariable&&) = default;
@@ -107,18 +120,6 @@ class ShaderVariable {
   inline std::string GetByOffset(TOffset&& offset) const;
 
  private:
-  enum Usage : uint32_t {
-    None = 0,
-    UseOffsetToIndices = 1,
-    UseIndicesToOffset = 2,
-    UseBroadcastedIndicesToOffset = 4,
-    UseSet = 8,
-    UseSetByIndices = 16,
-    UseGet = 32,
-    UseGetByIndices = 64,
-    UseUniform = 128,
-  };
-
   friend ShaderVariable::Usage operator|(ShaderVariable::Usage a, ShaderVariable::Usage b);
   friend ShaderVariable::Usage operator&(ShaderVariable::Usage a, ShaderVariable::Usage b);
   friend ShaderVariable::Usage& operator|=(ShaderVariable::Usage& a, ShaderVariable::Usage b);
@@ -126,7 +127,6 @@ class ShaderVariable {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariable);
 
-  void Init();
   void Impl(std::ostringstream& ss) const;
 
   std::string GetByOffsetImpl(std::string_view offset) const;
@@ -134,10 +134,12 @@ class ShaderVariable {
 
   std::string_view StorageType() const;
   std::string_view ValueType() const;
+  std::string_view ElementType() const;
   std::string IndicesType() const;
 
   std::string name_;
   ProgramVariableDataType type_;
+  int num_components_;
   int rank_;
   TensorShape dims_;
 
