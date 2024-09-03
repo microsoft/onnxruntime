@@ -1061,8 +1061,6 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-maybe-uninitialized>")
     endif()
     if (onnxruntime_USE_CUDA)
-      # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
-      add_definitions(-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH)
       foreach(FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
       endforeach()
@@ -1443,6 +1441,8 @@ get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_
 if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
+  # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
+  add_definitions(-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH)
   if(onnxruntime_CUDA_HOME)
     file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
   endif()
