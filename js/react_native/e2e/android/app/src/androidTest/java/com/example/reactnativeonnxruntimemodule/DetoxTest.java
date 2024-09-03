@@ -4,7 +4,6 @@
 
 package com.example.reactnativeonnxruntimemodule;
 
-import android.content.Context;
 import android.content.Intent;
 
 import com.wix.detox.Detox;
