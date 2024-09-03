@@ -101,9 +101,10 @@ stages:
     workspace:
       clean: all
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
-      pool: onnxruntime-Win-CPU-2022
-      demands:
-        - ImageVersionOverride -equals 34.0.0
+      pool:
+        name: onnxruntime-Win-CPU-2022
+        demands:
+          - ImageVersionOverride -equals 34.0.0
     ${{ else }}:
       pool: ${{ parameters.ort_build_pool_name }}
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
