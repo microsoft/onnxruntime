@@ -47,13 +47,13 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
   }
 #endif
 
-  msg << timestamp
-      << " [" << message.SeverityPrefix()
-      << ":" << message.Category()
-      << ":" << logger_id.c_str()
-      << ", "
-      << message.Location().ToString().c_str()
-      << "] " << message.Message().c_str();
+#ifdef _WIN32
+  msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
+    << message.Location().ToString() << "] " << message.Message();
+#else
+  msg << timestamp << L" [" << message.SeverityPrefix() << L":" << message.Category() << L":" << ToWideString(logger_id) << L", "
+    << ToWideString(message.Location().ToString()) << L"] " << ToWideString(message.Message());
+#endif
 
 #ifndef ORT_MINIMAL_BUILD
   if (message.Severity() == Severity::kWARNING ||
@@ -62,7 +62,12 @@ void OStreamSink::SendImpl(const Timestamp& timestamp, const std::string& logger
     msg << Color::kEnd;
   }
 #endif
+
+#ifdef _WIN32
+  msg << L"\n";
+#else
   msg << "\n";
+#endif
 
   (*stream_) << msg.str();
 
