@@ -45,12 +45,12 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer,
-                     const WebnnDeviceType device_type, const logging::Logger& logger) {
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const WebnnDeviceType device_type,
+                     const emscripten::val& wnn_limits, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, logger);
+    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, wnn_limits, logger);
   } else {
     return false;
   }
@@ -86,6 +86,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                       const emscripten::val& wnn_builder,
                                                       const WebnnDeviceType device_type,
+                                                      const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
 
@@ -105,7 +106,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
     // Firstly check if platform supports the WebNN op.
     if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
       LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType() << "] is supported by browser";
-      supported = IsNodeSupported(*node, graph_viewer, device_type, logger);
+      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, logger);
     }
 
     LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
@@ -130,10 +131,17 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   return supported_node_groups;
 }
 
-bool IsSupportedDataType(const int32_t data_type,
-                         const std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType>& supported_data_types) {
-  return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) !=
-         supported_data_types.end();
+bool IsSupportedDataType(const int32_t data_type, const emscripten::val& webnn_supported_data_types) {
+  auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(data_type));
+  if (it == onnx_to_webnn_data_type_map.end())
+    return false;
+
+  std::string webnn_data_type = it->second;
+
+  // Check if WebNN supports the data type.
+  emscripten::val is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
+                                                                                  emscripten::val(webnn_data_type));
+  return is_supported.as<bool>();
 }
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,

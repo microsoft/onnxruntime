@@ -22,7 +22,7 @@ class GatherOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -69,24 +69,27 @@ bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
+  const auto& indices = *node.InputDefs()[1];
   const auto& op_type = node.OpType();
   int32_t input_type;
-  if (!GetType(input, input_type, logger))
+  int32_t indices_type;
+  if (!GetType(input, input_type, logger) ||
+      !GetType(indices, indices_type, logger))
     return false;
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
-  // WebNN CPU backend doesn't support uint32, uint64 input data types for gather.
-  if (device_type == WebnnDeviceType::CPU) {
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-  }
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
+  if (!IsSupportedDataType(input_type, wnn_limits["gather"]["input"]["dataTypes"])) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (!IsSupportedDataType(indices_type, wnn_limits["gather"]["indices"]["dataTypes"])) {
+    LOGS(logger, VERBOSE) << "[" << op_type
+                          << "] Input type: [" << indices_type
                           << "] is not supported for now";
     return false;
   }

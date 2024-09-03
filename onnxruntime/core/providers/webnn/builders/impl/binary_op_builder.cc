@@ -22,7 +22,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -86,7 +86,7 @@ bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   return true;
 }
 
-bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -97,23 +97,12 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevice
       !GetType(*input_defs[1], input1_type, logger))
     return false;
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  // WebNN prelu op only supports float32, float16, int32, int8 input data types.
-  if (op_type == "Prelu") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-    };
-    // WebNN CPU backend doesn't support int32 for prelu.
-    if (device_type == WebnnDeviceType::CPU) {
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    }
-  } else {
-    supported_data_types = webnn_supported_data_types;
-  }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(op_type, webnn_op_type))
+    return false;
+
+  std::string webnn_input_name = op_type == "PRelu" ? "input" : "a";
+  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type][webnn_input_name]["dataTypes"])) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input type: [" << input0_type
                           << "] is not supported for now";

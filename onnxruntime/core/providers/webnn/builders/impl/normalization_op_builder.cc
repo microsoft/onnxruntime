@@ -25,7 +25,7 @@ class NormalizationOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -182,7 +182,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -203,14 +203,11 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const Node& node, const Webn
     return false;
   }
 
-  // WebNN batchNormalization, instanceNormalization, layerNormalization
-  // only support float32 and float16 input data types.
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-  };
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(op_type, webnn_op_type))
+    return false;
 
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type]["input"]["dataTypes"])) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input type: [" << input0_type
                           << "] is not supported for now";

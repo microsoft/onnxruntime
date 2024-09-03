@@ -18,7 +18,7 @@ class TernaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -46,7 +46,7 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   return Status::OK();
 }
 
-bool TernaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+bool TernaryOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                               const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -59,14 +59,13 @@ bool TernaryOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDevic
       !GetType(*input_defs[2], input2_type, logger))
     return false;
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = webnn_supported_data_types;
-  // WebNN CPU backend doesn't support uint64 X, Y data type for where.
-  if (device_type == WebnnDeviceType::CPU && op_type == "Where") {
-    supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-  }
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(op_type, webnn_op_type))
+    return false;
+
   // ONNX's condition data type is bool which is same as WebNN.
   // Only need to check X, Y data types.
-  if (!IsSupportedDataType(input1_type, supported_data_types)) {
+  if (!IsSupportedDataType(input1_type, wnn_limits[webnn_op_type]["trueValue"]["dataTypes"])) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input type: [" << input1_type
                           << "] is not supported for now";

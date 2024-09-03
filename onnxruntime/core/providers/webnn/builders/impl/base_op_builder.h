@@ -28,7 +28,8 @@ class BaseOpBuilder : public IOpBuilder {
   // Operator support related.
  public:
   bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                     const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+                     const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
+                     const logging::Logger& logger) const override;
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
@@ -36,7 +37,9 @@ class BaseOpBuilder : public IOpBuilder {
     return true;
   }
 
-  virtual bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
+  virtual bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                      const logging::Logger& logger) const;
+  virtual bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                       const logging::Logger& logger) const;
 
   // ONNX Runtime only *guarantees* support for models stamped
@@ -50,7 +53,7 @@ class BaseOpBuilder : public IOpBuilder {
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
-  bool HasSupportedInputs(const Node& node, const WebnnDeviceType device_type, const logging::Logger& logger) const;
+  bool HasSupportedInputs(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) const;
 };
 
 }  // namespace webnn

@@ -29,7 +29,7 @@ class ConvOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                               const logging::Logger& logger) const override;
 };
 
@@ -397,7 +397,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
+bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
@@ -415,20 +415,11 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceTy
     return false;
   }
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (op_type == "Conv" || op_type == "ConvTranspose") {
-    // WebNN conv2d and convTranspose2d only support float32 and float16 input data types.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  } else if (op_type == "ConvInteger") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-    };
-  }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(op_type, webnn_op_type))
+    return false;
+
+  if (!IsSupportedDataType(input0_type, wnn_limits[webnn_op_type]["input"]["dataTypes"])) {
     LOGS(logger, VERBOSE) << "[" << op_type
                           << "] Input type: [" << input0_type
                           << "] is not supported for now";
