@@ -30,8 +30,8 @@
 // to manually do this
 asm(".linker_option \"-framework\", \"CoreML\"");
 
-using namespace onnxruntime;
-using namespace onnxruntime::coreml;
+namespace onnxruntime {
+namespace coreml {
 
 namespace {
 /**
@@ -246,9 +246,6 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
   return Status::OK();
 }
 }  // namespace
-
-namespace onnxruntime {
-namespace coreml {
 
 Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
                                int64_t& num_blocks, int64_t& block_size, int64_t& stride) {
