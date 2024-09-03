@@ -768,8 +768,8 @@ namespace Microsoft.ML.OnnxRuntime
         private int _logVerbosityLevel = 0;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution within nodes
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution within nodes
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _intraOpNumThreads value</value>
         public int IntraOpNumThreads
@@ -787,9 +787,9 @@ namespace Microsoft.ML.OnnxRuntime
         private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
-        // If sequential execution is enabled this value is ignored
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        /// If sequential execution is enabled this value is ignored
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _interOpNumThreads value</value>
         public int InterOpNumThreads
