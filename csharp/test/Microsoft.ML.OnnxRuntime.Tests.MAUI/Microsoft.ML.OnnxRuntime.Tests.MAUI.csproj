@@ -176,7 +176,7 @@
 	<ItemGroup Condition="'$(IsMacCatalystBuild)' == 'true'">
 		<!-- local build -->
 		<NativeReference Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')"
-						 Include="$(NativeBuildOutputDir)\libonnxruntime.dylib">
+				 Include="$(NativeBuildOutputDir)\libonnxruntime.dylib">
 			<Link>libs\libonnxruntime.dylib</Link>
 			<Kind>Dynamic</Kind>
 			<ForceLoad>True</ForceLoad>
