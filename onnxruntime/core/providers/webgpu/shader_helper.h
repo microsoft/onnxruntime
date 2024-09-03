@@ -148,10 +148,21 @@ class ShaderHelper final {
   Status ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const;
   Status ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const;
 #endif
-  // Append the uniform values of all shape variables. Including shape/strides of input/output variables,
-  // if UseUniform is set in the usage of the variable.
-  Status AppendShapeUniformValues(std::vector<ProgramUniformVariableValue>& shape_uniforms) const;
-  Status GetFinalSourceCode(std::string& code);
+
+  Status ShaderHelper::ValidateShapeForInputsAndOutputs() const;
+
+  // Generate source code.
+  //
+  // This function:
+  // - performs validation if neccessary,
+  // - appends the ranks for variables to the shape_uniform_ranks.
+  //   (The rank value is zero if no uniform is needed for the variable.)
+  // - generates the final source code.
+  //
+  // \param code The generated full WGSL source code.
+  // \param shape_uniform_ranks The ranks for variables that need a uniform for the shape.
+  //
+  Status GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const;
   friend class ProgramManager;
 
   const wgpu::Device& device_;

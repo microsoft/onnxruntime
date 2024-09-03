@@ -212,7 +212,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   const auto* program_artifact = program_mgr_->Get(key);
   if (program_artifact == nullptr) {
     wgpu::ComputePipeline compute_pipeline;
-    std::vector<ProgramUniformVariableValue> shape_uniforms;
+    std::vector<int> shape_uniform_ranks;
     auto status = program_mgr_->Build(program,
                                       metadata,
 #ifndef NDEBUG  // if debug build
@@ -222,29 +222,52 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                                       y,
                                       z,
                                       compute_pipeline,
-                                      shape_uniforms);
+                                      shape_uniform_ranks);
     ORT_RETURN_IF_ERROR(status);
     program_artifact = program_mgr_->Set(key, ProgramArtifact{program,
                                                               std::move(compute_pipeline),
-                                                              std::move(shape_uniforms)});
+                                                              std::move(shape_uniform_ranks)});
 #ifndef NDEBUG  // if debug build
     ORT_ENFORCE(program_artifact != nullptr, "Program artifact should not be nullptr.");
 #endif
   }
 
-  // prepare uniform info
+  // prepare shape uniforms for shader variables (if any) and user defined uniforms
+  std::vector<ProgramUniformVariableValue> shape_uniforms;
+  shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
+  ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size(),
+                    "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
+                    ") does not match current program (input: ", inputs.size(), ", output: ", outputs.size(), ")");
+  for (size_t i = 0; i < program_artifact->shape_uniform_ranks.size(); ++i) {
+    SafeInt<int> expected_rank = program_artifact->shape_uniform_ranks[i];
+    if (expected_rank > 0) {
+      const auto& shape = i < inputs.size() ? (inputs[i].use_override_shape ? inputs[i].override_shape
+                                                                            : inputs[i].tensor->Shape())
+                                            : (outputs[i - inputs.size()].use_override_shape ? outputs[i - inputs.size()].override_shape
+                                                                                             : outputs[i - inputs.size()].tensor->Shape());
+      ORT_RETURN_IF(expected_rank != shape.NumDimensions(),
+                    "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", (int)expected_rank,
+                    ", Actual: ", shape.NumDimensions());
 
-  // TODO: also append artifacts uniform info and fill in actual input/output (override) shape value
+      std::vector<uint32_t> dims(shape.NumDimensions());
+      std::vector<uint32_t> stride(shape.NumDimensions());
+      for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+        dims[j] = SafeInt<uint32_t>(shape[j]);
+        stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j));
+      }
 
-  // foreach (uniform in artifact) {
-  //   check if match;
-  //   if match, create ProgramUniformVariableValue
-  // }
-  const auto& uniforms = program.UniformVariables();
+      shape_uniforms.emplace_back(gsl::make_span(dims));
+      shape_uniforms.emplace_back(gsl::make_span(stride));
+    }
+  }
+
+  const size_t uniform_count = shape_uniforms.size() + program.UniformVariables().size();
   size_t current_offset = 0;
   std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;
-  uniform_and_offsets.reserve(uniforms.size());
-  for (const auto& uniform : uniforms) {
+  uniform_and_offsets.reserve(uniform_count);
+  for (size_t i = 0; i < uniform_count; i++) {
+    const auto& uniform = i < shape_uniforms.size() ? shape_uniforms[i]
+                                                    : program.UniformVariables()[i - shape_uniforms.size()];
     bool is_f16 = uniform.data_type == ProgramUniformVariableDataType::Float16;
     size_t length = uniform.length;
 

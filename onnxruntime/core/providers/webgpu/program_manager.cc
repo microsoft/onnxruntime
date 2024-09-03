@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 
@@ -13,8 +15,10 @@
 namespace onnxruntime {
 namespace webgpu {
 
-ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<ProgramUniformVariableValue>&& shape_uniforms)
-    : name{program.Name()}, compute_pipeline{compute_pipeline}, shape_uniforms{shape_uniforms} {}
+ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
+    : name{program.Name()},
+      compute_pipeline{compute_pipeline},
+      shape_uniform_ranks{shape_uniform_ranks} {}
 
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
@@ -44,7 +48,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
-                             std::vector<ProgramUniformVariableValue>& shape_uniforms) const {
+                             std::vector<int>& shape_uniform_ranks) const {
   ShaderHelper shader_helper{program,
                              program_metadata,
                              device_,
@@ -56,11 +60,11 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   ORT_RETURN_IF_ERROR(program.GenerateShaderCode(shader_helper));
 
-  ORT_RETURN_IF_ERROR(shader_helper.AppendShapeUniformValues(shape_uniforms));
+  ORT_RETURN_IF_ERROR(shader_helper.ValidateShapeForInputsAndOutputs());
 
   // code is a large std::string that contains the final shader code
   std::string code;
-  ORT_RETURN_IF_ERROR(shader_helper.GetFinalSourceCode(code));
+  ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
 
   LOGS_DEFAULT(VERBOSE) << "\n=== WebGPU Shader code [" << program.Name()
 #ifndef NDEBUG  // if debug build

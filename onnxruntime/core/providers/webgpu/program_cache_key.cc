@@ -57,7 +57,6 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
       x != 0 || y != 0 || z != 0) {
     ss << ":" D("WorkgroupSize=");
     // only append non-zero values. zero values are considered as use default
-    // todo: this is actually not working correctly. revisit this logic. currently even if it's default, the value is not zero and will be appended
     if (x > 0) {
       ss << x;
     }
