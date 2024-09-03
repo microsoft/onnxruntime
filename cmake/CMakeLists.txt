@@ -1061,6 +1061,8 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-maybe-uninitialized>")
     endif()
     if (onnxruntime_USE_CUDA)
+      # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
+      add_definitions(-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH)
       foreach(FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
       endforeach()
@@ -1487,8 +1489,6 @@ if (onnxruntime_USE_CUDA)
     if(CUDA_NVCC_FLAGS MATCHES "Zi")
       list(APPEND CUDA_NVCC_FLAGS "-Xcompiler" "-FS")
     endif()
-    # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
-    add_definitions(-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH)
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
