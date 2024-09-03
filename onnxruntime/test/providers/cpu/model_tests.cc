@@ -262,6 +262,11 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
       }
 #endif
+#ifdef USE_XNNPACK
+      else if (provider_name == "xnnpack") {
+        ortso.AppendExecutionProvider("XNNPACK");
+      }
+#endif
       OrtSession* ort_session;
       OrtStatus* ort_st = OrtApis::CreateSession(*ort_env, model_path.c_str(), ortso, &ort_session);
       if (ort_st != nullptr) {
@@ -425,6 +430,9 @@ static constexpr ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
 #ifdef USE_ARMNN
 static constexpr ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
 #endif
+#ifdef USE_XNNPACK
+static constexpr ORT_STRING_VIEW provider_name_xnnpack = ORT_TSTR("xnnpack");
+#endif
 static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
@@ -471,6 +479,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #endif
 #ifdef USE_DML
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+#endif
+#ifdef USE_XNNPACK
+  provider_names[provider_name_xnnpack] = {opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
 
 #if defined(ENABLE_TRAINING_CORE) && defined(USE_CUDA)
