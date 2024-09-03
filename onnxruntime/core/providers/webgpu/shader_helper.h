@@ -77,28 +77,41 @@ class ShaderHelper final {
 
   Status Init();
 
+  // Add an input variable to the shader.
+  //
+  // depending on the usage of the variable, additional code may be generated.
   const ShaderVariable& AddInput(const std::string& name,
                                  ProgramVariableDataType type,
                                  ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
 
+  // Add an output variable to the shader.
+  //
+  // depending on the usage of the variable, additional code may be generated.
   const ShaderVariable& AddOutput(const std::string& name,
                                   ProgramVariableDataType type,
                                   ShaderVariable::Usage usage = ShaderVariable::UseIndicesTypeAlias | ShaderVariable::UseValueTypeAlias | ShaderVariable::UseUniform);
 
+  // Append additional implementation code to the shader.
+  //
+  // can be called multiple times.
   template <typename... Strs>
-  inline std::ostringstream& AppendImplementation(Strs&&... impl) {
+  inline ShaderHelper& AppendImplementation(Strs&&... impl) {
     onnxruntime::detail::MakeStringImpl(additional_implementation_, std::forward<Strs>(impl)...);
-    return additional_implementation_;
+    return *this;
   }
 
+  // Set the main function body of the shader.
+  //
+  // can be called only once.
   template <typename... Strs>
-  inline std::ostringstream& MainFunctionBody(const Strs&... body) {
+  inline void MainFunctionBody(const Strs&... body) {
+    ORT_ENFORCE(!body_set_, "Main function body is already set");
     onnxruntime::detail::MakeStringImpl(body_, std::forward<onnxruntime::detail::if_char_array_make_ptr_t<Strs const&>>(body)...);
-    return body_;
+    body_set_ = true;
   }
 
-  std::string GuardAgainstOutOfBoundsWorkgroupSizes(const std::string& size) const {
-    return "  if (global_idx >= " + size + ") { return; }\n";
+  std::string GuardAgainstOutOfBoundsWorkgroupSizes(std::string_view size) const {
+    return MakeStringWithClassicLocale("  if (global_idx >= ", size, ") { return; }\n");
   }
 
  private:
@@ -135,7 +148,9 @@ class ShaderHelper final {
   Status ValidateVariable(const ProgramInput& input, const ShaderVariable& var) const;
   Status ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const;
 #endif
-
+  // Append the uniform values of all shape variables. Including shape/strides of input/output variables,
+  // if UseUniform is set in the usage of the variable.
+  Status AppendShapeUniformValues(std::vector<ProgramUniformVariableValue>& shape_uniforms) const;
   Status GetFinalSourceCode(std::string& code);
   friend class ProgramManager;
 
@@ -149,11 +164,11 @@ class ShaderHelper final {
   const ProgramMetadata& program_metadata_;
 
   std::array<std::vector<ShaderVariable>, static_cast<size_t>(ProgramVariableScope::Count)> vars_;
-  std::ostringstream ss2;
   std::ostringstream additional_implementation_;
   std::ostringstream body_;
 
   bool use_f16_ = false;
+  bool body_set_ = false;
 };
 
 }  // namespace webgpu

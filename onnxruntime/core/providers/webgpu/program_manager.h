@@ -23,10 +23,11 @@ namespace webgpu {
 
 class ProgramArtifact {
  public:
-  ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline);
+  ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<ProgramUniformVariableValue>&& shape_uniforms);
 
   std::string name;
   wgpu::ComputePipeline compute_pipeline;
+  std::vector<ProgramUniformVariableValue> shape_uniforms;
 
   ProgramArtifact(ProgramArtifact&&) = default;
   ProgramArtifact& operator=(ProgramArtifact&&) = default;
@@ -49,7 +50,8 @@ class ProgramManager {
                uint32_t normalized_dispatch_x,
                uint32_t normalized_dispatch_y,
                uint32_t normalized_dispatch_z,
-               wgpu::ComputePipeline& compute_pipeline) const;
+               wgpu::ComputePipeline& compute_pipeline,
+               std::vector<ProgramUniformVariableValue>& shape_uniforms) const;
   const ProgramArtifact* Get(const std::string& key) const;
   const ProgramArtifact* Set(const std::string& key, ProgramArtifact&& program);
 

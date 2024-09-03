@@ -212,6 +212,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
   const auto* program_artifact = program_mgr_->Get(key);
   if (program_artifact == nullptr) {
     wgpu::ComputePipeline compute_pipeline;
+    std::vector<ProgramUniformVariableValue> shape_uniforms;
     auto status = program_mgr_->Build(program,
                                       metadata,
 #ifndef NDEBUG  // if debug build
@@ -220,15 +221,25 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
                                       x,
                                       y,
                                       z,
-                                      compute_pipeline);
+                                      compute_pipeline,
+                                      shape_uniforms);
     ORT_RETURN_IF_ERROR(status);
-    program_artifact = program_mgr_->Set(key, ProgramArtifact{program, std::move(compute_pipeline)});
+    program_artifact = program_mgr_->Set(key, ProgramArtifact{program,
+                                                              std::move(compute_pipeline),
+                                                              std::move(shape_uniforms)});
 #ifndef NDEBUG  // if debug build
     ORT_ENFORCE(program_artifact != nullptr, "Program artifact should not be nullptr.");
 #endif
   }
 
   // prepare uniform info
+
+  // TODO: also append artifacts uniform info and fill in actual input/output (override) shape value
+
+  // foreach (uniform in artifact) {
+  //   check if match;
+  //   if match, create ProgramUniformVariableValue
+  // }
   const auto& uniforms = program.UniformVariables();
   size_t current_offset = 0;
   std::vector<std::tuple<const ProgramUniformVariableValue&, size_t>> uniform_and_offsets;

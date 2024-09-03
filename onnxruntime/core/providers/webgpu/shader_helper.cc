@@ -215,6 +215,29 @@ Status ShaderHelper::ValidateVariable(const ProgramOutput& output, const ShaderV
   // todo: add reshaped shape and check
   return Status::OK();
 }
+
+Status ShaderHelper::AppendShapeUniformValues(std::vector<ProgramUniformVariableValue>& /*shape_uniforms*/) const {
+  // TODO: move input/output check(validation) here
+  // TODO: also check input dependencies with actual usages.
+  //                          [deps]        [usages]
+  //                 input -> use shape  && !use_uniform -> OK
+  //                 input -> use shape  && use_uniform  -> err
+  //                 input -> !use shape && !use_uniform  -> err: must use shape if not using uniform
+  //                 input -> !use shape && use_uniform   ->
+  //                                                         use_rank -> OK
+  //                                                         !use_rank -> err: must use rank
+  //
+  //       output -> do not check
+
+  // TODO: tensor shape and strides adding to uniforms (in front)
+  //         when: use_rank && rank >=2
+  //         info need for codegen: [rank, variable name]   content ->  "vecN<u32> {name}_shape, vecN<u32> {name}_strides"
+  //                                                                    // further optimization: strides can be vecN-1
+  //         minimal info stored in artifact: array<[rank, variable name] | not_use >
+
+  return Status::OK();
+}
+
 #endif
 
 Status ShaderHelper::GetFinalSourceCode(std::string& code) {
