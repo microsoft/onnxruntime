@@ -19,6 +19,7 @@ The formula corresponding to LayerNorm activation subgraph:
 class LayerNormFusion : public GraphTransformer {
  private:
   TransformerLevel optimization_level_ = TransformerLevel::Level1;
+  bool contrib_flag_ = false;
   std::string GetLayerNormFusionName(TransformerLevel level) {
     switch (level) {
       case TransformerLevel::Level1:
@@ -32,8 +33,8 @@ class LayerNormFusion : public GraphTransformer {
 
  public:
   LayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                  TransformerLevel level = TransformerLevel::Level1) noexcept
-      : GraphTransformer(GetLayerNormFusionName(level), compatible_execution_providers), optimization_level_(level) {}
+                  TransformerLevel level = TransformerLevel::Level1, bool contrib_flag = false) noexcept
+      : GraphTransformer(GetLayerNormFusionName(level), compatible_execution_providers), optimization_level_(level), contrib_flag_(contrib_flag) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 };
