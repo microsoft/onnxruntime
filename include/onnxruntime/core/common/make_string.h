@@ -19,32 +19,39 @@
 
 #include <locale>
 #include <sstream>
+#include <string>
 #include <type_traits>
-
-#include "core/util/force_inline.h"
 
 namespace onnxruntime {
 
 namespace detail {
 
-ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
+inline void MakeStringImpl(std::ostringstream& /*ss*/) noexcept {
 }
 
 template <typename T>
-ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
+inline void MakeStringImpl(std::ostringstream& ss, const T& t) noexcept {
   ss << t;
 }
 
 template <typename T, typename... Args>
-ORT_FORCEINLINE void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
+inline void MakeStringImpl(std::ostringstream& ss, const T& t, const Args&... args) noexcept {
   MakeStringImpl(ss, t);
   MakeStringImpl(ss, args...);
 }
 
 // see MakeString comments for explanation of why this is necessary
 template <typename... Args>
-ORT_FORCEINLINE std::string MakeStringImpl(const Args&... args) noexcept {
+inline std::string MakeStringImpl(const Args&... args) noexcept {
   std::ostringstream ss;
+  MakeStringImpl(ss, args...);
+  return ss.str();
+}
+
+template <typename... Args>
+inline std::string MakeStringWithClassicLocaleImpl(const Args&... args) noexcept {
+  std::ostringstream ss;
+  ss.imbue(std::locale::classic());
   MakeStringImpl(ss, args...);
   return ss.str();
 }
@@ -80,7 +87,7 @@ using if_char_array_make_ptr_t = typename if_char_array_make_ptr<T>::type;
  * This version uses the current locale.
  */
 template <typename... Args>
-ORT_FORCEINLINE std::string MakeString(const Args&... args) {
+inline std::string MakeString(const Args&... args) {
   // We need to update the types from the MakeString template instantiation to decay any char[n] to char*.
   //   e.g. MakeString("in", "out") goes from MakeString<char[2], char[3]> to MakeStringImpl<char*, char*>
   //        so that MakeString("out", "in") will also match MakeStringImpl<char*, char*> instead of requiring
@@ -100,28 +107,25 @@ ORT_FORCEINLINE std::string MakeString(const Args&... args) {
  * This version uses std::locale::classic().
  */
 template <typename... Args>
-ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const Args&... args) {
-  std::ostringstream ss;
-  ss.imbue(std::locale::classic());
-  detail::MakeStringImpl(ss, args...);
-  return ss.str();
+inline std::string MakeStringWithClassicLocale(const Args&... args) {
+  return detail::MakeStringWithClassicLocaleImpl(detail::if_char_array_make_ptr_t<Args const&>(args)...);
 }
 
 // MakeString versions for already-a-string types.
 
-ORT_FORCEINLINE std::string MakeString(const std::string& str) {
+inline std::string MakeString(const std::string& str) {
   return str;
 }
 
-ORT_FORCEINLINE std::string MakeString(const char* cstr) {
+inline std::string MakeString(const char* cstr) {
   return cstr;
 }
 
-ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const std::string& str) {
+inline std::string MakeStringWithClassicLocale(const std::string& str) {
   return str;
 }
 
-ORT_FORCEINLINE std::string MakeStringWithClassicLocale(const char* cstr) {
+inline std::string MakeStringWithClassicLocale(const char* cstr) {
   return cstr;
 }
 
