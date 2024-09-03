@@ -325,10 +325,6 @@ class DQToLookPast {
   DQToLookPast(DQToLookPast&& other) = default;
   DQToLookPast& operator=(DQToLookPast&& other) = default;
 
-  inline QuantizationMode GetQuantMode() const {
-    return quant_info_.mode;
-  }
-
   inline void DisconnectInput0() {
     dq_node_->SetInput(0, "");
   }
@@ -421,8 +417,7 @@ static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsum
 
   if (dq_node) {
     do {
-      auto dq_inputs = dq_node->Inputs();
-      auto dq_input = dq_inputs[0];
+      auto dq_input = dq_node->Inputs()[0];
       auto dq_constant = graph.GetConstant(dq_input);
 
       // input to DQ must be a constant initializer
@@ -1478,7 +1473,7 @@ static bool IsConstant(const api::GraphRef& graph, std::string_view value_name) 
   // look past a DQ node
   if (producer_node->OpType() == "DequantizeLinear") {
     std::optional<DQToLookPast> dq_to_look_past = GetDQWithConstInitializerInputAndSingleConsumer(graph, value_name);
-    if (dq_to_look_past && IsSupportedQuantizationMode(dq_to_look_past->GetQuantMode())) {
+    if (dq_to_look_past) {
       // DQ node pointing to an constant initializer
       return true;
     }
