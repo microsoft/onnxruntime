@@ -317,9 +317,9 @@ static std::optional<QuantizationInfo> GetQuantizationInfo(const api::GraphRef& 
 /// </summary>
 class DQToLookPast {
  public:
-  DQToLookPast() = default;
   DQToLookPast(std::unique_ptr<api::NodeRef>&& dq_node, QuantizationInfo quant_info)
       : dq_node_(std::move(dq_node)), quant_info_(quant_info) {
+    assert(dq_node_ != nullptr);  // Expect dq_node to be valid.
   }
 
   DQToLookPast(DQToLookPast&& other) = default;
