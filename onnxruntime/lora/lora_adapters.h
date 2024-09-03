@@ -25,7 +25,8 @@ class LoraAdapter {
  public:
   LoraAdapter() = default;
   ~LoraAdapter() = default;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(LoraAdapter);
+  LoraAdapter(const LoraAdapter&) = delete; 
+  LoraAdapter& operator=(const LoraAdapter&) = delete;
 
   LoraAdapter(LoraAdapter&&) = default;
   LoraAdapter& operator=(LoraAdapter&&) = default;
