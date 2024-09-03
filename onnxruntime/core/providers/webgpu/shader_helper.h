@@ -149,7 +149,7 @@ class ShaderHelper final {
   Status ValidateVariable(const ProgramOutput& output, const ShaderVariable& var) const;
 #endif
 
-  Status ShaderHelper::ValidateShapeForInputsAndOutputs() const;
+  Status ValidateShapeForInputsAndOutputs() const;
 
   // Generate source code.
   //
