@@ -167,7 +167,9 @@ WEBGPU_ELEMENTWISE_KERNEL(Sinh, 9, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Cosh, "cosh(a)")
 WEBGPU_ELEMENTWISE_KERNEL(Cosh, 9, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Tanh, "tanh(a)")
+// built-in function tanh() does not work with large input (f32 88.7 or f16 11.09)
+// https://github.com/gpuweb/gpuweb/issues/4458
+WEBGPU_ELEMENTWISE_IMPL(Tanh, "sign(a) * (1 - exp(-2 * abs(a))) / (1 + exp(-2 * abs(a)))")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Tanh, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Tanh, 13, WebGpuSupportedFloatTypes())
 
