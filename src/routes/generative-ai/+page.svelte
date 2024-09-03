@@ -6,7 +6,7 @@
 	import vision_ui from './vision_UI.png';
 	import mobile from './mobile.png';
 	import desktop from './desktop.png';
-	import browser from './browser.png';
+	import cloud from './browser.png';
 	import aibrain from './aibrain.webp'
 	const title = 'Generative AI';
 	const description =
@@ -18,7 +18,7 @@
 	let authors = [''];
 	let keywords =
 		'onnxruntime, onnx runtime generative ai, onnx runtime generative ai models, onnx runtime generative ai deployment, onnx runtime generative ai performance, onnx runtime generative ai time to market, onnx runtime generative ai deploy anywhere, onnx runtime generative ai boost performance, onnx runtime generative ai improve time to market, onnx runtime generative ai production ready, onnx runtime generative ai lower latency, onnx runtime generative ai higher throughput, onnx runtime generative ai get innovations into production faster, onnx runtime generative ai testimonials, onnx runtime generative ai performance enhancements, onnx runtime generative ai production ready, onnx runtime generative ai lower latency, onnx runtime generative ai higher throughput, onnx runtime generative ai get innovations into production faster, onnx runtime generative ai testimonials, onnx runtime generative ai performance enhancements';
-	let cycleWords = ['Desktop', 'Mobile', 'Browser'];
+	let cycleWords = ['Desktop', 'Mobile', 'Cloud'];
 	let cycleIndex = 0;
 	const interval = setInterval(() => {
 		cycleIndex = (cycleIndex + 1) % cycleWords.length;
@@ -158,8 +158,8 @@
 							width="512px"
 							class="mx-auto mt-4"
 							in:fade={{ duration: 1000 }}
-							src={cycleIndex == 0 ? desktop : cycleIndex == 1 ? mobile : browser}
-							alt="Desktop, mobile, and browser usage of ONNX Runtime Gen AI"
+							src={cycleIndex == 0 ? desktop : cycleIndex == 1 ? mobile : cloud}
+							alt="Desktop, mobile, and cloud usage of ONNX Runtime Gen AI"
 						/>
 					{/key}
 				</h2>
@@ -173,7 +173,7 @@
 				<div class="card bg-base-300 text-neutral-content">
 					<div class="card-body items-center text-center">
 						<h2 class="card-title">Multiplatform</h2>
-						<p>Whether it be Desktop, Mobile, or Browser, run ONNX Runtime on the platform of your choosing!</p>
+						<p>Whether it be Desktop, Mobile, or the Cloud, run ONNX Runtime on the platform of your choosing!</p>
 					</div>
 				</div>
 				<div class="card bg-base-300 text-neutral-content">

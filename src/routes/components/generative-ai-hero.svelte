@@ -15,7 +15,7 @@
 				and more.
 			</p>
 			<br />
-			<a href="https://onnxruntime.ai/docs/genai" class="btn btn-primary">Learn more about ONNX Runtime & Generative AI →</a>
+			<a href="./generative-ai" class="btn btn-primary">Learn more about ONNX Runtime & Generative AI →</a>
 		</div>
 		<div class="m-auto overflow:hidden">
 			<Ortgenerativeai />
