@@ -8,11 +8,13 @@
 #include "core/framework/provider_options.h"
 #include "core/providers/providers.h"
 
+#include "core/providers/webgpu/webgpu_provider_options.h"
+
 namespace onnxruntime {
-struct SessionOptions;
+struct ConfigOptions;
 
 struct WebGpuProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const SessionOptions* session_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
 };
 
 }  // namespace onnxruntime

@@ -135,7 +135,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "WebGPU") == 0) {
 #if defined(USE_WEBGPU)
-    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(&(options->value)));
+    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
     status = create_not_supported_status();
 #endif
