@@ -9,7 +9,9 @@
 #include "core/framework/config_options.h"
 
 namespace onnxruntime {
-struct OrtLoraAdapter;
+namespace lora {
+class LoraAdapter;
+}
 }  // namespace onnxruntime
 
 /**
@@ -44,7 +46,7 @@ struct OrtRunOptions {
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;
 
-  std::vector<onnxruntime::OrtLoraAdapter*> active_adapters_;
+  std::vector<const onnxruntime::lora::LoraAdapter*> active_adapters_;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
