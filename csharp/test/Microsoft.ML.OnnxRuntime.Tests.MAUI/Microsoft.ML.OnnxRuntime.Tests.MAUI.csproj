@@ -27,6 +27,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<!-- some of the helper packages don't have strong named assemblies. -->
+		<NoWarn>8002</NoWarn>
 
 		<!-- These are copied from the sample. TBD what we really need. -->
 		<DefineConstants Condition="'$(CI)' != 'true'">$(DefineConstants);INCLUDE_FAILING_TESTS</DefineConstants>
