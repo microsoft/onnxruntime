@@ -1487,6 +1487,8 @@ if (onnxruntime_USE_CUDA)
     if(CUDA_NVCC_FLAGS MATCHES "Zi")
       list(APPEND CUDA_NVCC_FLAGS "-Xcompiler" "-FS")
     endif()
+    # https://stackoverflow.com/questions/78515942/cuda-compatibility-with-visual-studio-2022-version-17-10
+    list(APPEND CUDA_NVCC_FLAGS "-allow-unsupported-compiler")
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
