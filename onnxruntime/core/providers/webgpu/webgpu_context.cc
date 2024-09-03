@@ -253,7 +253,7 @@ Status WebGpuContext::Run(const ComputeContext& context, const ProgramBase& prog
       std::vector<uint32_t> stride(shape.NumDimensions());
       for (size_t j = 0; j < shape.NumDimensions(); ++j) {
         dims[j] = SafeInt<uint32_t>(shape[j]);
-        stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j));
+        stride[j] = SafeInt<uint32_t>(shape.SizeFromDimension(j + 1));
       }
 
       shape_uniforms.emplace_back(gsl::make_span(dims));
