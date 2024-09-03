@@ -255,7 +255,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 Assert.NotNull(session);
                 Assert.NotNull(session.InputMetadata);
-                Assert.Equal(1, session.InputMetadata.Count); // 1 input node
+                Assert.Single(session.InputMetadata); // 1 input node
                 Assert.True(session.InputMetadata.ContainsKey("data_0")); // input node name
                 Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
                 Assert.True(session.InputMetadata["data_0"].IsTensor);
@@ -267,7 +267,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.NotNull(session.OutputMetadata);
-                Assert.Equal(1, session.OutputMetadata.Count); // 1 output node
+                Assert.Single(session.OutputMetadata); // 1 output node
                 Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output node name
                 Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
                 Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
@@ -614,7 +614,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // validate the results
             foreach (var r in results)
             {
-                Assert.Equal(1, results.Count);
+                Assert.Single(results);
                 Assert.Equal("softmaxout_1", r.Name);
 
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
@@ -798,7 +798,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact(DisplayName = "TestMultiThreads")]
-        private void TestMultiThreads()
+        private async Task TestMultiThreads()
         {
             var numThreads = 10;
             var loop = 10;
@@ -824,7 +824,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 }));
             };
-            Task.WaitAll(tasks);
+            await Task.WhenAll(tasks);
             session.Dispose();
         }
 
@@ -838,7 +838,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(session.InputMetadata.ContainsKey("Label"));
                 Assert.True(session.InputMetadata.ContainsKey("F2"));
 
-                Assert.Equal(1, session.OverridableInitializerMetadata.Count);
+                Assert.Single(session.OverridableInitializerMetadata);
                 Assert.True(session.OverridableInitializerMetadata.ContainsKey("F1"));
                 Assert.True(session.OverridableInitializerMetadata["F1"].IsTensor);
                 Assert.Equal(typeof(float), session.OverridableInitializerMetadata["F1"].ElementType);
@@ -886,7 +886,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var outputs = session.OutputMetadata;
 
                 Assert.Equal(2, inputs.Count);
-                Assert.Equal(1, session.OutputMetadata.Count);
+                Assert.Single(session.OutputMetadata);
                 Assert.True(inputs.ContainsKey("A"));
                 Assert.True(inputs.ContainsKey("B"));
                 Assert.True(outputs.ContainsKey("C"));
@@ -1432,6 +1432,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     // first output is a tensor containing label
                     var outNode0 = outputs.ElementAtOrDefault(0);
+                    Assert.NotNull(outNode0);
                     Assert.Equal("label", outNode0.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
                     Assert.Equal(Tensors.TensorElementType.Int64, outNode0.ElementType);
@@ -1446,6 +1447,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // second output is a sequence<map<int64, float>>
                     // try-cast to an sequence of NOV
                     var outNode1 = outputs.ElementAtOrDefault(1);
+                    Assert.NotNull(outNode1);
                     Assert.Equal("probabilities", outNode1.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode1.ValueType);
 
@@ -1525,6 +1527,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     // first output is a tensor containing label
                     var outNode0 = outputs.ElementAtOrDefault(0);
+                    Assert.NotNull(outNode0);
                     Assert.Equal("label", outNode0.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
                     Assert.Equal(TensorElementType.String, outNode0.ElementType);
@@ -1539,6 +1542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // second output is a sequence<map<string, float>>
                     // try-cast to an sequence of NOV
                     var outNode1 = outputs.ElementAtOrDefault(1);
+                    Assert.NotNull(outNode1);
                     Assert.Equal("probabilities", outNode1.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode1.ValueType);
 
@@ -1592,6 +1596,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     // output is a sequence<tensors>
                     // try-cast to an sequence of NOV
                     var outNode = outputs.ElementAtOrDefault(0);
+                    Assert.NotNull(outNode);
                     Assert.Equal("output_sequence", outNode.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, outNode.ValueType);
 
@@ -2035,7 +2040,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact(DisplayName = "TestModelRunAsyncTask")]
-        private async void TestModelRunAsyncTask()
+        private async Task TestModelRunAsyncTask()
         {
             Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
             long[] shape = { 1, 5 };
@@ -2070,7 +2075,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact(DisplayName = "TestModelRunAsyncTaskFail")]
-        private async void TestModelRunAsyncTaskFail()
+        private async Task TestModelRunAsyncTaskFail()
         {
             Float16[] inputData = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
             long[] shape = { 1, 5 };
