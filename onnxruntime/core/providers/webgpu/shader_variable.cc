@@ -116,11 +116,11 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
         SS("  return 0;\n");
       } else {
         SS("  return ");
-        for (int i = 0; i < rank_ - 1; i++) {
+        for (int i = rank_ - 1; i >= 0; i--) {
           auto idx = broadcasted_result.IndicesGet("indices", i + broadcasted_result.rank_ - rank_);
           SS(IndicesGet(stride, i), " * (", idx, " % ", IndicesGet(shape, i), ") + ");
         }
-        SS(broadcasted_result.IndicesGet("indices", broadcasted_result.rank_ - 1), " % ", IndicesGet(shape, rank_ - 1), ";\n");
+        SS("0;\n");
       }
       SS("}\n");
     }
