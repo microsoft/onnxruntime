@@ -250,7 +250,7 @@ static bool NormalizeAndValidateAxes(std::vector<int64_t>& axes, size_t rank);
 static std::optional<std::vector<int64_t>> ReadFromAttrOrInput(const api::GraphRef& graph, api::NodeRef& node,
                                                                std::string_view attr_name, size_t inp_index,
                                                                int64_t opset);
-static int64_t UnsqueezeAxis(gsl::span<const int64_t> sorted_positive_unsqueeze_axes, int64_t axis);
+static int64_t UnsqueezeAxis(gsl::span<const int64_t> positive_unsqueeze_axes, int64_t axis);
 
 // Quantization modes for QuantizeLinear/DequantizeLinear.
 enum class QuantizationMode : uint8_t {
@@ -279,7 +279,7 @@ static std::optional<QuantizationInfo> GetQuantizationInfo(const api::GraphRef& 
 
   // Need to use the scale input's shape to determine the quantization mode. Can't just use the presence of the axis
   // attribute because even per-tensor Q/DQ have a default axis of 1.
-  std::string_view scale_input = q_or_dq_node.Inputs()[1];
+  std::string_view scale_input = inputs[1];
   const std::unique_ptr<api::ValueInfoRef> scale_value_info = graph.GetValueInfo(scale_input);
   std::optional<std::vector<int64_t>> scale_shape = scale_value_info->Shape();
   if (!scale_shape) {
