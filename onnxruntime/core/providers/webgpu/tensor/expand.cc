@@ -39,16 +39,12 @@ Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_s
 }  // namespace
 
 Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const size_t input_rank = Inputs()[0].tensor->Shape().NumDimensions();
-  const size_t output_rank = Outputs()[0]->Shape().NumDimensions();
-  const auto& input = shader.AddVariable(ProgramVariableScope::Input,
-                                         "input",
-                                         ToProgramVariableDataType(Inputs()[0].tensor->GetElementType()),
-                                         static_cast<int>(input_rank));
-  const auto& output = shader.AddVariable(ProgramVariableScope::Output,
-                                          "output",
-                                          ToProgramVariableDataType(Outputs()[0]->GetElementType()),
-                                          static_cast<int>(output_rank));
+  // const size_t input_rank = Inputs()[0].tensor->Shape().NumDimensions();
+  // const size_t output_rank = Outputs()[0].tensor->Shape().NumDimensions();
+  const auto& input = shader.AddInput("input",
+                                      ToProgramVariableDataType(Inputs()[0].tensor->GetElementType()));
+  const auto& output = shader.AddOutput("output",
+                                        ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()));
 
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
                           "let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
@@ -71,7 +67,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   SafeInt<uint32_t> vec_size = input_tensor->Shape().Size();
   ExpandProgram program{"Expand"};
   program
-      .Inputs({{input_tensor, ProgramInputTensorDependency::TypeAndRank}})
+      .Inputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .Outputs({output_tensor})
       .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
