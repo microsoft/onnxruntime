@@ -35,12 +35,10 @@ Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
 
   // validate workgroup size
-  auto workgroup_size_x = program_.WorkgroupSizeX();
-  auto workgroup_size_y = program_.WorkgroupSizeY();
-  auto workgroup_size_z = program_.WorkgroupSizeZ();
+  auto workgroup_size_x = program_.WorkgroupSizeX() == 0 ? WORKGROUP_SIZE : program_.WorkgroupSizeX();
+  auto workgroup_size_y = program_.WorkgroupSizeY() == 0 ? 1 : program_.WorkgroupSizeY();
+  auto workgroup_size_z = program_.WorkgroupSizeZ() == 0 ? 1 : program_.WorkgroupSizeZ();
 
-  ORT_RETURN_IF_NOT(workgroup_size_x > 0 && workgroup_size_y > 0 && workgroup_size_z > 0,
-                    "Workgroup size must be greater than 0");
   ORT_RETURN_IF_NOT(workgroup_size_x <= limits_.maxComputeWorkgroupSizeX &&
                         workgroup_size_y <= limits_.maxComputeWorkgroupSizeY &&
                         workgroup_size_z <= limits_.maxComputeWorkgroupSizeZ,

@@ -28,7 +28,6 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
   // Start generating code
 
   const std::string value_t = name_ + "_value_t";
-  const std::string indices_t = name_ + "_indices_t";
   const std::string element_t = name_ + "_element_t";
 
   const std::string shape = (usage_ & UseUniform) ? "uniforms." + name_ + "_shape" : name_ + "_shape";
@@ -36,10 +35,11 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
 
   // Types
   std::string_view value_type = (usage_ & UseValueTypeAlias) ? value_t : ValueType();
+  const std::string indices_type = (usage_ & UseIndicesTypeAlias) ? name_ + "_indices_t" : IndicesType();
+
   if (usage_ & UseValueTypeAlias) {
     SS("alias ", name_, "_value_t = ", ValueType(), ";\n");
   }
-  std::string_view indices_type = (usage_ & UseIndicesTypeAlias) ? indices_t : IndicesType();
   if (usage_ & UseIndicesTypeAlias) {
     SS("alias ", name_, "_indices_t = ", IndicesType(), ";\n");
   }

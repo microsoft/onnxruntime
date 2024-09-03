@@ -163,9 +163,9 @@ ProgramBase::ProgramBase(const std::string& name)
       dispatch_group_size_x_{0},
       dispatch_group_size_y_{0},
       dispatch_group_size_z_{0},
-      workgroup_size_x_{WORKGROUP_SIZE},
-      workgroup_size_y_{1},
-      workgroup_size_z_{1} {
+      workgroup_size_x_{0},
+      workgroup_size_y_{0},
+      workgroup_size_z_{0} {
 }
 
 ProgramBase& ProgramBase::Inputs(std::initializer_list<ProgramInput> inputs) {

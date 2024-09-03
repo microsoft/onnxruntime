@@ -13,7 +13,7 @@ void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramTenso
   if (first) {
     first = false;
   } else {
-    ss << "|";
+    ss << '|';
   }
   if ((dependency & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
 #ifndef NDEBUG  // if debug build
@@ -21,12 +21,12 @@ void AppendTensorInfo(std::ostringstream& ss, const Tensor& tensor, ProgramTenso
 #else
     ss << output.tensor->GetElementType();
 #endif
+    ss << ';';
   }
-  ss << ";";
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
-    ss D("Rank=") << tensor.Shape().NumDimensions();
-  } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
     ss D("Dims=") << tensor.Shape().ToString();
+  } else if ((dependency & ProgramTensorMetadataDependency::Rank) == ProgramTensorMetadataDependency::Rank) {
+    ss D("Rank=") << tensor.Shape().NumDimensions();
   }
 }
 }  // namespace
@@ -49,7 +49,7 @@ std::string CalculateProgramCacheKey(const ProgramBase& program, bool is_1d_disp
 
   // append custom cache hint if any
   if (auto& hint = program.CacheHint(); !hint.empty()) {
-    ss << "[" D("CacheHint=") << hint << "]";
+    ss << '[' D("CacheHint=") << hint << ']';
   }
 
   // append workgroup size if overridden
