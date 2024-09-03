@@ -379,7 +379,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     };
 
     for (const auto& input : vars_[static_cast<int>(ProgramVariableScope::Input)]) {
-      if (input.rank_ > 1) {
+      if (input.rank_ > 1 && (input.usage_ & ShaderVariable::Usage::UseUniform)) {
         std::string shape = input.name_ + "_shape";
         std::string stride = input.name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, input.rank_);
@@ -388,7 +388,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
     }
 
     for (const auto& output : vars_[static_cast<int>(ProgramVariableScope::Output)]) {
-      if (output.rank_ > 1) {
+      if (output.rank_ > 1 && (output.usage_ & ShaderVariable::Usage::UseUniform)) {
         std::string shape = output.name_ + "_shape";
         std::string stride = output.name_ + "_stride";
         append_uniform(shape, ProgramUniformVariableDataType::Uint32, output.rank_);

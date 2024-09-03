@@ -64,11 +64,11 @@ void ShaderVariable::Impl(std::ostringstream& ss) const {
 
     SS("const ", stride, " = ", indices_type, "(");
     first = true;
-    for (int i = rank_ - 1; i >= 0; i--) {
+    for (int i = 1; i <= rank_; i++) {
       if (!first) {
         ss << ",";
       }
-      ss << dims_.SizeToDimension(i);
+      ss << dims_.SizeFromDimension(i);
       first = false;
     }
     ss << ");\n";

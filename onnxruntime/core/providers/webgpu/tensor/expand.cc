@@ -39,16 +39,12 @@ Status ComputeOutputShape(const std::string& node_name, const TensorShape& lhs_s
 }  // namespace
 
 Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const size_t input_rank = Inputs()[0].tensor->Shape().NumDimensions();
-  const size_t output_rank = Outputs()[0]->Shape().NumDimensions();
-  const auto& input = shader.AddVariable(ProgramVariableScope::Input,
-                                         "input",
-                                         ToProgramVariableDataType(Inputs()[0].tensor->GetElementType()),
-                                         static_cast<int>(input_rank));
-  const auto& output = shader.AddVariable(ProgramVariableScope::Output,
-                                          "output",
-                                          ToProgramVariableDataType(Outputs()[0]->GetElementType()),
-                                          static_cast<int>(output_rank));
+  const auto& input = shader.AddInput("input",
+                                      ToProgramVariableDataType(Inputs()[0].tensor->GetElementType()),
+                                      ShaderVariable::UseUniform);
+  const auto& output = shader.AddOutput("output",
+                                        ToProgramVariableDataType(Outputs()[0].tensor->GetElementType()),
+                                        ShaderVariable::UseUniform);
 
   shader.MainFunctionBody(shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size"),
                           "let output_indices = ", output.OffsetToIndices("global_idx"), ";\n",
@@ -68,11 +64,11 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input_tensor->Shape(), output_dims, output_shape));
 
   auto* output_tensor = context.Output(0, output_shape);
-  SafeInt<uint32_t> vec_size = input_tensor->Shape().Size();
+  SafeInt<uint32_t> vec_size = output_shape.Size();
   ExpandProgram program{"Expand"};
   program
-      .Inputs({{input_tensor, ProgramInputTensorDependency::TypeAndRank}})
-      .Outputs({output_tensor})
+      .Inputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
+      .Outputs({{output_tensor, ProgramTensorMetadataDependency::Rank}})
       .DispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .UniformVariables({
           {static_cast<uint32_t>(vec_size)},
