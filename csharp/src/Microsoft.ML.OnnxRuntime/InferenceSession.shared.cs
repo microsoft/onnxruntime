@@ -908,7 +908,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="values">names to convert to zero terminated utf8 and pin</param>
         /// <param name="nameExtractor">extractor functor that helps extracting names from inputs</param>
-        /// <param name="metaDict">inputs/outputs metadata</param>
+        /// <param name="metaLookup">inputs/outputs metadata</param>
         /// <returns></returns>
         private static IntPtr[] LookupUtf8Names<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
             MetadataLookup metaLookup)
@@ -1222,7 +1222,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// Initializes the session object with a native session handle
         /// </summary>
         /// <param name="session">Value of a native session object</param>
-        /// <param name="options">Session options</param>
         private void InitWithSessionHandle(IntPtr session)
         {
             _nativeHandle = session;
@@ -2075,7 +2074,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Custom metadata key/value pairs
         /// </summary>
-        /// <value>An instance of a Dictionary<string,string></value>
+        /// <value>An instance of a Dictionary{string,string}</value>
         public Dictionary<string, string> CustomMetadataMap
         {
             get
