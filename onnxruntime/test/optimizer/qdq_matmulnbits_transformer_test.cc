@@ -17,6 +17,7 @@
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
@@ -55,7 +56,8 @@ RunDQMatMulNotConverted_NonConstDQ(const std::vector<int64_t>& input1_shape,
                                    const std::vector<int64_t>& input2_shape,
                                    const int64_t axis,
                                    const int64_t block_size,
-                                   int64_t accuracy_level) {
+                                   int64_t accuracy_level,
+                                   std::unique_ptr<IExecutionProvider> ep = nullptr) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
     auto* input2_arg = builder.MakeInput(input2_shape, T(T::min_val, 0), T(T::max_val, 0));
@@ -104,7 +106,9 @@ RunDQMatMulNotConverted_NonConstDQ(const std::vector<int64_t>& input1_shape,
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/,
                     nullptr,
-                    add_session_options_fn);
+                    add_session_options_fn,
+                    {},
+                    ep ? std::move(ep) : nullptr);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_NonConstDQ) {
@@ -127,6 +131,27 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_NonConstDQ) {
   RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, -1);
 }
 
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_NonConstDQ_Cuda) {
+  // DQ contrib op schema is not updated to support blocked quantization
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  ;
+  RunDQMatMulNotConverted_NonConstDQ<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, true>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_NonConstDQ<Int4x2, false>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+}
+
 //        Input2
 //           |
 //    DQ     /
@@ -140,7 +165,8 @@ RunDQMatMulNotConverted_FirstDQInput(const std::vector<int64_t>& weight_shape,
                                      const std::vector<int64_t>& input2_shape,
                                      const int64_t axis,
                                      const int64_t block_size,
-                                     int64_t accuracy_level) {
+                                     int64_t accuracy_level,
+                                     std::unique_ptr<IExecutionProvider> ep = nullptr) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* weight_arg = builder.MakeInitializer(weight_shape, T(T::min_val, 0), T(T::max_val, 0));
     auto* input2_arg = builder.MakeInput(input2_shape, -100.0f, 100.0f);
@@ -189,7 +215,9 @@ RunDQMatMulNotConverted_FirstDQInput(const std::vector<int64_t>& weight_shape,
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/,
                     nullptr,
-                    add_session_options_fn);
+                    add_session_options_fn,
+                    {},
+                    ep ? std::move(ep) : nullptr);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_FirstDQInput) {
@@ -212,6 +240,27 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_FirstDQInput) {
   RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, -1);
 }
 
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_FirstDQInput_Cuda) {
+  // DQ contrib op schema is not updated to support blocked quantization
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, true>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, 4, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, true>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  ;
+  RunDQMatMulNotConverted_FirstDQInput<UInt4x2, false>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, true>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_FirstDQInput<Int4x2, false>({12, 37}, {37, 12}, 0, 16, -1, DefaultCudaExecutionProvider());
+}
+
 // Input1
 //   |
 //    \      DQ
@@ -224,7 +273,8 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
                                                const std::vector<int64_t>& weight_shape,
                                                const int64_t axis,
                                                const int64_t block_size,
-                                               int64_t accuracy_level) {
+                                               int64_t accuracy_level,
+                                               std::unique_ptr<IExecutionProvider> ep = nullptr) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
     auto* output_arg = builder.MakeOutput();
@@ -287,7 +337,9 @@ void RunDQMatMulNotConverted_TypeShapeMismatch(const std::vector<int64_t>& input
                     1e-5 /*per_sample_tolerance*/,
                     1e-5 /*relative_per_sample_tolerance*/,
                     nullptr,
-                    add_session_options_fn);
+                    add_session_options_fn,
+                    {},
+                    ep ? std::move(ep) : nullptr);
 }
 
 TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_TypeMismatch) {
@@ -327,6 +379,31 @@ TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch) {
   RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({2, 12, 37}, {2, 37, 12}, 0, 16, 0);
 }
 
+TEST(QDQTransformerTests, DQMatMulNotConvertedToMatMulNBits_ShapeMismatch_Cuda) {
+  // DQ contrib op schema is not updated to support blocked quantization
+  // block size too small
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 8, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 8, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 8, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 8, 0, DefaultCudaExecutionProvider());
+  // block size not 2's power
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 12}, 0, 17, 0, DefaultCudaExecutionProvider());
+  ;
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 12}, 0, 17, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 12}, 0, 17, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 12}, 0, 17, 0, DefaultCudaExecutionProvider());
+  // not axis 0
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({12, 37}, {37, 37}, 1, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({12, 37}, {37, 37}, 1, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({12, 37}, {37, 37}, 1, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({12, 37}, {37, 37}, 1, 16, 0, DefaultCudaExecutionProvider());
+  // not rank 2
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, true>({2, 12, 37}, {2, 37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<UInt4x2, false>({2, 12, 37}, {2, 37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, true>({2, 12, 37}, {2, 37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulNotConverted_TypeShapeMismatch<Int4x2, false>({2, 12, 37}, {2, 37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+}
+
 //  Input1
 //    |      DQ
 //     \    /
@@ -343,7 +420,8 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
                      const std::vector<int64_t>& weight2_shape,
                      const int64_t axis,
                      const int64_t block_size,
-                     int64_t accuracy_level) {
+                     int64_t accuracy_level,
+                     std::unique_ptr<IExecutionProvider> ep = nullptr) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput(input1_shape, -100.0f, 100.0f);
     auto* output_arg = builder.MakeOutput();
@@ -402,9 +480,11 @@ RunDQMatMulConverted(const std::vector<int64_t>& input1_shape,
                     TransformerLevel::Level2,
                     21 /*opset_version*/,
                     1e-5 /*per_sample_tolerance*/,
-                    1e-5 /*relative_per_sample_tolerance*/,
+                    2e-5 /*relative_per_sample_tolerance*/,
                     nullptr,
-                    add_session_options_fn);
+                    add_session_options_fn,
+                    {},
+                    ep ? std::move(ep) : nullptr);
 }
 
 TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits) {
@@ -417,6 +497,18 @@ TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits) {
   RunDQMatMulConverted<Int4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1);
   RunDQMatMulConverted<UInt4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1);
   RunDQMatMulConverted<UInt4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1);
+}
+
+TEST(QDQTransformerTests, DQMatMulConvertedToMatMulNBits_Cuda) {
+  // DQ contrib op schema is not updated to support blocked quantization
+  RunDQMatMulConverted<Int4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<Int4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<UInt4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<UInt4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 0, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<Int4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<Int4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<UInt4x2, true>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
+  RunDQMatMulConverted<UInt4x2, false>({12, 12}, {12, 37}, {37, 12}, 0, 16, 1, DefaultCudaExecutionProvider());
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

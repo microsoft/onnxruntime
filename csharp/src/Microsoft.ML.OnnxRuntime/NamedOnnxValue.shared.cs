@@ -53,13 +53,13 @@ namespace Microsoft.ML.OnnxRuntime
     /// Other sequences and maps. Although the OnnxValueType is exposed,
     /// the caller is supposed to know the actual data type contained.
     /// 
-    /// The convention is that for tensors, it would contain a DenseTensor<T> instance or
-    /// anything derived from Tensor<T>.
+    /// The convention is that for tensors, it would contain a DenseTensor{T} instance or
+    /// anything derived from Tensor{T}.
     /// 
-    /// For sequences, it would contain a IList<T> where T is an instance of NamedOnnxValue that
+    /// For sequences, it would contain a IList{T} where T is an instance of NamedOnnxValue that
     /// would contain a tensor or another type.
     /// 
-    /// For Maps, it would contain a IDictionary<K, V> where K,V are primitive types or strings.
+    /// For Maps, it would contain a IDictionary{K, V} where K,V are primitive types or strings.
     /// 
     /// </summary>
     public class NamedOnnxValue
@@ -153,7 +153,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Instantiates NamedOnnxValue that contains IDictionary<K, V>
+        /// Instantiates NamedOnnxValue that contains IDictionary{K, V}
         /// </summary>
         /// <typeparam name="K">Keys type</typeparam>
         /// <typeparam name="V">Values type</typeparam>
@@ -225,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// based on the pinned managed memory. The caller is responsible for Disposing
         /// both OrtValue and pinnedMemoryHandle
         /// </summary>
-        /// <param name="pinnedMemoryHandle">dispose after returned OrtValus is disposed</param>
+        /// <param name="memoryOwner">dispose after returned OrtValue is disposed</param>
         /// <returns>The native OrtValue handle</returns>
         internal virtual IntPtr InputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
@@ -272,12 +272,6 @@ namespace Microsoft.ML.OnnxRuntime
                 $" Use Run() overloads that return DisposableNamedOnnxValue to get access to all Onnx value types that may be returned as output.");
         }
 
-        /// <summary>
-        /// This method is used internally to feed dictionary keys
-        /// to create an OrtValue for map keys
-        /// </summary>
-        /// <typeparam name="K"></typeparam>
-        /// <returns>DenseTensor<K>"</returns>
         internal TensorBase GetDictionaryKeys()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)
@@ -289,11 +283,6 @@ namespace Microsoft.ML.OnnxRuntime
             return _mapHelper.Keys;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <typeparam name="V"></typeparam>
-        /// <returns>DenseTensor<V>"</returns>
         internal TensorBase GetDictionaryValues()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)

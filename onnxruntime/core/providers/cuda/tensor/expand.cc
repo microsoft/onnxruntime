@@ -95,7 +95,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   TensorShapeVector output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
   TensorShape output_shape(output_dims);
 
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input_data_tensor.Shape(), output_dims, output_shape));
+  ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), input_data_tensor.Shape(), output_dims, output_shape));
   auto& output_tensor = *ctx->Output(0, output_shape);
   if (0 == output_shape.Size()) {
     return Status::OK();
@@ -202,7 +202,7 @@ std::unique_ptr<Tensor> FuncExpand(
   TensorShape output_shape(output_dims);
 
   ORT_ENFORCE(
-      ComputeOutputShape(
+      ComputeBroadcastOutputShape(
           cuda_kernel->Node().Name(),
           input_data_tensor->Shape(),
           output_dims, output_shape)
