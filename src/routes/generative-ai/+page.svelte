@@ -87,10 +87,10 @@
 				</div>
 			
 				<div class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mt-auto">
-					<a href="" class="btn btn-primary btn-block">Llama 3</a>
-					<a href="" class="btn btn-primary btn-block">Phi-3</a>
-					<a href="" class="btn btn-primary btn-block">Gemma</a>
-					<a href="" class="btn btn-primary btn-block">Mistral</a>
+					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Llama 3</a>
+					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi-3-tutorial.md" class="btn btn-primary btn-block">Phi-3</a>
+					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Gemma</a>
+					<a href="https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/README.md" class="btn btn-primary btn-block">Mistral</a>
 				</div>
 			</div>
 			
