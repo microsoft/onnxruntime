@@ -58,6 +58,9 @@ class ShaderVariable {
   ShaderVariable(ShaderVariable&&) = default;
   ShaderVariable& operator=(ShaderVariable&&) = default;
 
+  // get the name of the variable.
+  std::string_view Name() const;
+
   // create a WGSL expression ({varname}_indices_t) for getting indices from offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   inline std::string OffsetToIndices(std::string_view offset_expr) const;
@@ -131,11 +134,10 @@ class ShaderVariable {
 
   std::string GetByOffsetImpl(std::string_view offset) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
-
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
-  std::string IndicesType() const;
+  std::string_view IndicesType() const;
 
   std::string name_;
   ProgramVariableDataType type_;
@@ -145,6 +147,14 @@ class ShaderVariable {
 
   mutable Usage usage_;
   mutable std::vector<std::reference_wrapper<const ShaderVariable>> broadcasted_to_;
+
+  // unlike storage/element/value type, indices type is not a string view to a constant string. so we need to store it.
+  std::string indices_type_;
+
+  // the alias for the types
+  std::string value_type_alias_;
+  std::string element_type_alias_;
+  std::string indices_type_alias_;
 
   friend class ShaderHelper;
 };
