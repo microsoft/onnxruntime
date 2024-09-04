@@ -30,11 +30,13 @@ namespace qnnctxgen {
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
       "onnxruntime_qnn_ctx_gen [options...] model1_path,model2_path\n"
+      "Example: ./onnxruntime_qnn_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
       "Options:\n"
       "\t-v: Show verbose information.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
-      "\t    [Example] -C \"ep.context_enable|1\" \n"
+      "\t    Force ep.context_enable to 1 and ep.context_embed_mode to 0. Change ep.context_file_path is not allowed."
+      "\t    [Example] -C \"ep.context_node_name_prefix|_part1\" \n"
       "\t-i: Specify QNN EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
