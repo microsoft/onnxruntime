@@ -25,7 +25,7 @@ class LoraAdapter {
  public:
   LoraAdapter() = default;
   ~LoraAdapter() = default;
-  LoraAdapter(const LoraAdapter&) = delete; 
+  LoraAdapter(const LoraAdapter&) = delete;
   LoraAdapter& operator=(const LoraAdapter&) = delete;
 
   LoraAdapter(LoraAdapter&&) = default;
@@ -44,25 +44,37 @@ class LoraAdapter {
   void MemoryMap(const std::filesystem::path& file_path);
 
   /// <summary>
-  /// Outputs the names and tensor values of the parameters to the
-  /// specified output iterators
+  /// Returns number of parameters in the adapter.
+  /// The number is expected to be even as lora params come in pairs.
   /// </summary>
-  /// <typeparam name="NamesOutputIter">output iterator accepting const char*</typeparam>
-  /// <typeparam name="TensorOutputIter">Output Iterator accepting OrtValue</typeparam>
-  /// <param name="names_out"></param>
-  /// <param name="params_out"></param>
+  /// <returns>size of params_values_ container</returns>
+  size_t GetParamNum() const {
+    return params_values_.size();
+  }
+
+  /// <summary>
+  /// Outputs Lora Parameters, their names and values
+  /// into the supplied output iterators.
+  /// </summary>
+  /// <typeparam name="NamesOutputIter"></typeparam>
+  /// <typeparam name="TensorOutputIter"></typeparam>
+  /// <param name="names_out">output iterator that accepts const char*</param>
+  /// <param name="tensor_out">output iterator that accepts OrtValue</param>
   template <class NamesOutputIter, class TensorOutputIter>
   void OutputAdaptersParameters(NamesOutputIter names_out,
-                                TensorOutputIter params_out) {
-    const auto* adapter = binary_format_holder_.GetBinaryAdapter();
-    // utils::OutputAdaptersParameters(*adapter, names_out, params_out);
+                                TensorOutputIter tensor_out) const {
+    for (const auto& [name, param] : params_values_) {
+      *names_out = name.c_str();
+      ++names_out;
+      *tensor_out = param.ort_value_;
+      ++tensor_out;
+    }
   }
 
  private:
-
   void InitializeParamsValues();
   // Get the size of the buffer
-  size_t GetSize() const;
+  size_t GetBufferSize() const;
 
   struct BufferHolder {
     explicit BufferHolder(std::vector<uint8_t> buffer) : buffer_(std::move(buffer)) {}
@@ -78,7 +90,7 @@ class LoraAdapter {
 
   std::variant<std::monostate, MemMapHolder, BufferHolder> buffer_;
 
-/// <summary>
+  /// <summary>
   /// Represents a named lora parameter (tensor)
   /// </summary>
   struct LoraParam {

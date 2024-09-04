@@ -49,7 +49,7 @@ void LoraAdapter::InitializeParamsValues() {
   params_values_.swap(params_values);
 }
 
-size_t LoraAdapter::GetSize() const {
+size_t LoraAdapter::GetBufferSize() const {
   if (std::holds_alternative<MemMapHolder>(buffer_)) {
     return std::get<1>(buffer_).file_size_;
   } else if (std::holds_alternative<BufferHolder>(buffer_)) {

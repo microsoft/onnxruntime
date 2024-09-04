@@ -84,20 +84,6 @@ void SaveLoraParameter(flatbuffers::FlatBufferBuilder& flat_builder, std::string
 /// <returns></returns>
 std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter& param);
 
-template <class NamesOutputIter, class TensorOutputIter>
-void OutputAdaptersParameters(const Adapter& adapter,
-                              NamesOutputIter names_out,
-                              TensorOutputIter params_out) {
-  const auto* params = adapter.parameters();
-  for (const auto* param : params) {
-    auto [name, ort_value] = utils::CreateOrtValueOverLoraParameter(*param);
-    *names_out = std::move(name);
-    ++names_out;
-    *params_out = std::move(ort_value);
-    ++params_out;
-  }
-}
-
 }  // namespace utils
 }  // namespace lora
 }  // namespace onnxruntime
