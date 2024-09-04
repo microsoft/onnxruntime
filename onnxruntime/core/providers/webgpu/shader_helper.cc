@@ -67,10 +67,11 @@ Status ShaderHelper::Init() {
   body_ << ") {\n";
   if (is_1d_dispatch) {
     body_ << "  let global_idx = global_id.x;\n"
-             "  let local_idx = local_id.x;\n";
+             "  let local_idx = local_id.x;\n"
+             "  let workgroup_idx = workgroup_id.x;\n";
   } else {
-    body_ << "  let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x)\n"
-             "                     * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
+    body_ << "  let workgroup_idx = workgroup_id.z * num_workgroups[0] * num_workgroups[1] + workgroup_id.y * num_workgroups[0] + workgroup_id.x;\n"
+             "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
   }
 
   // init additional implementation string stream
